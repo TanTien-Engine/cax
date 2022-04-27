@@ -6,7 +6,7 @@ import "blueprint.variant_helper" for VariantHelper
 import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "gcsgen" for GCS_Scene
 import "graphics" for Painter, Graphics
-import "geometry" for Point, Line
+import "geometry" for Point, Line, Circle
 import "maths" for Matrix44
 
 class Draw is Node
@@ -26,9 +26,9 @@ class Draw is Node
 
 		this.layout()
 
-		var scale = 100.0
+		this.scale = 100.0
 		this.mat = Matrix44.init()
-		this.mat.scale(scale, scale, scale)
+		this.mat.scale(this.scale, this.scale, this.scale)
 
 		this.scene = nil
 	}
@@ -95,6 +95,8 @@ class Draw is Node
 				this.draw_point(pt, geo, col)
 			} else if (geo is Line) {
 				this.draw_line(pt, geo, col)
+			} else if (geo is Circle) {
+				this.draw_circle(pt, geo, col)			
 			}
 		}
 	}
@@ -109,5 +111,11 @@ class Draw is Node
 	{
 		var line = geo.get()
 		pt.add_line(this.mat, line, col, 2)
+	}
+
+	draw_circle(pt, geo, col)
+	{
+		var circle = geo.get()
+		pt.add_circle(this.mat, circle[0], circle[1], circle[2] * this.scale, col, 2.0, 24)
 	}
 }

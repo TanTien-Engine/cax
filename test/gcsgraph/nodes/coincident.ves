@@ -1,0 +1,36 @@
+var node0 = ::gcsgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 150.5933439492, 299.35072458696)
+
+var node1 = ::gcsgraph::nodes::point::Point()
+node1.query_param("x").value = 0
+node1.query_param("y").value = 0
+
+_editor.add_node(node1, -267, 352)
+
+var node2 = ::gcsgraph::nodes::point::Point()
+node2.query_param("x").value = 1
+node2.query_param("y").value = 0
+
+_editor.add_node(node2, -261.58514182855, 232.30123322239)
+
+var node3 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node3, -110.59654513273, 341.68788840554)
+
+var node4 = ::gcsgraph::nodes::coincident::Coincident()
+
+_editor.add_node(node4, -111.95590676335, 261.56600901923)
+
+var node5 = ::gcsgraph::nodes::vertical::Vertical()
+
+_editor.add_node(node5, -107.03018238343, 183.68909878704)
+
+Blueprint.connect(node1, "geo", node5, "a")
+Blueprint.connect(node2, "geo", node5, "b")
+Blueprint.connect(node1, "geo", node4, "a")
+Blueprint.connect(node2, "geo", node4, "b")
+Blueprint.connect(node1, "geo", node3, "in0")
+Blueprint.connect(node2, "geo", node3, "in1")
+Blueprint.connect(node3, "list", node0, "geo")
+Blueprint.connect(node4, "cons", node0, "cons")

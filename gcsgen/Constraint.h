@@ -10,9 +10,21 @@ namespace gcsgen
 enum class ConstraintType
 {
 	None,
+	// basic
 	Distance,
+	Angle,
+	Parallel,
+	Perpendicular,
+	PointOnLine,
+	PointOnPerpBisector,
+	MidpointOnLine,
+	TangentCircumf,
+	// derived
+	Coincident,
 	Horizontal,
 	Vertical,
+	PointOnCircle,
+	Tangent,
 };
 
 struct Constraint

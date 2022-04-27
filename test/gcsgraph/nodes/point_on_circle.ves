@@ -1,0 +1,30 @@
+var node0 = ::gcsgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 28.81319581996, 127.14677959155)
+
+var node1 = ::gcsgraph::nodes::point::Point()
+node1.query_param("x").value = 0.48197904229164
+node1.query_param("y").value = 0.24864569306374
+
+_editor.add_node(node1, -337.37809834711, 129.61636942149)
+
+var node2 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node2, -139, 139.5)
+
+var node3 = ::gcsgraph::nodes::circle::Circle()
+node3.query_param("center").value.set(0, 0)
+node3.query_param("radius").value = 1
+
+_editor.add_node(node3, -338.87107438017, 9.9787377911345)
+
+var node4 = ::gcsgraph::nodes::point_on_circle::PointOnCircle()
+
+_editor.add_node(node4, -135.50712023476, 47.023581691544)
+
+Blueprint.connect(node1, "geo", node4, "a")
+Blueprint.connect(node3, "geo", node4, "b")
+Blueprint.connect(node1, "geo", node2, "in0")
+Blueprint.connect(node3, "geo", node2, "in1")
+Blueprint.connect(node2, "list", node0, "geo")
+Blueprint.connect(node4, "cons", node0, "cons")

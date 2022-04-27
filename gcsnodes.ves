@@ -1,7 +1,8 @@
 import "gcsgraph.nodes.*"
 
 var GCS_NODES = [ 
-Point, Line,
-Distance, Horizontal, Vertical,
+Point, Line, Circle,
+Distance, Angle, Parallel, Perpendicular, PointOnLine, PointOnPerpBisector, MidpointOnLine, TangentCircumf,
+Coincident, Horizontal, Vertical, PointOnCircle, Tangent,
 Draw,
 ]

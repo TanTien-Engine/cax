@@ -1,9 +1,9 @@
 import "gcsgraph.nodes.binary_cons" for BinaryCons
 
-class Horizontal is BinaryCons
+class PointOnLine is BinaryCons
 {
 	init()
 	{
-		super.init("horizontal")
+		super.init("point_on_line")
 	}
 }

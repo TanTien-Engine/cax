@@ -32,10 +32,30 @@ void w_Constraint_allocate()
     gcsgen::ConstraintType type = gcsgen::ConstraintType::None;
     if (strcmp(type_str, "distance") == 0) {
         type = gcsgen::ConstraintType::Distance;
+    } else if (strcmp(type_str, "angle") == 0) {
+        type = gcsgen::ConstraintType::Angle;
+    } else if (strcmp(type_str, "point_on_line") == 0) {
+        type = gcsgen::ConstraintType::PointOnLine;
+    } else if (strcmp(type_str, "point_on_perp_bisector") == 0) {
+        type = gcsgen::ConstraintType::PointOnPerpBisector;
+    } else if (strcmp(type_str, "midpoint_on_line") == 0) {
+        type = gcsgen::ConstraintType::MidpointOnLine;
+    } else if (strcmp(type_str, "parallel") == 0) {
+        type = gcsgen::ConstraintType::Parallel;
+    } else if (strcmp(type_str, "perpendicular") == 0) {
+        type = gcsgen::ConstraintType::Perpendicular;
+    } else if (strcmp(type_str, "tangent_circumf") == 0) {
+        type = gcsgen::ConstraintType::TangentCircumf;
+    } else if (strcmp(type_str, "coincident") == 0) {
+        type = gcsgen::ConstraintType::Coincident;
     } else if (strcmp(type_str, "horizontal") == 0) {
         type = gcsgen::ConstraintType::Horizontal;
     } else if (strcmp(type_str, "vertical") == 0) {
         type = gcsgen::ConstraintType::Vertical;
+    } else if (strcmp(type_str, "point_on_circle") == 0) {
+        type = gcsgen::ConstraintType::PointOnCircle;
+    } else if (strcmp(type_str, "tangent") == 0) {
+        type = gcsgen::ConstraintType::Tangent;
     }
 
     auto proxy = (tt::Proxy<gcsgen::Constraint>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<gcsgen::Constraint>));
@@ -85,7 +105,8 @@ void w_Scene_clear()
 void w_Scene_solve()
 {
     auto scene = ((tt::Proxy<gcsgen::Scene>*)ves_toforeign(0))->obj;
-    scene->Solve();
+    bool dirty = scene->Solve();
+    ves_set_boolean(0, dirty);
 }
 
 }

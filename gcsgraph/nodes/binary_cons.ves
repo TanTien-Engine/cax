@@ -1,0 +1,59 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "gcsgen" for GCS_Constraint
+
+class BinaryCons is Node
+{
+	init(cons_type)
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "a", VAR_TYPE_GEOMETRY),
+			Pin(this, "b", VAR_TYPE_GEOMETRY),
+		]
+		this.exports = [
+			Pin(this, "cons", VAR_TYPE_CONSTRAINT),
+		]
+
+		this.layout()
+
+		this.cons_type = cons_type
+		this.cons = nil
+	}
+
+	on_pin_dirty(pin)
+	{
+		super.on_pin_dirty(pin)
+
+		this.cons = nil
+	}
+
+	calc_value(idx)
+	{
+		if (!this.cons) {
+			this.cons = this.build_cons()
+		}
+
+		return Variant(VAR_TYPE_CONSTRAINT, this.cons)
+	}
+
+	build_cons()
+	{
+		var a = nil
+		var b = nil
+		var v_a = Blueprint.calc_input_value(this, 0)
+		if (v_a) {
+			a = v_a.value
+		}
+		var v_b = Blueprint.calc_input_value(this, 1)
+		if (v_b) {
+			b = v_b.value
+		}
+
+		return GCS_Constraint.init(this.cons_type, a, b, 0)
+	}
+}
