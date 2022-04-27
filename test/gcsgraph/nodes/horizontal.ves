@@ -1,0 +1,41 @@
+var node0 = ::gcsgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 67.396694214876, 81.727272727273)
+
+var node1 = ::gcsgraph::nodes::point::Point()
+node1.query_param("x").value = 0
+node1.query_param("y").value = 0.5
+
+_editor.add_node(node1, -267, 352)
+
+var node2 = ::gcsgraph::nodes::point::Point()
+node2.query_param("x").value = 1
+node2.query_param("y").value = 0
+
+_editor.add_node(node2, -288.1219, 217.3767)
+
+var node3 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node3, -103.32381786, 314.41516113281)
+
+var node4 = ::gcsgraph::nodes::line::Line()
+node4.query_param("p1").value.set(0, 0)
+node4.query_param("p2").value.set(1, 1)
+
+_editor.add_node(node4, -284.7558018708, -93.148246323767)
+
+var node5 = ::gcsgraph::nodes::horizontal::Horizontal()
+
+_editor.add_node(node5, -96, 188)
+
+var node6 = ::gcsgraph::nodes::horizontal::Horizontal()
+
+_editor.add_node(node6, -78.036363636364, -76.580909090909)
+
+Blueprint.connect(node4, "geo", node6, "a")
+Blueprint.connect(node1, "geo", node5, "a")
+Blueprint.connect(node2, "geo", node5, "b")
+Blueprint.connect(node1, "geo", node3, "in0")
+Blueprint.connect(node2, "geo", node3, "in1")
+Blueprint.connect(node3, "list", node0, "geo")
+Blueprint.connect(node5, "cons", node0, "cons")

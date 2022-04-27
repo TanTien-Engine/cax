@@ -1,0 +1,75 @@
+var node0 = ::gcsgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 67.396694214876, 81.727272727273)
+
+var node1 = ::gcsgraph::nodes::point::Point()
+node1.query_param("x").value = 0
+node1.query_param("y").value = 0
+
+_editor.add_node(node1, -267, 352)
+
+var node2 = ::gcsgraph::nodes::point::Point()
+node2.query_param("x").value = 0.7791320681572
+node2.query_param("y").value = 0.56802093982697
+
+_editor.add_node(node2, -281.1219, 228.3767)
+
+var node3 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node3, -103.32381786, 314.41516113281)
+
+var node4 = ::gcsgraph::nodes::distance::Distance()
+node4.query_param("dist").value = 0.47777777910233
+
+_editor.add_node(node4, -102, 145)
+
+var node5 = ::blueprint::nodes::number::Number()
+
+node5.value = 0.95555555820465
+
+_editor.add_node(node5, -267, 81)
+
+var node6 = ::gcsgraph::nodes::line::Line()
+node6.query_param("p1").value.set(0, 0)
+node6.query_param("p2").value.set(1, 1)
+
+_editor.add_node(node6, -204.4558018708, -89.848246323767)
+
+var node7 = ::gcsgraph::nodes::distance::Distance()
+node7.query_param("dist").value = 1
+
+_editor.add_node(node7, 81.435027296605, -96.529129131498)
+
+var node8 = ::gcsgraph::nodes::line::Line()
+node8.query_param("p1").value.set(0, 0)
+node8.query_param("p2").value.set(1, 1)
+
+_editor.add_node(node8, -257.4527018708, -267.27714632377)
+
+var node9 = ::blueprint::nodes::number2::Number2()
+
+node9.value.set(1, 1)
+
+_editor.add_node(node9, -788.13646972656, 45.658355102539)
+
+var node10 = ::blueprint::nodes::add::Add()
+
+_editor.add_node(node10, -627.20651123047, -71.711646728516)
+
+var node11 = ::blueprint::nodes::number2::Number2()
+
+node11.value.set(1, 1)
+
+_editor.add_node(node11, -803.48697815631, -124.99749233548)
+
+Blueprint.connect(node9, "v2", node10, "a")
+Blueprint.connect(node11, "v2", node10, "b")
+Blueprint.connect(node9, "v2", node8, "p1")
+Blueprint.connect(node10, "v", node8, "p2")
+Blueprint.connect(node8, "geo", node7, "a")
+Blueprint.connect(node8, "geo", node0, "geo")
+Blueprint.connect(node7, "cons", node0, "cons")
+Blueprint.connect(node2, "geo", node4, "a")
+Blueprint.connect(node1, "geo", node4, "b")
+Blueprint.connect(node1, "geo", node3, "in0")
+Blueprint.connect(node2, "geo", node3, "in1")

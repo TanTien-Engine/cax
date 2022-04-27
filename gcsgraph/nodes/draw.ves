@@ -1,0 +1,113 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for VAR_TYPE_ARRAY, VAR_TYPE_PORT
+import "blueprint.variant_helper" for VariantHelper
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "gcsgen" for GCS_Scene
+import "graphics" for Painter, Graphics
+import "geometry" for Point, Line
+import "maths" for Matrix44
+
+class Draw is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "prev", VAR_TYPE_PORT),
+			Pin(this, "geo",  [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ]),
+			Pin(this, "cons", [ VAR_TYPE_ARRAY, VAR_TYPE_CONSTRAINT ]),
+		]
+		this.exports = [
+			Pin(this, "next", VAR_TYPE_PORT)
+		]
+
+		this.layout()
+
+		var scale = 100.0
+		this.mat = Matrix44.init()
+		this.mat.scale(scale, scale, scale)
+
+		this.scene = nil
+	}
+
+	on_pin_dirty(pin)
+	{
+		super.on_pin_dirty(pin)
+
+		this.scene = nil
+	}
+
+	render_run() 
+	{
+		var v_geo = Blueprint.calc_input_value(this, 1)
+		if (!v_geo or !v_geo.value) {
+			return
+		}
+
+		if (!this.scene) {
+			this.scene = this.build_cons_scene()
+		}
+
+		if (this.scene) {
+			this.scene.solve()
+		}
+
+		var pt = Painter.init()
+		this.draw_geo(pt, v_geo)
+
+		Graphics.draw_painter(pt)
+	}
+
+	build_cons_scene()
+	{
+		var v_cons = Blueprint.calc_input_value(this, 2)
+		if (!v_cons) {
+			return nil
+		}
+
+		var cons = VariantHelper.flatten_values(v_cons, VAR_TYPE_CONSTRAINT)
+
+		var scene = GCS_Scene.init()
+		for (var c in cons) {
+			scene.add(c.value)
+		}
+
+		return scene
+	}
+
+	draw_geo(pt, v_geo)
+	{
+		if (v_geo.type == VAR_TYPE_ARRAY)
+		{
+			for (var v in v_geo.value) {
+				this.draw_geo(pt, v)
+			}
+		}
+		else if (v_geo.type == VAR_TYPE_GEOMETRY)
+		{
+			var col = [255, 255, 255, 255]
+
+			var geo = v_geo.value
+			if (geo is Point) {
+				this.draw_point(pt, geo, col)
+			} else if (geo is Line) {
+				this.draw_line(pt, geo, col)
+			}
+		}
+	}
+
+	draw_point(pt, geo, col)
+	{
+		var pos = geo.get()
+		pt.add_circle_filled(this.mat, pos[0], pos[1], 5.0, col, 32)
+	}
+
+	draw_line(pt, geo, col)
+	{
+		var line = geo.get()
+		pt.add_line(this.mat, line, col, 2)
+	}
+}

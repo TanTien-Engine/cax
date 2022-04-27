@@ -1,0 +1,7 @@
+import "gcsgraph.nodes.*"
+
+var GCS_NODES = [ 
+Point, Line,
+Distance, Horizontal, Vertical,
+Draw,
+]

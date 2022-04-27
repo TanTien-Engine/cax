@@ -1,0 +1,94 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER2
+import "blueprint.blueprint" for Blueprint
+import "maths.vector" for Vector2
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY
+import "geometry" for Line as tt_Line
+
+class Line is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "p1", VAR_TYPE_NUMBER2),
+			Pin(this, "p2", VAR_TYPE_NUMBER2),
+		]
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEOMETRY),
+		]
+
+		this.params.add(NodeParam("p1", Vector2(0, 0)))
+		this.params.add(NodeParam("p2", Vector2(1, 1)))
+
+		this.layout()
+
+		this.geo = nil
+	}
+
+	on_pin_dirty(pin)
+	{
+		this.update_geo()
+	}
+
+	on_param_dirty()
+	{
+		this.update_geo()
+	}
+	
+	calc_value(idx)
+	{
+		if (!this.geo) {
+			this.geo = this.build_geo()
+		}
+		
+		return Variant(VAR_TYPE_GEOMETRY, this.geo)
+	}
+
+	get_positions()
+	{
+		var x1 = 0
+		var y1 = 0
+		var x2 = 0
+		var y2 = 0
+
+		var p1 = this.query_param("p1").value
+		var v_p1 = Blueprint.calc_input_value(this, 0)
+		if (v_p1) {
+			x1 = v_p1.value.x
+			y1 = v_p1.value.y
+		} else {
+			x1 = p1.x
+			y1 = p1.y
+		}
+
+		var p2 = this.query_param("p2").value
+		var v_p2 = Blueprint.calc_input_value(this, 1)
+		if (v_p2) {
+			x2 = v_p2.value.x
+			y2 = v_p2.value.y
+		} else {
+			x2 = p2.x
+			y2 = p2.y
+		}
+
+		return [ x1, y1, x2, y2 ]
+	}
+
+	build_geo()
+	{
+		var pos = this.get_positions()
+		return tt_Line.init(pos[0], pos[1], pos[2], pos[3])
+	}
+
+	update_geo()
+	{
+		if (this.geo) {
+			var pos = this.get_positions()
+			this.geo.set(pos[0], pos[1], pos[2], pos[3])
+		}
+	}
+}

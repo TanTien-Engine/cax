@@ -1,0 +1,80 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.blueprint" for Blueprint
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY
+import "geometry" for Point as tt_Point
+
+class Point is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "x", VAR_TYPE_NUMBER),
+			Pin(this, "y", VAR_TYPE_NUMBER),
+		]
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEOMETRY),
+		]
+
+		this.params.add(NodeParam("x", 0))
+		this.params.add(NodeParam("y", 0))
+
+		this.layout()
+
+		this.geo = nil
+	}
+
+	on_pin_dirty(pin)
+	{
+		this.update_geo()
+	}
+
+	on_param_dirty()
+	{
+		this.update_geo()
+	}
+
+	calc_value(idx)
+	{
+		if (!this.geo) {
+			this.geo = this.build_geo()
+		}
+
+		return Variant(VAR_TYPE_GEOMETRY, this.geo)
+	}
+
+	get_pos()
+	{
+		var x = this.query_param("x").value
+		var y = this.query_param("y").value
+
+		var v_x = Blueprint.calc_input_value(this, 0)
+		if (v_x) {
+			x = v_p.value.x
+		}
+		var v_y = Blueprint.calc_input_value(this, 1)
+		if (v_y) {
+			y = v_p.value.y
+		}
+
+		return [ x, y ]
+	}
+
+	build_geo()
+	{
+		var pos = this.get_pos()
+		return tt_Point.init(pos[0], pos[1])
+	}
+
+	update_geo()
+	{
+		if (this.geo) {
+			var pos = this.get_pos()
+			this.geo.set(pos[0], pos[1])
+		}
+	}	
+}
