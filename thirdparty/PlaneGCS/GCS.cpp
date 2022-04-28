@@ -226,6 +226,7 @@ public:
     void LogQRSystemInformation(const System &system, int paramsNum = 0, int constrNum = 0, int rank = 0);
 
     void LogGroupOfConstraints(const std::string & str, std::vector< std::vector<Constraint *> > constraintgroups);
+    void LogSetOfConstraints(const std::string & str,  std::set<Constraint *> constraintset);
     void LogGroupOfParameters(const std::string & str, std::vector< std::vector<double *> > parametergroups);
 
     void LogMatrix(const std::string str, Eigen::MatrixXd matrix);
@@ -284,6 +285,10 @@ SolverReportingManager& SolverReportingManager::Manager()
 
 void SolverReportingManager::LogToConsole(const std::string& str)
 {
+    //if(str.size() < Base::Console().BufferSize)
+        std::cout << str.c_str();
+    //else
+    //    std::cout <<("SolverReportingManager - Too long string suppressed");
 }
 
 void SolverReportingManager::LogToFile(const std::string& str)
@@ -360,6 +365,20 @@ void SolverReportingManager::LogGroupOfConstraints(const std::string & str, std:
 
         tempstream << "]" << '\n';
     }
+
+    LogString(tempstream.str());
+}
+
+void SolverReportingManager::LogSetOfConstraints(const std::string & str,  std::set<Constraint *> constraintset)
+{
+    std::stringstream tempstream;
+
+    tempstream << str << ": [";
+
+    for(auto c : constraintset)
+        tempstream << c->getTag() << " ";
+
+    tempstream << "]" << '\n';
 
     LogString(tempstream.str());
 }
@@ -554,6 +573,7 @@ void System::clear()
     redundant.clear();
     conflictingTags.clear();
     redundantTags.clear();
+    partiallyRedundantTags.clear();
 
     reference.clear();
     clearSubSystems();
@@ -1015,20 +1035,22 @@ int System::addConstraintArcRadius(Arc &a, double *radius, int tagId, bool drivi
     return addConstraintEqual(a.rad, radius, tagId, driving);
 }
 
-int System::addConstraintCircleDiameter(Circle &c, double *radius, int tagId, bool driving)
+int System::addConstraintCircleDiameter(Circle &c, double *diameter, int tagId, bool driving)
 {
-    return addConstraintProportional(c.rad, radius, 0.5, tagId, driving);
+    return addConstraintProportional(c.rad, diameter, 0.5, tagId, driving);
 }
 
-int System::addConstraintArcDiameter(Arc &a, double *radius, int tagId, bool driving)
+int System::addConstraintArcDiameter(Arc &a, double *diameter, int tagId, bool driving)
 {
-    return addConstraintProportional(a.rad, radius, 0.5, tagId, driving);
+    return addConstraintProportional(a.rad, diameter, 0.5, tagId, driving);
 }
 
-int System::addConstraintEqualLength(Line &l1, Line &l2, double *length, int tagId, bool driving)
+int System::addConstraintEqualLength(Line &l1, Line &l2, int tagId, bool driving)
 {
-    addConstraintP2PDistance(l1.p1, l1.p2, length, tagId, driving);
-    return addConstraintP2PDistance(l2.p1, l2.p2, length, tagId, driving);
+    Constraint *constr = new ConstraintEqualLineLength(l1, l2);
+    constr->setTag(tagId);
+    constr->setDriving(driving);
+    return addConstraint(constr);
 }
 
 int System::addConstraintEqualRadius(Circle &c1, Circle &c2, int tagId, bool driving)
@@ -1499,8 +1521,8 @@ void System::initSolution(Algorithm alg)
                 clist1.push_back(*constr);
         }
 
-        subSystems.push_back(NULL);
-        subSystemsAux.push_back(NULL);
+        subSystems.push_back(nullptr);
+        subSystemsAux.push_back(nullptr);
         if (clist0.size() > 0)
             subSystems[cid] = new SubSystem(clist0, plists[cid], reductionmaps[cid]);
         if (clist1.size() > 0)
@@ -1630,7 +1652,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                 << ", maxIter: "            << maxIterNumber  << "\n";
 
         const std::string tmp = stream.str();
-        //.Log(tmp.c_str());
+        std::cout <<(tmp.c_str());
     }
 
     double divergingLim = 1e6*err + 1e12;
@@ -1646,7 +1668,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                         << ", h_norm: "           << h_norm  << "\n";
 
                 const std::string tmp = stream.str();
-                //.Log(tmp.c_str());
+                std::cout <<(tmp.c_str());
             }
             break;
         }
@@ -1658,7 +1680,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                         << ", divergingLim: "            << divergingLim  << "\n";
 
                 const std::string tmp = stream.str();
-                //.Log(tmp.c_str());
+                std::cout <<(tmp.c_str());
             }
             break;
         }
@@ -1695,7 +1717,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                     << ", h_norm: "                 << h_norm << "\n";
 
             const std::string tmp = stream.str();
-            //.Log(tmp.c_str());
+            std::cout <<(tmp.c_str());
         }
     }
 
@@ -1751,7 +1773,7 @@ int System::solve_LM(SubSystem* subsys, bool isRedundantsolving)
                 << ", maxIter: "        << maxIterNumber  << "\n";
 
         const std::string tmp = stream.str();
-        //.Log(tmp.c_str());
+        std::cout <<(tmp.c_str());
     }
 
     double nu=2, mu=0;
@@ -1865,7 +1887,7 @@ int System::solve_LM(SubSystem* subsys, bool isRedundantsolving)
                     << ", h_norm: "                 << h_norm << "\n";
 
             const std::string tmp = stream.str();
-            //.Log(tmp.c_str());
+            std::cout <<(tmp.c_str());
         }
     }
 
@@ -1910,7 +1932,7 @@ int System::solve_DL(SubSystem* subsys, bool isRedundantsolving)
                 << ", maxIter: "        << maxIterNumber  << "\n";
 
         const std::string tmp = stream.str();
-        //.Log(tmp.c_str());
+        std::cout <<(tmp.c_str());
     }
 
     Eigen::VectorXd x(xsize), x_new(xsize);
@@ -2065,7 +2087,7 @@ int System::solve_DL(SubSystem* subsys, bool isRedundantsolving)
                     << ", err(divergingLim): "  << err  << "\n";
 
             const std::string tmp = stream.str();
-            //.Log(tmp.c_str());
+            std::cout <<(tmp.c_str());
         }
 
         // count this iteration and start again
@@ -2079,7 +2101,7 @@ int System::solve_DL(SubSystem* subsys, bool isRedundantsolving)
         stream  << "DL: stopcode: "     << stop << ((stop == 1) ? ", Success" : ", Failed") << "\n";
 
         const std::string tmp = stream.str();
-        //.Log(tmp.c_str());
+        std::cout <<(tmp.c_str());
     }
 
     return (stop == 1) ? Success : Failed;
@@ -3880,6 +3902,7 @@ SolverReportingManager::Manager().LogToFile("GCS::System::diagnose()\n");
     redundant.clear();
     conflictingTags.clear();
     redundantTags.clear();
+    partiallyRedundantTags.clear();
 
     // This QR diagnosis uses a reduced Jacobian matrix to calculate the rank of the system and identify
     // conflicting and redundant constraints.
@@ -3951,7 +3974,7 @@ SolverReportingManager::Manager().LogToFile("GCS::System::diagnose()\n");
 
 #ifndef EIGEN_SPARSEQR_COMPATIBLE
     if(qrAlgorithm==EigenSparseQR){
-        //.Warning("SparseQR not supported by you current version of Eigen. It requires Eigen 3.2.2 or higher. Falling back to Dense QR\n");
+        Base::Console().Warning("SparseQR not supported by you current version of Eigen. It requires Eigen 3.2.2 or higher. Falling back to Dense QR\n");
         qrAlgorithm=EigenDenseQR;
     }
 #endif
@@ -4006,7 +4029,7 @@ SolverReportingManager::Manager().LogToFile("GCS::System::diagnose()\n");
 
         auto SolveTime = Base::TimeInfo::diffTimeF(DenseQR_start_time,DenseQR_end_time);
 
-        //.Log("\nDenseQR - Lapsed Time: %f seconds\n", SolveTime);
+        std::cout <<("\nDenseQR - Lapsed Time: %f seconds\n", SolveTime);
     #endif
     }
 
@@ -4030,7 +4053,7 @@ SolverReportingManager::Manager().LogToFile("GCS::System::diagnose()\n");
             // identifyDependentParametersSparseQR(J, jacobianconstraintmap, pdiagnoselist, true)
             //
             // Debug:
-            // auto fut = std::async(std::launch::deferred,&System::identifyDependentParametersSparseQR,this,J,jacobianconstraintmap, pdiagnoselist, false);
+            //auto fut = std::async(std::launch::deferred,&System::identifyDependentParametersSparseQR,this,J,jacobianconstraintmap, pdiagnoselist, false);
             auto fut = std::async(&System::identifyDependentParametersSparseQR,this,J,jacobianconstraintmap, pdiagnoselist, /*silent=*/true);
 
             makeSparseQRDecomposition( J, jacobianconstraintmap, SqrJT, rank, R, /*transposed=*/true, /*silent=*/false);
@@ -4060,7 +4083,7 @@ SolverReportingManager::Manager().LogToFile("GCS::System::diagnose()\n");
 
         auto SolveTime = Base::TimeInfo::diffTimeF(SparseQR_start_time,SparseQR_end_time);
 
-        //.Log("\nSparseQR - Lapsed Time: %f seconds\n", SolveTime);
+        std::cout <<("\nSparseQR - Lapsed Time: %f seconds\n", SolveTime);
         #endif
     }
 #endif
@@ -4454,7 +4477,7 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
             break;
 
         int maxPopularity = 0;
-        Constraint *mostPopular = NULL;
+        Constraint *mostPopular = nullptr;
         for (std::map< Constraint *, SET_I >::const_iterator it=conflictingMap.begin();
                 it != conflictingMap.end(); ++it) {
             if (static_cast<int>(it->second.size()) > maxPopularity ||
@@ -4476,6 +4499,11 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
                     it != conflictingMap[mostPopular].end(); ++it)
                 satisfiedGroups.insert(*it);
         }
+    }
+
+    // Augment information regarding the choice made by popularity contest
+    if(debugMode==IterationLevel) {
+        SolverReportingManager::Manager().LogSetOfConstraints("Chosen redundants", skipped);
     }
 
     std::vector<Constraint *> clistTmp;
@@ -4503,7 +4531,7 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
                 break;
         }
 
-        //.Log("Sketcher::RedundantSolving-%s-\n",solvername.c_str());
+        std::cout <<("Sketcher::RedundantSolving-%s-\n",solvername.c_str());
     }
 
     if (res == Success) {
@@ -4517,7 +4545,7 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
         resetToReference();
 
         if(debugMode==Minimal || debugMode==IterationLevel) {
-            //.Log("Sketcher Redundant solving: %d redundants\n",redundant.size());
+            std::cout <<("Sketcher Redundant solving: %d redundants\n",redundant.size());
         }
 
         std::vector< std::vector<Constraint *> > conflictGroupsOrig=conflictGroups;
@@ -4529,7 +4557,7 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
                     isRedundant = true;
 
                     if(debugMode==IterationLevel) {
-                        //.Log("(Partially) Redundant, Group %d, index %d, Tag: %d\n", i,j, (conflictGroupsOrig[i][j])->getTag());
+                        std::cout <<("(Partially) Redundant, Group %d, index %d, Tag: %d\n", i,j, (conflictGroupsOrig[i][j])->getTag());
                     }
 
                     break;
@@ -4556,19 +4584,27 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
                 conflictingTags.begin());
 
     // output of redundant tags
-    SET_I redundantTagsSet;
-    for (std::set<Constraint *>::iterator constr=redundant.begin();
-            constr != redundant.end(); ++constr)
+    SET_I redundantTagsSet, partiallyRedundantTagsSet;
+    for (std::set<Constraint *>::iterator constr=redundant.begin(); constr != redundant.end(); ++constr) {
         redundantTagsSet.insert((*constr)->getTag());
+        partiallyRedundantTagsSet.insert((*constr)->getTag());
+    }
+
     // remove tags represented at least in one non-redundant constraint
-    for (std::vector<Constraint *>::iterator constr=clist.begin();
-        constr != clist.end(); ++constr) {
+    for (std::vector<Constraint *>::iterator constr=clist.begin(); constr != clist.end(); ++constr)
         if (redundant.count(*constr) == 0)
             redundantTagsSet.erase((*constr)->getTag());
-    }
+
     redundantTags.resize(redundantTagsSet.size());
     std::copy(redundantTagsSet.begin(), redundantTagsSet.end(),
                 redundantTags.begin());
+
+    for(auto r : redundantTagsSet)
+        partiallyRedundantTagsSet.erase(r);
+
+    partiallyRedundantTags.resize(partiallyRedundantTagsSet.size());
+    std::copy(partiallyRedundantTagsSet.begin(), partiallyRedundantTagsSet.end(),
+                partiallyRedundantTags.begin());
 
     nonredundantconstrNum = constrNum;
 }

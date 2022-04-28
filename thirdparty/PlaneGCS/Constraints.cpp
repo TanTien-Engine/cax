@@ -533,18 +533,18 @@ void ConstraintPointOnPerpBisector::errorgrad(double *err, double *grad, double 
     DeriVector2 p0(Point(p0x(),p0y()), param);
     DeriVector2 p1(Point(p1x(),p1y()), param);
     DeriVector2 p2(Point(p2x(),p2y()), param);
-    
+
     DeriVector2 d1 = p0.subtr(p1);
     DeriVector2 d2 = p0.subtr(p2);
     DeriVector2 D = p2.subtr(p1).getNormalized();
-    
+
     double projd1, dprojd1;
     projd1 = d1.scalarProd(D, &dprojd1);
-    
+
     double projd2, dprojd2;
     projd2 = d2.scalarProd(D, &dprojd2);
-    
-    if (err) 
+
+    if (err)
         *err = projd1+projd2;
     if (grad)
         *grad = dprojd1+dprojd2;
@@ -553,17 +553,18 @@ void ConstraintPointOnPerpBisector::errorgrad(double *err, double *grad, double 
 double ConstraintPointOnPerpBisector::error()
 {
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 }
 
 double ConstraintPointOnPerpBisector::grad(double *param)
 {
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
 
     double deriv;
-    errorgrad(0, &deriv, param);
+    errorgrad(nullptr, &deriv, param);
 
     return deriv*scale;
 }
@@ -964,15 +965,15 @@ void ConstraintPointOnEllipse::rescale(double coef)
 }
 
 double ConstraintPointOnEllipse::error()
-{    
+{
     double X_0 = *p1x();
     double Y_0 = *p1y();
     double X_c = *cx();
-    double Y_c = *cy();     
+    double Y_c = *cy();
     double X_F1 = *f1x();
     double Y_F1 = *f1y();
     double b = *rmin();
-    
+
     double err=sqrt(pow(X_0 - X_F1, 2) + pow(Y_0 - Y_F1, 2)) + sqrt(pow(X_0 +
         X_F1 - 2*X_c, 2) + pow(Y_0 + Y_F1 - 2*Y_c, 2)) - 2*sqrt(pow(b, 2) +
         pow(X_F1 - X_c, 2) + pow(Y_F1 - Y_c, 2));
@@ -1095,17 +1096,18 @@ void ConstraintEllipseTangentLine::errorgrad(double *err, double *grad, double *
 double ConstraintEllipseTangentLine::error()
 {
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 }
 
 double ConstraintEllipseTangentLine::grad(double *param)
-{      
+{
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1 ) return 0.0;
+    if ( findParamInPvec(param) == -1 )
+        return 0.0;
 
     double deriv;
-    errorgrad(0, &deriv, param);
+    errorgrad(nullptr, &deriv, param);
 
     //use numeric for testing
     #if 0
@@ -1218,20 +1220,21 @@ void ConstraintInternalAlignmentPoint2Ellipse::errorgrad(double *err, double *gr
 }
 
 double ConstraintInternalAlignmentPoint2Ellipse::error()
-{    
+{
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 
 }
 
 double ConstraintInternalAlignmentPoint2Ellipse::grad(double *param)
-{      
+{
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
 
     double deriv;
-    errorgrad(0, &deriv, param);
+    errorgrad(nullptr, &deriv, param);
 
     //use numeric for testing
     #if 0
@@ -1318,7 +1321,7 @@ void ConstraintInternalAlignmentPoint2Hyperbola::errorgrad(double *err, double *
         case HyperbolaNegativeMajorY:
             poa = c.sum(emaj.multD(-a, -da));
             by_y_not_by_x = AlignmentType == HyperbolaNegativeMajorY;
-            break;            
+            break;
         case HyperbolaPositiveMinorX:
         case HyperbolaPositiveMinorY:
         {
@@ -1353,7 +1356,7 @@ void ConstraintInternalAlignmentPoint2Hyperbola::errorgrad(double *err, double *
 double ConstraintInternalAlignmentPoint2Hyperbola::error()
 {
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 
 }
@@ -1361,10 +1364,11 @@ double ConstraintInternalAlignmentPoint2Hyperbola::error()
 double ConstraintInternalAlignmentPoint2Hyperbola::grad(double *param)
 {
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
 
     double deriv;
-    errorgrad(0, &deriv, param);
+    errorgrad(nullptr, &deriv, param);
 
     return deriv*scale;
 
@@ -1414,19 +1418,20 @@ void ConstraintEqualMajorAxesConic::errorgrad(double *err, double *grad, double 
 }
 
 double ConstraintEqualMajorAxesConic::error()
-{    
+{
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 }
 
 double ConstraintEqualMajorAxesConic::grad(double *param)
 {
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
 
     double deriv;
-    errorgrad(0, &deriv, param);
+    errorgrad(nullptr, &deriv, param);
 
     return deriv * scale;
 }
@@ -1490,19 +1495,20 @@ void ConstraintEqualFocalDistance::errorgrad(double *err, double *grad, double *
 }
 
 double ConstraintEqualFocalDistance::error()
-{    
+{
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 }
 
 double ConstraintEqualFocalDistance::grad(double *param)
 {
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
 
     double deriv;
-    errorgrad(0, &deriv, param);
+    errorgrad(nullptr, &deriv, param);
 
     return deriv * scale;
 }
@@ -1523,7 +1529,7 @@ ConstraintCurveValue::ConstraintCurveValue(Point &p, double* pcoord, Curve& crv,
 
 ConstraintCurveValue::~ConstraintCurveValue()
 {
-    delete this->crv; this->crv = 0;
+    delete this->crv; this->crv = nullptr;
 }
 
 void ConstraintCurveValue::ReconstructGeomPointers()
@@ -1580,20 +1586,21 @@ void ConstraintCurveValue::errorgrad(double *err, double *grad, double *param)
 double ConstraintCurveValue::error()
 {
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 }
 
 double ConstraintCurveValue::grad(double *param)
 {
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
-    
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
+
     double deriv;
-    errorgrad(0, &deriv, param);
-    
+    errorgrad(nullptr, &deriv, param);
+
     return deriv*scale;
-}    
+}
 
 double ConstraintCurveValue::maxStep(MAP_pD_D &/*dir*/, double lim)
 {
@@ -1647,15 +1654,15 @@ void ConstraintPointOnHyperbola::rescale(double coef)
 }
 
 double ConstraintPointOnHyperbola::error()
-{    
+{
     double X_0 = *p1x();
     double Y_0 = *p1y();
     double X_c = *cx();
-    double Y_c = *cy();     
+    double Y_c = *cy();
     double X_F1 = *f1x();
     double Y_F1 = *f1y();
     double b = *rmin();
-    
+
     // Full sage worksheet at:
     // http://forum.freecadweb.org/viewtopic.php?f=10&t=8038&p=110447#p110447
     //
@@ -1682,7 +1689,7 @@ double ConstraintPointOnHyperbola::grad(double *param)
         param == f1x() || param == f1y() ||
         param == cx() || param == cy() ||
         param == rmin()) {
-        
+
         double X_0 = *p1x();
         double Y_0 = *p1y();
         double X_c = *cx();
@@ -1690,7 +1697,7 @@ double ConstraintPointOnHyperbola::grad(double *param)
         double X_F1 = *f1x();
         double Y_F1 = *f1y();
         double b = *rmin();
-        
+
         if (param == p1x())
             deriv += -(X_0 - X_F1)/sqrt(pow(X_0 - X_F1, 2) + pow(Y_0 - Y_F1, 2)) +
                 (X_0 + X_F1 - 2*X_c)/sqrt(pow(X_0 + X_F1 - 2*X_c, 2) + pow(Y_0 + Y_F1 -
@@ -1748,7 +1755,7 @@ ConstraintPointOnParabola::ConstraintPointOnParabola(Point &p, ArcOfParabola &e)
 
 ConstraintPointOnParabola::~ConstraintPointOnParabola()
 {
-    delete this->parab; this->parab = 0;
+    delete this->parab; this->parab = nullptr;
 }
 
 void ConstraintPointOnParabola::ReconstructGeomPointers()
@@ -1778,26 +1785,26 @@ void ConstraintPointOnParabola::errorgrad(double *err, double *grad, double *par
     DeriVector2 vertex(this->parab->vertex, param);
 
     DeriVector2 point(this->p, param); //point to be constrained to parabola
-    
+
     DeriVector2 focalvect = focus.subtr(vertex);
-    
+
     DeriVector2 xdir = focalvect.getNormalized();
-    
+
     DeriVector2 point_to_focus = point.subtr(focus);
 
     double focal, dfocal;
-    
+
     focal = focalvect.length(dfocal);
-    
+
     double pf, dpf;
-    
+
     pf = point_to_focus.length(dpf);
-    
+
     double proj, dproj;
-    
+
     proj = point_to_focus.scalarProd(xdir, &dproj);
-    
-    if (err) 
+
+    if (err)
 	*err = pf - 2*focal - proj;
     if (grad)
 	*grad = dpf - 2*dfocal - dproj;
@@ -1807,18 +1814,19 @@ void ConstraintPointOnParabola::errorgrad(double *err, double *grad, double *par
 double ConstraintPointOnParabola::error()
 {
     double err;
-    errorgrad(&err,0,0);
+    errorgrad(&err,nullptr,nullptr);
     return scale * err;
 }
 
 double ConstraintPointOnParabola::grad(double *param)
 {
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
-    
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
+
     double deriv;
-    errorgrad(0, &deriv, param);
-    
+    errorgrad(nullptr, &deriv, param);
+
     return deriv*scale;
 }
 
@@ -1838,8 +1846,8 @@ ConstraintAngleViaPoint::ConstraintAngleViaPoint(Curve &acrv1, Curve &acrv2, Poi
 }
 ConstraintAngleViaPoint::~ConstraintAngleViaPoint()
 {
-    delete crv1; crv1 = 0;
-    delete crv2; crv2 = 0;
+    delete crv1; crv1 = nullptr;
+    delete crv2; crv2 = nullptr;
 }
 
 void ConstraintAngleViaPoint::ReconstructGeomPointers()
@@ -1884,7 +1892,8 @@ double ConstraintAngleViaPoint::error()
 double ConstraintAngleViaPoint::grad(double *param)
 {
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1  ) return 0.0;
+    if ( findParamInPvec(param) == -1  )
+        return 0.0;
 
     double deriv=0.;
 
@@ -1941,9 +1950,9 @@ ConstraintSnell::ConstraintSnell(Curve &ray1, Curve &ray2, Curve &boundary, Poin
 }
 ConstraintSnell::~ConstraintSnell()
 {
-    delete ray1; ray1 = 0;
-    delete ray2; ray2 = 0;
-    delete boundary; boundary = 0;
+    delete ray1; ray1 = nullptr;
+    delete ray2; ray2 = nullptr;
+    delete boundary; boundary = nullptr;
 }
 
 void ConstraintSnell::ReconstructGeomPointers()
@@ -1992,7 +2001,7 @@ void ConstraintSnell::errorgrad(double *err, double *grad, double* param)
 double ConstraintSnell::error()
 {
     double err;
-    errorgrad(&err, 0, 0);
+    errorgrad(&err, nullptr, nullptr);
     return scale * err;
 }
 
@@ -2000,10 +2009,11 @@ double ConstraintSnell::grad(double *param)
 {
 
     //first of all, check that we need to compute anything.
-    if ( findParamInPvec(param) == -1 ) return 0.0;
+    if ( findParamInPvec(param) == -1 )
+        return 0.0;
 
     double deriv;
-    errorgrad(0, &deriv, param);
+    errorgrad(nullptr, &deriv, param);
 
 
 //use numeric for testing
@@ -2024,6 +2034,106 @@ double ConstraintSnell::grad(double *param)
 #endif
 
     return scale * deriv;
+}
+
+// ConstraintEqualLineLength
+ConstraintEqualLineLength::ConstraintEqualLineLength(Line &l1, Line &l2)
+{
+    this->l1 = l1;
+    this->l1.PushOwnParams(pvec);
+
+    this->l2 = l2;
+    this->l2.PushOwnParams(pvec);
+    origpvec = pvec;
+    pvecChangedFlag = true;
+    rescale();
+}
+
+void ConstraintEqualLineLength::ReconstructGeomPointers()
+{
+    int i=0;
+    l1.ReconstructOnNewPvec(pvec, i);
+    l2.ReconstructOnNewPvec(pvec, i);
+    pvecChangedFlag = false;
+}
+
+ConstraintType ConstraintEqualLineLength::getTypeId()
+{
+    return EqualLineLength;
+}
+
+void ConstraintEqualLineLength::rescale(double coef)
+{
+    scale = coef * 1;
+}
+
+void ConstraintEqualLineLength::errorgrad(double *err, double *grad, double *param)
+{
+    if (pvecChangedFlag) ReconstructGeomPointers();
+
+    DeriVector2 p1 (l1.p1, param);
+    DeriVector2 p2 (l1.p2, param);
+    DeriVector2 p3 (l2.p1, param);
+    DeriVector2 p4 (l2.p2, param);
+
+    DeriVector2 v1 = p1.subtr(p2);
+    DeriVector2 v2 = p3.subtr(p4);
+
+    double length1, dlength1;
+    length1 = v1.length(dlength1);
+
+    double length2, dlength2;
+    length2 = v2.length(dlength2);
+
+    if (err)
+        *err = length2 - length1;
+
+    if (grad) {
+        *grad = dlength2 - dlength1;
+        // if the one of the lines gets vertical or horizontal, the gradients will become zero. this will
+        // affect the diagnose function and the detection of dependent/independent parameters.
+        //
+        // So here we maintain the very small derivative of 1e-10 when the gradient is under such value, such
+        // that the diagnose function with pivot threshold of 1e-13 treats the value as non-zero and correctly
+        // detects and can tell apart when a parameter is fully constrained or just locked into a maximum/minimum
+        if(fabs(*grad)  < 1e-10) {
+            double surrogate = 1e-10;
+            if( param == l1.p1.x )
+                *grad = v1.x > 0 ? surrogate : -surrogate;
+            if( param == l1.p1.y )
+                *grad = v1.y > 0 ? surrogate : -surrogate;
+            if( param == l1.p2.x )
+                *grad = v1.x > 0 ? -surrogate : surrogate;
+            if( param == l1.p2.y )
+                *grad = v1.y > 0 ? -surrogate : surrogate;
+            if( param == l2.p1.x )
+                *grad = v2.x > 0 ? surrogate : -surrogate;
+            if( param == l2.p1.y )
+                *grad = v2.y > 0 ? surrogate : -surrogate;
+            if( param == l2.p2.x )
+                *grad = v2.x > 0 ? -surrogate : surrogate;
+            if( param == l2.p2.y )
+                *grad = v2.y > 0 ? -surrogate : surrogate;
+        }
+    }
+}
+
+double ConstraintEqualLineLength::error()
+{
+    double err;
+    errorgrad(&err,nullptr,nullptr);
+    return scale * err;
+}
+
+double ConstraintEqualLineLength::grad(double *param)
+{
+    if ( findParamInPvec(param) == -1 )
+        return 0.0;
+
+    double deriv;
+    errorgrad(nullptr, &deriv, param);
+
+    return deriv*scale;
 }
 
 
