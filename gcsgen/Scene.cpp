@@ -534,33 +534,64 @@ int Scene::AddC2CTangentCons(int circle1, int circle2)
 
 void Scene::BeforeSolve()
 {
+    bool dirty = false;
+
     for (auto& geo : m_geos)
     {
         auto type = geo.shape->GetType();
         if (type == gs::ShapeType2D::Point)
         {
             auto src = std::static_pointer_cast<gs::Point2D>(geo.shape);
+            auto src_x = static_cast<double>(src->GetPos().x);
+            auto src_y = static_cast<double>(src->GetPos().y);
+
             auto& dst = m_points[geo.index];
-            *dst.x = static_cast<double>(src->GetPos().x);
-            *dst.y = static_cast<double>(src->GetPos().y);
+            if (*dst.x != src_x || *dst.y != src_y) 
+            {
+                *dst.x = src_x;
+                *dst.y = src_y;
+                dirty = true;
+            }
         }
         else if (type == gs::ShapeType2D::Line)
         {
             auto src = std::static_pointer_cast<gs::Line2D>(geo.shape);
+            auto p1_x = static_cast<double>(src->GetStart().x);
+            auto p1_y = static_cast<double>(src->GetStart().y);
+            auto p2_x = static_cast<double>(src->GetEnd().x);
+            auto p2_y = static_cast<double>(src->GetEnd().y);
+
             auto& dst = m_lines[geo.index];
-            *dst.p1.x = static_cast<double>(src->GetStart().x);
-            *dst.p1.y = static_cast<double>(src->GetStart().y);
-            *dst.p2.x = static_cast<double>(src->GetEnd().x);
-            *dst.p2.y = static_cast<double>(src->GetEnd().y);
+            if (*dst.p1.x != p1_x || *dst.p1.y != p1_y ||
+                *dst.p2.x != p2_x || *dst.p2.y != p2_y) 
+            {
+                *dst.p1.x = p1_x;
+                *dst.p1.y = p1_y;
+                *dst.p2.x = p2_x;
+                *dst.p2.y = p2_y;
+                dirty = true;
+            }
         }
         else if (type == gs::ShapeType2D::Circle)
         {
             auto src = std::static_pointer_cast<gs::Circle>(geo.shape);
+            auto cx = static_cast<double>(src->GetCenter().x);
+            auto cy = static_cast<double>(src->GetCenter().y);
+            auto r = static_cast<double>(src->GetRadius());
+
             auto& dst = m_circles[geo.index];
-            *dst.center.x = static_cast<double>(src->GetCenter().x);
-            *dst.center.y = static_cast<double>(src->GetCenter().y);
-            *dst.rad = static_cast<double>(src->GetRadius());
+            if (*dst.center.x != cx || *dst.center.y != cy || *dst.rad != r) 
+            {
+                *dst.center.x = cx;
+                *dst.center.y = cy;
+                *dst.rad = r;
+                dirty = true;
+            }
         }
+    }
+
+    if (dirty) {
+        m_gcs->initSolution(m_default_solver_redundant);
     }
 }
 
