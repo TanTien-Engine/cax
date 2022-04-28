@@ -218,6 +218,9 @@ int Scene::AddGeometry(const std::shared_ptr<gs::Shape2D>& geo)
         ret = AddCircle(std::static_pointer_cast<gs::Circle>(geo));
         break;
     }
+
+    m_geo_id[geo] = ret;
+
     return ret;
 }
 
