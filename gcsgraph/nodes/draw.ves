@@ -2,9 +2,7 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for VAR_TYPE_ARRAY, VAR_TYPE_PORT
-import "blueprint.variant_helper" for VariantHelper
-import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
-import "gcsgen" for GCS_Scene
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY
 import "graphics" for Painter, Graphics
 import "geometry" for Point, Line, Circle
 import "maths" for Matrix44
@@ -18,7 +16,6 @@ class Draw is Node
 		this.imports = [
 			Pin(this, "prev", VAR_TYPE_PORT),
 			Pin(this, "geo",  [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ]),
-			Pin(this, "cons", [ VAR_TYPE_ARRAY, VAR_TYPE_CONSTRAINT ]),
 		]
 		this.exports = [
 			Pin(this, "next", VAR_TYPE_PORT)
@@ -29,15 +26,6 @@ class Draw is Node
 		this.scale = 100.0
 		this.mat = Matrix44.init()
 		this.mat.scale(this.scale, this.scale, this.scale)
-
-		this.scene = nil
-	}
-
-	on_pin_dirty(pin)
-	{
-		super.on_pin_dirty(pin)
-
-		this.scene = nil
 	}
 
 	render_run() 
@@ -47,35 +35,10 @@ class Draw is Node
 			return
 		}
 
-		if (!this.scene) {
-			this.scene = this.build_cons_scene()
-		}
-
-		if (this.scene) {
-			this.scene.solve()
-		}
-
 		var pt = Painter.init()
 		this.draw_geo(pt, v_geo)
 
 		Graphics.draw_painter(pt)
-	}
-
-	build_cons_scene()
-	{
-		var v_cons = Blueprint.calc_input_value(this, 2)
-		if (!v_cons) {
-			return nil
-		}
-
-		var cons = VariantHelper.flatten_values(v_cons, VAR_TYPE_CONSTRAINT)
-
-		var scene = GCS_Scene.init()
-		for (var c in cons) {
-			scene.add(c.value)
-		}
-
-		return scene
 	}
 
 	draw_geo(pt, v_geo)
@@ -90,32 +53,32 @@ class Draw is Node
 		{
 			var col = [255, 255, 255, 255]
 
-			var geo = v_geo.value
-			if (geo is Point) {
-				this.draw_point(pt, geo, col)
-			} else if (geo is Line) {
-				this.draw_line(pt, geo, col)
-			} else if (geo is Circle) {
-				this.draw_circle(pt, geo, col)			
+			var shape = v_geo.value.shape
+			if (shape is Point) {
+				this.draw_point(pt, shape, col)
+			} else if (shape is Line) {
+				this.draw_line(pt, shape, col)
+			} else if (shape is Circle) {
+				this.draw_circle(pt, shape, col)			
 			}
 		}
 	}
 
-	draw_point(pt, geo, col)
+	draw_point(pt, shape, col)
 	{
-		var pos = geo.get()
+		var pos = shape.get()
 		pt.add_circle_filled(this.mat, pos[0], pos[1], 5.0, col, 32)
 	}
 
-	draw_line(pt, geo, col)
+	draw_line(pt, shape, col)
 	{
-		var line = geo.get()
+		var line = shape.get()
 		pt.add_line(this.mat, line, col, 2)
 	}
 
-	draw_circle(pt, geo, col)
+	draw_circle(pt, shape, col)
 	{
-		var circle = geo.get()
+		var circle = shape.get()
 		pt.add_circle(this.mat, circle[0], circle[1], circle[2] * this.scale, col, 2.0, 24)
 	}
 }

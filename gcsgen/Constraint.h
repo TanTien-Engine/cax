@@ -1,13 +1,13 @@
 #pragma once
 
-#include <memory>
+#include "Util.h"
 
-namespace gs { class Shape2D; }
+#include <utility>
 
 namespace gcsgen
 {
 
-enum class ConstraintType
+enum class ConsType
 {
 	None,
 	// basic
@@ -29,16 +29,19 @@ enum class ConstraintType
 
 struct Constraint
 {
-	Constraint(ConstraintType type, const std::shared_ptr<gs::Shape2D>& geo1,
-		const std::shared_ptr<gs::Shape2D>& geo2, double val) 
-		: type(type), geo1(geo1), geo2(geo2), value(val) {}
+	Constraint(ConsID id, ConsType type, const std::pair<GeoID, GeoType>& geo1, 
+		const std::pair<GeoID, GeoType>& geo2, double val)
+		: id(id), type(type), geo1(geo1), geo2(geo2), value(val) 
+	{
+	}
 
-	ConstraintType type = ConstraintType::None;
+	ConsID id = -1;
 
-	std::shared_ptr<gs::Shape2D> geo1 = nullptr;
-	std::shared_ptr<gs::Shape2D> geo2 = nullptr;
+	ConsType type = ConsType::None;
 
-	mutable double value = 0.0;
+	std::pair<GeoID, GeoType> geo1, geo2;
+
+	double value = 0.0;
 
 }; // Constraint
 

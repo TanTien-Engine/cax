@@ -55,6 +55,8 @@
 #include <limits>
 #include <future>
 
+#include <stdarg.h>
+
 #include "GCS.h"
 #include "qp_eq.h"
 
@@ -204,6 +206,19 @@ namespace Eigen {
 } // Eigen
 #endif
 
+namespace
+{
+
+void CONSOLE_LOG(const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    vprintf(format, ap);
+    va_end(ap);
+}
+
+}
+
 namespace GCS
 {
 
@@ -286,9 +301,9 @@ SolverReportingManager& SolverReportingManager::Manager()
 void SolverReportingManager::LogToConsole(const std::string& str)
 {
     //if(str.size() < Base::Console().BufferSize)
-        std::cout << str.c_str();
+        CONSOLE_LOG(str.c_str());
     //else
-    //    std::cout <<("SolverReportingManager - Too long string suppressed");
+    //    CONSOLE_LOG("SolverReportingManager - Too long string suppressed");
 }
 
 void SolverReportingManager::LogToFile(const std::string& str)
@@ -1652,7 +1667,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                 << ", maxIter: "            << maxIterNumber  << "\n";
 
         const std::string tmp = stream.str();
-        std::cout <<(tmp.c_str());
+        CONSOLE_LOG(tmp.c_str());
     }
 
     double divergingLim = 1e6*err + 1e12;
@@ -1668,7 +1683,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                         << ", h_norm: "           << h_norm  << "\n";
 
                 const std::string tmp = stream.str();
-                std::cout <<(tmp.c_str());
+                CONSOLE_LOG(tmp.c_str());
             }
             break;
         }
@@ -1680,7 +1695,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                         << ", divergingLim: "            << divergingLim  << "\n";
 
                 const std::string tmp = stream.str();
-                std::cout <<(tmp.c_str());
+                CONSOLE_LOG(tmp.c_str());
             }
             break;
         }
@@ -1717,7 +1732,7 @@ int System::solve_BFGS(SubSystem *subsys, bool /*isFine*/, bool isRedundantsolvi
                     << ", h_norm: "                 << h_norm << "\n";
 
             const std::string tmp = stream.str();
-            std::cout <<(tmp.c_str());
+            CONSOLE_LOG(tmp.c_str());
         }
     }
 
@@ -1773,7 +1788,7 @@ int System::solve_LM(SubSystem* subsys, bool isRedundantsolving)
                 << ", maxIter: "        << maxIterNumber  << "\n";
 
         const std::string tmp = stream.str();
-        std::cout <<(tmp.c_str());
+        CONSOLE_LOG(tmp.c_str());
     }
 
     double nu=2, mu=0;
@@ -1887,7 +1902,7 @@ int System::solve_LM(SubSystem* subsys, bool isRedundantsolving)
                     << ", h_norm: "                 << h_norm << "\n";
 
             const std::string tmp = stream.str();
-            std::cout <<(tmp.c_str());
+            CONSOLE_LOG(tmp.c_str());
         }
     }
 
@@ -1932,7 +1947,7 @@ int System::solve_DL(SubSystem* subsys, bool isRedundantsolving)
                 << ", maxIter: "        << maxIterNumber  << "\n";
 
         const std::string tmp = stream.str();
-        std::cout <<(tmp.c_str());
+        CONSOLE_LOG(tmp.c_str());
     }
 
     Eigen::VectorXd x(xsize), x_new(xsize);
@@ -2087,7 +2102,7 @@ int System::solve_DL(SubSystem* subsys, bool isRedundantsolving)
                     << ", err(divergingLim): "  << err  << "\n";
 
             const std::string tmp = stream.str();
-            std::cout <<(tmp.c_str());
+            CONSOLE_LOG(tmp.c_str());
         }
 
         // count this iteration and start again
@@ -2101,7 +2116,7 @@ int System::solve_DL(SubSystem* subsys, bool isRedundantsolving)
         stream  << "DL: stopcode: "     << stop << ((stop == 1) ? ", Success" : ", Failed") << "\n";
 
         const std::string tmp = stream.str();
-        std::cout <<(tmp.c_str());
+        CONSOLE_LOG(tmp.c_str());
     }
 
     return (stop == 1) ? Success : Failed;
@@ -4029,7 +4044,7 @@ SolverReportingManager::Manager().LogToFile("GCS::System::diagnose()\n");
 
         auto SolveTime = Base::TimeInfo::diffTimeF(DenseQR_start_time,DenseQR_end_time);
 
-        std::cout <<("\nDenseQR - Lapsed Time: %f seconds\n", SolveTime);
+        CONSOLE_LOG("\nDenseQR - Lapsed Time: %f seconds\n", SolveTime);
     #endif
     }
 
@@ -4083,7 +4098,7 @@ SolverReportingManager::Manager().LogToFile("GCS::System::diagnose()\n");
 
         auto SolveTime = Base::TimeInfo::diffTimeF(SparseQR_start_time,SparseQR_end_time);
 
-        std::cout <<("\nSparseQR - Lapsed Time: %f seconds\n", SolveTime);
+        CONSOLE_LOG("\nSparseQR - Lapsed Time: %f seconds\n", SolveTime);
         #endif
     }
 #endif
@@ -4531,7 +4546,7 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
                 break;
         }
 
-        std::cout <<("Sketcher::RedundantSolving-%s-\n",solvername.c_str());
+        CONSOLE_LOG("Sketcher::RedundantSolving-%s-\n",solvername.c_str());
     }
 
     if (res == Success) {
@@ -4545,7 +4560,7 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
         resetToReference();
 
         if(debugMode==Minimal || debugMode==IterationLevel) {
-            std::cout <<("Sketcher Redundant solving: %d redundants\n",redundant.size());
+            CONSOLE_LOG("Sketcher Redundant solving: %d redundants\n",redundant.size());
         }
 
         std::vector< std::vector<Constraint *> > conflictGroupsOrig=conflictGroups;
@@ -4557,7 +4572,7 @@ void System::identifyConflictingRedundantConstraints(   Algorithm alg,
                     isRedundant = true;
 
                     if(debugMode==IterationLevel) {
-                        std::cout <<("(Partially) Redundant, Group %d, index %d, Tag: %d\n", i,j, (conflictGroupsOrig[i][j])->getTag());
+                        CONSOLE_LOG("(Partially) Redundant, Group %d, index %d, Tag: %d\n", i,j, (conflictGroupsOrig[i][j])->getTag());
                     }
 
                     break;

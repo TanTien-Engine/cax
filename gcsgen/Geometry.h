@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Util.h"
+
 #include <memory>
 #include <assert.h>
 
@@ -34,7 +36,8 @@ struct Geometry
         }
     }
 
-    std::shared_ptr<gs::Shape2D> shape = nullptr;
+    GeoID id = -1;
+
     size_t index = 0;
 
     int start_pt_idx = -1;

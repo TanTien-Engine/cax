@@ -7,20 +7,20 @@
 namespace
 {
 
-bool is_null(const std::shared_ptr<gs::Shape2D>& shape) {
-    return !shape;
+bool is_none(const std::pair<gcsgen::GeoID, gcsgen::GeoType>& geo) {
+    return geo.second == gcsgen::GeoType::None;
 }
 
-bool is_point(const std::shared_ptr<gs::Shape2D>& shape) {
-    return shape && shape->GetType() == gs::ShapeType2D::Point;
+bool is_point(const std::pair<gcsgen::GeoID, gcsgen::GeoType>& geo) {
+    return geo.second == gcsgen::GeoType::Point;
 }
 
-bool is_line(const std::shared_ptr<gs::Shape2D>& shape) {
-    return shape && shape->GetType() == gs::ShapeType2D::Line;
+bool is_line(const std::pair<gcsgen::GeoID, gcsgen::GeoType>& geo) {
+    return geo.second == gcsgen::GeoType::Line;
 }
 
-bool is_circle(const std::shared_ptr<gs::Shape2D>& shape) {
-    return shape && shape->GetType() == gs::ShapeType2D::Circle;
+bool is_circle(const std::pair<gcsgen::GeoID, gcsgen::GeoType>& geo) {
+    return geo.second == gcsgen::GeoType::Circle;
 }
 
 }
@@ -40,191 +40,201 @@ Scene::~Scene()
     }
 }
 
-void Scene::AddConstraint(const Constraint& cons)
+void Scene::AddGeometry(GeoID id, const std::shared_ptr<gs::Shape2D>& shape)
 {
-    int geo1 = AddGeometry(cons.geo1);
-    int geo2 = AddGeometry(cons.geo2);
+    if (!shape || m_geoid2index.find(id) != m_geoid2index.end()) {
+        return;
+    }
 
-    switch (cons.type)
+    size_t idx = m_geos.size();
+    switch (shape->GetType())
+    {
+    case gs::ShapeType2D::Point:
+        AddPoint(std::static_pointer_cast<gs::Point2D>(shape), id);
+        break;
+    case gs::ShapeType2D::Line:
+        AddLine(std::static_pointer_cast<gs::Line2D>(shape), id);
+        break;
+    case gs::ShapeType2D::Circle:
+        AddCircle(std::static_pointer_cast<gs::Circle>(shape), id);
+        break;
+    }
+
+    m_geoid2index[id] = idx;
+}
+
+void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoType>& geo1,
+                          const std::pair<GeoID, GeoType>& geo2, double val)
+{
+    if (m_consid2index.find(id) != m_consid2index.end()) {
+        return;
+    }
+
+    Constraint cons(id, type, geo1, geo2, val);
+
+    size_t idx = m_cons.size();
+    m_cons.push_back(cons);
+    m_consid2index[id] = idx;
+
+    double* cons_val = &m_cons.back().value;
+
+    int geo1_idx = m_geoid2index[geo1.first];
+    int geo2_idx = m_geoid2index[geo2.first];
+
+    switch (type)
     {
         // basic
-    case ConstraintType::Distance:
-        if (is_point(cons.geo1) && is_point(cons.geo2)) {
-            AddP2PDistanceCons(geo1, PointPos::Mid, geo2, PointPos::Mid, &cons.value);
-        } else if (is_point(cons.geo1) && is_line(cons.geo2)) {
-            AddP2LDistanceCons(geo1, geo2, &cons.value);
-        } else if (is_line(cons.geo1) && is_point(cons.geo2)) {
-            AddP2LDistanceCons(geo2, geo1, &cons.value);
-        } else if (is_line(cons.geo1) && is_null(cons.geo2)) {
-            AddP2PDistanceCons(geo1, PointPos::Start, geo1, PointPos::End, &cons.value);
-        } else if (is_line(cons.geo2) && is_null(cons.geo1)) {
-            AddP2PDistanceCons(geo2, PointPos::Start, geo2, PointPos::End, &cons.value);
-        } else if (is_line(cons.geo1) && is_line(cons.geo2)) {
-            AddP2PDistanceCons(geo1, PointPos::Start, geo2, PointPos::Start, &cons.value);
+    case ConsType::Distance:
+        if (is_point(geo1) && is_point(geo2)) {
+            AddP2PDistanceCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+        } else if (is_point(geo1) && is_line(geo2)) {
+            AddP2LDistanceCons(id, geo1_idx, geo2_idx, cons_val);
+        } else if (is_line(geo1) && is_point(geo2)) {
+            AddP2LDistanceCons(id, geo2_idx, geo1_idx, cons_val);
+        } else if (is_line(geo1) && is_none(geo2)) {
+            AddP2PDistanceCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
+        } else if (is_line(geo2) && is_none(geo1)) {
+            AddP2PDistanceCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End, cons_val);
+        } else if (is_line(geo1) && is_line(geo2)) {
+            AddP2PDistanceCons(id, geo1_idx, PointPos::Start, geo2_idx, PointPos::Start, cons_val);
         }
         break;
-    case ConstraintType::Angle:
-        if (is_point(cons.geo1) && is_point(cons.geo2)) {
-            AddP2PAngleCons(geo1, PointPos::Mid, geo2, PointPos::Mid, &cons.value);
-        } else if (is_line(cons.geo1) && is_null(cons.geo2)) {
-            AddP2PAngleCons(geo1, PointPos::Start, geo1, PointPos::End, &cons.value);
-        } else if (is_line(cons.geo2) && is_null(cons.geo1)) {
-            AddP2PAngleCons(geo2, PointPos::Start, geo2, PointPos::End, &cons.value);
+    case ConsType::Angle:
+        if (is_point(geo1) && is_point(geo2)) {
+            AddP2PAngleCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+        } else if (is_line(geo1) && is_none(geo2)) {
+            AddP2PAngleCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
+        } else if (is_line(geo2) && is_none(geo1)) {
+            AddP2PAngleCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End, cons_val);
         }
         break;
-    case ConstraintType::Parallel:
-        if (is_line(cons.geo1) && is_line(cons.geo2)) {
-            AddParallelCons(geo1, geo2);
+    case ConsType::Parallel:
+        if (is_line(geo1) && is_line(geo2)) {
+            AddParallelCons(id, geo1_idx, geo2_idx);
         }
         break;
-    case ConstraintType::Perpendicular:
-        if (is_line(cons.geo1) && is_line(cons.geo2)) {
-            AddPerpendicularCons(geo1, geo2);
+    case ConsType::Perpendicular:
+        if (is_line(geo1) && is_line(geo2)) {
+            AddPerpendicularCons(id, geo1_idx, geo2_idx);
         }
         break;
-    case ConstraintType::PointOnLine:
-        if (is_point(cons.geo1) && is_line(cons.geo2)) {
-            AddPointOnLineCons(geo1, geo2);
-        } else if (is_point(cons.geo2) && is_line(cons.geo1)) {
-            AddPointOnLineCons(geo2, geo1);
+    case ConsType::PointOnLine:
+        if (is_point(geo1) && is_line(geo2)) {
+            AddPointOnLineCons(id, geo1_idx, geo2_idx);
+        } else if (is_point(geo2) && is_line(geo1)) {
+            AddPointOnLineCons(id, geo2_idx, geo1_idx);
         }
         break;
-    case ConstraintType::PointOnPerpBisector:
-        if (is_point(cons.geo1) && is_line(cons.geo2)) {
-            AddPointOnPerpBisectorCons(geo1, geo2);
-        } else if (is_point(cons.geo2) && is_line(cons.geo1)) {
-            AddPointOnPerpBisectorCons(geo2, geo1);
+    case ConsType::PointOnPerpBisector:
+        if (is_point(geo1) && is_line(geo2)) {
+            AddPointOnPerpBisectorCons(id, geo1_idx, geo2_idx);
+        } else if (is_point(geo2) && is_line(geo1)) {
+            AddPointOnPerpBisectorCons(id, geo2_idx, geo1_idx);
         }
         break;
-    case ConstraintType::MidpointOnLine:
-        if (is_line(cons.geo1) && is_line(cons.geo2)) {
-            AddMidpointOnLineCons(geo1, geo2);
+    case ConsType::MidpointOnLine:
+        if (is_line(geo1) && is_line(geo2)) {
+            AddMidpointOnLineCons(id, geo1_idx, geo2_idx);
         }
         break;
-    case ConstraintType::TangentCircumf:
-        if (is_circle(cons.geo1) && is_circle(cons.geo2)) {
-            AddTangentCircumfCons(geo1, geo2);
+    case ConsType::TangentCircumf:
+        if (is_circle(geo1) && is_circle(geo2)) {
+            AddTangentCircumfCons(id, geo1_idx, geo2_idx);
         }
         break;
         // derived
-    case ConstraintType::Coincident:
-        if (is_point(cons.geo1) && is_point(cons.geo2)) {
-            AddP2PCoincidentCons(geo1, PointPos::Mid, geo2, PointPos::Mid);
+    case ConsType::Coincident:
+        if (is_point(geo1) && is_point(geo2)) {
+            AddP2PCoincidentCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid);
         }
-    case ConstraintType::Horizontal:
-        if (is_point(cons.geo1) && is_point(cons.geo2)) {
-            AddHorizontalCons(geo1, PointPos::Mid, geo2, PointPos::Mid);
-        } else if (is_line(cons.geo1) && is_null(cons.geo2)) {
-            AddHorizontalCons(geo1, PointPos::Start, geo1, PointPos::End);
-        } else if (is_line(cons.geo2) && is_null(cons.geo1)) {
-            AddHorizontalCons(geo2, PointPos::Start, geo2, PointPos::End);
-        }
-        break;
-    case ConstraintType::Vertical:
-        if (is_point(cons.geo1) && is_point(cons.geo2)) {
-            AddVerticalCons(geo1, PointPos::Mid, geo2, PointPos::Mid);
-        } else if (is_line(cons.geo1) && is_null(cons.geo2)) {
-            AddVerticalCons(geo1, PointPos::Start, geo1, PointPos::End);
-        } else if (is_line(cons.geo2) && is_null(cons.geo1)) {
-            AddVerticalCons(geo2, PointPos::Start, geo2, PointPos::End);
+    case ConsType::Horizontal:
+        if (is_point(geo1) && is_point(geo2)) {
+            AddHorizontalCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid);
+        } else if (is_line(geo1) && is_none(geo2)) {
+            AddHorizontalCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End);
+        } else if (is_line(geo2) && is_none(geo1)) {
+            AddHorizontalCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End);
         }
         break;
-    case ConstraintType::PointOnCircle:
-        if (is_point(cons.geo1) && is_circle(cons.geo2)) {
-            AddPointOnCircleCons(geo1, geo2);
-        } else if (is_point(cons.geo2) && is_circle(cons.geo1)) {
-            AddPointOnCircleCons(geo2, geo1);
+    case ConsType::Vertical:
+        if (is_point(geo1) && is_point(geo2)) {
+            AddVerticalCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid);
+        } else if (is_line(geo1) && is_none(geo2)) {
+            AddVerticalCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End);
+        } else if (is_line(geo2) && is_none(geo1)) {
+            AddVerticalCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End);
         }
         break;
-    case ConstraintType::Tangent:
-        if (is_line(cons.geo1) && is_circle(cons.geo2)) {
-            AddL2CTangentCons(geo1, geo2);
-        } else if (is_line(cons.geo2) && is_circle(cons.geo1)) {
-            AddL2CTangentCons(geo2, geo1);
-        } else if (is_circle(cons.geo1) && is_circle(cons.geo2)) {
-            AddC2CTangentCons(geo1, geo2);
+    case ConsType::PointOnCircle:
+        if (is_point(geo1) && is_circle(geo2)) {
+            AddPointOnCircleCons(id, geo1_idx, geo2_idx);
+        } else if (is_point(geo2) && is_circle(geo1)) {
+            AddPointOnCircleCons(id, geo2_idx, geo1_idx);
+        }
+        break;
+    case ConsType::Tangent:
+        if (is_line(geo1) && is_circle(geo2)) {
+            AddL2CTangentCons(id, geo1_idx, geo2_idx);
+        } else if (is_line(geo2) && is_circle(geo1)) {
+            AddL2CTangentCons(id, geo2_idx, geo1_idx);
+        } else if (is_circle(geo1) && is_circle(geo2)) {
+            AddC2CTangentCons(id, geo1_idx, geo2_idx);
         }
         break;
     }
 }
     
-bool Scene::Solve()
+bool Scene::Solve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos)
 {
-    bool dirty = false;
+    BeforeSolve(geos);
 
-    BeforeSolve();
     int status = m_gcs->solve();
+//    int status = m_gcs->solve(true, GCS::BFGS);
     if (status == GCS::Success) 
     {
         m_gcs->applySolution();
-        if (AfterSolve()) {
-            dirty = true;
-        }
-    }
+        AfterSolve(geos);
 
-    return dirty;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 void Scene::Clear()
 {
+    m_gcs->clear();
+
     for (auto& p : m_parameters) {
         delete p;
     }
     m_parameters.clear();
 
+    m_geoid2index.clear();
+    m_geos.clear();
+
     m_points.clear();
     m_lines.clear();
+    m_circles.clear();
 
-    ClearConstraints();
-
-    m_geos.clear();
-}
-
-void Scene::ClearConstraints()
-{
-    for (int i = 0; i < m_constraints_counter; ++i) {
-        m_gcs->clearByTag(i + 1);
-    }
-    m_constraints_counter = 0;
+    m_conflicting.clear();
+    m_redundant.clear();
+    m_partially_redundant.clear();
 }
 
 void Scene::ResetSolver()
 {
     m_gcs->declareUnknowns(m_parameters);
     m_gcs->initSolution(m_default_solver_redundant);
+
+    m_gcs->getConflicting(m_conflicting);
+    m_gcs->getRedundant(m_redundant);
+    m_gcs->getPartiallyRedundant(m_partially_redundant);
 }
 
-int Scene::AddGeometry(const std::shared_ptr<gs::Shape2D>& geo)
-{
-    if (!geo) {
-        return -1;
-    }
-
-    auto itr = m_geo_id.find(geo);
-    if (itr != m_geo_id.end()) {
-        return itr->second;
-    }
-
-    int ret = -1;
-    switch (geo->GetType())
-    {
-    case gs::ShapeType2D::Point:
-        ret = AddPoint(std::static_pointer_cast<gs::Point2D>(geo));
-        break;
-    case gs::ShapeType2D::Line:
-        ret = AddLine(std::static_pointer_cast<gs::Line2D>(geo));
-        break;
-    case gs::ShapeType2D::Circle:
-        ret = AddCircle(std::static_pointer_cast<gs::Circle>(geo));
-        break;
-    }
-
-    m_geo_id[geo] = ret;
-
-    return ret;
-}
-
-int Scene::AddPoint(const std::shared_ptr<gs::Point2D>& pt)
+void Scene::AddPoint(const std::shared_ptr<gs::Point2D>& pt, GeoID id)
 {
     auto& pos = pt->GetPos();
     auto x = new double(pos.x);
@@ -241,18 +251,16 @@ int Scene::AddPoint(const std::shared_ptr<gs::Point2D>& pt)
     m_points.push_back(dst);
 
     Geometry geo;
-    geo.shape = pt;
+    geo.id = id;
     geo.index = point_id;
     geo.start_pt_idx = point_id;
     geo.mid_pt_idx = point_id;
     geo.end_pt_idx = point_id;
 
-    int geo_id = static_cast<int>(m_geos.size());
     m_geos.push_back(geo);
-    return geo_id;
 }
 
-int Scene::AddLine(const std::shared_ptr<gs::Line2D>& line)
+void Scene::AddLine(const std::shared_ptr<gs::Line2D>& line, GeoID id)
 {
     auto& s = line->GetStart();
     auto& e = line->GetEnd();
@@ -269,7 +277,7 @@ int Scene::AddLine(const std::shared_ptr<gs::Line2D>& line)
     p2.y = m_parameters[m_parameters.size() - 1];
 
     Geometry geo;
-    geo.shape = line;
+    geo.id = id;
     geo.start_pt_idx = static_cast<int>(m_points.size());
     geo.end_pt_idx   = geo.start_pt_idx + 1;
     m_points.push_back(p1);
@@ -281,12 +289,10 @@ int Scene::AddLine(const std::shared_ptr<gs::Line2D>& line)
     geo.index = m_lines.size();
     m_lines.push_back(l);
 
-    int geo_id = static_cast<int>(m_geos.size());
     m_geos.push_back(geo);
-    return geo_id;
 }
 
-int Scene::AddCircle(const std::shared_ptr<gs::Circle>& circle)
+void Scene::AddCircle(const std::shared_ptr<gs::Circle>& circle, GeoID id)
 {
     GCS::Point center;
 
@@ -301,7 +307,7 @@ int Scene::AddCircle(const std::shared_ptr<gs::Circle>& circle)
     double* r = m_parameters[m_parameters.size() - 1];
 
     Geometry geo;
-    geo.shape = circle;
+    geo.id = id;
     geo.mid_pt_idx = static_cast<int>(m_points.size());
     m_points.push_back(center);
         
@@ -311,241 +317,183 @@ int Scene::AddCircle(const std::shared_ptr<gs::Circle>& circle)
     geo.index = m_circles.size();
     m_circles.push_back(c);
 
-    int geo_id = static_cast<int>(m_geos.size());
     m_geos.push_back(geo);
-    return geo_id;
 }
 
-int Scene::AddP2PDistanceCons(int geo1, PointPos pos1, int geo2, PointPos pos2, double* value)
+void Scene::AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value)
 {
     assert(geo1 < m_geos.size() && geo2 < m_geos.size());
     auto p1 = m_geos[geo1].GetPointID(pos1);
     auto p2 = m_geos[geo2].GetPointID(pos2);
     assert(p1 < m_points.size() && p2 < m_points.size());
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintP2PDistance(m_points[p1], m_points[p2], value, tag);
+    m_gcs->addConstraintP2PDistance(m_points[p1], m_points[p2], value, id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddP2LDistanceCons(int point, int line, double* value)
+void Scene::AddP2LDistanceCons(ConsID id, int point, int line, double* value)
 {
     assert(point < m_geos.size() && line < m_geos.size());
-    assert(m_geos[point].shape->GetType() == gs::ShapeType2D::Point
-        && m_geos[line].shape->GetType() == gs::ShapeType2D::Line);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintP2LDistance(m_points[m_geos[point].index], m_lines[m_geos[line].index], value, tag);
+    m_gcs->addConstraintP2LDistance(m_points[m_geos[point].index], m_lines[m_geos[line].index], value, id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddP2PAngleCons(int geo1, PointPos pos1, int geo2, PointPos pos2, double* value)
+void Scene::AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value)
 {
     assert(geo1 < m_geos.size() && geo2 < m_geos.size());
     auto p1 = m_geos[geo1].GetPointID(pos1);
     auto p2 = m_geos[geo2].GetPointID(pos2);
     assert(p1 < m_points.size() && p2 < m_points.size());
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintP2PAngle(m_points[p1], m_points[p2], value, tag);
+    m_gcs->addConstraintP2PAngle(m_points[p1], m_points[p2], value, id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddParallelCons(int line1, int line2)
+void Scene::AddParallelCons(ConsID id, int line1, int line2)
 {
     assert(line1 < m_geos.size() && line2 < m_geos.size());
-    assert(m_geos[line1].shape->GetType() == gs::ShapeType2D::Line
-        && m_geos[line2].shape->GetType() == gs::ShapeType2D::Line);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintParallel(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], tag);
+    m_gcs->addConstraintParallel(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddPerpendicularCons(int line1, int line2)
+void Scene::AddPerpendicularCons(ConsID id, int line1, int line2)
 {
     assert(line1 < m_geos.size() && line2 < m_geos.size());
-    assert(m_geos[line1].shape->GetType() == gs::ShapeType2D::Line
-        && m_geos[line2].shape->GetType() == gs::ShapeType2D::Line);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintPerpendicular(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], tag);
+    m_gcs->addConstraintPerpendicular(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddPointOnLineCons(int point, int line)
+void Scene::AddPointOnLineCons(ConsID id, int point, int line)
 {
     assert(point < m_geos.size() && line < m_geos.size());
-    assert(m_geos[point].shape->GetType() == gs::ShapeType2D::Point
-        && m_geos[line].shape->GetType() == gs::ShapeType2D::Line);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintPointOnLine(m_points[m_geos[point].index], m_lines[m_geos[line].index], tag);
+    m_gcs->addConstraintPointOnLine(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddPointOnPerpBisectorCons(int point, int line)
+void Scene::AddPointOnPerpBisectorCons(ConsID id, int point, int line)
 {
     assert(point < m_geos.size() && line < m_geos.size());
-    assert(m_geos[point].shape->GetType() == gs::ShapeType2D::Point
-        && m_geos[line].shape->GetType() == gs::ShapeType2D::Line);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintPointOnPerpBisector(m_points[m_geos[point].index], m_lines[m_geos[line].index], tag);
+    m_gcs->addConstraintPointOnPerpBisector(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddMidpointOnLineCons(int line1, int line2)
+void Scene::AddMidpointOnLineCons(ConsID id, int line1, int line2)
 {
     assert(line1 < m_geos.size() && line2 < m_geos.size());
-    assert(m_geos[line1].shape->GetType() == gs::ShapeType2D::Line
-        && m_geos[line2].shape->GetType() == gs::ShapeType2D::Line);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintMidpointOnLine(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], tag);
+    m_gcs->addConstraintMidpointOnLine(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddTangentCircumfCons(int circle1, int circle2)
+void Scene::AddTangentCircumfCons(ConsID id, int circle1, int circle2)
 {
     assert(circle1 < m_geos.size() && circle2 < m_geos.size());
-    assert(m_geos[circle1].shape->GetType() == gs::ShapeType2D::Circle
-        && m_geos[circle2].shape->GetType() == gs::ShapeType2D::Circle);
 
-    int tag = ++m_constraints_counter;
     m_gcs->addConstraintTangentCircumf(m_points[m_geos[circle1].mid_pt_idx], m_points[m_geos[circle2].mid_pt_idx], 
-        m_circles[m_geos[circle1].index].rad, m_circles[m_geos[circle2].index].rad, false, tag);
+        m_circles[m_geos[circle1].index].rad, m_circles[m_geos[circle2].index].rad, false, id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddP2PCoincidentCons(int geo1, PointPos pos1, int geo2, PointPos pos2)
+void Scene::AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2)
 {
     assert(geo1 < m_geos.size() && geo2 < m_geos.size());
     auto p1 = m_geos[geo1].GetPointID(pos1);
     auto p2 = m_geos[geo2].GetPointID(pos2);
     assert(p1 < m_points.size() && p2 < m_points.size());
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintP2PCoincident(m_points[p1], m_points[p2], tag);
+    m_gcs->addConstraintP2PCoincident(m_points[p1], m_points[p2], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddHorizontalCons(int geo1, PointPos pos1, int geo2, PointPos pos2)
+void Scene::AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2)
 {
     assert(geo1 < m_geos.size() && geo2 < m_geos.size());
     auto p1 = m_geos[geo1].GetPointID(pos1);
     auto p2 = m_geos[geo2].GetPointID(pos2);
     assert(p1 < m_points.size() && p2 < m_points.size());
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintHorizontal(m_points[p1], m_points[p2], tag);
+    m_gcs->addConstraintHorizontal(m_points[p1], m_points[p2], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddVerticalCons(int geo1, PointPos pos1, int geo2, PointPos pos2)
+void Scene::AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2)
 {
     assert(geo1 < m_geos.size() && geo2 < m_geos.size());
     auto p1 = m_geos[geo1].GetPointID(pos1);
     auto p2 = m_geos[geo2].GetPointID(pos2);
     assert(p1 < m_points.size() && p2 < m_points.size());
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintVertical(m_points[p1], m_points[p2], tag);
+    m_gcs->addConstraintVertical(m_points[p1], m_points[p2], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddPointOnCircleCons(int point, int circle)
+void Scene::AddPointOnCircleCons(ConsID id, int point, int circle)
 {
     assert(point < m_geos.size() && circle < m_geos.size());
-    assert(m_geos[point].shape->GetType() == gs::ShapeType2D::Point
-        && m_geos[circle].shape->GetType() == gs::ShapeType2D::Circle);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintPointOnCircle(m_points[m_geos[point].index], m_circles[m_geos[circle].index], tag);
+    m_gcs->addConstraintPointOnCircle(m_points[m_geos[point].index], m_circles[m_geos[circle].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddL2CTangentCons(int line, int circle)
+void Scene::AddL2CTangentCons(ConsID id, int line, int circle)
 {
     assert(line < m_geos.size() && circle < m_geos.size());
-    assert(m_geos[line].shape->GetType() == gs::ShapeType2D::Line
-        && m_geos[circle].shape->GetType() == gs::ShapeType2D::Circle);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintTangent(m_lines[m_geos[line].index], m_circles[m_geos[circle].index], tag);
+    m_gcs->addConstraintTangent(m_lines[m_geos[line].index], m_circles[m_geos[circle].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-int Scene::AddC2CTangentCons(int circle1, int circle2)
+void Scene::AddC2CTangentCons(ConsID id, int circle1, int circle2)
 {
     assert(circle1 < m_geos.size() && circle2 < m_geos.size());
-    assert(m_geos[circle1].shape->GetType() == gs::ShapeType2D::Circle
-        && m_geos[circle2].shape->GetType() == gs::ShapeType2D::Circle);
 
-    int tag = ++m_constraints_counter;
-    m_gcs->addConstraintTangent(m_circles[m_geos[circle1].index], m_circles[m_geos[circle2].index], tag);
+    m_gcs->addConstraintTangent(m_circles[m_geos[circle1].index], m_circles[m_geos[circle2].index], id);
 
     ResetSolver();
-
-    return tag;
 }
 
-void Scene::BeforeSolve()
+void Scene::BeforeSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos)
 {
     bool dirty = false;
 
-    for (auto& geo : m_geos)
+    for (auto& geo : geos)
     {
-        auto type = geo.shape->GetType();
+        auto id = geo.first;
+        auto itr = m_geoid2index.find(id);
+        if (itr == m_geoid2index.end()) {
+            continue;
+        }
+
+        auto index = m_geos[itr->second].index;
+
+        auto shape = geo.second;
+        auto type = shape->GetType();
         if (type == gs::ShapeType2D::Point)
         {
-            auto src = std::static_pointer_cast<gs::Point2D>(geo.shape);
+            auto src = std::static_pointer_cast<gs::Point2D>(shape);
             auto src_x = static_cast<double>(src->GetPos().x);
             auto src_y = static_cast<double>(src->GetPos().y);
 
-            auto& dst = m_points[geo.index];
+            auto& dst = m_points[index];
             if (*dst.x != src_x || *dst.y != src_y) 
             {
                 *dst.x = src_x;
@@ -555,13 +503,13 @@ void Scene::BeforeSolve()
         }
         else if (type == gs::ShapeType2D::Line)
         {
-            auto src = std::static_pointer_cast<gs::Line2D>(geo.shape);
+            auto src = std::static_pointer_cast<gs::Line2D>(shape);
             auto p1_x = static_cast<double>(src->GetStart().x);
             auto p1_y = static_cast<double>(src->GetStart().y);
             auto p2_x = static_cast<double>(src->GetEnd().x);
             auto p2_y = static_cast<double>(src->GetEnd().y);
 
-            auto& dst = m_lines[geo.index];
+            auto& dst = m_lines[index];
             if (*dst.p1.x != p1_x || *dst.p1.y != p1_y ||
                 *dst.p2.x != p2_x || *dst.p2.y != p2_y) 
             {
@@ -574,12 +522,12 @@ void Scene::BeforeSolve()
         }
         else if (type == gs::ShapeType2D::Circle)
         {
-            auto src = std::static_pointer_cast<gs::Circle>(geo.shape);
+            auto src = std::static_pointer_cast<gs::Circle>(shape);
             auto cx = static_cast<double>(src->GetCenter().x);
             auto cy = static_cast<double>(src->GetCenter().y);
             auto r = static_cast<double>(src->GetRadius());
 
-            auto& dst = m_circles[geo.index];
+            auto& dst = m_circles[index];
             if (*dst.center.x != cx || *dst.center.y != cy || *dst.rad != r) 
             {
                 *dst.center.x = cx;
@@ -595,17 +543,26 @@ void Scene::BeforeSolve()
     }
 }
 
-bool Scene::AfterSolve()
+void Scene::AfterSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos)
 {
     bool dirty = false;
 
-    for (auto& geo : m_geos)
+    for (auto& geo : geos)
     {
-        auto type = geo.shape->GetType();
+        auto id = geo.first;
+        auto itr = m_geoid2index.find(id);
+        if (itr == m_geoid2index.end()) {
+            continue;
+        }
+
+        auto index = m_geos[itr->second].index;
+
+        auto shape = geo.second;
+        auto type = shape->GetType();
         if (type == gs::ShapeType2D::Point)
         {
-            auto& src = m_points[geo.index];
-            auto dst = std::static_pointer_cast<gs::Point2D>(geo.shape);
+            auto& src = m_points[index];
+            auto dst = std::static_pointer_cast<gs::Point2D>(shape);
 
             sm::vec2 pos(static_cast<float>(*src.x), static_cast<float>(*src.y));
             if (pos != dst->GetPos()) 
@@ -616,8 +573,8 @@ bool Scene::AfterSolve()
         }
         else if (type == gs::ShapeType2D::Line)
         {
-            auto& src = m_lines[geo.index];
-            auto dst = std::static_pointer_cast<gs::Line2D>(geo.shape);
+            auto& src = m_lines[index];
+            auto dst = std::static_pointer_cast<gs::Line2D>(shape);
 
             sm::vec2 p1(static_cast<float>(*src.p1.x), static_cast<float>(*src.p1.y));
             sm::vec2 p2(static_cast<float>(*src.p2.x), static_cast<float>(*src.p2.y));
@@ -630,8 +587,8 @@ bool Scene::AfterSolve()
         }
         else if (type == gs::ShapeType2D::Circle)
         {
-            auto& src = m_circles[geo.index];
-            auto dst = std::static_pointer_cast<gs::Circle>(geo.shape);
+            auto& src = m_circles[index];
+            auto dst = std::static_pointer_cast<gs::Circle>(shape);
 
             sm::vec2 c(static_cast<float>(*src.center.x), static_cast<float>(*src.center.y));
             float d = static_cast<float>(*src.rad);
@@ -643,8 +600,6 @@ bool Scene::AfterSolve()
             }
         }
     }
-
-    return dirty;
 }
 
 }

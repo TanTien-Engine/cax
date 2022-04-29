@@ -1,0 +1,24 @@
+class Context
+{
+	init()
+	{
+		this.next_geo_id  = 0
+		this.next_cons_id = 0		
+	}
+
+	advance_geo_id()
+	{
+		var id = this.next_geo_id
+		this.next_geo_id = this.next_geo_id + 1
+		return id
+	}
+
+	advance_cons_id()
+	{
+		var id = this.next_cons_id
+		this.next_cons_id = this.next_cons_id + 1
+		return id
+	}
+}
+
+var CONTEXT = Context()

@@ -1,6 +1,6 @@
 var node0 = ::gcsgraph::nodes::draw::Draw()
 
-_editor.add_node(node0, 37.696694214876, 79.527272727273)
+_editor.add_node(node0, 183.17856020764, 140.99848371013)
 
 var node1 = ::gcsgraph::nodes::line::Line()
 node1.query_param("p1").value.set(0, 0)
@@ -22,9 +22,14 @@ var node4 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node4, -122.0919128418, 131.37365112305)
 
+var node5 = ::gcsgraph::nodes::solver::Solver()
+
+_editor.add_node(node5, 29.10155471141, 128.25917278024)
+
 Blueprint.connect(node1, "geo", node4, "in0")
 Blueprint.connect(node3, "geo", node4, "in1")
 Blueprint.connect(node1, "geo", node2, "a")
 Blueprint.connect(node3, "geo", node2, "b")
-Blueprint.connect(node4, "list", node0, "geo")
-Blueprint.connect(node2, "cons", node0, "cons")
+Blueprint.connect(node4, "list", node5, "geo")
+Blueprint.connect(node2, "cons", node5, "cons")
+Blueprint.connect(node5, "geo", node0, "geo")

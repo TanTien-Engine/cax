@@ -3,7 +3,8 @@ import "blueprint.pin" for Pin
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
-import "gcsgraph.variant" for VAR_TYPE_GEOMETRY
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
+import "gcsgraph.context" for CONTEXT
 import "geometry" for Point as tt_Point
 
 class Point is Node
@@ -25,29 +26,10 @@ class Point is Node
 
 		this.layout()
 
-		this.geo = nil
-	}
-
-	on_pin_dirty(pin)
-	{
-		this.update_geo()
-	}
-
-	on_param_dirty()
-	{
-		this.update_geo()
+		this.geo_id = CONTEXT.advance_geo_id()
 	}
 
 	calc_value(idx)
-	{
-		if (!this.geo) {
-			this.geo = this.build_geo()
-		}
-
-		return Variant(VAR_TYPE_GEOMETRY, this.geo)
-	}
-
-	get_pos()
 	{
 		var x = this.query_param("x").value
 		var y = this.query_param("y").value
@@ -61,20 +43,8 @@ class Point is Node
 			y = v_p.value.y
 		}
 
-		return [ x, y ]
+		var shape = tt_Point.init(x, y)
+		var geo = VarGeometry(this.geo_id, shape)
+		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
-
-	build_geo()
-	{
-		var pos = this.get_pos()
-		return tt_Point.init(pos[0], pos[1])
-	}
-
-	update_geo()
-	{
-		if (this.geo) {
-			var pos = this.get_pos()
-			this.geo.set(pos[0], pos[1])
-		}
-	}	
 }

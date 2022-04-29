@@ -1,3 +1,33 @@
 var VAR_TYPE_GEOMETRY   = "geometry"
 var VAR_TYPE_CONSTRAINT = "constraint"
 var VAR_TYPE_SOLVER     = "solver"
+
+class VarGeometry
+{
+	init(id, shape)
+	{
+		this.id    = id
+		this.shape = shape
+	}
+
+	clone()
+	{
+		var shape = nil
+		if (this.shape) {
+			shape = this.shape.clone()
+		}
+		return VarGeometry(this.id, shape)
+	}
+}
+
+class VarConstraint
+{
+	init(id, type, geo1, geo2, val)
+	{
+		this.id   = id
+		this.type = type
+		this.geo1 = geo1
+		this.geo2 = geo2
+		this.val  = val
+	}
+}

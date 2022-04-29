@@ -1,6 +1,6 @@
 var node0 = ::gcsgraph::nodes::draw::Draw()
 
-_editor.add_node(node0, 1.70809581996, 117.14677959155)
+_editor.add_node(node0, 145.50974871252, 131.19636636841)
 
 var node1 = ::gcsgraph::nodes::point::Point()
 node1.query_param("x").value = 0
@@ -28,9 +28,14 @@ var node5 = ::gcsgraph::nodes::point_on_perp_bisector::PointOnPerpBisector()
 
 _editor.add_node(node5, -163.2102, 54.487)
 
+var node6 = ::gcsgraph::nodes::solver::Solver()
+
+_editor.add_node(node6, -6.9079521746672, 116.01279090062)
+
 Blueprint.connect(node1, "geo", node5, "a")
 Blueprint.connect(node3, "geo", node5, "b")
 Blueprint.connect(node1, "geo", node4, "in0")
 Blueprint.connect(node3, "geo", node4, "in1")
-Blueprint.connect(node4, "list", node0, "geo")
-Blueprint.connect(node5, "cons", node0, "cons")
+Blueprint.connect(node4, "list", node6, "geo")
+Blueprint.connect(node5, "cons", node6, "cons")
+Blueprint.connect(node6, "geo", node0, "geo")

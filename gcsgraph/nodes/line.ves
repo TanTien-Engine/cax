@@ -4,7 +4,8 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER2
 import "blueprint.blueprint" for Blueprint
 import "maths.vector" for Vector2
-import "gcsgraph.variant" for VAR_TYPE_GEOMETRY
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
+import "gcsgraph.context" for CONTEXT
 import "geometry" for Line as tt_Line
 
 class Line is Node
@@ -26,29 +27,10 @@ class Line is Node
 
 		this.layout()
 
-		this.geo = nil
+		this.geo_id = CONTEXT.advance_geo_id()
 	}
 
-	on_pin_dirty(pin)
-	{
-		this.update_geo()
-	}
-
-	on_param_dirty()
-	{
-		this.update_geo()
-	}
-	
 	calc_value(idx)
-	{
-		if (!this.geo) {
-			this.geo = this.build_geo()
-		}
-		
-		return Variant(VAR_TYPE_GEOMETRY, this.geo)
-	}
-
-	get_positions()
 	{
 		var x1 = 0
 		var y1 = 0
@@ -75,20 +57,8 @@ class Line is Node
 			y2 = p2.y
 		}
 
-		return [ x1, y1, x2, y2 ]
-	}
-
-	build_geo()
-	{
-		var pos = this.get_positions()
-		return tt_Line.init(pos[0], pos[1], pos[2], pos[3])
-	}
-
-	update_geo()
-	{
-		if (this.geo) {
-			var pos = this.get_positions()
-			this.geo.set(pos[0], pos[1], pos[2], pos[3])
-		}
+		var shape = tt_Line.init(x1, y1, x2, y2)
+		var geo = VarGeometry(this.geo_id, shape)
+		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
 }

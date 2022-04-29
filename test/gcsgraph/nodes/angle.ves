@@ -1,6 +1,6 @@
 var node0 = ::gcsgraph::nodes::draw::Draw()
 
-_editor.add_node(node0, 254.17355371901, 267.67768595041)
+_editor.add_node(node0, 240.17355371901, 298.67768595041)
 
 var node1 = ::gcsgraph::nodes::point::Point()
 node1.query_param("x").value = 0
@@ -18,77 +18,19 @@ var node3 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node3, -103.32381786, 314.41516113281)
 
-var node4 = ::blueprint::nodes::number::Number()
+var node4 = ::gcsgraph::nodes::angle::Angle()
+node4.query_param("angle").value = 0.45040962100029
 
-node4.value = 0.95555555820465
+_editor.add_node(node4, -96.5368578056, 203.11325013629)
 
-_editor.add_node(node4, -343.03305785124, 21.495867768595)
+var node5 = ::gcsgraph::nodes::solver::Solver()
 
-var node5 = ::gcsgraph::nodes::line::Line()
-node5.query_param("p1").value.set(0, 0)
-node5.query_param("p2").value.set(1, 1)
+_editor.add_node(node5, 66.682395935059, 290.42840576172)
 
-_editor.add_node(node5, -204.4558018708, -89.848246323767)
-
-var node6 = ::gcsgraph::nodes::distance::Distance()
-node6.query_param("dist").value = 1
-
-_editor.add_node(node6, 90.219627296605, -158.0213291315)
-
-var node7 = ::gcsgraph::nodes::line::Line()
-node7.query_param("p1").value.set(0, 0)
-node7.query_param("p2").value.set(1, 1)
-
-_editor.add_node(node7, -257.4527018708, -267.27714632377)
-
-var node8 = ::blueprint::nodes::number2::Number2()
-
-node8.value.set(1, 1)
-
-_editor.add_node(node8, -788.13646972656, 45.658355102539)
-
-var node9 = ::blueprint::nodes::add::Add()
-
-_editor.add_node(node9, -627.20651123047, -71.711646728516)
-
-var node10 = ::blueprint::nodes::number2::Number2()
-
-node10.value.set(0, 1)
-
-_editor.add_node(node10, -803.48697815631, -124.99749233548)
-
-var node11 = ::gcsgraph::nodes::angle::Angle()
-node11.query_param("angle").value = 0
-
-_editor.add_node(node11, -60.6, -256.7)
-
-var node12 = ::gcsgraph::nodes::angle::Angle()
-node12.query_param("angle").value = 0.69485408067703
-
-_editor.add_node(node12, -101.5368578056, 204.11325013629)
-
-var node13 = ::gcsgraph::nodes::distance::Distance()
-node13.query_param("dist").value = 0.80853980779648
-
-_editor.add_node(node13, -101.55371894521, 97.086767527683)
-
-var node14 = ::blueprint::nodes::merge::Merge()
-
-_editor.add_node(node14, 50.512395527737, 177.25205754052)
-
-Blueprint.connect(node8, "v2", node9, "a")
-Blueprint.connect(node10, "v2", node9, "b")
-Blueprint.connect(node8, "v2", node7, "p1")
-Blueprint.connect(node9, "v", node7, "p2")
-Blueprint.connect(node7, "geo", node11, "a")
-Blueprint.connect(node7, "geo", node6, "a")
-Blueprint.connect(node1, "geo", node13, "a")
-Blueprint.connect(node2, "geo", node13, "b")
-Blueprint.connect(node1, "geo", node12, "a")
-Blueprint.connect(node2, "geo", node12, "b")
-Blueprint.connect(node12, "cons", node14, "in0")
-Blueprint.connect(node13, "cons", node14, "in1")
+Blueprint.connect(node1, "geo", node4, "a")
+Blueprint.connect(node2, "geo", node4, "b")
 Blueprint.connect(node1, "geo", node3, "in0")
 Blueprint.connect(node2, "geo", node3, "in1")
-Blueprint.connect(node3, "list", node0, "geo")
-Blueprint.connect(node14, "list", node0, "cons")
+Blueprint.connect(node3, "list", node5, "geo")
+Blueprint.connect(node4, "cons", node5, "cons")
+Blueprint.connect(node5, "geo", node0, "geo")

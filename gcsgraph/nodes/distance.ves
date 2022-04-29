@@ -3,8 +3,8 @@ import "blueprint.pin" for Pin
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
-import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
-import "gcsgen" for GCS_Constraint
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VarConstraint
+import "gcsgraph.context" for CONTEXT
 
 class Distance is Node
 {
@@ -21,55 +21,14 @@ class Distance is Node
 			Pin(this, "cons", VAR_TYPE_CONSTRAINT),
 		]
 
-		this.params.add(NodeParam("dist", 1.0))
+		this.params.add(NodeParam("dist", 0.0))
 
 		this.layout()
 
-		this.cons = nil
-	}
-
-	on_pin_dirty(pin)
-	{
-		if (pin.is_input)
-		{
-			if (pin.slot_idx == 2) {
-				this.update_cons()
-			} else {
-				super.on_pin_dirty(pin)
-				this.cons = nil
-			}
-		}
-		else
-		{
-			super.on_pin_dirty(pin)
-		}
-	}
-
-	on_param_dirty()
-	{
-		this.update_cons()
+		this.cons_id = CONTEXT.advance_cons_id()
 	}
 
 	calc_value(idx)
-	{
-		if (!this.cons) {
-			this.cons = this.build_cons()
-		}
-
-		return Variant(VAR_TYPE_CONSTRAINT, this.cons)
-	}
-
-	get_dist()
-	{
-		var dist = this.query_param("dist").value
-		var v_dist = Blueprint.calc_input_value(this, 2)
-		if (v_dist) {
-			dist = v_dist.value
-		}
-		return dist
-	}
-
-	build_cons()
 	{
 		var a = nil
 		var b = nil
@@ -82,18 +41,13 @@ class Distance is Node
 			b = v_b.value
 		}
 
-		var dist = this.get_dist()
-
-		return GCS_Constraint.init("distance", a, b, dist)
-	}
-
-	update_cons()
-	{
-		if (!this.cons) {
-			return
+		var dist = this.query_param("dist").value
+		var v_dist = Blueprint.calc_input_value(this, 2)
+		if (v_dist) {
+			dist = v_dist.value
 		}
 
-		var dist = this.get_dist()
-		this.cons.set_value(dist)
+		var cons = VarConstraint(this.cons_id, "distance", a, b, dist)
+		return Variant(VAR_TYPE_CONSTRAINT, cons)
 	}
 }

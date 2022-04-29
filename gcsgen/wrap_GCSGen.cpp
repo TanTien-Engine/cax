@@ -2,6 +2,7 @@
 #include "Constraint.h"
 #include "Scene.h"
 #include "modules/script/Proxy.h"
+#include "modules/script/TransHelper.h"
 
 #include <geoshape/Point2D.h>
 #include <geoshape/Line2D.h>
@@ -11,68 +12,22 @@
 namespace
 {
 
-void w_Constraint_allocate()
+gcsgen::GeoType get_geo_type(const std::shared_ptr<gs::Shape2D>& shape)
 {
-    const char* type_str = ves_tostring(1);
-
-    std::shared_ptr<gs::Shape2D> geo1 = nullptr, geo2 = nullptr;
-
-    auto w_geo1 = ves_toforeign(2);
-    if (w_geo1) {
-        geo1 = ((tt::Proxy<gs::Shape2D>*)w_geo1)->obj;
+    if (!shape) {
+        return gcsgen::GeoType::None;
     }
 
-    auto w_geo2 = ves_toforeign(3);
-    if (w_geo2) {
-        geo2 = ((tt::Proxy<gs::Shape2D>*)w_geo2)->obj;
+    auto type = shape->GetType();
+    if (type == gs::ShapeType2D::Point) {
+        return gcsgen::GeoType::Point;
+    } else if (type == gs::ShapeType2D::Line) {
+        return gcsgen::GeoType::Line;
+    } else if (type == gs::ShapeType2D::Circle) {
+        return gcsgen::GeoType::Circle;
+    } else {
+        return gcsgen::GeoType::None;
     }
-
-    double value = ves_tonumber(4);
-
-    gcsgen::ConstraintType type = gcsgen::ConstraintType::None;
-    if (strcmp(type_str, "distance") == 0) {
-        type = gcsgen::ConstraintType::Distance;
-    } else if (strcmp(type_str, "angle") == 0) {
-        type = gcsgen::ConstraintType::Angle;
-    } else if (strcmp(type_str, "point_on_line") == 0) {
-        type = gcsgen::ConstraintType::PointOnLine;
-    } else if (strcmp(type_str, "point_on_perp_bisector") == 0) {
-        type = gcsgen::ConstraintType::PointOnPerpBisector;
-    } else if (strcmp(type_str, "midpoint_on_line") == 0) {
-        type = gcsgen::ConstraintType::MidpointOnLine;
-    } else if (strcmp(type_str, "parallel") == 0) {
-        type = gcsgen::ConstraintType::Parallel;
-    } else if (strcmp(type_str, "perpendicular") == 0) {
-        type = gcsgen::ConstraintType::Perpendicular;
-    } else if (strcmp(type_str, "tangent_circumf") == 0) {
-        type = gcsgen::ConstraintType::TangentCircumf;
-    } else if (strcmp(type_str, "coincident") == 0) {
-        type = gcsgen::ConstraintType::Coincident;
-    } else if (strcmp(type_str, "horizontal") == 0) {
-        type = gcsgen::ConstraintType::Horizontal;
-    } else if (strcmp(type_str, "vertical") == 0) {
-        type = gcsgen::ConstraintType::Vertical;
-    } else if (strcmp(type_str, "point_on_circle") == 0) {
-        type = gcsgen::ConstraintType::PointOnCircle;
-    } else if (strcmp(type_str, "tangent") == 0) {
-        type = gcsgen::ConstraintType::Tangent;
-    }
-
-    auto proxy = (tt::Proxy<gcsgen::Constraint>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<gcsgen::Constraint>));
-    proxy->obj = std::make_shared<gcsgen::Constraint>(type, geo1, geo2, value);
-}
-
-int w_Constraint_finalize(void* data)
-{
-    auto proxy = (tt::Proxy<gcsgen::Constraint>*)(data);
-    proxy->~Proxy();
-    return sizeof(tt::Proxy<gcsgen::Constraint>);
-}
-
-void w_Constraint_set_value()
-{
-    auto cons = ((tt::Proxy<gcsgen::Constraint>*)ves_toforeign(0))->obj;
-    cons->value = ves_tonumber(1);
 }
 
 void w_Scene_allocate()
@@ -91,9 +46,62 @@ int w_Scene_finalize(void* data)
 void w_Scene_add()
 {
     auto scene = ((tt::Proxy<gcsgen::Scene>*)ves_toforeign(0))->obj;
-    auto cons = ((tt::Proxy<gcsgen::Constraint>*)ves_toforeign(1))->obj;
 
-    scene->AddConstraint(*cons);
+    int cons_id = (int)ves_tonumber(1);
+    const char* cons_type_s = ves_tostring(2);
+    gcsgen::ConsType cons_type = gcsgen::ConsType::None;
+    if (strcmp(cons_type_s, "distance") == 0) {
+        cons_type = gcsgen::ConsType::Distance;
+    } else if (strcmp(cons_type_s, "angle") == 0) {
+        cons_type = gcsgen::ConsType::Angle;
+    } else if (strcmp(cons_type_s, "point_on_line") == 0) {
+        cons_type = gcsgen::ConsType::PointOnLine;
+    } else if (strcmp(cons_type_s, "point_on_perp_bisector") == 0) {
+        cons_type = gcsgen::ConsType::PointOnPerpBisector;
+    } else if (strcmp(cons_type_s, "midpoint_on_line") == 0) {
+        cons_type = gcsgen::ConsType::MidpointOnLine;
+    } else if (strcmp(cons_type_s, "parallel") == 0) {
+        cons_type = gcsgen::ConsType::Parallel;
+    } else if (strcmp(cons_type_s, "perpendicular") == 0) {
+        cons_type = gcsgen::ConsType::Perpendicular;
+    } else if (strcmp(cons_type_s, "tangent_circumf") == 0) {
+        cons_type = gcsgen::ConsType::TangentCircumf;
+    } else if (strcmp(cons_type_s, "coincident") == 0) {
+        cons_type = gcsgen::ConsType::Coincident;
+    } else if (strcmp(cons_type_s, "horizontal") == 0) {
+        cons_type = gcsgen::ConsType::Horizontal;
+    } else if (strcmp(cons_type_s, "vertical") == 0) {
+        cons_type = gcsgen::ConsType::Vertical;
+    } else if (strcmp(cons_type_s, "point_on_circle") == 0) {
+        cons_type = gcsgen::ConsType::PointOnCircle;
+    } else if (strcmp(cons_type_s, "tangent") == 0) {
+        cons_type = gcsgen::ConsType::Tangent;
+    }
+
+    std::shared_ptr<gs::Shape2D> shape1 = nullptr, shape2 = nullptr;
+
+    int id1 = (int)ves_tonumber(3);
+    auto shape1_w = ves_toforeign(4);
+    if (shape1_w) 
+    {
+        shape1 = ((tt::Proxy<gs::Shape2D>*)shape1_w)->obj;
+        scene->AddGeometry(id1, shape1);
+    }
+
+    int id2 = (int)ves_tonumber(5);
+    auto shape2_w = ves_toforeign(6);
+    if (shape2_w) 
+    {
+        shape2 = ((tt::Proxy<gs::Shape2D>*)shape2_w)->obj;
+        scene->AddGeometry(id2, shape2);
+    }
+
+    double val = ves_tonumber(7);
+
+    auto type1 = get_geo_type(shape1);
+    auto type2 = get_geo_type(shape2);
+
+    scene->AddConstraint(cons_id, cons_type, std::make_pair(id1, type1), std::make_pair(id2, type2), val);
 }
 
 void w_Scene_clear()
@@ -105,8 +113,19 @@ void w_Scene_clear()
 void w_Scene_solve()
 {
     auto scene = ((tt::Proxy<gcsgen::Scene>*)ves_toforeign(0))->obj;
-    bool dirty = scene->Solve();
-    ves_set_boolean(0, dirty);
+
+    auto ids = tt::list_to_array<int>(1);
+
+    std::vector<std::shared_ptr<gs::Shape2D>> shapes;
+    tt::list_to_foreigns(2, shapes);
+
+    std::vector<std::pair<gcsgen::GeoID, std::shared_ptr<gs::Shape2D>>> geos;
+    for (int i = 0, n = ids.size(); i < n; ++i) {
+        geos.push_back(std::make_pair(ids[i], shapes[i]));
+    }
+
+    bool success = scene->Solve(geos);
+    ves_set_boolean(0, success);
 }
 
 }
@@ -116,25 +135,16 @@ namespace gcsgen
 
 VesselForeignMethodFn GcsGenBindMethod(const char* signature)
 {
-    if (strcmp(signature, "GCS_Constraint.set_value(_)") == 0) return w_Constraint_set_value;
-
-    if (strcmp(signature, "GCS_Scene.add(_)") == 0) return w_Scene_add;
+    if (strcmp(signature, "GCS_Scene.add(_,_,_,_,_,_,_)") == 0) return w_Scene_add;
     if (strcmp(signature, "GCS_Scene.clear()") == 0) return w_Scene_clear;
 
-    if (strcmp(signature, "GCS_Scene.solve()") == 0) return w_Scene_solve;
+    if (strcmp(signature, "GCS_Scene.solve(_,_)") == 0) return w_Scene_solve;
 
     return nullptr;
 }
 
 void GcsGenBindClass(const char* class_name, VesselForeignClassMethods* methods)
 {
-    if (strcmp(class_name, "GCS_Constraint") == 0)
-    {
-        methods->allocate = w_Constraint_allocate;
-        methods->finalize = w_Constraint_finalize;
-        return;
-    }
-
     if (strcmp(class_name, "GCS_Scene") == 0)
     {
         methods->allocate = w_Scene_allocate;

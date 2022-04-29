@@ -1,0 +1,18 @@
+var node0 = ::gcsgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, -111, 328)
+
+var node1 = ::blueprint::nodes::cache::Cache()
+node1.query_param("disable").value = false
+
+_editor.add_node(node1, -261, 307.5)
+
+var node2 = ::blueprint::nodes::input::Input()
+
+node2.var_name = "geo"
+node2.var_type = "geometry"
+
+_editor.add_node(node2, -405, 306.5)
+
+Blueprint.connect(node2, "var", node1, "var")
+Blueprint.connect(node1, "var", node0, "geo")

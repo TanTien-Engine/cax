@@ -4,5 +4,5 @@ var GCS_NODES = [
 Point, Line, Circle,
 Distance, Angle, Parallel, Perpendicular, PointOnLine, PointOnPerpBisector, MidpointOnLine, TangentCircumf,
 Coincident, Horizontal, Vertical, PointOnCircle, Tangent,
-Draw,
+Solver, Draw,
 ]

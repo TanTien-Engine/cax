@@ -3,7 +3,8 @@ import "blueprint.pin" for Pin
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_NUMBER2
 import "blueprint.blueprint" for Blueprint
-import "gcsgraph.variant" for VAR_TYPE_GEOMETRY
+import "gcsgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
+import "gcsgraph.context" for CONTEXT
 import "maths.vector" for Vector2
 import "geometry" for Circle as tt_Circle
 
@@ -26,29 +27,10 @@ class Circle is Node
 
 		this.layout()
 
-		this.geo = nil
+		this.geo_id = CONTEXT.advance_geo_id()
 	}
 
-	on_pin_dirty(pin)
-	{
-		this.update_geo()
-	}
-
-	on_param_dirty()
-	{
-		this.update_geo()
-	}
-	
 	calc_value(idx)
-	{
-		if (!this.geo) {
-			this.geo = this.build_geo()
-		}
-		
-		return Variant(VAR_TYPE_GEOMETRY, this.geo)
-	}	
-
-	get_params()
 	{
 		var cx = 0
 		var cy = 0
@@ -69,20 +51,8 @@ class Circle is Node
 			rad = v_rad.value
 		}
 
-		return [ cx, cy, rad ]
-	}
-
-	build_geo()
-	{
-		var params = this.get_params()
-		return tt_Circle.init(params[0], params[1], params[2])
-	}
-
-	update_geo()
-	{
-		if (this.geo) {
-			var params = this.get_params()
-			this.geo.set(params[0], params[1], params[2])
-		}
+		var shape = tt_Circle.init(cx, cy, rad)
+		var geo = VarGeometry(this.geo_id, shape)
+		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
 }
