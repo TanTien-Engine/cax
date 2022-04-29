@@ -23,6 +23,7 @@ class Solver is Node
 		this.layout()
 
 		this.scene = nil
+		this.results = nil
 	}
 
 	on_pin_dirty(pin)
@@ -30,40 +31,23 @@ class Solver is Node
 		super.on_pin_dirty(pin)
 
 		this.scene = nil
+		this.results = nil
 	}
 
 	calc_value(idx)
 	{
-		var v_geos = Blueprint.calc_input_value(this, 0)
-		if (!v_geos) {
-			return nil
+		if (this.results) {
+			return this.results
 		}
 
 		if (!this.scene) {
 			this.scene = this.build_scene()
 		}
-
-		var geos = VariantHelper.flatten_values(v_geos, VAR_TYPE_GEOMETRY)
-		var ret_geos = []
-		for (var geo in geos) {
-			ret_geos.add(Variant(VAR_TYPE_GEOMETRY, geo.clone()))
+		if (!this.results) {
+			this.results = this.build_results()
 		}
 
-		if (this.scene) 
-		{
-			var ids = []
-			var shapes = []
-			for (var v_geo in ret_geos) {
-				ids.add(v_geo.value.id)
-				shapes.add(v_geo.value.shape)
-			}
-			this.scene.solve(ids, shapes)
-
-//			import "logger.logger" for Logger
-//			Logger.info("solve")
-		}
-
-		return Variant(ret_geos)
+		return this.results
 	}
 
 	build_scene()
@@ -99,5 +83,35 @@ class Solver is Node
 		}
 
 		return scene
+	}
+
+	build_results()
+	{
+		var v_geos = Blueprint.calc_input_value(this, 0)
+		if (!v_geos) {
+			return nil
+		}
+
+		var geos = VariantHelper.flatten_values(v_geos, VAR_TYPE_GEOMETRY)
+		var ret_geos = []
+		for (var geo in geos) {
+			ret_geos.add(Variant(VAR_TYPE_GEOMETRY, geo.clone()))
+		}
+
+		if (this.scene) 
+		{
+			var ids = []
+			var shapes = []
+			for (var v_geo in ret_geos) {
+				ids.add(v_geo.value.id)
+				shapes.add(v_geo.value.shape)
+			}
+			this.scene.solve(ids, shapes)
+
+//			import "logger.logger" for Logger
+//			Logger.info("solve")
+		}
+
+		return Variant(ret_geos)
 	}
 }
