@@ -1,0 +1,9 @@
+import "sketchgraph.nodes.binary_cons" for BinaryCons
+
+class PointOnPerpBisector is BinaryCons
+{
+	init()
+	{
+		super.init("point_on_perp_bisector")
+	}
+}

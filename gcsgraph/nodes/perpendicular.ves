@@ -1,9 +1,0 @@
-import "gcsgraph.nodes.binary_cons" for BinaryCons
-
-class Perpendicular is BinaryCons
-{
-	init()
-	{
-		super.init("perpendicular")
-	}
-}

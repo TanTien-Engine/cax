@@ -1,0 +1,35 @@
+var node0 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 184.69669421488, 109.52727272727)
+
+var node1 = ::sketchgraph::nodes::line::Line()
+node1.query_param("p1").value.set(0, 0)
+node1.query_param("p2").value.set(1, 1)
+
+_editor.add_node(node1, -357.8943018708, 119.14655367623)
+
+var node2 = ::sketchgraph::nodes::perpendicular::Perpendicular()
+
+_editor.add_node(node2, -123.53209343407, 29.015492335141)
+
+var node3 = ::sketchgraph::nodes::line::Line()
+node3.query_param("p1").value.set(0, 0)
+node3.query_param("p2").value.set(1, 0)
+
+_editor.add_node(node3, -357.8631558275, -38.809142983831)
+
+var node4 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node4, -122.0919128418, 131.37365112305)
+
+var node5 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node5, 30.007446289063, 99.803344726561)
+
+Blueprint.connect(node1, "geo", node4, "in0")
+Blueprint.connect(node3, "geo", node4, "in1")
+Blueprint.connect(node1, "geo", node2, "a")
+Blueprint.connect(node3, "geo", node2, "b")
+Blueprint.connect(node4, "list", node5, "geo")
+Blueprint.connect(node2, "cons", node5, "cons")
+Blueprint.connect(node5, "geo", node0, "geo")

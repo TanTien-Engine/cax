@@ -1,0 +1,11 @@
+var node0 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 55, 109)
+
+var node1 = ::sketchgraph::nodes::point::Point()
+node1.query_param("x").value = 0
+node1.query_param("y").value = 0
+
+_editor.add_node(node1, -85, 69)
+
+Blueprint.connect(node1, "geo", node0, "geo")

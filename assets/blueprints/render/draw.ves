@@ -1,4 +1,4 @@
-var node0 = ::gcsgraph::nodes::draw::Draw()
+var node0 = ::sketchgraph::nodes::draw::Draw()
 
 _editor.add_node(node0, -111, 328)
 

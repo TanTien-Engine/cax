@@ -1,0 +1,84 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for VAR_TYPE_ARRAY, VAR_TYPE_PORT
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
+import "graphics" for Painter, Graphics
+import "geometry" for Point, Line, Circle
+import "maths" for Matrix44
+
+class Draw is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "prev", VAR_TYPE_PORT),
+			Pin(this, "geo",  [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ]),
+		]
+		this.exports = [
+			Pin(this, "next", VAR_TYPE_PORT)
+		]
+
+		this.layout()
+
+		this.scale = 100.0
+		this.mat = Matrix44.init()
+		this.mat.scale(this.scale, this.scale, this.scale)
+	}
+
+	render_run() 
+	{
+		var v_geo = Blueprint.calc_input_value(this, 1)
+		if (!v_geo or !v_geo.value) {
+			return
+		}
+
+		var pt = Painter.init()
+		this.draw_geo(pt, v_geo)
+
+		Graphics.draw_painter(pt)
+	}
+
+	draw_geo(pt, v_geo)
+	{
+		if (v_geo.type == VAR_TYPE_ARRAY)
+		{
+			for (var v in v_geo.value) {
+				this.draw_geo(pt, v)
+			}
+		}
+		else if (v_geo.type == VAR_TYPE_GEOMETRY)
+		{
+			var col = [255, 255, 255, 255]
+
+			var shape = v_geo.value.shape
+			if (shape is Point) {
+				this.draw_point(pt, shape, col)
+			} else if (shape is Line) {
+				this.draw_line(pt, shape, col)
+			} else if (shape is Circle) {
+				this.draw_circle(pt, shape, col)			
+			}
+		}
+	}
+
+	draw_point(pt, shape, col)
+	{
+		var pos = shape.get()
+		pt.add_circle_filled(this.mat, pos[0], pos[1], 5.0, col, 32)
+	}
+
+	draw_line(pt, shape, col)
+	{
+		var line = shape.get()
+		pt.add_line(this.mat, line, col, 2)
+	}
+
+	draw_circle(pt, shape, col)
+	{
+		var circle = shape.get()
+		pt.add_circle(this.mat, circle[0], circle[1], circle[2] * this.scale, col, 2.0, 24)
+	}
+}

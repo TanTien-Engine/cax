@@ -1,9 +1,0 @@
-import "gcsgraph.nodes.binary_cons" for BinaryCons
-
-class TangentCircumf is BinaryCons
-{
-	init()
-	{
-		super.init("tangent_circumf")
-	}
-}

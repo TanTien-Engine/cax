@@ -1,0 +1,9 @@
+import "sketchgraph.nodes.binary_cons" for BinaryCons
+
+class Tangent is BinaryCons
+{
+	init()
+	{
+		super.init("tangent")
+	}
+}

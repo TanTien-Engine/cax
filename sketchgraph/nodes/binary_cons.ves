@@ -1,0 +1,45 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VarConstraint
+import "sketchgraph.context" for CONTEXT
+
+class BinaryCons is Node
+{
+	init(cons_type)
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "a", VAR_TYPE_GEOMETRY),
+			Pin(this, "b", VAR_TYPE_GEOMETRY),
+		]
+		this.exports = [
+			Pin(this, "cons", VAR_TYPE_CONSTRAINT),
+		]
+
+		this.layout()
+
+		this.cons_type = cons_type
+
+		this.cons_id = CONTEXT.advance_cons_id()
+	}
+
+	calc_value(idx)
+	{
+		var a = nil
+		var b = nil
+		var v_a = Blueprint.calc_input_value(this, 0)
+		if (v_a) {
+			a = v_a.value
+		}
+		var v_b = Blueprint.calc_input_value(this, 1)
+		if (v_b) {
+			b = v_b.value
+		}
+
+		var cons = VarConstraint(this.cons_id, this.cons_type, a, b, 0)
+		return Variant(VAR_TYPE_CONSTRAINT, cons)
+	}
+}
