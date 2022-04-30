@@ -1,12 +1,17 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
+import "blueprint.nodes.array" for Array
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER2
 import "blueprint.blueprint" for Blueprint
+import "blueprint.node_editor" for NodeEditor
 import "maths.vector" for Vector2
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
+import "sketchgraph.util" for DRAW_SCALE
 import "geometry" for Line as tt_Line
+
+var EDITOR = nil
 
 class Line is Node
 {
@@ -28,6 +33,8 @@ class Line is Node
 		this.layout()
 
 		this.geo_id = CONTEXT.advance_geo_id()
+
+		this.editor_pts = Array()
 	}
 
 	calc_value(idx)
@@ -61,4 +68,58 @@ class Line is Node
 		var geo = VarGeometry(this.geo_id, shape)
 		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
+
+
+	bind_editor()
+	{
+		if (!EDITOR) {
+			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
+		}
+
+		var p1 = this.query_param("p1").value
+		var p2 = this.query_param("p2").value
+
+		this.editor_pts.list.clear()
+		this.editor_pts.list.add(Variant(Vector2(p1.x * DRAW_SCALE, p1.y * DRAW_SCALE)))
+		this.editor_pts.list.add(Variant(Vector2(p2.x * DRAW_SCALE, p2.y * DRAW_SCALE)))
+
+		Blueprint.connect(this.editor_pts.exports[0], EDITOR.editor_node.imports[1])
+
+		Blueprint.send_node_dirty_root(EDITOR.editor_node)
+
+		return true
+	}
+
+	draw_editor() 
+	{
+		if (EDITOR) {
+			EDITOR.draw()		
+		}
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		EDITOR.on_mouse_pressed(x, y, btn)
+	}
+
+	on_mouse_released(x, y, btn) 
+	{
+		EDITOR.on_mouse_released(x, y, btn)
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		EDITOR.on_mouse_dragged(x, y, btn)
+
+		var p1 = this.query_param("p1").value
+		var p2 = this.query_param("p2").value
+
+		var s1 = this.editor_pts.list[0].value
+		var s2 = this.editor_pts.list[1].value
+
+		p1.set(s1.x / DRAW_SCALE, s1.y / DRAW_SCALE)
+		p2.set(s2.x / DRAW_SCALE, s2.y / DRAW_SCALE)
+
+		Blueprint.send_pin_dirty_root(this.exports[0])
+	}	
 }

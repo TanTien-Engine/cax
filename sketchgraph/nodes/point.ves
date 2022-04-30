@@ -3,9 +3,14 @@ import "blueprint.pin" for Pin
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
+import "blueprint.node_editor" for NodeEditor
+import "blueprint.nodes.number2" for Number2
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
+import "sketchgraph.util" for DRAW_SCALE
 import "geometry" for Point as tt_Point
+
+var EDITOR = nil
 
 class Point is Node
 {
@@ -27,6 +32,8 @@ class Point is Node
 		this.layout()
 
 		this.geo_id = CONTEXT.advance_geo_id()
+
+		this.editor_pos = Number2()
 	}
 
 	calc_value(idx)
@@ -46,5 +53,50 @@ class Point is Node
 		var shape = tt_Point.init(x, y)
 		var geo = VarGeometry(this.geo_id, shape)
 		return Variant(VAR_TYPE_GEOMETRY, geo)
+	}
+
+
+	bind_editor()
+	{
+		if (!EDITOR) {
+			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
+		}
+
+		var x = this.query_param("x").value * DRAW_SCALE
+		var y = this.query_param("y").value * DRAW_SCALE
+		this.editor_pos.value.set(x, y)
+
+		Blueprint.connect(this.editor_pos.exports[0], EDITOR.editor_node.imports[1])
+
+		Blueprint.send_node_dirty_root(EDITOR.editor_node)
+
+		return true
+	}
+
+	draw_editor() 
+	{
+		if (EDITOR) {
+			EDITOR.draw()		
+		}
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		EDITOR.on_mouse_pressed(x, y, btn)
+	}
+
+	on_mouse_released(x, y, btn) 
+	{
+		EDITOR.on_mouse_released(x, y, btn)
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		EDITOR.on_mouse_dragged(x, y, btn)
+
+		this.query_param("x").value = this.editor_pos.value.x / DRAW_SCALE
+		this.query_param("y").value = this.editor_pos.value.y / DRAW_SCALE
+
+		Blueprint.send_pin_dirty_root(this.exports[0])
 	}
 }

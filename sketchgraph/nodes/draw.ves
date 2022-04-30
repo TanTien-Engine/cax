@@ -3,6 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for VAR_TYPE_ARRAY, VAR_TYPE_PORT
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
+import "sketchgraph.util" for DRAW_SCALE
 import "graphics" for Painter, Graphics
 import "geometry" for Point, Line, Circle
 import "maths" for Matrix44
@@ -23,7 +24,7 @@ class Draw is Node
 
 		this.layout()
 
-		this.scale = 100.0
+		this.scale = DRAW_SCALE
 		this.mat = Matrix44.init()
 		this.mat.scale(this.scale, this.scale, this.scale)
 	}
