@@ -1,0 +1,29 @@
+var node0 = ::sketchnetwork::nodes::point::Point()
+node0.impl.query_param("x").value = -1.05
+node0.impl.query_param("y").value = -0.29
+
+_editor.add_node(node0, -82, 81)
+
+var node1 = ::sketchnetwork::nodes::point::Point()
+node1.impl.query_param("x").value = 1.36
+node1.impl.query_param("y").value = 0.79
+
+_editor.add_node(node1, 138.93682328679, 85.460831447945)
+
+var node2 = ::sketchnetwork::nodes::cons_nodes::Distance()
+node2.impl.query_param("dist").value = 0.2
+
+_editor.add_node(node2, 54.695842760275, 217.16628560519)
+
+var node3 = ::sketchnetwork::nodes::cons_nodes::Horizontal()
+
+_editor.add_node(node3, 26, -3)
+
+var node4 = ::sketchnetwork::nodes::cons_nodes::Vertical()
+
+_editor.add_node(node4, 43, 84)
+
+Network.connect(node0, "around", node3, "left")
+Network.connect(node0, "around", node4, "left")
+Network.connect(node2, "left", node0, "around")
+Network.connect(node4, "right", node1, "around")

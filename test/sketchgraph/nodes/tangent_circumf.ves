@@ -18,7 +18,7 @@ node3.query_param("radius").value = 0.59096020460129
 
 _editor.add_node(node3, -306.57042044067, 139.1904140625)
 
-var node4 = ::sketchgraph::nodes::tangent_circumf::TangentCircumf()
+var node4 = ::sketchgraph::nodes::cons_nodes::TangentCircumf()
 
 _editor.add_node(node4, -133.49399377441, 39.414393066408)
 

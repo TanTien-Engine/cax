@@ -24,7 +24,7 @@ var node4 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node4, -139, 139.5)
 
-var node5 = ::sketchgraph::nodes::point_on_line::PointOnLine()
+var node5 = ::sketchgraph::nodes::cons_nodes::PointOnLine()
 
 _editor.add_node(node5, -145.80331081247, 54.852751193122)
 

@@ -12,7 +12,7 @@ node2.query_param("radius").value = 0.42078959941864
 
 _editor.add_node(node2, -330.87107438017, 131.97873779113)
 
-var node3 = ::sketchgraph::nodes::tangent::Tangent()
+var node3 = ::sketchgraph::nodes::cons_nodes::Tangent()
 
 _editor.add_node(node3, -158, 181.5)
 

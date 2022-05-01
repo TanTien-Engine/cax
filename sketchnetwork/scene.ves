@@ -1,0 +1,42 @@
+import "blueprint.blueprint" for Blueprint
+
+class Scene
+{
+	init()
+	{
+		import "blueprint.nodes.array" for Array	
+		this.geos = Array()
+		this.cons = Array()
+
+		import "sketchgraph.nodes.solver" for Solver
+		this.slover = Solver()
+		Blueprint.connect(this.geos.exports[0], this.slover.imports[0])
+		Blueprint.connect(this.cons.exports[0], this.slover.imports[1])
+	}
+
+	resolve(scene, out_list)
+	{
+		this.geos.list.clear()
+		this.cons.list.clear()
+
+		for (var node in scene.nodes) 
+		{
+			var bp_node = node.components["bp"]
+			if (bp_node)
+			{
+				if (bp_node.has_method("resolve_geo()")) {
+					this.geos.list.add(bp_node.resolve_geo())
+				} else if (bp_node.has_method("resolve_cons()")) {
+					this.cons.list.add(bp_node.resolve_cons())
+				}
+			}
+		}
+
+		this.slover.on_pin_dirty(this.slover.imports[0])
+
+		var geos = Blueprint.calc_output_value(this.slover, "geo")
+		for (var geo in geos.value) {
+			out_list.add(geo)
+		}
+	}
+}

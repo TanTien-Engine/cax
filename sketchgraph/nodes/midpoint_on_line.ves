@@ -1,9 +1,0 @@
-import "sketchgraph.nodes.binary_cons" for BinaryCons
-
-class MidpointOnLine is BinaryCons
-{
-	init()
-	{
-		super.init("midpoint_on_line")
-	}
-}

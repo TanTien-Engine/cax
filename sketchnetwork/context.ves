@@ -1,0 +1,9 @@
+class Context
+{
+	init()
+	{
+		this.need_rebuild = false
+	}
+}
+
+var CONTEXT = Context()

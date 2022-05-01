@@ -40,7 +40,7 @@ var node7 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node7, -177.82903447226, 49.43568754052)
 
-var node8 = ::sketchgraph::nodes::midpoint_on_line::MidpointOnLine()
+var node8 = ::sketchgraph::nodes::cons_nodes::MidpointOnLine()
 
 _editor.add_node(node8, -179.17542485085, -46.337242647372)
 

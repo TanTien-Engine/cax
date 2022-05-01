@@ -1,0 +1,55 @@
+import "sketchnetwork.nodes.constraint" for Constraint
+
+class Distance is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.distance" for Distance as sg_Distance
+		super.init("距离", sg_Distance())
+	}
+}
+
+class Angle is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.angle" for Angle as sg_Angle
+		super.init("角度", sg_Angle())
+	}
+}
+
+class Parallel is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for Parallel as sg_Parallel
+		super.init("平行", sg_Parallel())
+	}
+}
+
+class Perpendicular is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for Perpendicular as sg_Perpendicular
+		super.init("垂直", sg_Perpendicular())
+	}
+}
+
+class Horizontal is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for Horizontal as sg_Horizontal
+		super.init("水平", sg_Horizontal())
+	}
+}
+
+class Vertical is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for Vertical as sg_Vertical
+		super.init("竖直", sg_Vertical())
+	}
+}

@@ -24,11 +24,11 @@ node4.query_param("p2").value.set(1, 1)
 
 _editor.add_node(node4, -284.7558018708, -93.148246323767)
 
-var node5 = ::sketchgraph::nodes::vertical::Vertical()
+var node5 = ::sketchgraph::nodes::cons_nodes::Vertical()
 
 _editor.add_node(node5, -113.72727272727, 210.40909090909)
 
-var node6 = ::sketchgraph::nodes::vertical::Vertical()
+var node6 = ::sketchgraph::nodes::cons_nodes::Vertical()
 
 _editor.add_node(node6, -84, -51.5)
 

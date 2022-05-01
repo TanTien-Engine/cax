@@ -1,9 +1,0 @@
-import "sketchgraph.nodes.binary_cons" for BinaryCons
-
-class PointOnLine is BinaryCons
-{
-	init()
-	{
-		super.init("point_on_line")
-	}
-}

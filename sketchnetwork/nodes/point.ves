@@ -1,0 +1,73 @@
+import "blueprint.blueprint" for Blueprint
+import "network.vertex" for Vertex
+import "network.vertex_shape" for SHAPE_CIRCLE
+import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "sketchnetwork.context" for CONTEXT
+
+class Point is Vertex
+{
+	init()
+	{
+		super.init()
+
+		this.shape = SHAPE_CIRCLE
+
+		this.pin_types_f = [ VAR_TYPE_GEOMETRY ]
+		this.pin_types_t = [ 
+			[ VAR_TYPE_CONSTRAINT ] 
+		]
+
+		this.title = "点"
+
+		this.v_geo = nil
+
+		import "sketchgraph.nodes.point" for Point as sg_Point
+		this.impl = sg_Point()
+	}
+
+	get_title()
+	{
+		return this.title
+	}
+
+	resolve_geo()
+	{
+		return Blueprint.calc_output_value(this.impl, "geo")
+	}
+
+	to_string(name) 
+	{
+		var ret = ""
+		for (var p in this.impl.params) {
+			ret = ret + p.to_string(name + ".impl")
+		}
+		return ret
+	}
+
+	bind_editor()
+	{
+		return this.impl.bind_editor()
+	}
+
+	draw_editor() 
+	{
+		this.impl.draw_editor()
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		this.impl.on_mouse_pressed(x, y, btn) 
+	}
+
+	on_mouse_released(x, y, btn) 
+	{
+		this.impl.on_mouse_released(x, y, btn) 
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		this.impl.on_mouse_dragged(x, y, btn)
+
+		CONTEXT.need_rebuild = true
+	}	
+}

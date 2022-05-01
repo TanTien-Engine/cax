@@ -57,8 +57,8 @@ class Solver is Node
 			return nil
 		}
 
-//		import "logger.logger" for Logger
-//		Logger.info("build scene")
+		import "logger.logger" for Logger
+		Logger.info("build scene")
 
 		var cons = VariantHelper.flatten_values(v_cons, VAR_TYPE_CONSTRAINT)
 
@@ -108,8 +108,8 @@ class Solver is Node
 			}
 			this.scene.solve(ids, shapes)
 
-//			import "logger.logger" for Logger
-//			Logger.info("solve")
+			import "logger.logger" for Logger
+			Logger.info("solve")
 		}
 
 		return Variant(ret_geos)

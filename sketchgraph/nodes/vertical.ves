@@ -1,9 +1,0 @@
-import "sketchgraph.nodes.binary_cons" for BinaryCons
-
-class Vertical is BinaryCons
-{
-	init()
-	{
-		super.init("vertical")
-	}
-}

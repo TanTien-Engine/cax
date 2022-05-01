@@ -1,0 +1,7 @@
+import "sketchnetwork.nodes.*"
+import "sketchnetwork.nodes.cons_nodes" for Distance, Angle, Parallel, Perpendicular, Horizontal, Vertical
+
+var SKETCH_NODES2 = [ 
+Point, 
+Distance, Angle, Parallel, Perpendicular, Horizontal, Vertical,
+]

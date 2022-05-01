@@ -55,7 +55,6 @@ class Point is Node
 		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
 
-
 	bind_editor()
 	{
 		if (!EDITOR) {

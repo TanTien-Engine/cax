@@ -1,0 +1,74 @@
+import "blueprint.blueprint" for Blueprint
+import "network.vertex" for Vertex
+import "network.network" for Network
+import "network.vertex_shape" for SHAPE_CAPSULE_H, PIN_CAPSULE_LEFT_IDX, PIN_CAPSULE_RIGHT_IDX
+import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+
+class Constraint is Vertex
+{
+	init(title, node)
+	{
+		super.init()
+
+		this.shape = SHAPE_CAPSULE_H
+
+		this.pin_types_f = [ VAR_TYPE_CONSTRAINT ]
+		this.pin_types_t = [ 
+			[ VAR_TYPE_GEOMETRY ],
+			[ VAR_TYPE_GEOMETRY ],
+			[],
+			[]
+		]
+
+		this.title = title
+		this.impl = node
+	}
+
+	get_title()
+	{
+		return this.title
+	}
+
+	resolve_cons()
+	{
+		var na = this.get_left_node()
+		var nb = this.get_right_node()
+		if (!na or !nb) {
+			return nil
+		}
+
+		Blueprint.connect(na.impl.exports[0], this.impl.imports[0])
+		Blueprint.connect(nb.impl.exports[0], this.impl.imports[1])
+
+		return Blueprint.calc_output_value(this.impl, "cons")
+	}
+
+	to_string(name) 
+	{
+		var ret = ""
+		for (var p in this.impl.params) {
+			ret = ret + p.to_string(name + ".impl")
+		}
+		return ret
+	}
+	
+	get_left_node()
+	{
+		var nodes = Network.neighbors(this, PIN_CAPSULE_LEFT_IDX)
+		if (nodes.isEmpty) {
+			return nil
+		} else {
+			return nodes[0]
+		}
+	}
+
+	get_right_node()
+	{
+		var nodes = Network.neighbors(this, PIN_CAPSULE_RIGHT_IDX)
+		if (nodes.isEmpty) {
+			return nil
+		} else {
+			return nodes[0]
+		}
+	}
+}

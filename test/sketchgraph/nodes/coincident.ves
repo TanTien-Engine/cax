@@ -18,7 +18,7 @@ var node3 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node3, -110.59654513273, 341.68788840554)
 
-var node4 = ::sketchgraph::nodes::coincident::Coincident()
+var node4 = ::sketchgraph::nodes::cons_nodes::Coincident()
 
 _editor.add_node(node4, -111.95590676335, 261.56600901923)
 

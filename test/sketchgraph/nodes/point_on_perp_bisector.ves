@@ -24,7 +24,7 @@ var node4 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node4, -159.4974, 139.5)
 
-var node5 = ::sketchgraph::nodes::point_on_perp_bisector::PointOnPerpBisector()
+var node5 = ::sketchgraph::nodes::cons_nodes::PointOnPerpBisector()
 
 _editor.add_node(node5, -163.2102, 54.487)
 

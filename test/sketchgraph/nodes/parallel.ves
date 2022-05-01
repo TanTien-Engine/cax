@@ -8,7 +8,7 @@ node1.query_param("p2").value.set(1, 1)
 
 _editor.add_node(node1, -357.8943018708, 119.14655367623)
 
-var node2 = ::sketchgraph::nodes::parallel::Parallel()
+var node2 = ::sketchgraph::nodes::cons_nodes::Parallel()
 
 _editor.add_node(node2, -123.53209343407, 29.015492335141)
 
