@@ -14,10 +14,10 @@ class Constraint is Vertex
 
 		this.pin_types_f = [ VAR_TYPE_CONSTRAINT ]
 		this.pin_types_t = [ 
-			[ VAR_TYPE_GEOMETRY ],
-			[ VAR_TYPE_GEOMETRY ],
 			[],
-			[]
+			[],
+			[ VAR_TYPE_GEOMETRY ],
+			[ VAR_TYPE_GEOMETRY ],
 		]
 
 		this.title = title
