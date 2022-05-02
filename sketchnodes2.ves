@@ -1,7 +1,12 @@
-import "sketchnetwork.nodes.*"
-import "sketchnetwork.nodes.cons_nodes" for Distance, Angle, Parallel, Perpendicular, Horizontal, Vertical
+import "sketchnetwork.nodes.geo_nodes" for Point, Line, Circle
+import "sketchnetwork.nodes.cons_nodes" for Distance, Angle, Coincident, Horizontal, Vertical, Parallel, Perpendicular, 
+PointOnLine, PointOnCircle, PointOnPerpBisector, MidpointOnLine, 
+Tangent, TangentCircumf
 
 var SKETCH_NODES2 = [ 
-Point, 
-Distance, Angle, Parallel, Perpendicular, Horizontal, Vertical,
+Point, Line, Circle,
+Distance, Angle, 
+Coincident, Horizontal, Vertical, Parallel, Perpendicular, 
+PointOnLine, PointOnCircle, PointOnPerpBisector, MidpointOnLine, 
+Tangent, TangentCircumf,
 ]

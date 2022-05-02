@@ -4,9 +4,9 @@ import "network.vertex_shape" for SHAPE_CIRCLE
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.context" for CONTEXT
 
-class Point is Vertex
+class Geometry is Vertex
 {
-	init()
+	init(title, node)
 	{
 		super.init()
 
@@ -17,12 +17,8 @@ class Point is Vertex
 			[ VAR_TYPE_CONSTRAINT ] 
 		]
 
-		this.title = "点"
-
-		this.v_geo = nil
-
-		import "sketchgraph.nodes.point" for Point as sg_Point
-		this.impl = sg_Point()
+		this.title = title
+		this.impl = node
 	}
 
 	get_title()

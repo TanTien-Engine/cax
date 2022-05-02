@@ -3,7 +3,9 @@ import "sketchgraph.nodes.cons_nodes" for Parallel, Perpendicular, PointOnLine, 
 
 var SKETCH_NODES = [ 
 Point, Line, Circle,
-Distance, Angle, Parallel, Perpendicular, PointOnLine, PointOnPerpBisector, MidpointOnLine, TangentCircumf,
-Coincident, Horizontal, Vertical, PointOnCircle, Tangent,
+Distance, Angle, 
+Coincident, Horizontal, Vertical, Parallel, Perpendicular, 
+PointOnLine, PointOnCircle, PointOnPerpBisector, MidpointOnLine, 
+Tangent, TangentCircumf,
 Solver, Draw,
 ]

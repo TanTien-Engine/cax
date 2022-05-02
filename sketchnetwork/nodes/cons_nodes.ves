@@ -18,21 +18,12 @@ class Angle is Constraint
 	}
 }
 
-class Parallel is Constraint
+class Coincident is Constraint
 {
 	init()
 	{
-		import "sketchgraph.nodes.cons_nodes" for Parallel as sg_Parallel
-		super.init("平行", sg_Parallel())
-	}
-}
-
-class Perpendicular is Constraint
-{
-	init()
-	{
-		import "sketchgraph.nodes.cons_nodes" for Perpendicular as sg_Perpendicular
-		super.init("垂直", sg_Perpendicular())
+		import "sketchgraph.nodes.cons_nodes" for Coincident as sg_Coincident
+		super.init("一致", sg_Coincident())
 	}
 }
 
@@ -51,5 +42,77 @@ class Vertical is Constraint
 	{
 		import "sketchgraph.nodes.cons_nodes" for Vertical as sg_Vertical
 		super.init("竖直", sg_Vertical())
+	}
+}
+
+class Parallel is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for Parallel as sg_Parallel
+		super.init("平行", sg_Parallel())
+	}
+}
+
+class Perpendicular is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for Perpendicular as sg_Perpendicular
+		super.init("垂直", sg_Perpendicular())
+	}
+}
+
+class PointOnLine is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for PointOnLine as sg_PointOnLine
+		super.init("点在线上", sg_PointOnLine())
+	}
+}
+
+class PointOnCircle is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for PointOnCircle as sg_PointOnCircle
+		super.init("点在圆上", sg_PointOnCircle())
+	}
+}
+
+class PointOnPerpBisector is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for PointOnPerpBisector as sg_PointOnPerpBisector
+		super.init("点在平分上", sg_PointOnPerpBisector())
+	}
+}
+
+class MidpointOnLine is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for MidpointOnLine as sg_MidpointOnLine
+		super.init("中点在线上", sg_MidpointOnLine())
+	}
+}
+
+class Tangent is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for Tangent as sg_Tangent
+		super.init("相切", sg_Tangent())
+	}
+}
+
+class TangentCircumf is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for TangentCircumf as sg_TangentCircumf
+		super.init("相切圆", sg_TangentCircumf())
 	}
 }

@@ -1,53 +1,5 @@
 import "sketchgraph.nodes.binary_cons" for BinaryCons
 
-class Parallel is BinaryCons
-{
-	init()
-	{
-		super.init("parallel")
-	}
-}
-
-class Perpendicular is BinaryCons
-{
-	init()
-	{
-		super.init("perpendicular")
-	}
-}
-
-class PointOnLine is BinaryCons
-{
-	init()
-	{
-		super.init("point_on_line")
-	}
-}
-
-class PointOnPerpBisector is BinaryCons
-{
-	init()
-	{
-		super.init("point_on_perp_bisector")
-	}
-}
-
-class MidpointOnLine is BinaryCons
-{
-	init()
-	{
-		super.init("midpoint_on_line")
-	}
-}
-
-class TangentCircumf is BinaryCons
-{
-	init()
-	{
-		super.init("tangent_circumf")
-	}
-}
-
 class Coincident is BinaryCons
 {
 	init()
@@ -72,6 +24,30 @@ class Vertical is BinaryCons
 	}
 }
 
+class Parallel is BinaryCons
+{
+	init()
+	{
+		super.init("parallel")
+	}
+}
+
+class Perpendicular is BinaryCons
+{
+	init()
+	{
+		super.init("perpendicular")
+	}
+}
+
+class PointOnLine is BinaryCons
+{
+	init()
+	{
+		super.init("point_on_line")
+	}
+}
+
 class PointOnCircle is BinaryCons
 {
 	init()
@@ -80,10 +56,34 @@ class PointOnCircle is BinaryCons
 	}
 }
 
+class PointOnPerpBisector is BinaryCons
+{
+	init()
+	{
+		super.init("point_on_perp_bisector")
+	}
+}
+
+class MidpointOnLine is BinaryCons
+{
+	init()
+	{
+		super.init("midpoint_on_line")
+	}
+}
+
 class Tangent is BinaryCons
 {
 	init()
 	{
 		super.init("tangent")
+	}
+}
+
+class TangentCircumf is BinaryCons
+{
+	init()
+	{
+		super.init("tangent_circumf")
 	}
 }

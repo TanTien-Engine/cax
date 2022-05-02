@@ -1,0 +1,35 @@
+var node0 = ::sketchnetwork::nodes::geo_nodes::Line()
+node0.impl.query_param("p1").value.set(-0.18627639691775, -0.49109231914679)
+node0.impl.query_param("p2").value.set(-2.6957647674975, -0.11406627467889)
+
+_editor.add_node(node0, -58.146776906762, 55.354873410295)
+
+var node1 = ::sketchnetwork::nodes::geo_nodes::Circle()
+node1.impl.query_param("center").value.set(0.0075131480090158, 0.63861758076634)
+node1.impl.query_param("radius").value = 0.96026342194143
+
+_editor.add_node(node1, -284.81818181818, 76.334335086401)
+
+var node2 = ::sketchnetwork::nodes::cons_nodes::Tangent()
+
+_editor.add_node(node2, -181.03531154845, 80.604066982026)
+
+var node3 = ::sketchnetwork::nodes::cons_nodes::Horizontal()
+
+_editor.add_node(node3, 60.88805890961, 40.784380447766)
+
+var node4 = ::sketchnetwork::nodes::cons_nodes::TangentCircumf()
+
+_editor.add_node(node4, -98.390693360751, 266.17882791773)
+
+var node5 = ::sketchnetwork::nodes::geo_nodes::Circle()
+node5.impl.query_param("center").value.set(-2.3542852885111, 2.0830047624665)
+node5.impl.query_param("radius").value = 0.54004480546039
+
+_editor.add_node(node5, 15.641517823593, 267.128832429)
+
+Network.connect(node0, "around", node2, "right")
+Network.connect(node0, "around", node3, "left")
+Network.connect(node1, "around", node2, "left")
+Network.connect(node4, "right", node5, "around")
+Network.connect(node4, "left", node1, "around")

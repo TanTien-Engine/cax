@@ -1,0 +1,28 @@
+import "sketchnetwork.nodes.geometry" for Geometry
+
+class Point is Geometry
+{
+	init()
+	{
+		import "sketchgraph.nodes.point" for Point as sg_Point
+		super.init("点", sg_Point())
+	}
+}
+
+class Line is Geometry
+{
+	init()
+	{
+		import "sketchgraph.nodes.line" for Line as sg_Line
+		super.init("线", sg_Line())
+	}
+}
+
+class Circle is Geometry
+{
+	init()
+	{
+		import "sketchgraph.nodes.circle" for Circle as sg_Circle
+		super.init("圆", sg_Circle())
+	}
+}
