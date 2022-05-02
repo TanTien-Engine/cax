@@ -33,12 +33,16 @@ class Constraint is Vertex
 	{
 		var na = this.get_left_node()
 		var nb = this.get_right_node()
-		if (!na or !nb) {
+		if (!na and !nb) {
 			return nil
 		}
 
-		Blueprint.connect(na.impl.exports[0], this.impl.imports[0])
-		Blueprint.connect(nb.impl.exports[0], this.impl.imports[1])
+		if (na) {
+			Blueprint.connect(na.impl.exports[0], this.impl.imports[0])
+		}
+		if (nb) {
+			Blueprint.connect(nb.impl.exports[0], this.impl.imports[1])
+		}
 
 		return Blueprint.calc_output_value(this.impl, "cons")
 	}
