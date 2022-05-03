@@ -1,7 +1,7 @@
 import "blueprint.blueprint" for Blueprint
 import "network.vertex" for Vertex
 import "network.network" for Network
-import "network.vertex_shape" for SHAPE_CAPSULE_H, PIN_CAPSULE_LEFT_IDX, PIN_CAPSULE_RIGHT_IDX
+import "network.vertex_shape" for SHAPE_ROD, PIN_ROD_START_IDX, PIN_ROD_END_IDX
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 
 class Constraint is Vertex
@@ -10,12 +10,10 @@ class Constraint is Vertex
 	{
 		super.init()
 
-		this.shape = SHAPE_CAPSULE_H
+		this.shape = SHAPE_ROD
 
 		this.pin_types_f = [ VAR_TYPE_CONSTRAINT ]
 		this.pin_types_t = [ 
-			[],
-			[],
 			[ VAR_TYPE_GEOMETRY ],
 			[ VAR_TYPE_GEOMETRY ],
 		]
@@ -31,8 +29,8 @@ class Constraint is Vertex
 
 	resolve_cons()
 	{
-		var na = this.get_left_node()
-		var nb = this.get_right_node()
+		var na = this.get_start_node()
+		var nb = this.get_end_node()
 		if (!na and !nb) {
 			return nil
 		}
@@ -56,9 +54,9 @@ class Constraint is Vertex
 		return ret
 	}
 	
-	get_left_node()
+	get_start_node()
 	{
-		var nodes = Network.neighbors(this, PIN_CAPSULE_LEFT_IDX)
+		var nodes = Network.neighbors(this, PIN_ROD_START_IDX)
 		if (nodes.isEmpty) {
 			return nil
 		} else {
@@ -66,9 +64,9 @@ class Constraint is Vertex
 		}
 	}
 
-	get_right_node()
+	get_end_node()
 	{
-		var nodes = Network.neighbors(this, PIN_CAPSULE_RIGHT_IDX)
+		var nodes = Network.neighbors(this, PIN_ROD_END_IDX)
 		if (nodes.isEmpty) {
 			return nil
 		} else {

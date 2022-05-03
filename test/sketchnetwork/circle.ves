@@ -23,7 +23,7 @@ var node4 = ::sketchnetwork::nodes::cons_nodes::Vertical()
 
 _editor.add_node(node4, 43, 84)
 
-Network.connect(node0, "around", node3, "left")
-Network.connect(node0, "around", node4, "left")
-Network.connect(node2, "left", node0, "around")
-Network.connect(node4, "right", node1, "around")
+Network.connect(node0, "around", node3, "start")
+Network.connect(node0, "around", node4, "start")
+Network.connect(node2, "start", node0, "around")
+Network.connect(node4, "end", node1, "around")
