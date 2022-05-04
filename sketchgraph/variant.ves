@@ -8,6 +8,7 @@ class VarGeometry
 	{
 		this.id    = id
 		this.shape = shape
+		this.color = [ 255, 255, 255, 255 ]
 	}
 
 	clone()
@@ -16,7 +17,19 @@ class VarGeometry
 		if (this.shape) {
 			shape = this.shape.clone()
 		}
-		return VarGeometry(this.id, shape)
+		
+		var new = VarGeometry(this.id, shape)
+
+		new.set_color(this.color)
+
+		return new
+	}
+
+	set_color(col)
+	{
+		for (var i in 0..4) {
+			this.color[i] = col[i]
+		}
 	}
 }
 

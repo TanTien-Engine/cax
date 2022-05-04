@@ -37,6 +37,8 @@ class Circle is Node
 
 		this.editor_center = Number2()
 		this.editor_outer = Number2()
+
+		this.geo_col = [ 255, 255, 255, 255 ]
 	}
 
 	calc_value(idx)
@@ -62,6 +64,7 @@ class Circle is Node
 
 		var shape = tt_Circle.init(cx, cy, rad)
 		var geo = VarGeometry(this.geo_id, shape)
+		geo.set_color(this.geo_col)
 		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
 

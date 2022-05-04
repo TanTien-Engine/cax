@@ -40,6 +40,31 @@ class Geometry is Vertex
 		return ret
 	}
 
+	on_selected() 
+	{
+		super.on_selected()
+
+		this.set_geo_color([255, 0, 0, 255])
+
+		CONTEXT.need_rebuild = true
+	}
+
+	on_deselected() 
+	{ 
+		super.on_deselected()
+
+		this.set_geo_color([255, 255, 255, 255])
+
+		CONTEXT.need_rebuild = true
+	}
+
+	set_geo_color(col)
+	{
+		for (var i in 0..4) {
+			this.impl.geo_col[i] = col[i]			
+		}
+	}
+
 	bind_editor()
 	{
 		return this.impl.bind_editor()

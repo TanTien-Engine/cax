@@ -34,6 +34,8 @@ class Point is Node
 		this.geo_id = CONTEXT.advance_geo_id()
 
 		this.editor_pos = Number2()
+
+		this.geo_col = [ 255, 255, 255, 255 ]
 	}
 
 	calc_value(idx)
@@ -52,6 +54,8 @@ class Point is Node
 
 		var shape = tt_Point.init(x, y)
 		var geo = VarGeometry(this.geo_id, shape)
+		geo.set_color(this.geo_col)
+
 		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
 

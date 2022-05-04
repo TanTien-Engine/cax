@@ -35,6 +35,8 @@ class Line is Node
 		this.geo_id = CONTEXT.advance_geo_id()
 
 		this.editor_pts = Array()
+
+		this.geo_col = [ 255, 255, 255, 255 ]
 	}
 
 	calc_value(idx)
@@ -66,6 +68,7 @@ class Line is Node
 
 		var shape = tt_Line.init(x1, y1, x2, y2)
 		var geo = VarGeometry(this.geo_id, shape)
+		geo.set_color(this.geo_col)
 		return Variant(VAR_TYPE_GEOMETRY, geo)
 	}
 
