@@ -1,10 +1,11 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
-import "blueprint.nodes.number2" for Number2
+import "blueprint.nodes.array" for Array
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_NUMBER2
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_editor" for NodeEditor
+import "blueprint.node_helper" for NodeHelper
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
 import "sketchgraph.util" for DRAW_SCALE
@@ -40,46 +41,19 @@ class Arc is Node
 
 		this.geo_id = CONTEXT.advance_geo_id()
 
-		this.editor_center = Number2()
-		this.editor_outer  = Number2()
+		this.editor_pts = Array()
 
 		this.geo_col = [ 255, 255, 255, 255 ]
 	}
 
 	calc_value(idx)
 	{
-		var cx = 0
-		var cy = 0
+		var center = NodeHelper.calc_prop_value(this, "center")
+		var radius = NodeHelper.calc_prop_value(this, "radius")
+		var start_angle = NodeHelper.calc_prop_value(this, "start_angle")
+		var end_angle   = NodeHelper.calc_prop_value(this, "end_angle")
 
-		var center = this.query_param("center").value
-		var v_center = Blueprint.calc_input_value(this, "center")
-		if (v_center) {
-			cx = v_center.value.x
-			cy = v_center.value.y
-		} else {
-			cx = center.x
-			cy = center.y
-		}
-
-		var rad = this.query_param("radius").value
-		var v_rad = Blueprint.calc_input_value(this, "radius")
-		if (v_rad) {
-			rad = v_rad.value
-		}
-
-		var start_angle = this.query_param("start_angle").value
-		var v_start_angle = Blueprint.calc_input_value(this, "start_angle")
-		if (v_start_angle) {
-			start_angle = v_start_angle.value
-		}
-
-		var end_angle = this.query_param("end_angle").value
-		var v_end_angle = Blueprint.calc_input_value(this, "end_angle")
-		if (v_end_angle) {
-			end_angle = v_end_angle.value
-		}
-
-		var shape = tt_Arc.init(cx, cy, rad, start_angle, end_angle)
+		var shape = tt_Arc.init(center.x, center.y, radius, start_angle, end_angle)
 		var geo = VarGeometry(this.geo_id, shape)
 		geo.set_color(this.geo_col)
 		return Variant(VAR_TYPE_GEOMETRY, geo)
@@ -88,18 +62,24 @@ class Arc is Node
 	bind_editor()
 	{
 		if (!EDITOR) {
-			EDITOR = NodeEditor("assets/blueprints/editorgraph/circle_edit.ves")
+			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
 		}
 
-		var center = this.query_param("center").value
-		var x = center.x * DRAW_SCALE
-		var y = center.y * DRAW_SCALE
-		var r = this.query_param("radius").value * DRAW_SCALE
-		this.editor_center.value.set(x, y)
-		this.editor_outer.value.set(x + r, y)
+		var center = NodeHelper.calc_prop_value(this, "center")
+		var radius = NodeHelper.calc_prop_value(this, "radius")
+		var start_angle = NodeHelper.calc_prop_value(this, "start_angle")
+		var end_angle   = NodeHelper.calc_prop_value(this, "end_angle")
+		var mid_angle   = (start_angle + end_angle) * 0.5
 
-		Blueprint.connect(this.editor_center.exports[0], EDITOR.editor_node.imports[1])
-		Blueprint.connect(this.editor_outer.exports[0], EDITOR.editor_node.imports[2])
+		System.print("++ %(start_angle) %(end_angle), %(mid_angle)")
+
+		this.editor_pts.list.clear()
+		this.editor_pts.list.add(Variant(Vector2(center.x * DRAW_SCALE, center.y * DRAW_SCALE)))
+		this.editor_pts.list.add(Variant(this.calc_draw_pos(center, radius, mid_angle)))
+		this.editor_pts.list.add(Variant(this.calc_draw_pos(center, radius, start_angle)))
+		this.editor_pts.list.add(Variant(this.calc_draw_pos(center, radius, end_angle)))
+
+		Blueprint.connect(this.editor_pts.exports[0], EDITOR.editor_node.imports[1])
 
 		Blueprint.send_node_dirty_root(EDITOR.editor_node)
 
@@ -127,12 +107,48 @@ class Arc is Node
 	{
 		EDITOR.on_mouse_dragged(x, y, btn)
 
-		var center = this.query_param("center").value
-		center.x = this.editor_center.value.x / DRAW_SCALE
-		center.y = this.editor_center.value.y / DRAW_SCALE
-
-		this.query_param("radius").value = Calc.dis_pos_to_pos(this.editor_center.value, this.editor_outer.value) / DRAW_SCALE
+		this.sync_data()
 
 		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+
+	sync_data()
+	{
+		var c = this.editor_pts.list[0].value
+		var m = this.editor_pts.list[1].value
+		var s = this.editor_pts.list[2].value
+		var e = this.editor_pts.list[3].value
+
+		var center = this.query_param("center").value
+		center.x = c.x / DRAW_SCALE
+		center.y = c.y / DRAW_SCALE
+
+		var radius = Calc.dis_pos_to_pos(c, m) / DRAW_SCALE
+		this.query_param("radius").value = radius
+
+		var sa = this.calc_angle(center, s)
+		var ea = this.calc_angle(center, e)
+		if (ea < sa) {
+			ea = ea + Math.pi() * 2
+		}
+		this.query_param("start_angle").value = sa
+		this.query_param("end_angle").value = ea
+
+		s = this.calc_draw_pos(center, radius, sa)
+		e = this.calc_draw_pos(center, radius, ea)
+		this.editor_pts.list[2].value.set(s.x, s.y)
+		this.editor_pts.list[3].value.set(e.x, e.y)
+	}
+
+	calc_draw_pos(center, radius, angle)
+	{
+		var x = center.x * DRAW_SCALE + radius * DRAW_SCALE * Math.cos(angle)
+		var y = center.y * DRAW_SCALE + radius * DRAW_SCALE * Math.sin(angle)
+		return Vector2(x, y)
+	}
+
+	calc_angle(center, pos)
+	{
+		return Math.atan2(pos.y - center.y, pos.x - center.x)
 	}
 }
