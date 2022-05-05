@@ -1,0 +1,11 @@
+var node0 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 55, 109)
+
+var node1 = ::sketchgraph::nodes::arc::Arc()
+node1.query_param("center").value.set(0, 0)
+node1.query_param("radius").value = 1
+
+_editor.add_node(node1, -85, 68.5)
+
+Blueprint.connect(node1, "geo", node0, "geo")

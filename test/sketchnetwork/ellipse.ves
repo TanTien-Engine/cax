@@ -1,0 +1,6 @@
+var node0 = ::sketchnetwork::nodes::geo_nodes::Ellipse()
+node0.impl.query_param("center").value.set(0, 0)
+node0.impl.query_param("radius").value.set(2, 1)
+
+_editor.add_node(node0, -162.43781162489, 187.52274434806)
+

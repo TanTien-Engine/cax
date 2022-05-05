@@ -12,6 +12,8 @@ enum class GeoType
     Point,
     Line,
     Circle,
+    Arc,
+    Ellipse,
 };
 
 }

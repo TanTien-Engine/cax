@@ -26,3 +26,21 @@ class Circle is Geometry
 		super.init("圆", sg_Circle())
 	}
 }
+
+class Arc is Geometry
+{
+	init()
+	{
+		import "sketchgraph.nodes.arc" for Arc as sg_Arc
+		super.init("圆弧", sg_Arc())
+	}
+}
+
+class Ellipse is Geometry
+{
+	init()
+	{
+		import "sketchgraph.nodes.ellipse" for Ellipse as sg_Ellipse
+		super.init("椭圆", sg_Ellipse())
+	}
+}

@@ -1,0 +1,136 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.nodes.number2" for Number2
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER2
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_editor" for NodeEditor
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
+import "sketchgraph.context" for CONTEXT
+import "sketchgraph.util" for DRAW_SCALE
+import "maths.vector" for Vector2
+import "maths.calc" for Calc
+import "geometry" for Ellipse as tt_Ellipse
+import "math" for Math
+
+var EDITOR = nil
+
+class Ellipse is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "center", VAR_TYPE_NUMBER2),
+			Pin(this, "radius", VAR_TYPE_NUMBER2),
+		]
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEOMETRY),
+		]
+
+		this.params.add(NodeParam("center", Vector2(0, 0)))
+		this.params.add(NodeParam("radius", Vector2(2.0, 1.0)))
+
+		this.layout()
+
+		this.geo_id = CONTEXT.advance_geo_id()
+
+		this.editor_center = Number2()
+		this.editor_outer = Number2()
+
+		this.geo_col = [ 255, 255, 255, 255 ]
+	}
+
+	calc_value(idx)
+	{
+		var cx = 0
+		var cy = 0
+
+		var center = this.query_param("center").value
+		var v_center = Blueprint.calc_input_value(this, 0)
+		if (v_center) {
+			cx = v_center.value.x
+			cy = v_center.value.y
+		} else {
+			cx = center.x
+			cy = center.y
+		}
+
+		var rx = 0
+		var ry = 0
+
+		var radius = this.query_param("radius").value
+		var v_radius = Blueprint.calc_input_value(this, 0)
+		if (v_radius) {
+			rx = v_radius.value.x
+			ry = v_radius.value.y
+		} else {
+			rx = radius.x
+			ry = radius.y
+		}
+
+		var shape = tt_Ellipse.init(cx, cy, rx, ry)
+		var geo = VarGeometry(this.geo_id, shape)
+		geo.set_color(this.geo_col)
+		return Variant(VAR_TYPE_GEOMETRY, geo)
+	}
+
+	bind_editor()
+	{
+		if (!EDITOR) {
+			EDITOR = NodeEditor("assets/blueprints/editorgraph/circle_edit.ves")
+		}
+
+		var center = this.query_param("center").value
+		var x = center.x * DRAW_SCALE
+		var y = center.y * DRAW_SCALE
+		var rx = this.query_param("radius").value.x * DRAW_SCALE
+		this.editor_center.value.set(x, y)
+		this.editor_outer.value.set(x + rx, y)
+
+		Blueprint.connect(this.editor_center.exports[0], EDITOR.editor_node.imports[1])
+		Blueprint.connect(this.editor_outer.exports[0], EDITOR.editor_node.imports[2])
+
+		Blueprint.send_node_dirty_root(EDITOR.editor_node)
+
+		return true
+	}
+
+	draw_editor() 
+	{
+		if (EDITOR) {
+			EDITOR.draw()		
+		}
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		EDITOR.on_mouse_pressed(x, y, btn)
+	}
+
+	on_mouse_released(x, y, btn) 
+	{
+		EDITOR.on_mouse_released(x, y, btn)
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		EDITOR.on_mouse_dragged(x, y, btn)
+
+		var center = this.query_param("center").value
+		center.x = this.editor_center.value.x / DRAW_SCALE
+		center.y = this.editor_center.value.y / DRAW_SCALE
+
+		var pc = this.editor_center.value
+		var po = this.editor_outer.value
+		var r = Calc.dis_pos_to_pos(pc, po) / DRAW_SCALE
+		var a = Math.atan2(po.y - pc.y, po.x - pc.x)
+
+		var radius = this.query_param("radius").value
+		radius.x = r.x / Math.cos(a)
+		radius.y = r.y / Math.sin(a)
+
+		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+}

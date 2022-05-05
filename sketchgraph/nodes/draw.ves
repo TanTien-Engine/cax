@@ -5,7 +5,7 @@ import "blueprint.variant" for VAR_TYPE_ARRAY, VAR_TYPE_PORT
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
 import "sketchgraph.util" for DRAW_SCALE
 import "graphics" for Painter, Graphics
-import "geometry" for Point, Line, Circle
+import "geometry" for Point, Line, Circle, Arc, Ellipse
 import "maths" for Matrix44
 
 class Draw is Node
@@ -55,31 +55,31 @@ class Draw is Node
 			var col = v_geo.value.color
 
 			var shape = v_geo.value.shape
-			if (shape is Point) {
-				this.draw_point(pt, shape, col)
-			} else if (shape is Line) {
-				this.draw_line(pt, shape, col)
-			} else if (shape is Circle) {
-				this.draw_circle(pt, shape, col)			
+			if (shape is Point) 
+			{
+				var pos = shape.get()
+				pt.add_circle_filled(this.mat, pos[0], pos[1], 5.0, col, 32)
+			} 
+			else if (shape is Line) 
+			{
+				var line = shape.get()
+				pt.add_line(this.mat, line, col, 2)
+			} 
+			else if (shape is Circle) 
+			{
+				var circle = shape.get()
+				pt.add_circle(this.mat, circle[0], circle[1], circle[2] * this.scale, col, 2.0, 24)
+			} 
+			else if (shape is Arc)
+			{
+				 var verts = shape.get_vertices()
+				 pt.add_polyline(this.mat, verts, col, 2.0)
+			}
+			else if (shape is Ellipse)
+			{
+				 var verts = shape.get_vertices()
+				 pt.add_polygon(this.mat, verts, col, 2.0)
 			}
 		}
-	}
-
-	draw_point(pt, shape, col)
-	{
-		var pos = shape.get()
-		pt.add_circle_filled(this.mat, pos[0], pos[1], 5.0, col, 32)
-	}
-
-	draw_line(pt, shape, col)
-	{
-		var line = shape.get()
-		pt.add_line(this.mat, line, col, 2)
-	}
-
-	draw_circle(pt, shape, col)
-	{
-		var circle = shape.get()
-		pt.add_circle(this.mat, circle[0], circle[1], circle[2] * this.scale, col, 2.0, 24)
 	}
 }
