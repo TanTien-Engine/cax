@@ -1,11 +1,11 @@
 import "sketchgraph.nodes.*"
-import "sketchgraph.nodes.cons_nodes" for Parallel, Perpendicular, PointOnLine, PointOnPerpBisector, MidpointOnLine, TangentCircumf, Coincident, Horizontal, Vertical, PointOnCircle, Tangent
+import "sketchgraph.nodes.cons_nodes" for Parallel, Perpendicular, PointOnLine, PointOnPerpBisector, MidpointOnLine, TangentCircumf, Coincident, Horizontal, Vertical, PointOnCircle, PointOnArc, PointOnEllipse, Tangent
 
 var SKETCH_NODES = [ 
 Point, Line, Circle, Arc, Ellipse,
 Distance, Angle, 
 Coincident, Horizontal, Vertical, Parallel, Perpendicular, 
-PointOnLine, PointOnCircle, PointOnPerpBisector, MidpointOnLine, 
+PointOnLine, PointOnCircle, PointOnArc, PointOnEllipse, PointOnPerpBisector, MidpointOnLine, 
 Tangent, TangentCircumf,
 Solver, Draw,
 ]

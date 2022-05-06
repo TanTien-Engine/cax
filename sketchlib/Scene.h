@@ -6,7 +6,7 @@
 
 #include <memory>
 
-namespace gs { class Shape2D; class Point2D; class Line2D; class Circle; }
+namespace gs { class Shape2D; class Point2D; class Line2D; class Circle; class Arc; class Ellipse; }
 
 namespace sketchlib
 {
@@ -32,6 +32,8 @@ private:
 	void AddPoint(const std::shared_ptr<gs::Point2D>& pt, GeoID id);
 	void AddLine(const std::shared_ptr<gs::Line2D>& line, GeoID id);
 	void AddCircle(const std::shared_ptr<gs::Circle>& circle, GeoID id);
+	void AddArc(const std::shared_ptr<gs::Arc>& arc, GeoID id);
+	void AddEllipse(const std::shared_ptr<gs::Ellipse>& ellipse, GeoID id);
 
 	// basic constraints
 	void AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
@@ -49,6 +51,8 @@ private:
 	void AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
 	void AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
 	void AddPointOnCircleCons(ConsID id, int point, int circle);
+	void AddPointOnArcCons(ConsID id, int point, int arc);
+	void AddPointOnEllipseCons(ConsID id, int point, int ellipse);
 	void AddL2CTangentCons(ConsID id, int line, int circle);
 	void AddC2CTangentCons(ConsID id, int circle1, int circle2);
 
@@ -71,9 +75,11 @@ private:
 	GCS::Algorithm m_default_solver = GCS::DogLeg;
 	GCS::Algorithm m_default_solver_redundant = GCS::DogLeg;
 
-	std::vector<GCS::Point>  m_points;
-	std::vector<GCS::Line>   m_lines;
-	std::vector<GCS::Circle> m_circles;
+	std::vector<GCS::Point>   m_points;
+	std::vector<GCS::Line>    m_lines;
+	std::vector<GCS::Circle>  m_circles;
+	std::vector<GCS::Arc>     m_arcs;
+	std::vector<GCS::Ellipse> m_ellipses;
 
 	std::vector<int> m_conflicting;
 	std::vector<int> m_redundant;

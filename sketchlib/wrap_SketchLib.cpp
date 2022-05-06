@@ -25,6 +25,10 @@ sketchlib::GeoType get_geo_type(const std::shared_ptr<gs::Shape2D>& shape)
         return sketchlib::GeoType::Line;
     } else if (type == gs::ShapeType2D::Circle) {
         return sketchlib::GeoType::Circle;
+    } else if (type == gs::ShapeType2D::Arc) {
+        return sketchlib::GeoType::Arc;
+    } else if (type == gs::ShapeType2D::Ellipse) {
+        return sketchlib::GeoType::Ellipse;
     } else {
         return sketchlib::GeoType::None;
     }
@@ -74,6 +78,10 @@ void w_Scene_add()
         cons_type = sketchlib::ConsType::Vertical;
     } else if (strcmp(cons_type_s, "point_on_circle") == 0) {
         cons_type = sketchlib::ConsType::PointOnCircle;
+    } else if (strcmp(cons_type_s, "point_on_arc") == 0) {
+        cons_type = sketchlib::ConsType::PointOnArc;
+    } else if (strcmp(cons_type_s, "point_on_ellipse") == 0) {
+        cons_type = sketchlib::ConsType::PointOnEllipse;
     } else if (strcmp(cons_type_s, "tangent") == 0) {
         cons_type = sketchlib::ConsType::Tangent;
     }

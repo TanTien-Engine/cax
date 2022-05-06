@@ -25,6 +25,8 @@ enum class ConsType
 	Vertical,
 	PointOnCircle,
 	Tangent,
+	PointOnArc,
+	PointOnEllipse,
 };
 
 struct Constraint

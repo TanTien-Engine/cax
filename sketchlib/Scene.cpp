@@ -3,6 +3,8 @@
 #include <geoshape/Point2D.h>
 #include <geoshape/Line2D.h>
 #include <geoshape/Circle.h>
+#include <geoshape/Arc.h>
+#include <geoshape/Ellipse.h>
 
 namespace
 {
@@ -21,6 +23,14 @@ bool is_line(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
 
 bool is_circle(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
     return geo.second == sketchlib::GeoType::Circle;
+}
+
+bool is_arc(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
+    return geo.second == sketchlib::GeoType::Arc;
+}
+
+bool is_ellipse(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
+    return geo.second == sketchlib::GeoType::Ellipse;
 }
 
 }
@@ -57,6 +67,12 @@ void Scene::AddGeometry(GeoID id, const std::shared_ptr<gs::Shape2D>& shape)
         break;
     case gs::ShapeType2D::Circle:
         AddCircle(std::static_pointer_cast<gs::Circle>(shape), id);
+        break;
+    case gs::ShapeType2D::Arc:
+        AddArc(std::static_pointer_cast<gs::Arc>(shape), id);
+        break;
+    case gs::ShapeType2D::Ellipse:
+        AddEllipse(std::static_pointer_cast<gs::Ellipse>(shape), id);
         break;
     }
 
@@ -179,6 +195,20 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
             AddL2CTangentCons(id, geo2_idx, geo1_idx);
         } else if (is_circle(geo1) && is_circle(geo2)) {
             AddC2CTangentCons(id, geo1_idx, geo2_idx);
+        }
+        break;
+    case ConsType::PointOnArc:
+        if (is_point(geo1) && is_arc(geo2)) {
+            AddPointOnArcCons(id, geo1_idx, geo2_idx);
+        } else if (is_point(geo2) && is_arc(geo1)) {
+            AddPointOnArcCons(id, geo2_idx, geo1_idx);
+        }
+        break;
+    case ConsType::PointOnEllipse:
+        if (is_point(geo1) && is_ellipse(geo2)) {
+            AddPointOnEllipseCons(id, geo1_idx, geo2_idx);
+        } else if (is_point(geo2) && is_ellipse(geo1)) {
+            AddPointOnEllipseCons(id, geo2_idx, geo1_idx);
         }
         break;
     }
@@ -320,6 +350,106 @@ void Scene::AddCircle(const std::shared_ptr<gs::Circle>& circle, GeoID id)
     m_geos.push_back(geo);
 }
 
+void Scene::AddArc(const std::shared_ptr<gs::Arc>& arc, GeoID id)
+{
+    GCS::Point p1, p2, p3;
+
+    auto& pos = arc->GetCenter();
+
+    float radius = arc->GetRadius();
+
+    float start_angle, end_angle;
+    arc->GetAngles(start_angle, end_angle);
+
+    sm::vec2 start_pos, end_pos;
+    start_pos.x = pos.x + radius * std::cosf(start_angle);
+    start_pos.y = pos.y + radius * std::sinf(start_angle);
+    end_pos.x = pos.x + radius * std::cosf(end_angle);
+    end_pos.y = pos.y + radius * std::sinf(end_angle);
+
+    m_parameters.push_back(new double(start_pos.x));
+    m_parameters.push_back(new double(start_pos.y));
+    p1.x = m_parameters[m_parameters.size() - 2];
+    p1.y = m_parameters[m_parameters.size() - 1];
+
+    m_parameters.push_back(new double(end_pos.x));
+    m_parameters.push_back(new double(end_pos.y));
+    p2.x = m_parameters[m_parameters.size() - 2];
+    p2.y = m_parameters[m_parameters.size() - 1];
+
+    m_parameters.push_back(new double(pos.x));
+    m_parameters.push_back(new double(pos.y));
+    p3.x = m_parameters[m_parameters.size() - 2];
+    p3.y = m_parameters[m_parameters.size() - 1];
+
+    m_parameters.push_back(new double(radius));
+    double* r = m_parameters[m_parameters.size() - 1];
+    m_parameters.push_back(new double(start_angle));
+    double* a1 = m_parameters[m_parameters.size() - 1];
+    m_parameters.push_back(new double(end_angle));
+    double* a2 = m_parameters[m_parameters.size() - 1];
+
+    Geometry geo;
+    geo.id = id;
+    geo.start_pt_idx = static_cast<int>(m_points.size());
+    m_points.push_back(p1);
+    geo.end_pt_idx = static_cast<int>(m_points.size());
+    m_points.push_back(p2);
+    geo.mid_pt_idx = static_cast<int>(m_points.size());
+    m_points.push_back(p3);
+
+    GCS::Arc a;
+    a.start  = p1;
+    a.end    = p1;
+    a.center = p3;
+    a.rad    = r;
+    a.startAngle = a1;
+    a.endAngle   = a2;
+    geo.index = m_arcs.size();
+    m_arcs.push_back(a);
+
+    m_geos.push_back(geo);
+}
+
+void Scene::AddEllipse(const std::shared_ptr<gs::Ellipse>& ellipse, GeoID id)
+{
+    auto& pos = ellipse->GetCenter();
+
+    float radius_x, radius_y;
+    ellipse->GetRadius(radius_x, radius_y);
+
+    float dist_C_F = std::sqrtf(radius_x * radius_x - radius_y * radius_y);
+    sm::vec2 focus1 = pos + sm::vec2(1, 0) * dist_C_F;  // radmajdir: (1, 0)
+
+    GCS::Point center;
+
+    m_parameters.push_back(new double(pos.x));
+    m_parameters.push_back(new double(pos.y));
+    center.x = m_parameters[m_parameters.size() - 2];
+    center.y = m_parameters[m_parameters.size() - 1];
+
+    m_parameters.push_back(new double(focus1.x));
+    m_parameters.push_back(new double(focus1.y));
+    double* f1x = m_parameters[m_parameters.size() - 2];
+    double* f1y = m_parameters[m_parameters.size() - 1];
+
+    m_parameters.push_back(new double(radius_y));
+    double* rmin = m_parameters[m_parameters.size() - 1];
+
+    Geometry geo;
+    geo.id = id;
+
+    GCS::Ellipse e;
+    e.focus1.x = f1x;
+    e.focus1.y = f1y;
+    e.center = center;
+    e.radmin = rmin;
+    geo.index = m_ellipses.size();
+    m_ellipses.push_back(e);
+
+    m_geos.push_back(geo);
+}
+
 void Scene::AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value)
 {
     assert(geo1 < m_geos.size() && geo2 < m_geos.size());
@@ -453,6 +583,24 @@ void Scene::AddPointOnCircleCons(ConsID id, int point, int circle)
     ResetSolver();
 }
 
+void Scene::AddPointOnArcCons(ConsID id, int point, int arc)
+{
+    assert(point < m_geos.size() && arc < m_geos.size());
+
+    m_gcs->addConstraintPointOnArc(m_points[m_geos[point].index], m_arcs[m_geos[arc].index], id);
+
+    ResetSolver();
+}
+
+void Scene::AddPointOnEllipseCons(ConsID id, int point, int ellipse)
+{
+    assert(point < m_geos.size() && ellipse < m_geos.size());
+
+    m_gcs->addConstraintPointOnEllipse(m_points[m_geos[point].index], m_ellipses[m_geos[ellipse].index], id);
+
+    ResetSolver();
+}
+
 void Scene::AddL2CTangentCons(ConsID id, int line, int circle)
 {
     assert(line < m_geos.size() && circle < m_geos.size());
@@ -536,6 +684,61 @@ void Scene::BeforeSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::S
                 dirty = true;
             }
         }
+        else if (type == gs::ShapeType2D::Arc)
+        {
+            auto src = std::static_pointer_cast<gs::Arc>(shape);
+
+            auto cx = static_cast<double>(src->GetCenter().x);
+            auto cy = static_cast<double>(src->GetCenter().y);
+            auto r = static_cast<double>(src->GetRadius());
+
+            float sa, ea;
+            src->GetAngles(sa, ea);
+            auto start_angle = static_cast<double>(sa);
+            auto end_angle = static_cast<double>(ea);
+
+            auto& dst = m_arcs[index];
+            if (*dst.center.x != cx || *dst.center.y != cy || *dst.rad != r || 
+                *dst.startAngle != start_angle || *dst.endAngle != end_angle)
+            {
+                *dst.center.x = cx;
+                *dst.center.y = cy;
+                *dst.rad = r;
+                *dst.startAngle = start_angle;
+                *dst.endAngle = end_angle;
+                dirty = true;
+            }
+        }
+        else if (type == gs::ShapeType2D::Ellipse)
+        {
+            auto src = std::static_pointer_cast<gs::Ellipse>(shape);
+
+            auto& pos = src->GetCenter();
+
+            float radius_x, radius_y;
+            src->GetRadius(radius_x, radius_y);
+
+            float dist_C_F = std::sqrtf(radius_x * radius_x - radius_y * radius_y);
+            sm::vec2 focus1 = pos + sm::vec2(1, 0) * dist_C_F;  // radmajdir: (1, 0)
+
+            double f1x = static_cast<double>(focus1.x);
+            double f1y = static_cast<double>(focus1.y);
+            double cx = static_cast<double>(pos.x);
+            double cy = static_cast<double>(pos.y);
+            double rmin = static_cast<double>(radius_y);
+
+            auto& dst = m_ellipses[index];
+            if (*dst.center.x != cx || *dst.center.y != cy || *dst.focus1.x != f1x || 
+                *dst.focus1.y != f1y || *dst.radmin != rmin)
+            {
+                *dst.center.x = cx;
+                *dst.center.y = cy;
+                *dst.focus1.x = f1x;
+                *dst.focus1.y = f1y;
+                *dst.radmin = rmin;
+                dirty = true;
+            }
+        }
     }
 
     if (dirty) {
@@ -596,6 +799,47 @@ void Scene::AfterSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Sh
             {
                 dst->SetCenter(c);
                 dst->SetRadius(d);
+                dirty = true;
+            }
+        }
+        else if (type == gs::ShapeType2D::Arc)
+        {
+            auto& src = m_arcs[index];
+            auto dst = std::static_pointer_cast<gs::Arc>(shape);
+
+            sm::vec2 c(static_cast<float>(*src.center.x), static_cast<float>(*src.center.y));
+            float d = static_cast<float>(*src.rad);
+            float start_angle = static_cast<float>(*src.startAngle);
+            float end_angle = static_cast<float>(*src.endAngle);
+            float sa, ea;
+            dst->GetAngles(sa, ea);
+            if (c != dst->GetCenter() || d != dst->GetRadius() ||
+                start_angle != sa || end_angle != ea)
+            {
+                dst->SetCenter(c);
+                dst->SetRadius(d);
+                dst->SetAngles(start_angle, end_angle);
+                dirty = true;
+            }
+        }
+        else if (type == gs::ShapeType2D::Ellipse)
+        {
+            auto& src = m_ellipses[index];
+            auto dst = std::static_pointer_cast<gs::Ellipse>(shape);
+
+            sm::vec2 c(static_cast<float>(*src.center.x), static_cast<float>(*src.center.y));
+
+            sm::vec2 r;
+            r.y = static_cast<float>(*src.radmin);
+            r.x = std::sqrtf(std::powf(*src.focus1.x - c.x, 2) + r.y * r.y);
+
+            float rx, ry;
+            dst->GetRadius(rx, ry);
+
+            if (c != dst->GetCenter() || r.x != rx || r.y != ry)
+            {
+                dst->SetCenter(c);
+                dst->SetRadius(r.x, r.y);
                 dirty = true;
             }
         }

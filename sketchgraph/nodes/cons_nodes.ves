@@ -56,6 +56,22 @@ class PointOnCircle is BinaryCons
 	}
 }
 
+class PointOnArc is BinaryCons
+{
+	init()
+	{
+		super.init("point_on_arc")
+	}
+}
+
+class PointOnEllipse is BinaryCons
+{
+	init()
+	{
+		super.init("point_on_ellipse")
+	}
+}
+
 class PointOnPerpBisector is BinaryCons
 {
 	init()
