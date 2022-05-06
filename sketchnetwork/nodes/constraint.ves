@@ -1,8 +1,8 @@
 import "blueprint.blueprint" for Blueprint
 import "network.vertex" for Vertex
-import "network.network" for Network
-import "network.vertex_shape" for SHAPE_ROD, PIN_ROD_START_IDX, PIN_ROD_END_IDX
+import "network.vertex_shape" for SHAPE_ROD
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "sketchnetwork.cons_helper" for ConsHelper
 
 class Constraint is Vertex
 {
@@ -29,8 +29,8 @@ class Constraint is Vertex
 
 	resolve_cons()
 	{
-		var na = this.get_start_node()
-		var nb = this.get_end_node()
+		var na = ConsHelper.get_start_node(this)
+		var nb = ConsHelper.get_end_node(this)
 		if (!na and !nb) {
 			return nil
 		}
@@ -52,25 +52,5 @@ class Constraint is Vertex
 			ret = ret + p.to_string(name + ".impl")
 		}
 		return ret
-	}
-	
-	get_start_node()
-	{
-		var nodes = Network.neighbors(this, PIN_ROD_START_IDX)
-		if (nodes.isEmpty) {
-			return nil
-		} else {
-			return nodes[0]
-		}
-	}
-
-	get_end_node()
-	{
-		var nodes = Network.neighbors(this, PIN_ROD_END_IDX)
-		if (nodes.isEmpty) {
-			return nil
-		} else {
-			return nodes[0]
-		}
 	}
 }

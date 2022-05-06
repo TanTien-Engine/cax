@@ -2,17 +2,17 @@ var node0 = ::sketchnetwork::nodes::geo_nodes::Point()
 node0.impl.query_param("x").value = -0.96818181818182
 node0.impl.query_param("y").value = 0.73727272727273
 
-_editor.add_node(node0, -131.09090909091, 351)
+_editor.add_node(node0, -439.09090909091, 200)
 
 var node1 = ::sketchnetwork::nodes::geo_nodes::Circle()
 node1.impl.query_param("center").value.set(-1.68, 0.46)
 node1.impl.query_param("radius").value = 1.1415778554264
 
-_editor.add_node(node1, -108, 120.27272727273)
+_editor.add_node(node1, -68, 197.27272727273)
 
-var node2 = ::sketchnetwork::nodes::cons_nodes::PointOnCircle()
+var node2 = ::sketchnetwork::nodes::point_on::PointOn()
 
-_editor.add_node(node2, -41, 278)
+_editor.add_node(node2, -260, 200)
 
 Network.connect(node0, "around", node2, "start")
 Network.connect(node1, "around", node2, "end")

@@ -1,0 +1,120 @@
+import "blueprint.blueprint" for Blueprint
+import "network.vertex" for Vertex
+import "network.vertex_shape" for SHAPE_ROD
+import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "sketchnetwork.cons_helper" for ConsHelper
+import "sketchnetwork.nodes.geo_nodes" for Point, Line, Circle, Arc, Ellipse
+
+class PointOn is Vertex
+{
+	init()
+	{
+		super.init()
+
+		this.shape = SHAPE_ROD
+
+		this.pin_types_f = [ VAR_TYPE_CONSTRAINT ]
+		this.pin_types_t = [ 
+			[ VAR_TYPE_GEOMETRY ],
+			[ VAR_TYPE_GEOMETRY ],
+		]
+
+		this.impl = nil
+		this.title = "点在线上"
+	}
+
+	get_title()
+	{
+		return this.title
+	}
+
+	resolve_cons()
+	{
+		var impl = this.get_conn_impl()
+		if (!impl) {
+			return nil
+		}
+
+		var na = ConsHelper.get_start_node(this)
+		var nb = ConsHelper.get_end_node(this)
+		if (!na and !nb) {
+			return nil
+		}
+
+		if (na) {
+			Blueprint.connect(na.impl.exports[0], impl.imports[0])
+		}
+		if (nb) {
+			Blueprint.connect(nb.impl.exports[0], impl.imports[1])
+		}
+
+		return Blueprint.calc_output_value(impl, "cons")
+	}
+
+	to_string(name) 
+	{
+		var impl = this.get_conn_impl()
+		if (!impl) {
+			return ""
+		}
+
+		var ret = ""
+		for (var p in impl.params) {
+			ret = ret + p.to_string(name + ".impl")
+		}
+		return ret
+	}
+
+	on_connection_changed()
+	{
+		this.impl = nil
+	}
+
+	get_conn_impl()
+	{
+		if (!this.impl) {
+			this.impl = this.create_conn_impl()
+		}
+		return this.impl
+	}
+
+	create_conn_impl()
+	{
+		var na = ConsHelper.get_start_node(this)
+		var nb = ConsHelper.get_end_node(this)
+		if (!na or !nb) {
+			return nil
+		}
+
+		if (!(na is Point) and !(nb is Point)) {
+			return nil
+		}
+
+		if (na is Line or nb is Line) 
+		{
+			this.title = "点在线上"
+			import "sketchgraph.nodes.cons_nodes" for PointOnLine
+			return PointOnLine()
+		} 
+		else if (na is Circle or nb is Circle) 
+		{
+			this.title = "点在圆上"
+			import "sketchgraph.nodes.cons_nodes" for PointOnCircle
+			return PointOnCircle()
+		} 
+		else if (na is Arc or nb is Arc) 
+		{
+			this.title = "点在弧上"
+			import "sketchgraph.nodes.cons_nodes" for PointOnArc
+			return PointOnArc()
+		} 
+		else if (na is Ellipse or nb is Ellipse) 
+		{
+			this.title = "点在椭圆上"
+			import "sketchgraph.nodes.cons_nodes" for PointOnEllipse
+			return PointOnEllipse()
+		}
+
+		return nil
+	}
+}

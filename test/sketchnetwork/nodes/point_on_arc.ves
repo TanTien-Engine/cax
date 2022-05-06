@@ -1,0 +1,20 @@
+var node0 = ::sketchnetwork::nodes::geo_nodes::Point()
+node0.impl.query_param("x").value = -0.09818181818182
+node0.impl.query_param("y").value = 1.0372727272727
+
+_editor.add_node(node0, -440.09090909091, 200)
+
+var node1 = ::sketchnetwork::nodes::geo_nodes::Arc()
+node1.impl.query_param("center").value.set(0, 0)
+node1.impl.query_param("radius").value = 1
+node1.impl.query_param("start_angle").value = 0
+node1.impl.query_param("end_angle").value = 2.8974885457475
+
+_editor.add_node(node1, -58, 197.27272727273)
+
+var node2 = ::sketchnetwork::nodes::point_on::PointOn()
+
+_editor.add_node(node2, -255, 196)
+
+Network.connect(node0, "around", node2, "start")
+Network.connect(node1, "around", node2, "end")

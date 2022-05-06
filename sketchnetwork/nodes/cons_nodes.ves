@@ -63,42 +63,6 @@ class Perpendicular is Constraint
 	}
 }
 
-class PointOnLine is Constraint
-{
-	init()
-	{
-		import "sketchgraph.nodes.cons_nodes" for PointOnLine as sg_PointOnLine
-		super.init("点在线上", sg_PointOnLine())
-	}
-}
-
-class PointOnCircle is Constraint
-{
-	init()
-	{
-		import "sketchgraph.nodes.cons_nodes" for PointOnCircle as sg_PointOnCircle
-		super.init("点在圆上", sg_PointOnCircle())
-	}
-}
-
-class PointOnArc is Constraint
-{
-	init()
-	{
-		import "sketchgraph.nodes.cons_nodes" for PointOnArc as sg_PointOnArc
-		super.init("点在弧上", sg_PointOnArc())
-	}
-}
-
-class PointOnEllipse is Constraint
-{
-	init()
-	{
-		import "sketchgraph.nodes.cons_nodes" for PointOnEllipse as sg_PointOnEllipse
-		super.init("点在椭圆上", sg_PointOnEllipse())
-	}
-}
-
 class PointOnPerpBisector is Constraint
 {
 	init()

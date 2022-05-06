@@ -1,0 +1,25 @@
+import "network.network" for Network
+import "network.vertex_shape" for PIN_ROD_START_IDX, PIN_ROD_END_IDX
+
+class ConsHelper
+{
+	static get_start_node(node)
+	{
+		var nodes = Network.neighbors(node, PIN_ROD_START_IDX)
+		if (nodes.isEmpty) {
+			return nil
+		} else {
+			return nodes[0]
+		}
+	}
+
+	static get_end_node(node)
+	{
+		var nodes = Network.neighbors(node, PIN_ROD_END_IDX)
+		if (nodes.isEmpty) {
+			return nil
+		} else {
+			return nodes[0]
+		}
+	}	
+}
