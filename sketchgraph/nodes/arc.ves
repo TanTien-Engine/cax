@@ -71,8 +71,6 @@ class Arc is Node
 		var end_angle   = NodeHelper.calc_prop_value(this, "end_angle")
 		var mid_angle   = (start_angle + end_angle) * 0.5
 
-		System.print("++ %(start_angle) %(end_angle), %(mid_angle)")
-
 		this.editor_pts.list.clear()
 		this.editor_pts.list.add(Variant(Vector2(center.x * DRAW_SCALE, center.y * DRAW_SCALE)))
 		this.editor_pts.list.add(Variant(this.calc_draw_pos(center, radius, mid_angle)))
