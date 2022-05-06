@@ -1,10 +1,11 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
-import "blueprint.nodes.number2" for Number2
+import "blueprint.nodes.array" for Array
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER2
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_editor" for NodeEditor
+import "blueprint.node_helper" for NodeHelper
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
 import "sketchgraph.util" for DRAW_SCALE
@@ -36,41 +37,17 @@ class Ellipse is Node
 
 		this.geo_id = CONTEXT.advance_geo_id()
 
-		this.editor_center = Number2()
-		this.editor_outer = Number2()
+		this.editor_pts = Array()
 
 		this.geo_col = [ 255, 255, 255, 255 ]
 	}
 
 	calc_value(idx)
 	{
-		var cx = 0
-		var cy = 0
+		var center = NodeHelper.calc_prop_value(this, "center")
+		var radius = NodeHelper.calc_prop_value(this, "radius")
 
-		var center = this.query_param("center").value
-		var v_center = Blueprint.calc_input_value(this, 0)
-		if (v_center) {
-			cx = v_center.value.x
-			cy = v_center.value.y
-		} else {
-			cx = center.x
-			cy = center.y
-		}
-
-		var rx = 0
-		var ry = 0
-
-		var radius = this.query_param("radius").value
-		var v_radius = Blueprint.calc_input_value(this, 0)
-		if (v_radius) {
-			rx = v_radius.value.x
-			ry = v_radius.value.y
-		} else {
-			rx = radius.x
-			ry = radius.y
-		}
-
-		var shape = tt_Ellipse.init(cx, cy, rx, ry)
+		var shape = tt_Ellipse.init(center.x, center.y, radius.x, radius.y)
 		var geo = VarGeometry(this.geo_id, shape)
 		geo.set_color(this.geo_col)
 		return Variant(VAR_TYPE_GEOMETRY, geo)
@@ -79,18 +56,18 @@ class Ellipse is Node
 	bind_editor()
 	{
 		if (!EDITOR) {
-			EDITOR = NodeEditor("assets/blueprints/editorgraph/circle_edit.ves")
+			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
 		}
 
-		var center = this.query_param("center").value
-		var x = center.x * DRAW_SCALE
-		var y = center.y * DRAW_SCALE
-		var rx = this.query_param("radius").value.x * DRAW_SCALE
-		this.editor_center.value.set(x, y)
-		this.editor_outer.value.set(x + rx, y)
+		var center = NodeHelper.calc_prop_value(this, "center")
+		var radius = NodeHelper.calc_prop_value(this, "radius")
 
-		Blueprint.connect(this.editor_center.exports[0], EDITOR.editor_node.imports[1])
-		Blueprint.connect(this.editor_outer.exports[0], EDITOR.editor_node.imports[2])
+		this.editor_pts.list.clear()
+		this.editor_pts.list.add(Variant(Vector2(center.x * DRAW_SCALE, center.y * DRAW_SCALE)))
+		this.editor_pts.list.add(Variant(Vector2((center.x + radius.x) * DRAW_SCALE, center.y * DRAW_SCALE)))
+		this.editor_pts.list.add(Variant(Vector2(center.x * DRAW_SCALE, (center.y + radius.y) * DRAW_SCALE)))
+
+		Blueprint.connect(this.editor_pts.exports[0], EDITOR.editor_node.imports[1])
 
 		Blueprint.send_node_dirty_root(EDITOR.editor_node)
 
@@ -118,19 +95,26 @@ class Ellipse is Node
 	{
 		EDITOR.on_mouse_dragged(x, y, btn)
 
-		var center = this.query_param("center").value
-		center.x = this.editor_center.value.x / DRAW_SCALE
-		center.y = this.editor_center.value.y / DRAW_SCALE
-
-		var pc = this.editor_center.value
-		var po = this.editor_outer.value
-		var r = Calc.dis_pos_to_pos(pc, po) / DRAW_SCALE
-		var a = Math.atan2(po.y - pc.y, po.x - pc.x)
-
-		var radius = this.query_param("radius").value
-		radius.x = r.x / Math.cos(a)
-		radius.y = r.y / Math.sin(a)
+		this.sync_data()
 
 		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+
+	sync_data()
+	{
+		var c = this.editor_pts.list[0].value
+		var x = this.editor_pts.list[1].value
+		var y = this.editor_pts.list[2].value
+
+		var center = this.query_param("center").value
+		center.x = c.x / DRAW_SCALE
+		center.y = c.y / DRAW_SCALE
+
+		var radius = this.query_param("radius").value
+		radius.x = (x.x - c.x) / DRAW_SCALE
+		radius.y = (y.y - c.y) / DRAW_SCALE
+
+		this.editor_pts.list[1].value.set(x.x, c.y)
+		this.editor_pts.list[2].value.set(c.x, y.y)
 	}
 }
