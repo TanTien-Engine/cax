@@ -284,6 +284,11 @@ void Scene::Clear()
     m_partially_redundant.clear();
 }
 
+int Scene::GetDOF() const
+{
+    return m_gcs->dofsNumber();
+}
+
 void Scene::ResetSolver()
 {
     m_gcs->declareUnknowns(m_parameters);

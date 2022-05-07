@@ -151,6 +151,14 @@ void w_Scene_solve()
     ves_set_boolean(0, success);
 }
 
+void w_Scene_get_dof()
+{
+    auto scene = ((tt::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
+
+    int dofs = scene->GetDOF();
+    ves_set_number(0, dofs);
+}
+
 }
 
 namespace sketchlib
@@ -162,6 +170,8 @@ VesselForeignMethodFn SketchLibBindMethod(const char* signature)
     if (strcmp(signature, "SketchScene.clear()") == 0) return w_Scene_clear;
 
     if (strcmp(signature, "SketchScene.solve(_,_)") == 0) return w_Scene_solve;
+
+    if (strcmp(signature, "SketchScene.get_dof()") == 0) return w_Scene_get_dof;
 
     return nullptr;
 }

@@ -1,7 +1,7 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
-import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY, VAR_TYPE_INTEGER
 import "blueprint.variant_helper" for VariantHelper
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchlib" for SketchScene
@@ -17,7 +17,8 @@ class Solver is Node
 			Pin(this, "cons", [ VAR_TYPE_ARRAY, VAR_TYPE_CONSTRAINT ]),
 		]
 		this.exports = [
-			Pin(this, "geo", [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ])
+			Pin(this, "geo", [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ]),
+			Pin(this, "dof", VAR_TYPE_INTEGER),
 		]
 
 		this.layout()
@@ -36,18 +37,32 @@ class Solver is Node
 
 	calc_value(idx)
 	{
-		if (this.results) {
-			return this.results
-		}
-
 		if (!this.scene) {
 			this.scene = this.build_scene()
 		}
-		if (!this.results) {
-			this.results = this.build_results()
+		if (!this.scene) {
+			return nil
 		}
 
-		return this.results
+		if (idx == 0)
+		{
+			if (this.results) {
+				return this.results
+			}
+
+			if (!this.results) {
+				this.results = this.build_results()
+			}
+
+			return this.results
+		}
+		else if (idx == 1)
+		{
+			var dof = this.scene.get_dof()
+			return Variant(dof)
+		}
+
+		return nil
 	}
 
 	build_scene()

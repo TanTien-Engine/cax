@@ -25,6 +25,8 @@ public:
 
 	void Clear();
 
+	int GetDOF() const;
+
 private:
 	void ResetSolver();
 

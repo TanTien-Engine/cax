@@ -9,6 +9,8 @@ foreign class SketchScene
 	foreign clear()
 
 	foreign solve(ids, shapes)
+
+	foreign get_dof()
 }
 
 );
