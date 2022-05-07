@@ -18,7 +18,7 @@ var node3 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node3, -108.96855716054, 292.96515179077)
 
-var node4 = ::sketchgraph::nodes::distance::Distance()
+var node4 = ::sketchgraph::nodes::cons_nodes::Distance()
 node4.query_param("dist").value = 0.47777777910233
 
 _editor.add_node(node4, -102, 145)

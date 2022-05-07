@@ -1,5 +1,21 @@
 import "sketchgraph.nodes.binary_cons" for BinaryCons
 
+class Distance is BinaryCons
+{
+	init()
+	{
+		super.init("distance", "dist", 0.0)
+	}
+}
+
+class Angle is BinaryCons
+{
+	init()
+	{
+		super.init("angle", "angle", 0.0)
+	}
+}
+
 class Coincident is BinaryCons
 {
 	init()

@@ -4,7 +4,7 @@ class Distance is Constraint
 {
 	init()
 	{
-		import "sketchgraph.nodes.distance" for Distance as sg_Distance
+		import "sketchgraph.nodes.cons_nodes" for Distance as sg_Distance
 		super.init("距离", sg_Distance())
 	}
 }
@@ -13,7 +13,7 @@ class Angle is Constraint
 {
 	init()
 	{
-		import "sketchgraph.nodes.angle" for Angle as sg_Angle
+		import "sketchgraph.nodes.cons_nodes" for Angle as sg_Angle
 		super.init("角度", sg_Angle())
 	}
 }

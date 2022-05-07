@@ -18,7 +18,7 @@ var node3 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node3, -103.32381786, 314.41516113281)
 
-var node4 = ::sketchgraph::nodes::angle::Angle()
+var node4 = ::sketchgraph::nodes::cons_nodes::Angle()
 node4.query_param("angle").value = 0.45040962100029
 
 _editor.add_node(node4, -96.5368578056, 203.11325013629)
