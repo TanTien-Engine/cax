@@ -5,6 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_editor" for NodeEditor
 import "blueprint.nodes.number2" for Number2
+import "blueprint.node_helper" for NodeHelper
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
 import "sketchgraph.util" for DRAW_SCALE
@@ -40,17 +41,8 @@ class Point is Node
 
 	calc_value(idx)
 	{
-		var x = this.query_param("x").value
-		var y = this.query_param("y").value
-
-		var v_x = Blueprint.calc_input_value(this, 0)
-		if (v_x) {
-			x = v_p.value.x
-		}
-		var v_y = Blueprint.calc_input_value(this, 1)
-		if (v_y) {
-			y = v_p.value.y
-		}
+		var x = NodeHelper.calc_prop_value(this, "x")
+		var y = NodeHelper.calc_prop_value(this, "y")
 
 		var shape = tt_Point.init(x, y)
 		var geo = VarGeometry(this.geo_id, shape)
@@ -65,8 +57,8 @@ class Point is Node
 			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
 		}
 
-		var x = this.query_param("x").value * DRAW_SCALE
-		var y = this.query_param("y").value * DRAW_SCALE
+		var x = NodeHelper.calc_prop_value(this, "x") * DRAW_SCALE
+		var y = NodeHelper.calc_prop_value(this, "y") * DRAW_SCALE
 		this.editor_pos.value.set(x, y)
 
 		Blueprint.connect(this.editor_pos.exports[0], EDITOR.editor_node.imports[1])

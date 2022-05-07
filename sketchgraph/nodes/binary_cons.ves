@@ -3,6 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
+import "blueprint.node_helper" for NodeHelper
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VarConstraint
 import "sketchgraph.context" for CONTEXT
 
@@ -55,13 +56,8 @@ class BinaryCons is Node
 		}
 
 		var val = 0
-		if (this.val_name)
-		{
-			val = this.query_param(this.val_name).value
-			var v_val = Blueprint.calc_input_value(this, this.val_name)
-			if (v_val) {
-				val = v_val.value
-			}
+		if (this.val_name) {
+			val = NodeHelper.calc_prop_value(this, this.val_name)
 		}
 
 		var cons = VarConstraint(this.cons_id, this.cons_type, a, b, val)

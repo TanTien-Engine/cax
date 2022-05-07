@@ -5,6 +5,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER2
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_editor" for NodeEditor
+import "blueprint.node_helper" for NodeHelper
 import "maths.vector" for Vector2
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
@@ -41,32 +42,10 @@ class Line is Node
 
 	calc_value(idx)
 	{
-		var x1 = 0
-		var y1 = 0
-		var x2 = 0
-		var y2 = 0
+		var p1 = NodeHelper.calc_prop_value(this, "p1")
+		var p2 = NodeHelper.calc_prop_value(this, "p2")
 
-		var p1 = this.query_param("p1").value
-		var v_p1 = Blueprint.calc_input_value(this, 0)
-		if (v_p1) {
-			x1 = v_p1.value.x
-			y1 = v_p1.value.y
-		} else {
-			x1 = p1.x
-			y1 = p1.y
-		}
-
-		var p2 = this.query_param("p2").value
-		var v_p2 = Blueprint.calc_input_value(this, 1)
-		if (v_p2) {
-			x2 = v_p2.value.x
-			y2 = v_p2.value.y
-		} else {
-			x2 = p2.x
-			y2 = p2.y
-		}
-
-		var shape = tt_Line.init(x1, y1, x2, y2)
+		var shape = tt_Line.init(p1.x, p1.y, p2.x, p2.y)
 		var geo = VarGeometry(this.geo_id, shape)
 		geo.set_color(this.geo_col)
 		return Variant(VAR_TYPE_GEOMETRY, geo)
@@ -79,8 +58,8 @@ class Line is Node
 			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
 		}
 
-		var p1 = this.query_param("p1").value
-		var p2 = this.query_param("p2").value
+		var p1 = NodeHelper.calc_prop_value(this, "p1")
+		var p2 = NodeHelper.calc_prop_value(this, "p2")
 
 		this.editor_pts.list.clear()
 		this.editor_pts.list.add(Variant(Vector2(p1.x * DRAW_SCALE, p1.y * DRAW_SCALE)))
