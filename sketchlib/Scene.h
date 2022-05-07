@@ -35,26 +35,34 @@ private:
 	void AddArc(const std::shared_ptr<gs::Arc>& arc, GeoID id);
 	void AddEllipse(const std::shared_ptr<gs::Ellipse>& ellipse, GeoID id);
 
-	// basic constraints
+	// basic
 	void AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
 	void AddP2LDistanceCons(ConsID id, int point, int line, double* value);
 	void AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
 	void AddParallelCons(ConsID id, int line1, int line2);
 	void AddPerpendicularCons(ConsID id, int line1, int line2);
-	void AddPointOnLineCons(ConsID id, int point, int line);
-	void AddPointOnPerpBisectorCons(ConsID id, int point, int line);
-	void AddMidpointOnLineCons(ConsID id, int line1, int line2);
-	void AddTangentCircumfCons(ConsID id, int circle1, int circle2);
-
-	// derived constraints
 	void AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
 	void AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
 	void AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
+
+	// point on
+	void AddPointOnLineCons(ConsID id, int point, int line);
 	void AddPointOnCircleCons(ConsID id, int point, int circle);
 	void AddPointOnArcCons(ConsID id, int point, int arc);
 	void AddPointOnEllipseCons(ConsID id, int point, int ellipse);
+	void AddPointOnPerpBisectorCons(ConsID id, int point, int line);
+	void AddMidpointOnLineCons(ConsID id, int line1, int line2);
+
+	// tangent
 	void AddL2CTangentCons(ConsID id, int line, int circle);
 	void AddC2CTangentCons(ConsID id, int circle1, int circle2);
+	void AddL2ATangentCons(ConsID id, int line, int arc);
+	void AddA2LTangentCons(ConsID id, int arc, int line);
+	void AddC2ATangentCons(ConsID id, int circle, int arc);
+	void AddA2CTangentCons(ConsID id, int arc, int circle);
+	void AddA2ATangentCons(ConsID id, int arc1, int arc2);
+
+	void AddTangentCircumfCons(ConsID id, int circle1, int circle2);
 
 	void BeforeSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);
 	void AfterSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);

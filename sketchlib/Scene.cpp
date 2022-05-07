@@ -134,31 +134,6 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
             AddPerpendicularCons(id, geo1_idx, geo2_idx);
         }
         break;
-    case ConsType::PointOnLine:
-        if (is_point(geo1) && is_line(geo2)) {
-            AddPointOnLineCons(id, geo1_idx, geo2_idx);
-        } else if (is_point(geo2) && is_line(geo1)) {
-            AddPointOnLineCons(id, geo2_idx, geo1_idx);
-        }
-        break;
-    case ConsType::PointOnPerpBisector:
-        if (is_point(geo1) && is_line(geo2)) {
-            AddPointOnPerpBisectorCons(id, geo1_idx, geo2_idx);
-        } else if (is_point(geo2) && is_line(geo1)) {
-            AddPointOnPerpBisectorCons(id, geo2_idx, geo1_idx);
-        }
-        break;
-    case ConsType::MidpointOnLine:
-        if (is_line(geo1) && is_line(geo2)) {
-            AddMidpointOnLineCons(id, geo1_idx, geo2_idx);
-        }
-        break;
-    case ConsType::TangentCircumf:
-        if (is_circle(geo1) && is_circle(geo2)) {
-            AddTangentCircumfCons(id, geo1_idx, geo2_idx);
-        }
-        break;
-        // derived
     case ConsType::Coincident:
         if (is_point(geo1) && is_point(geo2)) {
             AddP2PCoincidentCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid);
@@ -181,20 +156,19 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
             AddVerticalCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End);
         }
         break;
+        // point on
+    case ConsType::PointOnLine:
+        if (is_point(geo1) && is_line(geo2)) {
+            AddPointOnLineCons(id, geo1_idx, geo2_idx);
+        } else if (is_point(geo2) && is_line(geo1)) {
+            AddPointOnLineCons(id, geo2_idx, geo1_idx);
+        }
+        break;
     case ConsType::PointOnCircle:
         if (is_point(geo1) && is_circle(geo2)) {
             AddPointOnCircleCons(id, geo1_idx, geo2_idx);
         } else if (is_point(geo2) && is_circle(geo1)) {
             AddPointOnCircleCons(id, geo2_idx, geo1_idx);
-        }
-        break;
-    case ConsType::Tangent:
-        if (is_line(geo1) && is_circle(geo2)) {
-            AddL2CTangentCons(id, geo1_idx, geo2_idx);
-        } else if (is_line(geo2) && is_circle(geo1)) {
-            AddL2CTangentCons(id, geo2_idx, geo1_idx);
-        } else if (is_circle(geo1) && is_circle(geo2)) {
-            AddC2CTangentCons(id, geo1_idx, geo2_idx);
         }
         break;
     case ConsType::PointOnArc:
@@ -209,6 +183,33 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
             AddPointOnEllipseCons(id, geo1_idx, geo2_idx);
         } else if (is_point(geo2) && is_ellipse(geo1)) {
             AddPointOnEllipseCons(id, geo2_idx, geo1_idx);
+        }
+        break;
+    case ConsType::PointOnPerpBisector:
+        if (is_point(geo1) && is_line(geo2)) {
+            AddPointOnPerpBisectorCons(id, geo1_idx, geo2_idx);
+        } else if (is_point(geo2) && is_line(geo1)) {
+            AddPointOnPerpBisectorCons(id, geo2_idx, geo1_idx);
+        }
+        break;
+    case ConsType::MidpointOnLine:
+        if (is_line(geo1) && is_line(geo2)) {
+            AddMidpointOnLineCons(id, geo1_idx, geo2_idx);
+        }
+        break;
+        // tangent
+    case ConsType::Tangent:
+        if (is_line(geo1) && is_circle(geo2)) {
+            AddL2CTangentCons(id, geo1_idx, geo2_idx);
+        } else if (is_line(geo2) && is_circle(geo1)) {
+            AddL2CTangentCons(id, geo2_idx, geo1_idx);
+        } else if (is_circle(geo1) && is_circle(geo2)) {
+            AddC2CTangentCons(id, geo1_idx, geo2_idx);
+        }
+        break;
+    case ConsType::TangentCircumf:
+        if (is_circle(geo1) && is_circle(geo2)) {
+            AddTangentCircumfCons(id, geo1_idx, geo2_idx);
         }
         break;
     }
@@ -501,43 +502,6 @@ void Scene::AddPerpendicularCons(ConsID id, int line1, int line2)
     ResetSolver();
 }
 
-void Scene::AddPointOnLineCons(ConsID id, int point, int line)
-{
-    assert(point < m_geos.size() && line < m_geos.size());
-
-    m_gcs->addConstraintPointOnLine(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
-
-    ResetSolver();
-}
-
-void Scene::AddPointOnPerpBisectorCons(ConsID id, int point, int line)
-{
-    assert(point < m_geos.size() && line < m_geos.size());
-
-    m_gcs->addConstraintPointOnPerpBisector(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
-
-    ResetSolver();
-}
-
-void Scene::AddMidpointOnLineCons(ConsID id, int line1, int line2)
-{
-    assert(line1 < m_geos.size() && line2 < m_geos.size());
-
-    m_gcs->addConstraintMidpointOnLine(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id);
-
-    ResetSolver();
-}
-
-void Scene::AddTangentCircumfCons(ConsID id, int circle1, int circle2)
-{
-    assert(circle1 < m_geos.size() && circle2 < m_geos.size());
-
-    m_gcs->addConstraintTangentCircumf(m_points[m_geos[circle1].mid_pt_idx], m_points[m_geos[circle2].mid_pt_idx], 
-        m_circles[m_geos[circle1].index].rad, m_circles[m_geos[circle2].index].rad, false, id);
-
-    ResetSolver();
-}
-
 void Scene::AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2)
 {
     assert(geo1 < m_geos.size() && geo2 < m_geos.size());
@@ -574,6 +538,15 @@ void Scene::AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointP
     ResetSolver();
 }
 
+void Scene::AddPointOnLineCons(ConsID id, int point, int line)
+{
+    assert(point < m_geos.size() && line < m_geos.size());
+
+    m_gcs->addConstraintPointOnLine(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
+
+    ResetSolver();
+}
+
 void Scene::AddPointOnCircleCons(ConsID id, int point, int circle)
 {
     assert(point < m_geos.size() && circle < m_geos.size());
@@ -601,6 +574,24 @@ void Scene::AddPointOnEllipseCons(ConsID id, int point, int ellipse)
     ResetSolver();
 }
 
+void Scene::AddPointOnPerpBisectorCons(ConsID id, int point, int line)
+{
+    assert(point < m_geos.size() && line < m_geos.size());
+
+    m_gcs->addConstraintPointOnPerpBisector(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
+
+    ResetSolver();
+}
+
+void Scene::AddMidpointOnLineCons(ConsID id, int line1, int line2)
+{
+    assert(line1 < m_geos.size() && line2 < m_geos.size());
+
+    m_gcs->addConstraintMidpointOnLine(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id);
+
+    ResetSolver();
+}
+
 void Scene::AddL2CTangentCons(ConsID id, int line, int circle)
 {
     assert(line < m_geos.size() && circle < m_geos.size());
@@ -615,6 +606,65 @@ void Scene::AddC2CTangentCons(ConsID id, int circle1, int circle2)
     assert(circle1 < m_geos.size() && circle2 < m_geos.size());
 
     m_gcs->addConstraintTangent(m_circles[m_geos[circle1].index], m_circles[m_geos[circle2].index], id);
+
+    ResetSolver();
+}
+
+void Scene::AddL2ATangentCons(ConsID id, int line, int arc)
+{
+    assert(line < m_geos.size() && arc < m_geos.size());
+
+    auto& l = m_lines[m_geos[line].index];
+    m_gcs->addConstraintPerpendicularLine2Arc(l.p1, l.p2, m_arcs[m_geos[arc].index], id);
+
+    ResetSolver();
+}
+
+void Scene::AddA2LTangentCons(ConsID id, int arc, int line)
+{
+    assert(line < m_geos.size() && arc < m_geos.size());
+
+    auto& l = m_lines[m_geos[line].index];
+    m_gcs->addConstraintPerpendicularArc2Line(m_arcs[m_geos[arc].index], l.p1, l.p2, id);
+
+    ResetSolver();
+}
+
+void Scene::AddC2ATangentCons(ConsID id, int circle, int arc)
+{
+    assert(circle < m_geos.size() && arc < m_geos.size());
+
+    auto& c = m_circles[m_geos[circle].index];
+    m_gcs->addConstraintPerpendicularCircle2Arc(c.center, c.rad, m_arcs[m_geos[arc].index], id);
+
+    ResetSolver();
+}
+
+void Scene::AddA2CTangentCons(ConsID id, int arc, int circle)
+{
+    assert(circle < m_geos.size() && arc < m_geos.size());
+
+    auto& c = m_circles[m_geos[circle].index];
+    m_gcs->addConstraintPerpendicularArc2Circle(m_arcs[m_geos[arc].index], c.center, c.rad, id);
+
+    ResetSolver();
+}
+
+void Scene::AddA2ATangentCons(ConsID id, int arc1, int arc2)
+{
+    assert(arc1 < m_geos.size() && arc2 < m_geos.size());
+
+    m_gcs->addConstraintPerpendicularArc2Arc(m_arcs[m_geos[arc1].index], false, m_arcs[m_geos[arc2].index], false, id);
+
+    ResetSolver();
+}
+
+void Scene::AddTangentCircumfCons(ConsID id, int circle1, int circle2)
+{
+    assert(circle1 < m_geos.size() && circle2 < m_geos.size());
+
+    m_gcs->addConstraintTangentCircumf(m_points[m_geos[circle1].mid_pt_idx], m_points[m_geos[circle2].mid_pt_idx], 
+        m_circles[m_geos[circle1].index].rad, m_circles[m_geos[circle2].index].rad, false, id);
 
     ResetSolver();
 }

@@ -10,23 +10,27 @@ namespace sketchlib
 enum class ConsType
 {
 	None,
+
 	// basic
 	Distance,
 	Angle,
 	Parallel,
 	Perpendicular,
-	PointOnLine,
-	PointOnPerpBisector,
-	MidpointOnLine,
-	TangentCircumf,
-	// derived
 	Coincident,
 	Horizontal,
 	Vertical,
+
+	// point on
+	PointOnLine,
 	PointOnCircle,
-	Tangent,
 	PointOnArc,
 	PointOnEllipse,
+	PointOnPerpBisector,
+	MidpointOnLine,
+
+	// tangent
+	Tangent,
+	TangentCircumf,
 };
 
 struct Constraint
