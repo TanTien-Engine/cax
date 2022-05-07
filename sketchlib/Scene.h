@@ -40,6 +40,10 @@ private:
 	// basic
 	void AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
 	void AddP2LDistanceCons(ConsID id, int point, int line, double* value);
+	void AddDistanceXCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
+	void AddDistanceYCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
+	void AddCoordinateXCons(ConsID id, int geo, PointPos pos, double* value);
+	void AddCoordinateYCons(ConsID id, int geo, PointPos pos, double* value);
 	void AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
 	void AddParallelCons(ConsID id, int line1, int line2);
 	void AddPerpendicularCons(ConsID id, int line1, int line2);

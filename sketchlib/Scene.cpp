@@ -115,6 +115,32 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
             AddP2PDistanceCons(id, geo1_idx, PointPos::Start, geo2_idx, PointPos::Start, cons_val);
         }
         break;
+    case ConsType::DistanceX:
+        if (is_point(geo1) && is_point(geo2)) {
+            AddDistanceXCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+        } else if (is_line(geo1) && is_none(geo2)) {
+            AddDistanceXCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
+        } else if (is_line(geo2) && is_none(geo1)) {
+            AddDistanceXCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End, cons_val);
+        } else if (is_point(geo1) && is_none(geo2)) {
+            AddCoordinateXCons(id, geo1_idx, PointPos::Mid, cons_val);
+        } else if (is_point(geo2) && is_none(geo1)) {
+            AddCoordinateXCons(id, geo2_idx, PointPos::Mid, cons_val);
+        }
+        break;
+    case ConsType::DistanceY:
+        if (is_point(geo1) && is_point(geo2)) {
+            AddDistanceYCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+        } else if (is_line(geo1) && is_none(geo2)) {
+            AddDistanceYCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
+        } else if (is_line(geo2) && is_none(geo1)) {
+            AddDistanceYCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End, cons_val);
+        } else if (is_point(geo1) && is_none(geo2)) {
+            AddCoordinateYCons(id, geo1_idx, PointPos::Mid, cons_val);
+        } else if (is_point(geo2) && is_none(geo1)) {
+            AddCoordinateYCons(id, geo2_idx, PointPos::Mid, cons_val);
+        }
+        break;
     case ConsType::Angle:
         if (is_point(geo1) && is_point(geo2)) {
             AddP2PAngleCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
@@ -502,6 +528,52 @@ void Scene::AddP2LDistanceCons(ConsID id, int point, int line, double* value)
     assert(point < m_geos.size() && line < m_geos.size());
 
     m_gcs->addConstraintP2LDistance(m_points[m_geos[point].index], m_lines[m_geos[line].index], value, id);
+
+    ResetSolver();
+}
+
+void Scene::AddDistanceXCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value)
+{
+    assert(geo1 < m_geos.size() && geo2 < m_geos.size());
+    auto p1 = m_geos[geo1].GetPointID(pos1);
+    auto p2 = m_geos[geo2].GetPointID(pos2);
+    assert(p1 < m_points.size() && p2 < m_points.size());
+
+    m_gcs->addConstraintDifference(m_points[p1].x, m_points[p2].x, value, id);
+
+    ResetSolver();
+}
+
+void Scene::AddDistanceYCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value)
+{
+    assert(geo1 < m_geos.size() && geo2 < m_geos.size());
+    auto p1 = m_geos[geo1].GetPointID(pos1);
+    auto p2 = m_geos[geo2].GetPointID(pos2);
+    assert(p1 < m_points.size() && p2 < m_points.size());
+
+    m_gcs->addConstraintDifference(m_points[p1].y, m_points[p2].y, value, id);
+
+    ResetSolver();
+}
+
+void Scene::AddCoordinateXCons(ConsID id, int geo, PointPos pos, double* value)
+{
+    assert(geo < m_geos.size());
+    auto p = m_geos[geo].GetPointID(pos);
+    assert(p < m_points.size());
+
+    m_gcs->addConstraintCoordinateX(m_points[p], value, id);
+
+    ResetSolver();
+}
+
+void Scene::AddCoordinateYCons(ConsID id, int geo, PointPos pos, double* value)
+{
+    assert(geo < m_geos.size());
+    auto p = m_geos[geo].GetPointID(pos);
+    assert(p < m_points.size());
+
+    m_gcs->addConstraintCoordinateY(m_points[p], value, id);
 
     ResetSolver();
 }

@@ -11,6 +11,22 @@ class Distance is BinaryCons
 	}
 }
 
+class DistanceX is BinaryCons
+{
+	init()
+	{
+		super.init("distance_x", "dist", 0.0)
+	}
+}
+
+class DistanceY is BinaryCons
+{
+	init()
+	{
+		super.init("distance_y", "dist", 0.0)
+	}
+}
+
 class Angle is BinaryCons
 {
 	init()

@@ -57,6 +57,10 @@ void w_Scene_add()
     // basic
     if (strcmp(cons_type_s, "distance") == 0) {
         cons_type = sketchlib::ConsType::Distance;
+    } else if (strcmp(cons_type_s, "distance_x") == 0) {
+        cons_type = sketchlib::ConsType::DistanceX;
+    } else if (strcmp(cons_type_s, "distance_y") == 0) {
+        cons_type = sketchlib::ConsType::DistanceY;
     } else if (strcmp(cons_type_s, "angle") == 0) {
         cons_type = sketchlib::ConsType::Angle;
     } else if (strcmp(cons_type_s, "parallel") == 0) {

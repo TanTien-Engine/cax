@@ -13,6 +13,8 @@ enum class ConsType
 
 	// basic
 	Distance,
+	DistanceX,
+	DistanceY,
 	Angle,
 	Parallel,
 	Perpendicular,
