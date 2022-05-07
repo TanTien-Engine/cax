@@ -14,6 +14,10 @@ enum class GeoType
     Circle,
     Arc,
     Ellipse,
+
+    GeoPtStart,
+    GeoPtMid,
+    GeoPtEnd,
 };
 
 }

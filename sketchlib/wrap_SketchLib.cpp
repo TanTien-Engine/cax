@@ -105,30 +105,68 @@ void w_Scene_add()
         cons_type = sketchlib::ConsType::ArcDiameter;
     }
 
-    std::shared_ptr<gs::Shape2D> shape1 = nullptr, shape2 = nullptr;
-
-    int id1 = (int)ves_tonumber(3);
-    auto shape1_w = ves_toforeign(4);
-    if (shape1_w) 
+    auto id2type = [](int id) -> sketchlib::GeoType
     {
-        shape1 = ((tt::Proxy<gs::Shape2D>*)shape1_w)->obj;
-        scene->AddGeometry(id1, shape1);
+        auto type = sketchlib::GeoType::None;
+        switch (id)
+        {
+        case 1:
+            type = sketchlib::GeoType::GeoPtStart;
+            break;
+        case 2:
+            type = sketchlib::GeoType::GeoPtMid;
+            break;
+        case 3:
+            type = sketchlib::GeoType::GeoPtEnd;
+            break;
+        }
+        return type;
+    };
+
+    std::shared_ptr<gs::Shape2D> shape_1 = nullptr, shape_2 = nullptr;
+
+    ves_getfield(3, "geo_id");
+    int geo_id_1 = (int)ves_tonumber(-1);
+    ves_pop(1);
+    ves_getfield(3, "point_id");
+    int point_id_1 = (int)ves_tonumber(-1);
+    ves_pop(1);
+    ves_getfield(3, "shape");
+    if (ves_toforeign(-1)) {
+        shape_1 = ((tt::Proxy<gs::Shape2D>*)ves_toforeign(-1))->obj;
+    }
+    ves_pop(1);
+
+    ves_getfield(4, "geo_id");
+    int geo_id_2 = (int)ves_tonumber(-1);
+    ves_pop(1);
+    ves_getfield(4, "point_id");
+    int point_id_2 = (int)ves_tonumber(-1);
+    ves_pop(1);
+    ves_getfield(4, "shape");
+    if (ves_toforeign(-1)) {
+        shape_2 = ((tt::Proxy<gs::Shape2D>*)ves_toforeign(-1))->obj;
+    }
+    ves_pop(1);
+
+    scene->AddGeometry(geo_id_1, shape_1);
+    scene->AddGeometry(geo_id_2, shape_2);
+
+    sketchlib::GeoType type1 = sketchlib::GeoType::None, type2 = sketchlib::GeoType::None;
+    if (point_id_1 > 0) {
+        type1 = id2type(point_id_1);
+    } else {
+        type1 = get_geo_type(shape_1);
+    }
+    if (point_id_2 > 0) {
+        type2 = id2type(point_id_2);
+    } else {
+        type2 = get_geo_type(shape_2);
     }
 
-    int id2 = (int)ves_tonumber(5);
-    auto shape2_w = ves_toforeign(6);
-    if (shape2_w) 
-    {
-        shape2 = ((tt::Proxy<gs::Shape2D>*)shape2_w)->obj;
-        scene->AddGeometry(id2, shape2);
-    }
+    double val = ves_tonumber(5);
 
-    double val = ves_tonumber(7);
-
-    auto type1 = get_geo_type(shape1);
-    auto type2 = get_geo_type(shape2);
-
-    scene->AddConstraint(cons_id, cons_type, std::make_pair(id1, type1), std::make_pair(id2, type2), val);
+    scene->AddConstraint(cons_id, cons_type, std::make_pair(geo_id_1, type1), std::make_pair(geo_id_2, type2), val);
 }
 
 void w_Scene_clear()
@@ -170,7 +208,7 @@ namespace sketchlib
 
 VesselForeignMethodFn SketchLibBindMethod(const char* signature)
 {
-    if (strcmp(signature, "SketchScene.add(_,_,_,_,_,_,_)") == 0) return w_Scene_add;
+    if (strcmp(signature, "SketchScene.add(_,_,_,_,_)") == 0) return w_Scene_add;
     if (strcmp(signature, "SketchScene.clear()") == 0) return w_Scene_clear;
 
     if (strcmp(signature, "SketchScene.solve(_,_)") == 0) return w_Scene_solve;

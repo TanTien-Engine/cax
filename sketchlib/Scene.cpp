@@ -14,7 +14,10 @@ bool is_none(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
 }
 
 bool is_point(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
-    return geo.second == sketchlib::GeoType::Point;
+    return geo.second == sketchlib::GeoType::Point
+        || geo.second == sketchlib::GeoType::GeoPtStart
+        || geo.second == sketchlib::GeoType::GeoPtMid
+        || geo.second == sketchlib::GeoType::GeoPtEnd;
 }
 
 bool is_line(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
@@ -31,6 +34,23 @@ bool is_arc(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
 
 bool is_ellipse(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) {
     return geo.second == sketchlib::GeoType::Ellipse;
+}
+
+sketchlib::PointPos get_point_pos(const std::pair<sketchlib::GeoID, sketchlib::GeoType>& geo) 
+{
+    auto pos = sketchlib::PointPos::None;
+
+    if (geo.second == sketchlib::GeoType::Point) {
+        pos = sketchlib::PointPos::Mid;
+    } else if (geo.second == sketchlib::GeoType::GeoPtStart) {
+        pos = sketchlib::PointPos::Start;
+    } else if (geo.second == sketchlib::GeoType::GeoPtMid) {
+        pos = sketchlib::PointPos::Mid;
+    } else if (geo.second == sketchlib::GeoType::GeoPtEnd) {
+        pos = sketchlib::PointPos::End;
+    }
+
+    return pos;
 }
 
 }
@@ -102,11 +122,11 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
         // basic
     case ConsType::Distance:
         if (is_point(geo1) && is_point(geo2)) {
-            AddP2PDistanceCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+            AddP2PDistanceCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), cons_val);
         } else if (is_point(geo1) && is_line(geo2)) {
-            AddP2LDistanceCons(id, geo1_idx, geo2_idx, cons_val);
+            AddP2LDistanceCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, cons_val);
         } else if (is_line(geo1) && is_point(geo2)) {
-            AddP2LDistanceCons(id, geo2_idx, geo1_idx, cons_val);
+            AddP2LDistanceCons(id, geo2_idx, get_point_pos(geo2), geo1_idx, cons_val);
         } else if (is_line(geo1) && is_none(geo2)) {
             AddP2PDistanceCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
         } else if (is_line(geo2) && is_none(geo1)) {
@@ -117,33 +137,33 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
         break;
     case ConsType::DistanceX:
         if (is_point(geo1) && is_point(geo2)) {
-            AddDistanceXCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+            AddDistanceXCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), cons_val);
         } else if (is_line(geo1) && is_none(geo2)) {
             AddDistanceXCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
         } else if (is_line(geo2) && is_none(geo1)) {
             AddDistanceXCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End, cons_val);
         } else if (is_point(geo1) && is_none(geo2)) {
-            AddCoordinateXCons(id, geo1_idx, PointPos::Mid, cons_val);
+            AddCoordinateXCons(id, geo1_idx, get_point_pos(geo1), cons_val);
         } else if (is_point(geo2) && is_none(geo1)) {
-            AddCoordinateXCons(id, geo2_idx, PointPos::Mid, cons_val);
+            AddCoordinateXCons(id, geo2_idx, get_point_pos(geo2), cons_val);
         }
         break;
     case ConsType::DistanceY:
         if (is_point(geo1) && is_point(geo2)) {
-            AddDistanceYCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+            AddDistanceYCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), cons_val);
         } else if (is_line(geo1) && is_none(geo2)) {
             AddDistanceYCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
         } else if (is_line(geo2) && is_none(geo1)) {
             AddDistanceYCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End, cons_val);
         } else if (is_point(geo1) && is_none(geo2)) {
-            AddCoordinateYCons(id, geo1_idx, PointPos::Mid, cons_val);
+            AddCoordinateYCons(id, geo1_idx, get_point_pos(geo1), cons_val);
         } else if (is_point(geo2) && is_none(geo1)) {
-            AddCoordinateYCons(id, geo2_idx, PointPos::Mid, cons_val);
+            AddCoordinateYCons(id, geo2_idx, get_point_pos(geo2), cons_val);
         }
         break;
     case ConsType::Angle:
         if (is_point(geo1) && is_point(geo2)) {
-            AddP2PAngleCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid, cons_val);
+            AddP2PAngleCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), cons_val);
         } else if (is_line(geo1) && is_none(geo2)) {
             AddP2PAngleCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End, cons_val);
         } else if (is_line(geo2) && is_none(geo1)) {
@@ -162,11 +182,11 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
         break;
     case ConsType::Coincident:
         if (is_point(geo1) && is_point(geo2)) {
-            AddP2PCoincidentCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid);
+            AddP2PCoincidentCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2));
         }
     case ConsType::Horizontal:
         if (is_point(geo1) && is_point(geo2)) {
-            AddHorizontalCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid);
+            AddHorizontalCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2));
         } else if (is_line(geo1) && is_none(geo2)) {
             AddHorizontalCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End);
         } else if (is_line(geo2) && is_none(geo1)) {
@@ -175,7 +195,7 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
         break;
     case ConsType::Vertical:
         if (is_point(geo1) && is_point(geo2)) {
-            AddVerticalCons(id, geo1_idx, PointPos::Mid, geo2_idx, PointPos::Mid);
+            AddVerticalCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2));
         } else if (is_line(geo1) && is_none(geo2)) {
             AddVerticalCons(id, geo1_idx, PointPos::Start, geo1_idx, PointPos::End);
         } else if (is_line(geo2) && is_none(geo1)) {
@@ -185,37 +205,37 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
         // point on
     case ConsType::PointOnLine:
         if (is_point(geo1) && is_line(geo2)) {
-            AddPointOnLineCons(id, geo1_idx, geo2_idx);
+            AddPointOnLineCons(id, geo1_idx, get_point_pos(geo1), geo2_idx);
         } else if (is_point(geo2) && is_line(geo1)) {
-            AddPointOnLineCons(id, geo2_idx, geo1_idx);
+            AddPointOnLineCons(id, geo2_idx, get_point_pos(geo2), geo1_idx);
         }
         break;
     case ConsType::PointOnCircle:
         if (is_point(geo1) && is_circle(geo2)) {
-            AddPointOnCircleCons(id, geo1_idx, geo2_idx);
+            AddPointOnCircleCons(id, geo1_idx, get_point_pos(geo1), geo2_idx);
         } else if (is_point(geo2) && is_circle(geo1)) {
-            AddPointOnCircleCons(id, geo2_idx, geo1_idx);
+            AddPointOnCircleCons(id, geo2_idx, get_point_pos(geo2), geo1_idx);
         }
         break;
     case ConsType::PointOnArc:
         if (is_point(geo1) && is_arc(geo2)) {
-            AddPointOnArcCons(id, geo1_idx, geo2_idx);
+            AddPointOnArcCons(id, geo1_idx, get_point_pos(geo1), geo2_idx);
         } else if (is_point(geo2) && is_arc(geo1)) {
-            AddPointOnArcCons(id, geo2_idx, geo1_idx);
+            AddPointOnArcCons(id, geo2_idx, get_point_pos(geo2), geo1_idx);
         }
         break;
     case ConsType::PointOnEllipse:
         if (is_point(geo1) && is_ellipse(geo2)) {
-            AddPointOnEllipseCons(id, geo1_idx, geo2_idx);
+            AddPointOnEllipseCons(id, geo1_idx, get_point_pos(geo1), geo2_idx);
         } else if (is_point(geo2) && is_ellipse(geo1)) {
-            AddPointOnEllipseCons(id, geo2_idx, geo1_idx);
+            AddPointOnEllipseCons(id, geo2_idx, get_point_pos(geo2), geo1_idx);
         }
         break;
     case ConsType::PointOnPerpBisector:
         if (is_point(geo1) && is_line(geo2)) {
-            AddPointOnPerpBisectorCons(id, geo1_idx, geo2_idx);
+            AddPointOnPerpBisectorCons(id, geo1_idx, get_point_pos(geo1), geo2_idx);
         } else if (is_point(geo2) && is_line(geo1)) {
-            AddPointOnPerpBisectorCons(id, geo2_idx, geo1_idx);
+            AddPointOnPerpBisectorCons(id, geo2_idx, get_point_pos(geo2), geo1_idx);
         }
         break;
     case ConsType::MidpointOnLine:
@@ -523,11 +543,13 @@ void Scene::AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, Poi
     ResetSolver();
 }
 
-void Scene::AddP2LDistanceCons(ConsID id, int point, int line, double* value)
+void Scene::AddP2LDistanceCons(ConsID id, int pt_geo, PointPos pt_pos, int line, double* value)
 {
-    assert(point < m_geos.size() && line < m_geos.size());
+    assert(pt_geo < m_geos.size() && line < m_geos.size());
+    auto p = m_geos[pt_geo].GetPointID(pt_pos);
+    assert(p < m_points.size());
 
-    m_gcs->addConstraintP2LDistance(m_points[m_geos[point].index], m_lines[m_geos[line].index], value, id);
+    m_gcs->addConstraintP2LDistance(m_points[p], m_lines[m_geos[line].index], value, id);
 
     ResetSolver();
 }
@@ -644,47 +666,57 @@ void Scene::AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointP
     ResetSolver();
 }
 
-void Scene::AddPointOnLineCons(ConsID id, int point, int line)
+void Scene::AddPointOnLineCons(ConsID id, int pt_geo, PointPos pt_pos, int line)
 {
-    assert(point < m_geos.size() && line < m_geos.size());
+    assert(pt_geo < m_geos.size() && line < m_geos.size());
+    auto p = m_geos[pt_geo].GetPointID(pt_pos);
+    assert(p < m_points.size());
 
-    m_gcs->addConstraintPointOnLine(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
+    m_gcs->addConstraintPointOnLine(m_points[p], m_lines[m_geos[line].index], id);
 
     ResetSolver();
 }
 
-void Scene::AddPointOnCircleCons(ConsID id, int point, int circle)
+void Scene::AddPointOnCircleCons(ConsID id, int pt_geo, PointPos pt_pos, int circle)
 {
-    assert(point < m_geos.size() && circle < m_geos.size());
+    assert(pt_geo < m_geos.size() && circle < m_geos.size());
+    auto p = m_geos[pt_geo].GetPointID(pt_pos);
+    assert(p < m_points.size());
 
-    m_gcs->addConstraintPointOnCircle(m_points[m_geos[point].index], m_circles[m_geos[circle].index], id);
+    m_gcs->addConstraintPointOnCircle(m_points[p], m_circles[m_geos[circle].index], id);
 
     ResetSolver();
 }
 
-void Scene::AddPointOnArcCons(ConsID id, int point, int arc)
+void Scene::AddPointOnArcCons(ConsID id, int pt_geo, PointPos pt_pos, int arc)
 {
-    assert(point < m_geos.size() && arc < m_geos.size());
+    assert(pt_geo < m_geos.size() && arc < m_geos.size());
+    auto p = m_geos[pt_geo].GetPointID(pt_pos);
+    assert(p < m_points.size());
 
-    m_gcs->addConstraintPointOnArc(m_points[m_geos[point].index], m_arcs[m_geos[arc].index], id);
+    m_gcs->addConstraintPointOnArc(m_points[p], m_arcs[m_geos[arc].index], id);
 
     ResetSolver();
 }
 
-void Scene::AddPointOnEllipseCons(ConsID id, int point, int ellipse)
+void Scene::AddPointOnEllipseCons(ConsID id, int pt_geo, PointPos pt_pos, int ellipse)
 {
-    assert(point < m_geos.size() && ellipse < m_geos.size());
+    assert(pt_geo < m_geos.size() && ellipse < m_geos.size());
+    auto p = m_geos[pt_geo].GetPointID(pt_pos);
+    assert(p < m_points.size());
 
-    m_gcs->addConstraintPointOnEllipse(m_points[m_geos[point].index], m_ellipses[m_geos[ellipse].index], id);
+    m_gcs->addConstraintPointOnEllipse(m_points[p], m_ellipses[m_geos[ellipse].index], id);
 
     ResetSolver();
 }
 
-void Scene::AddPointOnPerpBisectorCons(ConsID id, int point, int line)
+void Scene::AddPointOnPerpBisectorCons(ConsID id, int pt_geo, PointPos pt_pos, int line)
 {
-    assert(point < m_geos.size() && line < m_geos.size());
+    assert(pt_geo < m_geos.size() && line < m_geos.size());
+    auto p = m_geos[pt_geo].GetPointID(pt_pos);
+    assert(p < m_points.size());
 
-    m_gcs->addConstraintPointOnPerpBisector(m_points[m_geos[point].index], m_lines[m_geos[line].index], id);
+    m_gcs->addConstraintPointOnPerpBisector(m_points[p], m_lines[m_geos[line].index], id);
 
     ResetSolver();
 }

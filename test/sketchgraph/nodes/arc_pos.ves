@@ -1,0 +1,37 @@
+var node0 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 152.0964414999, 161.04610340823)
+
+var node1 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node1, -158.09090909091, 168.59090909091)
+
+var node2 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node2, 0.44742250048391, 137.66570414393)
+
+var node3 = ::sketchgraph::nodes::line::Line()
+node3.query_param("p1").value.set(0, 0)
+node3.query_param("p2").value.set(-0.058128960843014, 1.8754990655134)
+
+_editor.add_node(node3, -338.54545454545, 162.40909090909)
+
+var node4 = ::sketchgraph::nodes::arc::Arc()
+node4.query_param("center").value.set(-0.10209213230592, 0.015163147077634)
+node4.query_param("radius").value = 1.2195864655872
+node4.query_param("start_angle").value = 2.4568560081556
+node4.query_param("end_angle").value = 7.2253156797591
+
+_editor.add_node(node4, -335.76004060774, -35.461122926986)
+
+var node5 = ::sketchgraph::nodes::cons_nodes::PointOnLine()
+
+_editor.add_node(node5, -158.37465583172, 32.150371980099)
+
+Blueprint.connect(node3, "geo", node5, "a")
+Blueprint.connect(node4, "start", node5, "b")
+Blueprint.connect(node3, "geo", node1, "in0")
+Blueprint.connect(node4, "geo", node1, "in1")
+Blueprint.connect(node1, "list", node2, "geo")
+Blueprint.connect(node5, "cons", node2, "cons")
+Blueprint.connect(node2, "geo", node0, "geo")

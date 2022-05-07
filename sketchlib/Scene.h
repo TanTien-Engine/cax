@@ -39,7 +39,7 @@ private:
 
 	// basic
 	void AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
-	void AddP2LDistanceCons(ConsID id, int point, int line, double* value);
+	void AddP2LDistanceCons(ConsID id, int pt_geo, PointPos pt_pos, int line, double* value);
 	void AddDistanceXCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
 	void AddDistanceYCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
 	void AddCoordinateXCons(ConsID id, int geo, PointPos pos, double* value);
@@ -52,11 +52,11 @@ private:
 	void AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
 
 	// point on
-	void AddPointOnLineCons(ConsID id, int point, int line);
-	void AddPointOnCircleCons(ConsID id, int point, int circle);
-	void AddPointOnArcCons(ConsID id, int point, int arc);
-	void AddPointOnEllipseCons(ConsID id, int point, int ellipse);
-	void AddPointOnPerpBisectorCons(ConsID id, int point, int line);
+	void AddPointOnLineCons(ConsID id, int pt_geo, PointPos pt_pos, int line);
+	void AddPointOnCircleCons(ConsID id, int pt_geo, PointPos pt_pos, int circle);
+	void AddPointOnArcCons(ConsID id, int pt_geo, PointPos pt_pos, int arc);
+	void AddPointOnEllipseCons(ConsID id, int pt_geo, PointPos pt_pos, int ellipse);
+	void AddPointOnPerpBisectorCons(ConsID id, int pt_geo, PointPos pt_pos, int line);
 	void AddMidpointOnLineCons(ConsID id, int line1, int line2);
 
 	// tangent

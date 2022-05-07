@@ -1,6 +1,12 @@
 var VAR_TYPE_GEOMETRY   = "geometry"
+var VAR_TYPE_GEO_POINT  = "geo_point"
 var VAR_TYPE_CONSTRAINT = "constraint"
 var VAR_TYPE_SOLVER     = "solver"
+
+var GEO_PT_ID_NONE   = 0
+var GEO_PT_ID_START  = 1
+var GEO_PT_ID_MIDDLE = 2
+var GEO_PT_ID_END    = 3
 
 class VarGeometry
 {
@@ -30,6 +36,16 @@ class VarGeometry
 		for (var i in 0..4) {
 			this.color[i] = col[i]
 		}
+	}
+}
+
+class VarGeoPoint
+{
+	init(geo_id, point_id, shape)
+	{
+		this.geo_id   = geo_id
+		this.point_id = point_id
+		this.shape    = shape
 	}
 }
 
