@@ -481,7 +481,7 @@ void Scene::AddArc(const std::shared_ptr<gs::Arc>& arc, GeoID id)
 
     GCS::Arc a;
     a.start  = p1;
-    a.end    = p1;
+    a.end    = p2;
     a.center = p3;
     a.rad    = r;
     a.startAngle = a1;
@@ -1034,8 +1034,19 @@ void Scene::AfterSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Sh
 
             sm::vec2 c(static_cast<float>(*src.center.x), static_cast<float>(*src.center.y));
             float d = static_cast<float>(*src.rad);
-            float start_angle = static_cast<float>(*src.startAngle);
-            float end_angle = static_cast<float>(*src.endAngle);
+
+            sm::vec2 s(static_cast<float>(*src.start.x), static_cast<float>(*src.start.y));
+            sm::vec2 e(static_cast<float>(*src.end.x), static_cast<float>(*src.end.y));
+
+            //float start_angle = static_cast<float>(*src.startAngle);
+            //float end_angle = static_cast<float>(*src.endAngle);
+
+            float start_angle = std::atan2f(s.y - c.y, s.x - c.x);
+            float end_angle = std::atan2f(e.y - c.y, e.x - c.x);
+            if (end_angle < start_angle) {
+                end_angle += SM_TWO_PI;
+            }
+
             float sa, ea;
             dst->GetAngles(sa, ea);
             if (c != dst->GetCenter() || d != dst->GetRadius() ||

@@ -148,8 +148,8 @@ class Arc is Node
 		var radius = Calc.dis_pos_to_pos(c, m) / DRAW_SCALE
 		this.query_param("radius").value = radius
 
-		var sa = this.calc_angle(center, s)
-		var ea = this.calc_angle(center, e)
+		var sa = this.calc_angle(c, s)
+		var ea = this.calc_angle(c, e)
 		if (ea < sa) {
 			ea = ea + Math.pi() * 2
 		}
