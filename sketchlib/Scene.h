@@ -19,7 +19,7 @@ public:
 
 	void AddGeometry(GeoID id, const std::shared_ptr<gs::Shape2D>& shape);
 	void AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoType>& geo1, 
-		const std::pair<GeoID, GeoType>& geo2, double val);
+		const std::pair<GeoID, GeoType>& geo2, double val, bool driving);
 
 	bool Solve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);
 
@@ -38,42 +38,42 @@ private:
 	void AddEllipse(const std::shared_ptr<gs::Ellipse>& ellipse, GeoID id);
 
 	// basic
-	void AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
-	void AddP2LDistanceCons(ConsID id, int pt_geo, PointPos pt_pos, int line, double* value);
-	void AddDistanceXCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
-	void AddDistanceYCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
-	void AddCoordinateXCons(ConsID id, int geo, PointPos pos, double* value);
-	void AddCoordinateYCons(ConsID id, int geo, PointPos pos, double* value);
-	void AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value);
-	void AddParallelCons(ConsID id, int line1, int line2);
-	void AddPerpendicularCons(ConsID id, int line1, int line2);
-	void AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
-	void AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
-	void AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2);
+	void AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving);
+	void AddP2LDistanceCons(ConsID id, int pt_geo, PointPos pt_pos, int line, double* value, bool driving);
+	void AddDistanceXCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving);
+	void AddDistanceYCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving);
+	void AddCoordinateXCons(ConsID id, int geo, PointPos pos, double* value, bool driving);
+	void AddCoordinateYCons(ConsID id, int geo, PointPos pos, double* value, bool driving);
+	void AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving);
+	void AddParallelCons(ConsID id, int line1, int line2, bool driving);
+	void AddPerpendicularCons(ConsID id, int line1, int line2, bool driving);
+	void AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving);
+	void AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving);
+	void AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving);
 
 	// point on
-	void AddPointOnLineCons(ConsID id, int pt_geo, PointPos pt_pos, int line);
-	void AddPointOnCircleCons(ConsID id, int pt_geo, PointPos pt_pos, int circle);
-	void AddPointOnArcCons(ConsID id, int pt_geo, PointPos pt_pos, int arc);
-	void AddPointOnEllipseCons(ConsID id, int pt_geo, PointPos pt_pos, int ellipse);
-	void AddPointOnPerpBisectorCons(ConsID id, int pt_geo, PointPos pt_pos, int line);
-	void AddMidpointOnLineCons(ConsID id, int line1, int line2);
+	void AddPointOnLineCons(ConsID id, int pt_geo, PointPos pt_pos, int line, bool driving);
+	void AddPointOnCircleCons(ConsID id, int pt_geo, PointPos pt_pos, int circle, bool driving);
+	void AddPointOnArcCons(ConsID id, int pt_geo, PointPos pt_pos, int arc, bool driving);
+	void AddPointOnEllipseCons(ConsID id, int pt_geo, PointPos pt_pos, int ellipse, bool driving);
+	void AddPointOnPerpBisectorCons(ConsID id, int pt_geo, PointPos pt_pos, int line, bool driving);
+	void AddMidpointOnLineCons(ConsID id, int line1, int line2, bool driving);
 
 	// tangent
-	void AddL2CTangentCons(ConsID id, int line, int circle);
-	void AddC2CTangentCons(ConsID id, int circle1, int circle2);
-	void AddL2ATangentCons(ConsID id, int line, int arc);
-	void AddA2LTangentCons(ConsID id, int arc, int line);
-	void AddC2ATangentCons(ConsID id, int circle, int arc);
-	void AddA2CTangentCons(ConsID id, int arc, int circle);
-	void AddA2ATangentCons(ConsID id, int arc1, int arc2);
-	void AddTangentCircumfCons(ConsID id, int circle1, int circle2);
+	void AddL2CTangentCons(ConsID id, int line, int circle, bool driving);
+	void AddC2CTangentCons(ConsID id, int circle1, int circle2, bool driving);
+	void AddL2ATangentCons(ConsID id, int line, int arc, bool driving);
+	void AddA2LTangentCons(ConsID id, int arc, int line, bool driving);
+	void AddC2ATangentCons(ConsID id, int circle, int arc, bool driving);
+	void AddA2CTangentCons(ConsID id, int arc, int circle, bool driving);
+	void AddA2ATangentCons(ConsID id, int arc1, int arc2, bool driving);
+	void AddTangentCircumfCons(ConsID id, int circle1, int circle2, bool driving);
 
 	// params
-	void AddCircleRadiusCons(ConsID id, int circle, double* value);
-	void AddCircleDiameterCons(ConsID id, int circle, double* value);
-	void AddArcRadiusCons(ConsID id, int arc, double* value);
-	void AddArcDiameterCons(ConsID id, int arc, double* value);
+	void AddCircleRadiusCons(ConsID id, int circle, double* value, bool driving);
+	void AddCircleDiameterCons(ConsID id, int circle, double* value, bool driving);
+	void AddArcRadiusCons(ConsID id, int arc, double* value, bool driving);
+	void AddArcDiameterCons(ConsID id, int arc, double* value, bool driving);
 
 	void BeforeSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);
 	void AfterSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);

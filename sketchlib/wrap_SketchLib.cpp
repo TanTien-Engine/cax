@@ -165,8 +165,8 @@ void w_Scene_add()
     }
 
     double val = ves_tonumber(5);
-
-    scene->AddConstraint(cons_id, cons_type, std::make_pair(geo_id_1, type1), std::make_pair(geo_id_2, type2), val);
+    bool driving = ves_toboolean(6);
+    scene->AddConstraint(cons_id, cons_type, std::make_pair(geo_id_1, type1), std::make_pair(geo_id_2, type2), val, driving);
 }
 
 void w_Scene_clear()
@@ -208,7 +208,7 @@ namespace sketchlib
 
 VesselForeignMethodFn SketchLibBindMethod(const char* signature)
 {
-    if (strcmp(signature, "SketchScene.add(_,_,_,_,_)") == 0) return w_Scene_add;
+    if (strcmp(signature, "SketchScene.add(_,_,_,_,_,_)") == 0) return w_Scene_add;
     if (strcmp(signature, "SketchScene.clear()") == 0) return w_Scene_clear;
 
     if (strcmp(signature, "SketchScene.solve(_,_)") == 0) return w_Scene_solve;

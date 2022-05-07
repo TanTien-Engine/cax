@@ -51,12 +51,14 @@ class VarGeoPoint
 
 class VarConstraint
 {
-	init(id, type, geo1, geo2, val)
+	init(id, type, geo1, geo2, val, driving)
 	{
 		this.id   = id
 		this.type = type
 		this.geo1 = geo1
 		this.geo2 = geo2
 		this.val  = val
+
+		this.driving = driving
 	}
 }

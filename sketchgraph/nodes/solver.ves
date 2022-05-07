@@ -106,7 +106,7 @@ class Solver is Node
 		{
 			var geo1 = this.geo2params(c.geo1)
 			var geo2 = this.geo2params(c.geo2)
-			scene.add(c.id, c.type, geo1, geo2, c.val)
+			scene.add(c.id, c.type, geo1, geo2, c.val, c.driving)
 		}
 
 		return scene

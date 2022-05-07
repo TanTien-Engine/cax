@@ -21,6 +21,8 @@ class BinaryCons is Node
 			Pin(this, "cons", VAR_TYPE_CONSTRAINT),
 		]
 
+		this.params.add(NodeParam("driving", true))
+
 		this.layout()
 
 		this.cons_type = cons_type
@@ -60,7 +62,9 @@ class BinaryCons is Node
 			val = NodeHelper.calc_prop_value(this, this.val_name)
 		}
 
-		var cons = VarConstraint(this.cons_id, this.cons_type, a, b, val)
+		var driving = this.query_param("driving").value
+
+		var cons = VarConstraint(this.cons_id, this.cons_type, a, b, val, driving)
 		return Variant(VAR_TYPE_CONSTRAINT, cons)
 	}
 }

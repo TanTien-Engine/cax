@@ -21,6 +21,8 @@ class UnaryCons is Node
 			Pin(this, "cons", VAR_TYPE_CONSTRAINT),
 		]
 
+		this.params.add(NodeParam("driving", true))
+
 		this.params.add(NodeParam(val_name, value))
 
 		this.layout()
@@ -41,7 +43,10 @@ class UnaryCons is Node
 		}
 
 		var val = NodeHelper.calc_prop_value(this, this.val_name)
-		var cons = VarConstraint(this.cons_id, this.cons_type, geo, nil, val)
+
+		var driving = this.query_param("driving").value
+
+		var cons = VarConstraint(this.cons_id, this.cons_type, geo, nil, val, driving)
 		return Variant(VAR_TYPE_CONSTRAINT, cons)
 	}	
 }
