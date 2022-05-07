@@ -1,4 +1,7 @@
 import "sketchgraph.nodes.binary_cons" for BinaryCons
+import "sketchgraph.nodes.unary_cons" for UnaryCons
+
+// basic
 
 class Distance is BinaryCons
 {
@@ -13,6 +16,22 @@ class Angle is BinaryCons
 	init()
 	{
 		super.init("angle", "angle", 0.0)
+	}
+}
+
+class Parallel is BinaryCons
+{
+	init()
+	{
+		super.init("parallel")
+	}
+}
+
+class Perpendicular is BinaryCons
+{
+	init()
+	{
+		super.init("perpendicular")
 	}
 }
 
@@ -40,21 +59,7 @@ class Vertical is BinaryCons
 	}
 }
 
-class Parallel is BinaryCons
-{
-	init()
-	{
-		super.init("parallel")
-	}
-}
-
-class Perpendicular is BinaryCons
-{
-	init()
-	{
-		super.init("perpendicular")
-	}
-}
+// point on
 
 class PointOnLine is BinaryCons
 {
@@ -104,6 +109,8 @@ class MidpointOnLine is BinaryCons
 	}
 }
 
+// tangent
+
 class Tangent is BinaryCons
 {
 	init()
@@ -117,5 +124,39 @@ class TangentCircumf is BinaryCons
 	init()
 	{
 		super.init("tangent_circumf")
+	}
+}
+
+// params
+
+class CircleRadius is UnaryCons
+{
+	init()
+	{
+		super.init("circle_radius", "r", 1.0)
+	}
+}
+
+class CircleDiameter is UnaryCons
+{
+	init()
+	{
+		super.init("circle_diameter", "d", 1.0)
+	}
+}
+
+class ArcRadius is UnaryCons
+{
+	init()
+	{
+		super.init("arc_radius", "r", 1.0)
+	}
+}
+
+class ArcDiameter is UnaryCons
+{
+	init()
+	{
+		super.init("arc_diameter", "d", 1.0)
 	}
 }

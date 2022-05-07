@@ -61,8 +61,13 @@ private:
 	void AddC2ATangentCons(ConsID id, int circle, int arc);
 	void AddA2CTangentCons(ConsID id, int arc, int circle);
 	void AddA2ATangentCons(ConsID id, int arc1, int arc2);
-
 	void AddTangentCircumfCons(ConsID id, int circle1, int circle2);
+
+	// params
+	void AddCircleRadiusCons(ConsID id, int circle, double* value);
+	void AddCircleDiameterCons(ConsID id, int circle, double* value);
+	void AddArcRadiusCons(ConsID id, int arc, double* value);
+	void AddArcDiameterCons(ConsID id, int arc, double* value);
 
 	void BeforeSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);
 	void AfterSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);

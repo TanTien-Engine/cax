@@ -54,36 +54,51 @@ void w_Scene_add()
     int cons_id = (int)ves_tonumber(1);
     const char* cons_type_s = ves_tostring(2);
     sketchlib::ConsType cons_type = sketchlib::ConsType::None;
+    // basic
     if (strcmp(cons_type_s, "distance") == 0) {
         cons_type = sketchlib::ConsType::Distance;
     } else if (strcmp(cons_type_s, "angle") == 0) {
         cons_type = sketchlib::ConsType::Angle;
-    } else if (strcmp(cons_type_s, "point_on_line") == 0) {
-        cons_type = sketchlib::ConsType::PointOnLine;
-    } else if (strcmp(cons_type_s, "point_on_perp_bisector") == 0) {
-        cons_type = sketchlib::ConsType::PointOnPerpBisector;
-    } else if (strcmp(cons_type_s, "midpoint_on_line") == 0) {
-        cons_type = sketchlib::ConsType::MidpointOnLine;
     } else if (strcmp(cons_type_s, "parallel") == 0) {
         cons_type = sketchlib::ConsType::Parallel;
     } else if (strcmp(cons_type_s, "perpendicular") == 0) {
         cons_type = sketchlib::ConsType::Perpendicular;
-    } else if (strcmp(cons_type_s, "tangent_circumf") == 0) {
-        cons_type = sketchlib::ConsType::TangentCircumf;
     } else if (strcmp(cons_type_s, "coincident") == 0) {
         cons_type = sketchlib::ConsType::Coincident;
     } else if (strcmp(cons_type_s, "horizontal") == 0) {
         cons_type = sketchlib::ConsType::Horizontal;
     } else if (strcmp(cons_type_s, "vertical") == 0) {
         cons_type = sketchlib::ConsType::Vertical;
+    }
+    // point on
+    else if (strcmp(cons_type_s, "point_on_line") == 0) {
+        cons_type = sketchlib::ConsType::PointOnLine;
     } else if (strcmp(cons_type_s, "point_on_circle") == 0) {
         cons_type = sketchlib::ConsType::PointOnCircle;
     } else if (strcmp(cons_type_s, "point_on_arc") == 0) {
         cons_type = sketchlib::ConsType::PointOnArc;
     } else if (strcmp(cons_type_s, "point_on_ellipse") == 0) {
         cons_type = sketchlib::ConsType::PointOnEllipse;
-    } else if (strcmp(cons_type_s, "tangent") == 0) {
+    } else if (strcmp(cons_type_s, "point_on_perp_bisector") == 0) {
+        cons_type = sketchlib::ConsType::PointOnPerpBisector;
+    } else if (strcmp(cons_type_s, "midpoint_on_line") == 0) {
+        cons_type = sketchlib::ConsType::MidpointOnLine;
+    } 
+    // tangent
+    else if (strcmp(cons_type_s, "tangent") == 0) {
         cons_type = sketchlib::ConsType::Tangent;
+    } else if (strcmp(cons_type_s, "tangent_circumf") == 0) {
+        cons_type = sketchlib::ConsType::TangentCircumf;
+    }
+    // params
+    else if (strcmp(cons_type_s, "circle_radius") == 0) {
+        cons_type = sketchlib::ConsType::CircleRadius;
+    } else if (strcmp(cons_type_s, "circle_diameter") == 0) {
+        cons_type = sketchlib::ConsType::CircleDiameter;
+    } else if (strcmp(cons_type_s, "arc_radius") == 0) {
+        cons_type = sketchlib::ConsType::ArcRadius;
+    } else if (strcmp(cons_type_s, "arc_diameter") == 0) {
+        cons_type = sketchlib::ConsType::ArcDiameter;
     }
 
     std::shared_ptr<gs::Shape2D> shape1 = nullptr, shape2 = nullptr;

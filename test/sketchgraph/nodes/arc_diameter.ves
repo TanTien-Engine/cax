@@ -1,0 +1,49 @@
+var node0 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 288.91236937368, 133.92363909568)
+
+var node1 = ::sketchgraph::nodes::point::Point()
+node1.query_param("x").value = 0.027792533567129
+node1.query_param("y").value = 0.0221910401563
+
+_editor.add_node(node1, -338.12941314801, 128.86505462059)
+
+var node2 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node2, -148, 123.5)
+
+var node3 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node3, 137.53833159139, 113.57479505302)
+
+var node4 = ::sketchgraph::nodes::arc::Arc()
+node4.query_param("center").value.set(0, 0)
+node4.query_param("radius").value = 1
+node4.query_param("start_angle").value = 0
+node4.query_param("end_angle").value = 1.5707963267949
+
+_editor.add_node(node4, -337.48905626168, -34.93273869768)
+
+var node5 = ::sketchgraph::nodes::cons_nodes::PointOnArc()
+
+_editor.add_node(node5, -147, 29.909090909091)
+
+var node6 = ::sketchgraph::nodes::cons_nodes::ArcDiameter()
+node6.query_param("d").value = 0.8222222328186
+
+_editor.add_node(node6, -149, -49)
+
+var node7 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node7, -5, -16)
+
+Blueprint.connect(node4, "geo", node6, "geo")
+Blueprint.connect(node1, "geo", node5, "a")
+Blueprint.connect(node4, "geo", node5, "b")
+Blueprint.connect(node5, "cons", node7, "in0")
+Blueprint.connect(node6, "cons", node7, "in1")
+Blueprint.connect(node1, "geo", node2, "in0")
+Blueprint.connect(node4, "geo", node2, "in1")
+Blueprint.connect(node2, "list", node3, "geo")
+Blueprint.connect(node7, "list", node3, "cons")
+Blueprint.connect(node3, "geo", node0, "geo")

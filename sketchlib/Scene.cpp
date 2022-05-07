@@ -212,6 +212,35 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
             AddTangentCircumfCons(id, geo1_idx, geo2_idx);
         }
         break;
+        // params
+    case ConsType::CircleRadius:
+        if (is_circle(geo1)) {
+            AddCircleRadiusCons(id, geo1_idx, cons_val);
+        } else if (is_circle(geo2)) {
+            AddCircleRadiusCons(id, geo2_idx, cons_val);
+        }
+        break;
+    case ConsType::CircleDiameter:
+        if (is_circle(geo1)) {
+            AddCircleDiameterCons(id, geo1_idx, cons_val);
+        } else if (is_circle(geo2)) {
+            AddCircleDiameterCons(id, geo2_idx, cons_val);
+        }
+        break;
+    case ConsType::ArcRadius:
+        if (is_arc(geo1)) {
+            AddArcRadiusCons(id, geo1_idx, cons_val);
+        } else if (is_arc(geo2)) {
+            AddArcRadiusCons(id, geo2_idx, cons_val);
+        }
+        break;
+    case ConsType::ArcDiameter:
+        if (is_arc(geo1)) {
+            AddArcDiameterCons(id, geo1_idx, cons_val);
+        } else if (is_arc(geo2)) {
+            AddArcDiameterCons(id, geo2_idx, cons_val);
+        }
+        break;
     }
 }
     
@@ -665,6 +694,43 @@ void Scene::AddTangentCircumfCons(ConsID id, int circle1, int circle2)
 
     m_gcs->addConstraintTangentCircumf(m_points[m_geos[circle1].mid_pt_idx], m_points[m_geos[circle2].mid_pt_idx], 
         m_circles[m_geos[circle1].index].rad, m_circles[m_geos[circle2].index].rad, false, id);
+
+    ResetSolver();
+}
+
+void Scene::AddCircleRadiusCons(ConsID id, int circle, double* value)
+{
+    assert(circle < m_geos.size());
+
+    m_gcs->addConstraintCircleRadius(m_circles[m_geos[circle].index], value);
+
+    ResetSolver();
+}
+
+void Scene::AddCircleDiameterCons(ConsID id, int circle, double* value)
+{
+    assert(circle < m_geos.size());
+
+    m_gcs->addConstraintCircleDiameter(m_circles[m_geos[circle].index], value);
+
+    ResetSolver();
+
+}
+
+void Scene::AddArcRadiusCons(ConsID id, int arc, double* value)
+{
+    assert(arc < m_geos.size());
+
+    m_gcs->addConstraintArcRadius(m_arcs[m_geos[arc].index], value);
+
+    ResetSolver();
+}
+
+void Scene::AddArcDiameterCons(ConsID id, int arc, double* value)
+{
+    assert(arc < m_geos.size());
+
+    m_gcs->addConstraintArcDiameter(m_arcs[m_geos[arc].index], value);
 
     ResetSolver();
 }

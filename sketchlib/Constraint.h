@@ -31,6 +31,12 @@ enum class ConsType
 	// tangent
 	Tangent,
 	TangentCircumf,
+
+	// params
+	CircleRadius,
+	CircleDiameter,
+	ArcRadius,
+	ArcDiameter,
 };
 
 struct Constraint
