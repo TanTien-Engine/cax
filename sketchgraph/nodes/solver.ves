@@ -91,22 +91,22 @@ class Solver is Node
 
 	build_scene()
 	{
-		var v_cons = Blueprint.calc_input_value(this, 1)
-		if (!v_cons) {
-			return nil
-		}
-
-		import "logger.logger" for Logger
-		Logger.info("build scene")
-
-		var cons = VariantHelper.flatten_values(v_cons, VAR_TYPE_CONSTRAINT)
-
 		var scene = SketchScene.init()
-		for (var c in cons) 
+
+		var v_cons = Blueprint.calc_input_value(this, 1)
+		if (v_cons) 
 		{
-			var geo1 = this.geo2params(c.geo1)
-			var geo2 = this.geo2params(c.geo2)
-			scene.add(c.id, c.type, geo1, geo2, c.val, c.driving)
+			import "logger.logger" for Logger
+			Logger.info("build scene")
+
+			var cons = VariantHelper.flatten_values(v_cons, VAR_TYPE_CONSTRAINT)
+
+			for (var c in cons) 
+			{
+				var geo1 = this.geo2params(c.geo1)
+				var geo2 = this.geo2params(c.geo2)
+				scene.add(c.id, c.type, geo1, geo2, c.val, c.driving)
+			}
 		}
 
 		return scene
