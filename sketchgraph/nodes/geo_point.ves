@@ -1,0 +1,53 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VarGeoPoint, GEO_PT_ID_START, GEO_PT_ID_MIDDLE, GEO_PT_ID_END
+
+class GeoPoint is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "geo", VAR_TYPE_GEOMETRY),
+		]
+		this.exports = [
+			Pin(this, "start",  VAR_TYPE_GEO_POINT),
+			Pin(this, "end",    VAR_TYPE_GEO_POINT),
+			Pin(this, "middle", VAR_TYPE_GEO_POINT),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_geo = Blueprint.calc_input_value(this, 0)
+		if (!v_geo) {
+			return nil
+		}
+
+		var geo    = v_geo.value
+		var geo_id = geo.id
+		var shape  = geo.shape
+		if (idx == 0)
+		{
+			var p = VarGeoPoint(geo_id, GEO_PT_ID_START, shape)
+			return Variant(VAR_TYPE_GEO_POINT, p)
+		}
+		else if (idx == 1)
+		{
+			var p = VarGeoPoint(geo_id, GEO_PT_ID_END, shape)
+			return Variant(VAR_TYPE_GEO_POINT, p)
+		}
+		else if (idx == 2)
+		{
+			var p = VarGeoPoint(geo_id, GEO_PT_ID_MIDDLE, shape)
+			return Variant(VAR_TYPE_GEO_POINT, p)
+		}
+
+		return nil
+	}
+}

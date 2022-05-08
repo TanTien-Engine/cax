@@ -7,7 +7,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.node_editor" for NodeEditor
 import "blueprint.node_helper" for NodeHelper
 import "maths.vector" for Vector2
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VarGeometry, VarGeoPoint, GEO_PT_ID_START, GEO_PT_ID_END
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
 import "sketchgraph.util" for DRAW_SCALE
 import "geometry" for Line as tt_Line
@@ -26,8 +26,6 @@ class Line is Node
 		]
 		this.exports = [
 			Pin(this, "geo", VAR_TYPE_GEOMETRY),
-			Pin(this, "p1",  VAR_TYPE_GEO_POINT),
-			Pin(this, "p2",  VAR_TYPE_GEO_POINT),
 		]
 
 		this.params.add(NodeParam("p1", Vector2(0, 0)))
@@ -54,16 +52,6 @@ class Line is Node
 			var geo = VarGeometry(this.geo_id, shape)
 			geo.set_color(this.geo_col)
 			return Variant(VAR_TYPE_GEOMETRY, geo)
-		}
-		else if (idx == 1)
-		{
-			var p = VarGeoPoint(this.geo_id, GEO_PT_ID_START, shape)
-			return Variant(VAR_TYPE_GEO_POINT, p)
-		}
-		else if (idx == 2)
-		{
-			var p = VarGeoPoint(this.geo_id, GEO_PT_ID_END, shape)
-			return Variant(VAR_TYPE_GEO_POINT, p)
 		}
 
 		return nil

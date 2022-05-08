@@ -6,7 +6,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_NUMBER2
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_editor" for NodeEditor
 import "blueprint.node_helper" for NodeHelper
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VarGeometry, VarGeoPoint, GEO_PT_ID_MIDDLE
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
 import "sketchgraph.util" for DRAW_SCALE
 import "maths.vector" for Vector2
@@ -27,7 +27,6 @@ class Circle is Node
 		]
 		this.exports = [
 			Pin(this, "geo", VAR_TYPE_GEOMETRY),
-			Pin(this, "center", VAR_TYPE_GEO_POINT),
 		]
 
 		this.params.add(NodeParam("center", Vector2(0, 0)))
@@ -56,12 +55,7 @@ class Circle is Node
 			geo.set_color(this.geo_col)
 			return Variant(VAR_TYPE_GEOMETRY, geo)
 		}
-		else if (idx == 1)
-		{
-			var p = VarGeoPoint(this.geo_id, GEO_PT_ID_MIDDLE, shape)
-			return Variant(VAR_TYPE_GEO_POINT, p)
-		}
-
+		
 		return nil
 	}
 
