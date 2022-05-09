@@ -75,6 +75,14 @@ class Vertical is BinaryCons
 	}
 }
 
+class Equal is BinaryCons
+{
+	init()
+	{
+		super.init("equal")
+	}
+}
+
 // point on
 
 class PointOnLine is BinaryCons

@@ -21,6 +21,7 @@ enum class ConsType
 	Coincident,
 	Horizontal,
 	Vertical,
+	Equal,
 
 	// point on
 	PointOnLine,

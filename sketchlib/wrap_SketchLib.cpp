@@ -73,6 +73,8 @@ void w_Scene_add()
         cons_type = sketchlib::ConsType::Horizontal;
     } else if (strcmp(cons_type_s, "vertical") == 0) {
         cons_type = sketchlib::ConsType::Vertical;
+    } else if (strcmp(cons_type_s, "equal") == 0) {
+        cons_type = sketchlib::ConsType::Equal;
     }
     // point on
     else if (strcmp(cons_type_s, "point_on_line") == 0) {

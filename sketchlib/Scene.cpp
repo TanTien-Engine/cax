@@ -206,6 +206,21 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
             AddVerticalCons(id, geo2_idx, PointPos::Start, geo2_idx, PointPos::End, driving);
         }
         break;
+    case ConsType::Equal:
+        if (is_line(geo1) && is_line(geo2)) {
+            AddEqualLengthCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_circle(geo1) && is_circle(geo2)) {
+            AddC2CEqualRadiusCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_arc(geo1) && is_arc(geo2)) {
+            AddA2AEqualRadiusCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_circle(geo1) && is_arc(geo2)) {
+            AddC2AEqualRadiusCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_circle(geo2) && is_arc(geo1)) {
+            AddC2AEqualRadiusCons(id, geo2_idx, geo1_idx, driving);
+        } else if (is_ellipse(geo2) && is_ellipse(geo1)) {
+            AddEqualRadiiCons(id, geo2_idx, geo1_idx, driving);
+        } 
+        break;
         // point on
     case ConsType::PointOnLine:
         if (is_point(geo1) && is_line(geo2)) {
@@ -859,6 +874,51 @@ void Scene::AddArcDiameterCons(ConsID id, int arc, double* value, bool driving)
     assert(arc < m_geos.size());
 
     m_gcs->addConstraintArcDiameter(m_arcs[m_geos[arc].index], value, id, driving);
+
+    ResetSolver();
+}
+
+void Scene::AddEqualLengthCons(ConsID id, int line1, int line2, bool driving)
+{
+    assert(line1 < m_geos.size() && line2 < m_geos.size());
+
+    m_gcs->addConstraintEqualLength(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id, driving);
+
+    ResetSolver();
+}
+
+void Scene::AddC2CEqualRadiusCons(ConsID id, int circle1, int circle2, bool driving)
+{
+    assert(circle1 < m_geos.size() && circle2 < m_geos.size());
+
+    m_gcs->addConstraintEqualRadius(m_circles[m_geos[circle1].index], m_circles[m_geos[circle2].index], id, driving);
+
+    ResetSolver();
+}
+
+void Scene::AddA2AEqualRadiusCons(ConsID id, int arc1, int arc2, bool driving)
+{
+    assert(arc1 < m_geos.size() && arc2 < m_geos.size());
+
+    m_gcs->addConstraintEqualRadius(m_arcs[m_geos[arc1].index], m_arcs[m_geos[arc2].index], id, driving);
+
+    ResetSolver();
+}
+
+void Scene::AddC2AEqualRadiusCons(ConsID id, int circle, int arc, bool driving)
+{
+    assert(circle < m_geos.size() && arc < m_geos.size());
+
+    m_gcs->addConstraintEqualRadius(m_circles[m_geos[circle].index], m_arcs[m_geos[arc].index], id, driving);
+
+    ResetSolver();
+}
+
+void Scene::AddEqualRadiiCons(ConsID id, int ellipse1, int ellipse2, bool driving)
+{
+    assert(ellipse1 < m_geos.size() && ellipse2 < m_geos.size());
+
+    m_gcs->addConstraintEqualRadii(m_ellipses[m_geos[ellipse1].index], m_ellipses[m_geos[ellipse2].index], id, driving);
 
     ResetSolver();
 }

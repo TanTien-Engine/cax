@@ -1,8 +1,8 @@
 import "sketchgraph.nodes.*"
-import "sketchgraph.nodes.cons_nodes" for Distance, DistanceX, DistanceY, Angle, Parallel, Perpendicular, Coincident, Horizontal, Vertical, PointOnLine, PointOnCircle, PointOnArc, PointOnEllipse, PointOnPerpBisector, MidpointOnLine, Tangent, TangentCircumf, CircleRadius, CircleDiameter, ArcRadius, ArcDiameter
+import "sketchgraph.nodes.cons_nodes" for Distance, DistanceX, DistanceY, Angle, Parallel, Perpendicular, Coincident, Horizontal, Vertical, Equal, PointOnLine, PointOnCircle, PointOnArc, PointOnEllipse, PointOnPerpBisector, MidpointOnLine, Tangent, TangentCircumf, CircleRadius, CircleDiameter, ArcRadius, ArcDiameter
 
 var SKETCH_NODES = [ 
 Point, Line, Circle, Arc, Ellipse, GeoPoint,
-Distance, DistanceX, DistanceY, Angle, Parallel, Perpendicular, Coincident, Horizontal, Vertical, PointOnLine, PointOnCircle, PointOnArc, PointOnEllipse, PointOnPerpBisector, MidpointOnLine, Tangent, TangentCircumf,  CircleRadius, CircleDiameter, ArcRadius, ArcDiameter,
+Distance, DistanceX, DistanceY, Angle, Parallel, Perpendicular, Coincident, Horizontal, Vertical, Equal, PointOnLine, PointOnCircle, PointOnArc, PointOnEllipse, PointOnPerpBisector, MidpointOnLine, Tangent, TangentCircumf,  CircleRadius, CircleDiameter, ArcRadius, ArcDiameter,
 Solver, Draw,
 ]

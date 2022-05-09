@@ -78,6 +78,13 @@ private:
 	void AddArcRadiusCons(ConsID id, int arc, double* value, bool driving);
 	void AddArcDiameterCons(ConsID id, int arc, double* value, bool driving);
 
+	// equal
+	void AddEqualLengthCons(ConsID id, int line1, int line2, bool driving);
+	void AddC2CEqualRadiusCons(ConsID id, int circle1, int circle2, bool driving);
+	void AddA2AEqualRadiusCons(ConsID id, int arc1, int arc2, bool driving);
+	void AddC2AEqualRadiusCons(ConsID id, int circle, int arc, bool driving);
+	void AddEqualRadiiCons(ConsID id, int ellipse1, int ellipse2, bool driving);
+
 	void BeforeSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);
 	void AfterSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);
 
