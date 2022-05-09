@@ -8,7 +8,7 @@ import "blueprint.nodes.number2" for Number2
 import "blueprint.node_helper" for NodeHelper
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
-import "sketchgraph.util" for DRAW_SCALE
+import "sketchgraph.util" for DRAW_SCALE, GEO_COLOR, GEO_SELECTED_COLOR
 import "geometry" for Point as tt_Point
 
 var EDITOR = nil
@@ -36,7 +36,7 @@ class Point is Node
 
 		this.editor_pos = Number2()
 
-		this.geo_col = [ 255, 255, 255, 255 ]
+		this.geo_col = GEO_COLOR
 	}
 
 	calc_value(idx)
@@ -49,6 +49,22 @@ class Point is Node
 		geo.set_color(this.geo_col)
 
 		return Variant(VAR_TYPE_GEOMETRY, geo)
+	}
+
+	on_selected() 
+	{
+		super.on_selected()
+
+		this.geo_col = GEO_SELECTED_COLOR
+		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+
+	on_deselected() 
+	{ 
+		super.on_deselected()
+
+		this.geo_col = GEO_COLOR
+		Blueprint.send_pin_dirty_root(this.exports[0])
 	}
 
 	bind_editor()

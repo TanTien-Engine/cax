@@ -9,7 +9,7 @@ import "blueprint.node_helper" for NodeHelper
 import "maths.vector" for Vector2
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
-import "sketchgraph.util" for DRAW_SCALE
+import "sketchgraph.util" for DRAW_SCALE, GEO_COLOR, GEO_SELECTED_COLOR
 import "geometry" for Line as tt_Line
 
 var EDITOR = nil
@@ -37,7 +37,7 @@ class Line is Node
 
 		this.editor_pts = Array()
 
-		this.geo_col = [ 255, 255, 255, 255 ]
+		this.geo_col = GEO_COLOR
 	}
 
 	calc_value(idx)
@@ -57,6 +57,22 @@ class Line is Node
 		return nil
 	}
 
+	on_selected() 
+	{
+		super.on_selected()
+
+		this.geo_col = GEO_SELECTED_COLOR
+		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+
+	on_deselected() 
+	{ 
+		super.on_deselected()
+
+		this.geo_col = GEO_COLOR
+		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+	
 	bind_editor()
 	{
 		if (!EDITOR) {

@@ -8,7 +8,7 @@ import "blueprint.node_editor" for NodeEditor
 import "blueprint.node_helper" for NodeHelper
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VarGeometry
 import "sketchgraph.context" for CONTEXT
-import "sketchgraph.util" for DRAW_SCALE
+import "sketchgraph.util" for DRAW_SCALE, GEO_COLOR, GEO_SELECTED_COLOR
 import "maths.vector" for Vector2
 import "maths.calc" for Calc
 import "geometry" for Arc as tt_Arc
@@ -43,7 +43,7 @@ class Arc is Node
 
 		this.editor_pts = Array()
 
-		this.geo_col = [ 255, 255, 255, 255 ]
+		this.geo_col = GEO_COLOR
 	}
 
 	calc_value(idx)
@@ -65,6 +65,22 @@ class Arc is Node
 		return nil
 	}
 
+	on_selected() 
+	{
+		super.on_selected()
+
+		this.geo_col = GEO_SELECTED_COLOR
+		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+
+	on_deselected() 
+	{ 
+		super.on_deselected()
+
+		this.geo_col = GEO_COLOR
+		Blueprint.send_pin_dirty_root(this.exports[0])
+	}
+	
 	bind_editor()
 	{
 		if (!EDITOR) {

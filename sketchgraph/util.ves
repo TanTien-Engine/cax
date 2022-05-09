@@ -1,1 +1,4 @@
 var DRAW_SCALE = 100
+
+var GEO_COLOR          = [255, 255, 255, 255]
+var GEO_SELECTED_COLOR = [255, 0, 0, 255]
