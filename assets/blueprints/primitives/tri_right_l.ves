@@ -1,0 +1,96 @@
+var node0 = ::sketchgraph::nodes::cons_nodes::Horizontal()
+node0.query_param("driving").value = true
+
+_editor.add_node(node0, -66.575286150948, -101.72169661927)
+
+var node1 = ::sketchgraph::nodes::cons_nodes::Vertical()
+node1.query_param("driving").value = true
+
+_editor.add_node(node1, -67.419670713385, -184.80527839661)
+
+var node2 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node2, 83.249101449078, -139.94222953022)
+
+var node3 = ::sketchgraph::nodes::cons_nodes::Coincident()
+node3.query_param("driving").value = false
+
+_editor.add_node(node3, -65.923944974101, -285.20333465753)
+
+var node4 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node4, 90.116217233215, -356.72590254968)
+
+var node5 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node5, 237.42222682731, -236.66441672502)
+
+var node6 = ::sketchgraph::nodes::cons_nodes::Coincident()
+node6.query_param("driving").value = false
+
+_editor.add_node(node6, -65.746976187816, -371.3039425395)
+
+var node7 = ::sketchgraph::nodes::cons_nodes::Coincident()
+node7.query_param("driving").value = false
+
+_editor.add_node(node7, -64.107265785521, -455.70678387547)
+
+var node8 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node8, -237.01980902854, -296.07585111735)
+
+var node9 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node9, -236.69876092588, -377.68231868906)
+
+var node10 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node10, -233.24956189215, -460.94166444672)
+
+var node11 = ::blueprint::nodes::input::Input()
+
+node11.var_name = "hori"
+node11.var_type = "geometry"
+
+_editor.add_node(node11, -437.32782191278, -198.00871583574)
+
+var node12 = ::blueprint::nodes::input::Input()
+
+node12.var_name = "vert"
+node12.var_type = "geometry"
+
+_editor.add_node(node12, -434.64375646643, -262.17416878977)
+
+var node13 = ::blueprint::nodes::input::Input()
+
+node13.var_name = "hypo"
+node13.var_type = "geometry"
+
+_editor.add_node(node13, -434.2961808227, -330.39219412957)
+
+var node14 = ::blueprint::nodes::output::Output()
+
+node14.var_name = "cons"
+node14.var_type = "array"
+
+_editor.add_node(node14, 376.8631407052, -214.06218385302)
+
+Blueprint.connect(node13, "var", node10, "geo")
+Blueprint.connect(node12, "var", node9, "geo")
+Blueprint.connect(node9, "end", node7, "a")
+Blueprint.connect(node10, "start", node7, "b")
+Blueprint.connect(node12, "var", node1, "a")
+Blueprint.connect(node11, "var", node8, "geo")
+Blueprint.connect(node8, "end", node6, "a")
+Blueprint.connect(node10, "end", node6, "b")
+Blueprint.connect(node8, "start", node3, "a")
+Blueprint.connect(node9, "start", node3, "b")
+Blueprint.connect(node3, "cons", node4, "in0")
+Blueprint.connect(node6, "cons", node4, "in1")
+Blueprint.connect(node7, "cons", node4, "in2")
+Blueprint.connect(node11, "var", node0, "a")
+Blueprint.connect(node0, "cons", node2, "in0")
+Blueprint.connect(node1, "cons", node2, "in1")
+Blueprint.connect(node2, "list", node5, "in0")
+Blueprint.connect(node4, "list", node5, "in1")
+Blueprint.connect(node5, "list", node14, "var")

@@ -1,0 +1,52 @@
+var node0 = ::blueprint::nodes::subgraph::Subgraph()
+node0.load_from_file(_editor, "../../../assets/blueprints/primitives/rect_l.ves")
+
+_editor.add_node(node0, -227.25060773744, -19.866458838345)
+
+var node1 = ::sketchgraph::nodes::line::Line()
+node1.query_param("p1").value.set(-2.35, 2.02)
+node1.query_param("p2").value.set(1.58, 1.92)
+
+_editor.add_node(node1, -491.68225097656, 213.20693969727)
+
+var node2 = ::sketchgraph::nodes::line::Line()
+node2.query_param("p1").value.set(-1.97, -2.13)
+node2.query_param("p2").value.set(1.42, -2)
+
+_editor.add_node(node2, -492.73833897656, 64.52008269727)
+
+var node3 = ::sketchgraph::nodes::line::Line()
+node3.query_param("p1").value.set(-2.49, -0.99)
+node3.query_param("p2").value.set(-2.58, 1.34)
+
+_editor.add_node(node3, -495.63690497656, -86.534931302731)
+
+var node4 = ::sketchgraph::nodes::line::Line()
+node4.query_param("p1").value.set(1.71, -0.87)
+node4.query_param("p2").value.set(1.66, 1.15)
+
+_editor.add_node(node4, -494.65838209056, -241.51242090373)
+
+var node5 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node5, -277.87364545746, 118.1269888794)
+
+var node6 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node6, 112.35925822154, 77.63112136302)
+
+var node7 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node7, -26.48151924225, 56.430347477593)
+
+Blueprint.connect(node1, "geo", node5, "in0")
+Blueprint.connect(node2, "geo", node5, "in1")
+Blueprint.connect(node3, "geo", node5, "in2")
+Blueprint.connect(node4, "geo", node5, "in3")
+Blueprint.connect(node1, "geo", node0, "top")
+Blueprint.connect(node2, "geo", node0, "bottom")
+Blueprint.connect(node3, "geo", node0, "left")
+Blueprint.connect(node4, "geo", node0, "right")
+Blueprint.connect(node5, "list", node7, "geo")
+Blueprint.connect(node0, "cons", node7, "cons")
+Blueprint.connect(node7, "geo", node6, "geo")
