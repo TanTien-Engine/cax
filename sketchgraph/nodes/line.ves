@@ -21,8 +21,8 @@ class Line is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "p1", VAR_TYPE_NUMBER2),
-			Pin(this, "p2", VAR_TYPE_NUMBER2),
+			Pin(this, "p1", [ VAR_TYPE_NUMBER2, VAR_TYPE_GEOMETRY ]),
+			Pin(this, "p2", [ VAR_TYPE_NUMBER2, VAR_TYPE_GEOMETRY ]),
 		]
 		this.exports = [
 			Pin(this, "geo", VAR_TYPE_GEOMETRY),
@@ -42,8 +42,8 @@ class Line is Node
 
 	calc_value(idx)
 	{
-		var p1 = NodeHelper.calc_prop_value(this, "p1")
-		var p2 = NodeHelper.calc_prop_value(this, "p2")
+		var p1 = this.calc_input_pos("p1")
+		var p2 = this.calc_input_pos("p2")
 
 		var shape = tt_Line.init(p1.x, p1.y, p2.x, p2.y)
 
@@ -63,8 +63,8 @@ class Line is Node
 			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
 		}
 
-		var p1 = NodeHelper.calc_prop_value(this, "p1")
-		var p2 = NodeHelper.calc_prop_value(this, "p2")
+		var p1 = this.calc_input_pos("p1")
+		var p2 = this.calc_input_pos("p2")
 
 		this.editor_pts.list.clear()
 		this.editor_pts.list.add(Variant(Vector2(p1.x * DRAW_SCALE, p1.y * DRAW_SCALE)))
@@ -108,5 +108,19 @@ class Line is Node
 		p2.set(s2.x / DRAW_SCALE, s2.y / DRAW_SCALE)
 
 		Blueprint.send_pin_dirty_root(this.exports[0])
-	}	
+	}
+
+	calc_input_pos(name)
+	{
+		var pos = NodeHelper.calc_prop_value(this, name)
+		if (pos is VarGeometry)
+		{
+			var p = pos.shape.get()
+			return Vector2(p[0], p[1])
+		}
+		else
+		{
+			return pos
+		}
+	}
 }
