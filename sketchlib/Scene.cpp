@@ -106,6 +106,10 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
         return;
     }
 
+    if (IsConsExists(type, geo1, geo2)) {
+        return;
+    }
+
     Constraint cons(id, type, geo1, geo2, val);
 
     size_t idx = m_cons.size();
@@ -343,6 +347,21 @@ void Scene::ResetSolver()
     m_gcs->getConflicting(m_conflicting);
     m_gcs->getRedundant(m_redundant);
     m_gcs->getPartiallyRedundant(m_partially_redundant);
+}
+
+bool Scene::IsConsExists(ConsType type, const std::pair<GeoID, GeoType>& geo1,
+                         const std::pair<GeoID, GeoType>& geo2) const
+{
+    for (auto& c : m_cons)
+    {
+        if (c.type == type &&
+            c.geo1 == geo1 &&
+            c.geo2 == geo2) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void Scene::AddPoint(const std::shared_ptr<gs::Point2D>& pt, GeoID id)

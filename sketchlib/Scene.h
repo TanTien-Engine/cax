@@ -30,6 +30,9 @@ public:
 private:
 	void ResetSolver();
 
+	bool IsConsExists(ConsType type, const std::pair<GeoID, GeoType>& geo1,
+		const std::pair<GeoID, GeoType>& geo2) const;
+
 	// geometries
 	void AddPoint(const std::shared_ptr<gs::Point2D>& pt, GeoID id);
 	void AddLine(const std::shared_ptr<gs::Line2D>& line, GeoID id);
