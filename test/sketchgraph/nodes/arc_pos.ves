@@ -1,6 +1,6 @@
 var node0 = ::sketchgraph::nodes::draw::Draw()
 
-_editor.add_node(node0, 152.0964414999, 161.04610340823)
+_editor.add_node(node0, 302.0964414999, 148.04610340823)
 
 var node1 = ::blueprint::nodes::merge::Merge()
 
@@ -8,30 +8,63 @@ _editor.add_node(node1, -158.09090909091, 168.59090909091)
 
 var node2 = ::sketchgraph::nodes::solver::Solver()
 
-_editor.add_node(node2, 0.44742250048391, 137.66570414393)
+_editor.add_node(node2, 135.44742250048, 114.66570414393)
 
 var node3 = ::sketchgraph::nodes::line::Line()
-node3.query_param("p1").value.set(0, 0)
+node3.query_param("p1").value.set(2.1173417116317, -0.50542995697015)
 node3.query_param("p2").value.set(-0.058128960843014, 1.8754990655134)
 
 _editor.add_node(node3, -338.54545454545, 162.40909090909)
 
 var node4 = ::sketchgraph::nodes::arc::Arc()
-node4.query_param("center").value.set(-0.10209213230592, 0.015163147077634)
-node4.query_param("radius").value = 1.2195864655872
-node4.query_param("start_angle").value = 2.4568560081556
-node4.query_param("end_angle").value = 7.2253156797591
+node4.query_param("center").value.set(-0.057451055876714, -0.70800671836872)
+node4.query_param("radius").value = 1.1057381457003
+node4.query_param("start_angle").value = -1.3143662985435
+node4.query_param("end_angle").value = 2.0972229757246
 
-_editor.add_node(node4, -335.76004060774, -35.461122926986)
+_editor.add_node(node4, -462.30877361778, -104.39084084243)
 
 var node5 = ::sketchgraph::nodes::cons_nodes::PointOnLine()
+node5.query_param("driving").value = true
 
-_editor.add_node(node5, -158.37465583172, 32.150371980099)
+_editor.add_node(node5, -146.80440789784, 34.629710823074)
 
+var node6 = ::sketchgraph::nodes::cons_nodes::DistanceX()
+node6.query_param("driving").value = true
+node6.query_param("dist").value = 0
+
+_editor.add_node(node6, -147.65266903031, -79.110489844831)
+
+var node7 = ::sketchgraph::nodes::point::Point()
+node7.query_param("x").value = 0
+node7.query_param("y").value = 0
+
+_editor.add_node(node7, -78.818181818182, 367.40909090909)
+
+var node8 = ::sketchgraph::nodes::cons_nodes::DistanceY()
+node8.query_param("driving").value = true
+node8.query_param("dist").value = 0
+
+_editor.add_node(node8, -151.49534656206, -207.17200029639)
+
+var node9 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node9, -0.39290987412199, -111.98724858638)
+
+var node10 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node10, -314.23934003341, -68.259971933917)
+
+Blueprint.connect(node4, "geo", node10, "geo")
+Blueprint.connect(node10, "end", node8, "a")
+Blueprint.connect(node10, "end", node6, "a")
+Blueprint.connect(node6, "cons", node9, "in0")
+Blueprint.connect(node8, "cons", node9, "in1")
 Blueprint.connect(node3, "geo", node5, "a")
-Blueprint.connect(node4, "start", node5, "b")
+Blueprint.connect(node10, "start", node5, "b")
 Blueprint.connect(node3, "geo", node1, "in0")
 Blueprint.connect(node4, "geo", node1, "in1")
+Blueprint.connect(node7, "geo", node1, "in2")
 Blueprint.connect(node1, "list", node2, "geo")
 Blueprint.connect(node5, "cons", node2, "cons")
 Blueprint.connect(node2, "geo", node0, "geo")

@@ -1,0 +1,8 @@
+var node0 = ::sketchnetwork::nodes::geo_nodes::Arc()
+node0.impl.query_param("center").value.set(0, 0)
+node0.impl.query_param("radius").value = 1
+node0.impl.query_param("start_angle").value = 1.5707963267949
+node0.impl.query_param("end_angle").value = 1.5707963267949 + 3.14
+
+_editor.add_node(node0, -123, 106)
+

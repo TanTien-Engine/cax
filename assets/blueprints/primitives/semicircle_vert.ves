@@ -1,0 +1,40 @@
+var node0 = ::sketchgraph::nodes::cons_nodes::Vertical()
+node0.query_param("driving").value = true
+
+_editor.add_node(node0, -252.10970845233, 65.758780058574)
+
+var node1 = ::sketchgraph::nodes::cons_nodes::Vertical()
+node1.query_param("driving").value = true
+
+_editor.add_node(node1, -252.44917794228, -21.891956931418)
+
+var node2 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node2, -108.2822934851, 31.251846917097)
+
+var node3 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node3, -429.58286447064, 31.375081581935)
+
+var node4 = ::blueprint::nodes::input::Input()
+
+node4.var_name = "geo"
+node4.var_type = "geometry"
+
+_editor.add_node(node4, -569.27923379695, 42.36715834713)
+
+var node5 = ::blueprint::nodes::output::Output()
+
+node5.var_name = "cons"
+node5.var_type = "array"
+
+_editor.add_node(node5, 22.458792787194, 51.060062994469)
+
+Blueprint.connect(node4, "var", node3, "geo")
+Blueprint.connect(node3, "end", node1, "a")
+Blueprint.connect(node3, "middle", node1, "b")
+Blueprint.connect(node3, "start", node0, "a")
+Blueprint.connect(node3, "middle", node0, "b")
+Blueprint.connect(node0, "cons", node2, "in0")
+Blueprint.connect(node1, "cons", node2, "in1")
+Blueprint.connect(node2, "list", node5, "var")

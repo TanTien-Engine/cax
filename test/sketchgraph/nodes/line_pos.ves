@@ -13,6 +13,7 @@ node2.query_param("radius").value = 1
 _editor.add_node(node2, -338.87107438017, 9.9787377911345)
 
 var node3 = ::sketchgraph::nodes::cons_nodes::PointOnCircle()
+node3.query_param("driving").value = true
 
 _editor.add_node(node3, -154.59802932567, 76.114490782453)
 
@@ -24,9 +25,14 @@ var node5 = ::sketchgraph::nodes::line::Line()
 node5.query_param("p1").value.set(0, 0)
 node5.query_param("p2").value.set(1, 1)
 
-_editor.add_node(node5, -338.54545454545, 162.40909090909)
+_editor.add_node(node5, -491.292100018, 159.92540561685)
 
-Blueprint.connect(node5, "p2", node3, "a")
+var node6 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node6, -339.81190430361, 118.77926557426)
+
+Blueprint.connect(node5, "geo", node6, "geo")
+Blueprint.connect(node6, "end", node3, "a")
 Blueprint.connect(node2, "geo", node3, "b")
 Blueprint.connect(node5, "geo", node1, "in0")
 Blueprint.connect(node2, "geo", node1, "in1")

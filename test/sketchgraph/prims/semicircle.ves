@@ -1,0 +1,31 @@
+var node0 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 153.55759835035, 126.92233031517)
+
+var node1 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node1, 17.075309566612, 106.01022003503)
+
+var node2 = ::sketchgraph::nodes::arc::Arc()
+node2.query_param("center").value.set(0, 0)
+node2.query_param("radius").value = 0.93429568333305
+node2.query_param("start_angle").value = -0.64195930961697
+node2.query_param("end_angle").value = 1.6153877275581
+
+_editor.add_node(node2, -459.60514992146, 25.919677335412)
+
+var node3 = ::blueprint::nodes::subgraph::Subgraph()
+node3.load_from_file(_editor, "../../../assets/blueprints/primitives/semicircle_hori.ves")
+
+_editor.add_node(node3, -206.34130859375, 37.452117919922)
+
+var node4 = ::blueprint::nodes::subgraph::Subgraph()
+node4.load_from_file(_editor, "../../../assets/blueprints/primitives/semicircle_vert.ves")
+
+_editor.add_node(node4, -202.65655517578, -57.007057189941)
+
+Blueprint.connect(node2, "geo", node4, "geo")
+Blueprint.connect(node2, "geo", node3, "geo")
+Blueprint.connect(node2, "geo", node1, "geo")
+Blueprint.connect(node3, "cons", node1, "cons")
+Blueprint.connect(node1, "geo", node0, "geo")
