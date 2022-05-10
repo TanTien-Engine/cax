@@ -5,7 +5,7 @@ import "blueprint.variant" for VAR_TYPE_ARRAY, VAR_TYPE_PORT
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
 import "sketchgraph.util" for DRAW_SCALE
 import "graphics" for Painter, Graphics
-import "geometry" for Point, Line, Circle, Arc, Ellipse
+import "geometry" for Point, Line, Circle, Arc, Ellipse, Polyline
 import "maths" for Matrix44
 
 class Draw is Node
@@ -79,6 +79,15 @@ class Draw is Node
 			{
 				 var verts = shape.get_vertices()
 				 pt.add_polygon(this.mat, verts, col, 2.0)
+			}
+			else if (shape is Polyline)
+			{
+				var verts = shape.get_vertices()
+				if (shape.get_closed()) {
+					verts.add(verts[0])
+					verts.add(verts[1])
+				}
+				pt.add_polyline(this.mat, verts, col, 2.0)
 			}
 		}
 	}

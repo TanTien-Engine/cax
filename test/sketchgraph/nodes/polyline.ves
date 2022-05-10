@@ -1,0 +1,61 @@
+var node0 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node0, 377.17856020764, 149.99848371013)
+
+var node1 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node1, -123.0919128418, 152.37365112305)
+
+var node2 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node2, 29.10155471141, 128.25917278024)
+
+var node3 = ::sketchgraph::nodes::cons_nodes::Equal()
+node3.query_param("driving").value = true
+
+_editor.add_node(node3, -119.71454214673, 34.443543293175)
+
+var node4 = ::sketchgraph::nodes::geo_pair::GeoPair()
+
+_editor.add_node(node4, -288.69421487603, 18.30991735537)
+
+var node5 = ::sketchgraph::nodes::point::Point()
+node5.query_param("x").value = -1.86
+node5.query_param("y").value = -1.76
+
+_editor.add_node(node5, -516, 249.5)
+
+var node6 = ::sketchgraph::nodes::point::Point()
+node6.query_param("x").value = 0.14
+node6.query_param("y").value = -1.29
+
+_editor.add_node(node6, -517.78760330578, 133.25867768595)
+
+var node7 = ::sketchgraph::nodes::point::Point()
+node7.query_param("x").value = -0.73
+node7.query_param("y").value = -0.3
+
+_editor.add_node(node7, -516.17727272727, 18.70214876033)
+
+var node8 = ::sketchgraph::nodes::geo_pair::GeoPair()
+
+_editor.add_node(node8, -287.49669421487, -59.76446280992)
+
+var node9 = ::sketchgraph::nodes::polyline::Polyline()
+node9.query_param("closed").value = false
+
+_editor.add_node(node9, 188, 130)
+
+Blueprint.connect(node6, "geo", node8, "geo1")
+Blueprint.connect(node7, "geo", node8, "geo2")
+Blueprint.connect(node5, "geo", node4, "geo1")
+Blueprint.connect(node6, "geo", node4, "geo2")
+Blueprint.connect(node4, "pair", node3, "a")
+Blueprint.connect(node8, "pair", node3, "b")
+Blueprint.connect(node5, "geo", node1, "in0")
+Blueprint.connect(node6, "geo", node1, "in1")
+Blueprint.connect(node7, "geo", node1, "in2")
+Blueprint.connect(node1, "list", node2, "geo")
+Blueprint.connect(node3, "cons", node2, "cons")
+Blueprint.connect(node2, "geo", node9, "pts")
+Blueprint.connect(node9, "geo", node0, "geo")

@@ -1,11 +1,11 @@
 var node0 = ::blueprint::nodes::subgraph::Subgraph()
 node0.load_from_file(_editor, "../../../assets/blueprints/primitives/rect_p.ves")
 
-_editor.add_node(node0, -163.71, 30.98)
+_editor.add_node(node0, -114.71, 29.98)
 
 var node1 = ::sketchgraph::nodes::point::Point()
-node1.query_param("x").value = -2.65
-node1.query_param("y").value = -1.6
+node1.query_param("x").value = -1.77
+node1.query_param("y").value = -0.48
 
 _editor.add_node(node1, -472, 291.5)
 
@@ -29,39 +29,44 @@ _editor.add_node(node4, -473.57773, -39.170293909091)
 
 var node5 = ::blueprint::nodes::merge::Merge()
 
-_editor.add_node(node5, -221.99, 236.03)
+_editor.add_node(node5, -137.09142749812, 242.79183320811)
 
 var node6 = ::sketchgraph::nodes::draw::Draw()
 
-_editor.add_node(node6, 360.97774059149, 163.91151560686)
+_editor.add_node(node6, 585.97774059149, 114.91151560686)
 
 var node7 = ::sketchgraph::nodes::solver::Solver()
 
-_editor.add_node(node7, 213.57774059149, 142.01151560686)
+_editor.add_node(node7, 281.57774059149, 93.01151560686)
 
 var node8 = ::sketchgraph::nodes::point::Point()
-node8.query_param("x").value = 4.2730584236596
-node8.query_param("y").value = -0.56918391
+node8.query_param("x").value = 3.7030584236596
+node8.query_param("y").value = -0.73918391
 
 _editor.add_node(node8, -402.04158789986, -207.38432250604)
 
 var node9 = ::blueprint::nodes::subgraph::Subgraph()
 node9.load_from_file(_editor, "../../../assets/blueprints/primitives/tri_right_p.ves")
 
-_editor.add_node(node9, -119.19181818182, -172.86545454545)
+_editor.add_node(node9, -111.19181818182, -111.86545454545)
 
 var node10 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node10, 97.510658950175, -30.179501988435)
+
+var node11 = ::sketchgraph::nodes::polyline::Polyline()
+node11.query_param("closed").value = true
+
+_editor.add_node(node11, 432, 94.5)
 
 Blueprint.connect(node2, "geo", node9, "o")
 Blueprint.connect(node8, "geo", node9, "x")
 Blueprint.connect(node4, "geo", node9, "y")
 Blueprint.connect(node1, "geo", node5, "in0")
 Blueprint.connect(node2, "geo", node5, "in1")
-Blueprint.connect(node3, "geo", node5, "in2")
+Blueprint.connect(node8, "geo", node5, "in2")
 Blueprint.connect(node4, "geo", node5, "in3")
-Blueprint.connect(node8, "geo", node5, "in4")
+Blueprint.connect(node3, "geo", node5, "in4")
 Blueprint.connect(node1, "geo", node0, "l_btm")
 Blueprint.connect(node2, "geo", node0, "r_btm")
 Blueprint.connect(node3, "geo", node0, "l_top")
@@ -70,4 +75,5 @@ Blueprint.connect(node0, "cons", node10, "in0")
 Blueprint.connect(node9, "cons", node10, "in1")
 Blueprint.connect(node5, "list", node7, "geo")
 Blueprint.connect(node10, "list", node7, "cons")
-Blueprint.connect(node7, "geo", node6, "geo")
+Blueprint.connect(node7, "geo", node11, "pts")
+Blueprint.connect(node11, "geo", node6, "geo")
