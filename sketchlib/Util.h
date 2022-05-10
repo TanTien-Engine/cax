@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 namespace sketchlib
 {
 
@@ -19,5 +21,7 @@ enum class GeoType
     GeoPtMid,
     GeoPtEnd,
 };
+
+using Geo = std::pair<GeoID, GeoType>;
 
 }

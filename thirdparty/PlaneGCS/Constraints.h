@@ -620,12 +620,17 @@ namespace GCS
     class ConstraintEqualLineLength : public Constraint
     {
     private:
-        Line l1;
-        Line l2;
-        void ReconstructGeomPointers(); //writes pointers in pvec to the parameters of line1, line2
+        inline double* l1p1x() { return pvec[0]; }
+        inline double* l1p1y() { return pvec[1]; }
+        inline double* l1p2x() { return pvec[2]; }
+        inline double* l1p2y() { return pvec[3]; }
+        inline double* l2p1x() { return pvec[4]; }
+        inline double* l2p1y() { return pvec[5]; }
+        inline double* l2p2x() { return pvec[6]; }
+        inline double* l2p2y() { return pvec[7]; }
         void errorgrad(double* err, double* grad, double *param); //error and gradient combined. Values are returned through pointers.
     public:
-        ConstraintEqualLineLength(Line &l1, Line &l2);
+        ConstraintEqualLineLength(Point& l1p1, Point& l1p2, Point& l2p1, Point& l2p2);
         virtual ConstraintType getTypeId();
         virtual void rescale(double coef=1.);
         virtual double error();

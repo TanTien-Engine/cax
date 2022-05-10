@@ -44,8 +44,7 @@ enum class ConsType
 
 struct Constraint
 {
-	Constraint(ConsID id, ConsType type, const std::pair<GeoID, GeoType>& geo1, 
-		const std::pair<GeoID, GeoType>& geo2, double val)
+	Constraint(ConsID id, ConsType type, const Geo& geo1, const Geo& geo2, double val)
 		: id(id), type(type), geo1(geo1), geo2(geo2), value(val) 
 	{
 	}
@@ -54,7 +53,25 @@ struct Constraint
 
 	ConsType type = ConsType::None;
 
-	std::pair<GeoID, GeoType> geo1, geo2;
+	Geo geo1, geo2;
+
+	double value = 0.0;
+
+}; // Constraint
+
+struct Constraint2
+{
+	Constraint2(ConsID id, ConsType type, const std::pair<Geo, Geo>& geo1,
+		const std::pair<Geo, Geo>& geo2, double val)
+		: id(id), type(type), geo1(geo1), geo2(geo2), value(val)
+	{
+	}
+
+	ConsID id = -1;
+
+	ConsType type = ConsType::None;
+
+	std::pair<Geo, Geo> geo1, geo2;
 
 	double value = 0.0;
 

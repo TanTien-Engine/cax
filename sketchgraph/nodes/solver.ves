@@ -3,7 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY, VAR_TYPE_INTEGER
 import "blueprint.variant_helper" for VariantHelper
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VarGeometry, VarGeoPoint
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_PAIR, VAR_TYPE_CONSTRAINT, VarGeometry, VarGeoPoint, VarGeoPair
 import "sketchlib" for SketchScene
 
 class Solver is Node
@@ -13,7 +13,7 @@ class Solver is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "geo",  [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ]),
+			Pin(this, "geo",  [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_PAIR ]),
 			Pin(this, "cons", [ VAR_TYPE_ARRAY, VAR_TYPE_CONSTRAINT ]),
 		]
 		this.exports = [
@@ -67,26 +67,17 @@ class Solver is Node
 
 	geo2params(geo)
 	{
-		var geo_id = 0
-		var point_id = 0
-		var shape = nil
-
-		if (geo) 
-		{
-			if (geo is VarGeometry)
-			{
-				geo_id = geo.id
-				shape = geo.shape
-			}
-			else if (geo is VarGeoPoint)
-			{
-				geo_id = geo.geo_id
-				point_id = geo.point_id
-				shape = geo.shape
-			}
+		if (!geo) {
+			return {}
 		}
 
-		return { "geo_id" : geo_id, "point_id" : point_id, "shape" : shape }
+		if (geo is VarGeometry) {
+			return { "geo_id" : geo.id, "shape" : geo.shape }
+		} else if (geo is VarGeoPoint) {
+			return { "geo_id" : geo.geo_id, "point_id" : geo.point_id, "shape" : geo.shape }
+		}
+
+		return {}
 	}
 
 	build_scene()
@@ -103,9 +94,20 @@ class Solver is Node
 
 			for (var c in cons) 
 			{
-				var geo1 = this.geo2params(c.geo1)
-				var geo2 = this.geo2params(c.geo2)
-				scene.add(c.id, c.type, geo1, geo2, c.val, c.driving)
+				if (c.geo1 is VarGeoPair and c.geo2 is VarGeoPair)
+				{
+					var geo1 = this.geo2params(c.geo1.geo1)
+					var geo2 = this.geo2params(c.geo1.geo2)
+					var geo3 = this.geo2params(c.geo2.geo1)
+					var geo4 = this.geo2params(c.geo2.geo2)
+					scene.add_cons_4(c.id, c.type, geo1, geo2, geo3, geo4, c.val, c.driving)
+				}
+				else
+				{
+					var geo1 = this.geo2params(c.geo1)
+					var geo2 = this.geo2params(c.geo2)
+					scene.add_cons_2(c.id, c.type, geo1, geo2, c.val, c.driving)
+				}
 			}
 		}
 

@@ -2037,24 +2037,18 @@ double ConstraintSnell::grad(double *param)
 }
 
 // ConstraintEqualLineLength
-ConstraintEqualLineLength::ConstraintEqualLineLength(Line &l1, Line &l2)
+ConstraintEqualLineLength::ConstraintEqualLineLength(Point& l1p1, Point& l1p2, Point& l2p1, Point& l2p2)
 {
-    this->l1 = l1;
-    this->l1.PushOwnParams(pvec);
-
-    this->l2 = l2;
-    this->l2.PushOwnParams(pvec);
+    pvec.push_back(l1p1.x);
+    pvec.push_back(l1p1.y);
+    pvec.push_back(l1p2.x);
+    pvec.push_back(l1p2.y);
+    pvec.push_back(l2p1.x);
+    pvec.push_back(l2p1.y);
+    pvec.push_back(l2p2.x);
+    pvec.push_back(l2p2.y);
     origpvec = pvec;
-    pvecChangedFlag = true;
     rescale();
-}
-
-void ConstraintEqualLineLength::ReconstructGeomPointers()
-{
-    int i=0;
-    l1.ReconstructOnNewPvec(pvec, i);
-    l2.ReconstructOnNewPvec(pvec, i);
-    pvecChangedFlag = false;
 }
 
 ConstraintType ConstraintEqualLineLength::getTypeId()
@@ -2069,12 +2063,12 @@ void ConstraintEqualLineLength::rescale(double coef)
 
 void ConstraintEqualLineLength::errorgrad(double *err, double *grad, double *param)
 {
-    if (pvecChangedFlag) ReconstructGeomPointers();
+    //if (pvecChangedFlag) ReconstructGeomPointers();
 
-    DeriVector2 p1 (l1.p1, param);
-    DeriVector2 p2 (l1.p2, param);
-    DeriVector2 p3 (l2.p1, param);
-    DeriVector2 p4 (l2.p2, param);
+    DeriVector2 p1 (Point(l1p1x(), l1p1y()), param);
+    DeriVector2 p2 (Point(l1p2x(), l1p2y()), param);
+    DeriVector2 p3 (Point(l2p1x(), l2p1y()), param);
+    DeriVector2 p4 (Point(l2p2x(), l2p2y()), param);
 
     DeriVector2 v1 = p1.subtr(p2);
     DeriVector2 v2 = p3.subtr(p4);
@@ -2098,21 +2092,21 @@ void ConstraintEqualLineLength::errorgrad(double *err, double *grad, double *par
         // detects and can tell apart when a parameter is fully constrained or just locked into a maximum/minimum
         if(fabs(*grad)  < 1e-10) {
             double surrogate = 1e-10;
-            if( param == l1.p1.x )
+            if( param == l1p1x())
                 *grad = v1.x > 0 ? surrogate : -surrogate;
-            if( param == l1.p1.y )
+            if( param == l1p1y())
                 *grad = v1.y > 0 ? surrogate : -surrogate;
-            if( param == l1.p2.x )
+            if( param == l1p2x())
                 *grad = v1.x > 0 ? -surrogate : surrogate;
-            if( param == l1.p2.y )
+            if( param == l1p2y())
                 *grad = v1.y > 0 ? -surrogate : surrogate;
-            if( param == l2.p1.x )
+            if( param == l2p1x())
                 *grad = v2.x > 0 ? surrogate : -surrogate;
-            if( param == l2.p1.y )
+            if( param == l2p1y())
                 *grad = v2.y > 0 ? surrogate : -surrogate;
-            if( param == l2.p2.x )
+            if( param == l2p2x())
                 *grad = v2.x > 0 ? -surrogate : surrogate;
-            if( param == l2.p2.y )
+            if( param == l2p2y())
                 *grad = v2.y > 0 ? -surrogate : surrogate;
         }
     }

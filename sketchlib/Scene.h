@@ -18,8 +18,9 @@ public:
 	~Scene();
 
 	void AddGeometry(GeoID id, const std::shared_ptr<gs::Shape2D>& shape);
-	void AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoType>& geo1, 
-		const std::pair<GeoID, GeoType>& geo2, double val, bool driving);
+	void AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& geo2, double val, bool driving);
+	void AddConstraint(ConsID id, ConsType type, const std::pair<Geo, Geo>& geo1,
+		const std::pair<Geo, Geo>& geo2, double val, bool driving);
 
 	bool Solve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos);
 
@@ -30,8 +31,8 @@ public:
 private:
 	void ResetSolver();
 
-	bool IsConsExists(ConsType type, const std::pair<GeoID, GeoType>& geo1,
-		const std::pair<GeoID, GeoType>& geo2) const;
+	bool IsConsExists(ConsType type, const Geo& geo1, const Geo& geo2) const;
+	bool IsConsExists(ConsType type, const std::pair<Geo, Geo>& geo1, const std::pair<Geo, Geo>& geo2) const;
 
 	// geometries
 	void AddPoint(const std::shared_ptr<gs::Point2D>& pt, GeoID id);
@@ -80,6 +81,7 @@ private:
 
 	// equal
 	void AddEqualLengthCons(ConsID id, int line1, int line2, bool driving);
+	void AddEqualLengthCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bool driving);
 	void AddC2CEqualRadiusCons(ConsID id, int circle1, int circle2, bool driving);
 	void AddA2AEqualRadiusCons(ConsID id, int arc1, int arc2, bool driving);
 	void AddC2AEqualRadiusCons(ConsID id, int circle, int arc, bool driving);
@@ -100,6 +102,8 @@ private:
 	// cons
 	std::vector<Constraint>  m_cons;
 	std::map<ConsID, size_t> m_consid2index;
+	std::vector<Constraint2> m_cons2;
+	std::map<ConsID, size_t> m_cons2id2index;
 
 	GCS::Algorithm m_default_solver = GCS::DogLeg;
 	GCS::Algorithm m_default_solver_redundant = GCS::DogLeg;

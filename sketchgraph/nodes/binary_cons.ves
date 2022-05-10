@@ -4,7 +4,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
 import "blueprint.node_helper" for NodeHelper
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VAR_TYPE_CONSTRAINT, VarConstraint
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VAR_TYPE_GEO_PAIR, VAR_TYPE_CONSTRAINT, VarConstraint
 import "sketchgraph.context" for CONTEXT
 
 class BinaryCons is Node
@@ -14,8 +14,8 @@ class BinaryCons is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "a", [ VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT ]),
-			Pin(this, "b", [ VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT ]),
+			Pin(this, "a", [ VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VAR_TYPE_GEO_PAIR ]),
+			Pin(this, "b", [ VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VAR_TYPE_GEO_PAIR ]),
 		]
 		this.exports = [
 			Pin(this, "cons", VAR_TYPE_CONSTRAINT),

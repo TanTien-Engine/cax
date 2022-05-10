@@ -1,0 +1,40 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_PAIR, VarGeoPair
+
+class GeoPair is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "geo1", VAR_TYPE_GEOMETRY),
+			Pin(this, "geo2", VAR_TYPE_GEOMETRY),
+		]
+		this.exports = [
+			Pin(this, "pair", VAR_TYPE_GEO_PAIR),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var pair = VarGeoPair()
+
+		var v_geo1 = Blueprint.calc_input_value(this, 0)
+		if (v_geo1) {
+			pair.geo1 = v_geo1.value
+		}
+
+		var v_geo2 = Blueprint.calc_input_value(this, 1)
+		if (v_geo2) {
+			pair.geo2 = v_geo2.value
+		}
+
+		return Variant(VAR_TYPE_GEO_PAIR, pair)
+	}
+}

@@ -99,8 +99,7 @@ void Scene::AddGeometry(GeoID id, const std::shared_ptr<gs::Shape2D>& shape)
     m_geoid2index[id] = idx;
 }
 
-void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoType>& geo1,
-                          const std::pair<GeoID, GeoType>& geo2, double val, bool driving)
+void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& geo2, double val, bool driving)
 {
     if (m_consid2index.find(id) != m_consid2index.end()) {
         return;
@@ -308,6 +307,45 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<GeoID, GeoTy
         break;
     }
 }
+
+void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<Geo, Geo>& geo1,
+                          const std::pair<Geo, Geo>& geo2, double val, bool driving)
+{
+    if (m_consid2index.find(id) != m_consid2index.end()) {
+        return;
+    }
+
+    if (IsConsExists(type, geo1, geo2)) {
+        return;
+    }
+
+    Constraint2 cons(id, type, geo1, geo2, val);
+
+    size_t idx = m_cons2.size();
+    m_cons2.push_back(cons);
+    m_cons2id2index[id] = idx;
+
+    double* cons_val = &m_cons2.back().value;
+
+    auto g1 = geo1.first;
+    auto g2 = geo1.second;
+    auto g3 = geo2.first;
+    auto g4 = geo2.second;
+
+    int geo1_idx = m_geoid2index[g1.first];
+    int geo2_idx = m_geoid2index[g2.first];
+    int geo3_idx = m_geoid2index[g3.first];
+    int geo4_idx = m_geoid2index[g4.first];
+
+    switch (type)
+    {
+    case ConsType::Equal:
+        if (is_point(g1) && is_point(g2) && is_point(g3) && is_point(g4)) {
+            AddEqualLengthCons(id, geo1_idx, geo2_idx, geo3_idx, geo4_idx, driving);
+        }
+        break;
+    }
+}
     
 bool Scene::Solve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos)
 {
@@ -364,10 +402,24 @@ void Scene::ResetSolver()
     m_gcs->getPartiallyRedundant(m_partially_redundant);
 }
 
-bool Scene::IsConsExists(ConsType type, const std::pair<GeoID, GeoType>& geo1,
-                         const std::pair<GeoID, GeoType>& geo2) const
+bool Scene::IsConsExists(ConsType type, const Geo& geo1, const Geo& geo2) const
 {
     for (auto& c : m_cons)
+    {
+        if (c.type == type &&
+            c.geo1 == geo1 &&
+            c.geo2 == geo2) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Scene::IsConsExists(ConsType type, const std::pair<Geo, Geo>& geo1, 
+                         const std::pair<Geo, Geo>& geo2) const
+{
+    for (auto& c : m_cons2)
     {
         if (c.type == type &&
             c.geo1 == geo1 &&
@@ -883,6 +935,17 @@ void Scene::AddEqualLengthCons(ConsID id, int line1, int line2, bool driving)
     assert(line1 < m_geos.size() && line2 < m_geos.size());
 
     m_gcs->addConstraintEqualLength(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id, driving);
+
+    ResetSolver();
+}
+
+void Scene::AddEqualLengthCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bool driving)
+{
+    assert(pt1 < m_geos.size() && pt2 < m_geos.size() 
+        && pt3 < m_geos.size() && pt4 < m_geos.size());
+
+    m_gcs->addConstraintEqualLength(m_points[m_geos[pt1].index], m_points[m_geos[pt2].index], 
+        m_points[m_geos[pt3].index], m_points[m_geos[pt4].index], id, driving);
 
     ResetSolver();
 }
