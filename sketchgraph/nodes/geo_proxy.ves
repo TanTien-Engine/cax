@@ -1,0 +1,25 @@
+import "blueprint.node" for Node
+import "blueprint.variant" for Variant
+import "blueprint.pin" for Pin
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
+
+class GeoProxy is Node
+{
+	init(geo)
+	{
+		super.init()
+
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEOMETRY)
+		]		
+
+		this.layout()
+
+		this.geo = geo
+	}
+
+	calc_value(idx)
+	{
+		return Variant(VAR_TYPE_GEOMETRY, this.geo)
+	}
+}

@@ -1,0 +1,213 @@
+import "blueprint.nodes.subgraph" for Subgraph
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant_helper" for VariantHelper
+import "blueprint.nodes.merge" for Merge
+import "blueprint.nodes.load" for Load
+import "network.vertex" for Vertex
+import "network.pin" for Pin
+import "network.vertex_shape" for SHAPE_PANEL
+import "sketchgraph.nodes.draw" for Draw
+import "sketchgraph.nodes.solver" for Solver
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY as sg_VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT as sg_VAR_TYPE_CONSTRAINT
+import "sketchgraph.util" for GEO_COLOR, GEO_SELECTED_COLOR
+import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "sketchnetwork.context" for CONTEXT
+import "maths.vector" for Vector2
+import "maths" for Matrix44
+import "geometry" for Point
+import "graphics" for Painter, Graphics
+
+class Sketchgraph is Vertex
+{
+	init()
+	{
+		super.init()
+
+		this.shape = SHAPE_PANEL
+
+		this.pin_types_f = [ VAR_TYPE_GEOMETRY ]
+		this.pin_types_t = [ 
+			[ VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT ]
+		]
+
+		this.pin_dynamic = false
+
+		this.impl = Subgraph()
+
+		this.draw_node = Draw()
+
+		this.geos = []
+		this.cons = []
+
+		this.pin_geos  = []
+		this.pin_names = []
+
+		this.selected = false
+	}
+
+	get_title()
+	{
+		return this.impl.title
+	}
+
+	to_string(name) 
+	{
+		return this.impl.to_string(name)
+	}
+
+	on_selected() 
+	{
+		super.on_selected()
+
+		this.selected = true
+
+		CONTEXT.need_rebuild = true
+	}
+
+	on_deselected() 
+	{ 
+		super.on_deselected()
+
+		this.selected = false
+
+		CONTEXT.need_rebuild = true
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		var mat = Matrix44.init()
+		var s = this.draw_node.scale * 0.25
+		mat.scale(s, s, s)
+		mat.translate(this.pos.x, this.pos.y, 0)
+
+		this.draw_node.draw_input_geo(mat)		
+	}
+
+	draw_pins(mat)
+	{
+		var pt = Painter.init()
+		for (var i in 0 .. this.pins.count)
+		{
+			var pin = this.pins[i]
+			var geo = this.pin_geos[i]
+			var pos = geo.shape.get()
+			pt.add_circle(mat, pos[0], pos[1], 5.0, pin.color, 1.0, 12)
+		}
+		Graphics.draw_painter(pt)
+	}
+
+	load_from_file(editor, filepath)
+	{
+		this.impl.load_from_file(editor, filepath, editor)
+
+		if (!this.impl.out_nodes.isEmpty) 
+		{
+			var out = this.impl.out_nodes.front()
+			var geo = Blueprint.get_input_node(out, 0)
+			Blueprint.connect(geo.exports[0], this.draw_node.imports[1])
+		}
+
+		var solver = nil
+		for (var item in this.impl.all_items)
+		{
+			var node = item[0]
+			if (node is Solver) {
+				solver = node
+			}
+		}
+
+		this.geos.clear()
+		this.cons.clear()
+		this.pin_geos.clear()
+		this.pin_names.clear()
+
+		if (solver)
+		{
+			var v_geos = Blueprint.calc_input_value(solver, "geo")
+			if (v_geos) {
+				this.geos = VariantHelper.flatten_values(v_geos, sg_VAR_TYPE_GEOMETRY)
+			}
+
+			var v_cons = Blueprint.calc_input_value(solver, "cons")
+			if (v_cons) {
+				this.cons = VariantHelper.flatten_values(v_cons, sg_VAR_TYPE_CONSTRAINT)
+			}
+
+			var v_out_geos = Blueprint.calc_output_value(solver, "geo")
+			if (v_out_geos) {
+				this.pin_geos = VariantHelper.flatten_values(v_out_geos, sg_VAR_TYPE_GEOMETRY)
+			}
+
+			// fixme: get pin's name
+			var input_geo = Blueprint.get_input_node(solver, "geo")
+			if (input_geo is Merge)
+			{
+				for (var i in 0 .. input_geo.imports.count - 1)
+				{
+					var in_node = Blueprint.get_input_node(input_geo, i)
+					if (in_node is Load) {
+						this.pin_names.add(in_node.var_name)
+					} else {
+						this.pin_names.add("unknown")
+					}
+				}
+			}
+		}
+
+		this.pins.clear()
+		for (var geo in this.pin_geos)
+		{
+			if (geo.shape is Point) {
+				this.pins.add(Pin(this, 0))
+			}
+		}
+	}
+
+	calc_pin_pos(pin)
+	{
+		for (var i in 0 .. this.pins.count)
+		{
+			if (this.pins[i] == pin)
+			{
+				var geo = this.pin_geos[i]
+				var pos = geo.shape.get()
+				var x = pos[0] * this.draw_node.scale * 0.25 + this.pos.x
+				var y = pos[1] * this.draw_node.scale * 0.25 + this.pos.y
+				return Vector2(x, y)
+			}
+		}
+		return nil
+	}
+
+	get_pin_name(pin)
+	{
+		for (var i in 0 .. this.pins.count) {
+			if (this.pins[i] == pin) {
+				return this.pin_names[i]
+			}
+		}
+		return "unknown"
+	}
+
+	get_input_geo(pin)
+	{
+		for (var i in 0 .. this.pins.count) {
+			if (this.pins[i] == pin) {
+				return this.geos[i]
+			}
+		}
+		return nil
+	}
+
+	query_pin(name)
+	{
+		for (var i in 0 .. this.pin_names.count) {
+			if (this.pin_names[i] == name) {
+				return this.pins[i]
+			}
+		}
+		return nil
+	}
+}

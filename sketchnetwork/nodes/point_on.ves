@@ -3,7 +3,7 @@ import "network.vertex" for Vertex
 import "network.vertex_shape" for SHAPE_ROD
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.cons_helper" for ConsHelper
-import "sketchnetwork.nodes.geo_nodes" for Point, Line, Circle, Arc, Ellipse
+import "geometry" for Point, Line, Circle, Arc, Ellipse
 
 class PointOn is Vertex
 {
@@ -81,34 +81,42 @@ class PointOn is Vertex
 	create_conn_impl()
 	{
 		var na = ConsHelper.get_start_node(this)
-		var nb = ConsHelper.get_end_node(this)
+		var nb = ConsHelper.get_end_node(this)		
 		if (!na or !nb) {
 			return nil
 		}
 
-		if (!(na is Point) and !(nb is Point)) {
+		var v_a = na.resolve_geo()
+		var v_b = nb.resolve_geo()
+		if (!v_a or !v_b) {
 			return nil
 		}
 
-		if (na is Line or nb is Line) 
+		var a = v_a.value.shape
+		var b = v_b.value.shape
+		if (!(a is Point) and !(b is Point)) {
+			return nil
+		}
+
+		if (a is Line or b is Line) 
 		{
 			this.title = "点在线上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnLine
 			return PointOnLine()
 		} 
-		else if (na is Circle or nb is Circle) 
+		else if (a is Circle or b is Circle) 
 		{
 			this.title = "点在圆上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnCircle
 			return PointOnCircle()
 		} 
-		else if (na is Arc or nb is Arc) 
+		else if (a is Arc or b is Arc) 
 		{
 			this.title = "点在弧上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnArc
 			return PointOnArc()
 		} 
-		else if (na is Ellipse or nb is Ellipse) 
+		else if (a is Ellipse or b is Ellipse) 
 		{
 			this.title = "点在椭圆上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnEllipse

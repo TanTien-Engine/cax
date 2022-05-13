@@ -1,4 +1,7 @@
 import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
 
 class Scene
 {
@@ -28,6 +31,16 @@ class Scene
 					this.geos.list.add(bp_node.resolve_geo())
 				} else if (bp_node.has_method("resolve_cons()")) {
 					this.cons.list.add(bp_node.resolve_cons())
+				}
+
+				if (bp_node is Sketchgraph)
+				{
+					for (var geo in bp_node.geos) {
+						this.geos.list.add(Variant(VAR_TYPE_GEOMETRY, geo))
+					}
+					for (var cons in bp_node.cons) {
+						this.cons.list.add(Variant(VAR_TYPE_CONSTRAINT, cons))
+					}
 				}
 			}
 		}

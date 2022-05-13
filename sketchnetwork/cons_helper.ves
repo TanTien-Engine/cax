@@ -1,25 +1,36 @@
 import "network.network" for Network
 import "network.vertex_shape" for PIN_ROD_START_IDX, PIN_ROD_END_IDX
+import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
+import "sketchnetwork.nodes.geo_proxy" for GeoProxy
 
 class ConsHelper
 {
 	static get_start_node(node)
 	{
-		var nodes = Network.neighbors(node, PIN_ROD_START_IDX)
-		if (nodes.isEmpty) {
-			return nil
-		} else {
-			return nodes[0]
-		}
+		return this.get_conn_node(node, PIN_ROD_START_IDX)
 	}
 
 	static get_end_node(node)
 	{
-		var nodes = Network.neighbors(node, PIN_ROD_END_IDX)
-		if (nodes.isEmpty) {
+		return this.get_conn_node(node, PIN_ROD_END_IDX)
+	}
+
+	static get_conn_node(node, type)
+	{
+		var pins = Network.neighbors_pins(node, type)
+		if (pins.isEmpty) {
 			return nil
-		} else {
-			return nodes[0]
 		}
-	}	
+
+		var pin = pins.front()
+		var vert = pin.vert
+
+		if (vert is Sketchgraph)
+		{
+			var geo = vert.get_input_geo(pin)
+			return GeoProxy(geo)
+		}
+
+		return vert
+	}
 }

@@ -1,0 +1,17 @@
+var node0 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node0.load_from_file(_editor, "../../../assets/blueprints/shapes/rect.ves")
+
+_editor.add_node(node0, -283, -121)
+
+var node1 = ::sketchnetwork::nodes::geo_nodes::Circle()
+node1.impl.query_param("center").value.set(0, 0)
+node1.impl.query_param("radius").value = 1
+
+_editor.add_node(node1, 178, -151)
+
+var node2 = ::sketchnetwork::nodes::point_on::PointOn()
+
+_editor.add_node(node2, -55, -123)
+
+Network.connect(node0, "r_top", node2, "start")
+Network.connect(node2, "end", node1, "around")
