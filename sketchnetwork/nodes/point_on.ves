@@ -51,20 +51,6 @@ class PointOn is Vertex
 		return Blueprint.calc_output_value(impl, "cons")
 	}
 
-	to_string(name) 
-	{
-		var impl = this.get_conn_impl()
-		if (!impl) {
-			return ""
-		}
-
-		var ret = ""
-		for (var p in impl.params) {
-			ret = ret + p.to_string(name + ".impl")
-		}
-		return ret
-	}
-
 	on_connection_changed()
 	{
 		this.impl = nil
