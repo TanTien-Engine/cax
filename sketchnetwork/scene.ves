@@ -1,7 +1,8 @@
 import "blueprint.blueprint" for Blueprint
-import "blueprint.variant" for Variant
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
+import "sketchnetwork.nodes.sub_solver" for SubSolver
 
 class Scene
 {
@@ -45,11 +46,20 @@ class Scene
 			}
 		}
 
-		this.slover.on_pin_dirty(this.slover.imports[0])
+		Blueprint.send_pin_dirty_root(this.slover.imports[0])		
 
 		var geos = Blueprint.calc_output_value(this.slover, "geo")
 		for (var geo in geos.value) {
 			out_list.add(geo)
+		}
+
+		// update Sketchgraph
+		for (var node in scene.nodes) {
+			var bp_node = node.components["bp"]
+			if (bp_node and bp_node is Sketchgraph) {
+				bp_node.remap_geos(geos)
+				out_list.add(Blueprint.calc_output_value(bp_node.impl, "geo"))
+			}
 		}
 	}
 }

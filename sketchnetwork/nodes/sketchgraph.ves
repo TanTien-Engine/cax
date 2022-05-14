@@ -12,6 +12,7 @@ import "sketchgraph.variant" for VAR_TYPE_GEOMETRY as sg_VAR_TYPE_GEOMETRY, VAR_
 import "sketchgraph.util" for GEO_COLOR, GEO_SELECTED_COLOR
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.context" for CONTEXT
+import "sketchnetwork.nodes.sub_solver" for SubSolver
 import "maths.vector" for Vector2
 import "maths" for Matrix44
 import "geometry" for Point
@@ -102,12 +103,7 @@ class Sketchgraph is Vertex
 	{
 		this.impl.load_from_file(editor, filepath, editor)
 
-		if (!this.impl.out_nodes.isEmpty) 
-		{
-			var out = this.impl.out_nodes.front()
-			var geo = Blueprint.get_input_node(out, 0)
-			Blueprint.connect(geo.exports[0], this.draw_node.imports[1])
-		}
+		Blueprint.connect(this.impl.exports[1], this.draw_node.imports[1])
 
 		var solver = nil
 		for (var item in this.impl.all_items)
@@ -154,6 +150,8 @@ class Sketchgraph is Vertex
 					}
 				}
 			}
+
+			this.impl.add_node(SubSolver(solver), 0, 0)			
 		}
 
 		this.pins.clear()
@@ -209,5 +207,34 @@ class Sketchgraph is Vertex
 			}
 		}
 		return nil
+	}
+
+	remap_geos(geos)
+	{
+		for (var item in this.impl.all_items) {
+			var node = item[0]
+			if (node is SubSolver) {
+				node.remap_geos(geos)
+			}
+		}
+
+		for (var geo in this.pin_geos) {
+			if (geo.shape is Point) {
+				this.update_pin_geos(geo, geos)
+			}
+		}
+
+		this.update_pin_conns()
+	}
+
+	update_pin_geos(dst_point, src_geos)
+	{
+		for (var i in src_geos.value) {
+			if (i.value.id == dst_point.id) {
+				var pos = i.value.shape.get()
+				dst_point.shape.set(pos[0], pos[1])
+				return
+			}
+		}
 	}
 }
