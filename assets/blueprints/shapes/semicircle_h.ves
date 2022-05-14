@@ -1,0 +1,117 @@
+var node0 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node0, -339.84167700977, 142.12521264258)
+
+var node1 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node1, -180.06000909092, 99.669936363633)
+
+var node2 = ::blueprint::nodes::output::Output()
+
+node2.var_name = "geo"
+node2.var_type = "geometry"
+
+_editor.add_node(node2, -23.771974431819, 108.5292911044)
+
+var node3 = ::sketchgraph::nodes::cons_nodes::Horizontal()
+node3.query_param("driving").value = true
+
+_editor.add_node(node3, -483.19723572506, 23.451625513119)
+
+var node4 = ::sketchgraph::nodes::cons_nodes::Horizontal()
+node4.query_param("driving").value = true
+
+_editor.add_node(node4, -483.53670521501, -64.199111476873)
+
+var node5 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node5, -339.36982075783, -11.055307628358)
+
+var node6 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node6, -1008.9976644706, 256.31338158194)
+
+var node7 = ::sketchgraph::nodes::arc::Arc()
+node7.query_param("center").value.set(0, 0)
+node7.query_param("radius").value = 0.94765187586883
+node7.query_param("start_angle").value = 0
+node7.query_param("end_angle").value = 2.9136311661645
+
+_editor.add_node(node7, -1146.5933726918, 198.54557661577)
+
+var node8 = ::blueprint::nodes::store::Store()
+
+node8.var_name = "start"
+
+_editor.add_node(node8, -869.80249578303, 310.99100563743)
+
+var node9 = ::blueprint::nodes::store::Store()
+
+node9.var_name = "end"
+
+_editor.add_node(node9, -867.98430841619, 242.80914861506)
+
+var node10 = ::blueprint::nodes::store::Store()
+
+node10.var_name = "middle"
+
+_editor.add_node(node10, -868.89336603338, 172.80918745561)
+
+var node11 = ::blueprint::nodes::load::Load()
+
+node11.var_name = "start"
+
+_editor.add_node(node11, -625.62068869851, 33.80918190696)
+
+var node12 = ::blueprint::nodes::load::Load()
+
+node12.var_name = "end"
+
+_editor.add_node(node12, -621.0752175071, -12.554443359376)
+
+var node13 = ::blueprint::nodes::load::Load()
+
+node13.var_name = "middle"
+
+_editor.add_node(node13, -620.16613769531, -68.009008234198)
+
+var node14 = ::blueprint::nodes::load::Load()
+
+node14.var_name = "start"
+
+_editor.add_node(node14, -494.69888144491, 189.05293984699)
+
+var node15 = ::blueprint::nodes::load::Load()
+
+node15.var_name = "end"
+
+_editor.add_node(node15, -492.88546407496, 144.73835494675)
+
+var node16 = ::blueprint::nodes::load::Load()
+
+node16.var_name = "middle"
+
+_editor.add_node(node16, -494.17638426317, 99.830911170214)
+
+Blueprint.connect(node7, "geo", node6, "geo")
+Blueprint.connect(node6, "middle", node10, "var")
+Blueprint.connect(node10, "var", node16, "var")
+Blueprint.connect(node10, "var", node13, "var")
+Blueprint.connect(node6, "end", node9, "var")
+Blueprint.connect(node9, "var", node15, "var")
+Blueprint.connect(node9, "var", node12, "var")
+Blueprint.connect(node12, "var", node4, "a")
+Blueprint.connect(node13, "var", node4, "b")
+Blueprint.connect(node6, "start", node8, "var")
+Blueprint.connect(node8, "var", node14, "var")
+Blueprint.connect(node14, "var", node0, "in0")
+Blueprint.connect(node15, "var", node0, "in1")
+Blueprint.connect(node16, "var", node0, "in2")
+Blueprint.connect(node8, "var", node11, "var")
+Blueprint.connect(node11, "var", node3, "a")
+Blueprint.connect(node13, "var", node3, "b")
+Blueprint.connect(node3, "cons", node5, "in0")
+Blueprint.connect(node4, "cons", node5, "in1")
+Blueprint.connect(node7, "geo", node1, "geo")
+Blueprint.connect(node5, "list", node1, "cons")
+Blueprint.connect(node1, "geo", node2, "var")

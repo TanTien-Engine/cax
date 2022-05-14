@@ -1,0 +1,87 @@
+var node0 = ::sketchgraph::nodes::cons_nodes::Horizontal()
+node0.query_param("driving").value = true
+
+_editor.add_node(node0, 143.79096682714, 455.78052893773)
+
+var node1 = ::sketchgraph::nodes::point::Point()
+node1.query_param("x").value = -2.66
+node1.query_param("y").value = -1.79
+
+_editor.add_node(node1, -387.71199256198, 642.43919256198)
+
+var node2 = ::sketchgraph::nodes::point::Point()
+node2.query_param("x").value = 3.29
+node2.query_param("y").value = -2.38
+
+_editor.add_node(node2, -387.3515, 531.5091)
+
+var node3 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node3, 136.75281790178, 569.60489299228)
+
+var node4 = ::sketchgraph::nodes::solver::Solver()
+
+_editor.add_node(node4, 284.48544545454, 516.03357272727)
+
+var node5 = ::sketchgraph::nodes::polyline::Polyline()
+node5.query_param("closed").value = false
+
+_editor.add_node(node5, 426.37908181818, 514.74811818182)
+
+var node6 = ::blueprint::nodes::store::Store()
+
+node6.var_name = "left"
+
+_editor.add_node(node6, -245.00262299845, 663.44397325752)
+
+var node7 = ::blueprint::nodes::store::Store()
+
+node7.var_name = "right"
+
+_editor.add_node(node7, -245.00263687008, 551.59436529491)
+
+var node8 = ::blueprint::nodes::load::Load()
+
+node8.var_name = "left"
+
+_editor.add_node(node8, -4.2161620776226, 481.77285257503)
+
+var node9 = ::blueprint::nodes::load::Load()
+
+node9.var_name = "right"
+
+_editor.add_node(node9, -5.8668883149272, 434.41982074832)
+
+var node10 = ::blueprint::nodes::load::Load()
+
+node10.var_name = "left"
+
+_editor.add_node(node10, -12.365005432888, 596.42418829087)
+
+var node11 = ::blueprint::nodes::load::Load()
+
+node11.var_name = "right"
+
+_editor.add_node(node11, -10.235579494538, 552.42059378248)
+
+var node12 = ::blueprint::nodes::output::Output()
+
+node12.var_name = "geo"
+node12.var_type = "geometry"
+
+_editor.add_node(node12, 564.40984375, 527.62020019531)
+
+Blueprint.connect(node2, "geo", node7, "var")
+Blueprint.connect(node7, "var", node11, "var")
+Blueprint.connect(node7, "var", node9, "var")
+Blueprint.connect(node1, "geo", node6, "var")
+Blueprint.connect(node6, "var", node10, "var")
+Blueprint.connect(node10, "var", node3, "in0")
+Blueprint.connect(node11, "var", node3, "in1")
+Blueprint.connect(node6, "var", node8, "var")
+Blueprint.connect(node8, "var", node0, "a")
+Blueprint.connect(node9, "var", node0, "b")
+Blueprint.connect(node3, "list", node4, "geo")
+Blueprint.connect(node0, "cons", node4, "cons")
+Blueprint.connect(node4, "geo", node5, "pts")
+Blueprint.connect(node5, "geo", node12, "var")

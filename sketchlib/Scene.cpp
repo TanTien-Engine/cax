@@ -269,6 +269,16 @@ void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& 
             AddL2CTangentCons(id, geo2_idx, geo1_idx, driving);
         } else if (is_circle(geo1) && is_circle(geo2)) {
             AddC2CTangentCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_line(geo1) && is_arc(geo2)) {
+            AddL2ATangentCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_arc(geo1) && is_line(geo2)) {
+            AddA2LTangentCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_circle(geo1) && is_arc(geo2)) {
+            AddC2ATangentCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_arc(geo1) && is_circle(geo2)) {
+            AddA2CTangentCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_arc(geo1) && is_arc(geo2)) {
+            AddA2ATangentCons(id, geo1_idx, geo2_idx, driving);
         }
         break;
     case ConsType::TangentCircumf:

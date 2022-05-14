@@ -114,10 +114,74 @@ class Scene
 
 	gen_cons_between_2geos(geo_0, geo_1)
 	{
+		var point = 0
+		var line = 0
+		var circle = 0
+		var arc = 0
+		var ellipse = 0
+
 		var a = geo_0.shape
+		if (a is Point) {
+			point = point + 1
+		} else if (a is Line) {
+			line = line + 1
+		} else if (a is Circle) {
+			circle = circle + 1
+		} else if (a is Arc) {
+			arc = arc + 1
+		} else if (a is Ellipse) {
+			ellipse = ellipse + 1
+		}
+
 		var b = geo_1.shape
-		if (a is Point and b is Circle) {
-			return this.create_cons("point_on_circle", geo_0, geo_1)
+		if (b is Point) {
+			point = point + 1
+		} else if (b is Line) {
+			line = line + 1
+		} else if (b is Circle) {
+			circle = circle + 1
+		} else if (b is Arc) {
+			arc = arc + 1
+		} else if (b is Ellipse) {
+			ellipse = ellipse + 1
+		}
+
+		if (point > 0)
+		{
+			if (point > 1) {
+//				return this.create_cons("coincident", geo_0, geo_1)
+				return this.create_cons("distance", geo_0, geo_1)
+			} else if (line > 0) {
+				return this.create_cons("point_on_line", geo_0, geo_1)
+			} else if (circle > 0) {
+				return this.create_cons("point_on_circle", geo_0, geo_1)
+			} else if (arc > 0) {
+				return this.create_cons("point_on_arc", geo_0, geo_1)
+			} else if (ellipse > 0) {
+				return this.create_cons("point_on_ellipse", geo_0, geo_1)
+			}
+		}
+		else if (line > 0)
+		{
+			if (line > 1) {
+				return this.create_cons("parallel", geo_0, geo_1)
+			} else if (circle > 0) {
+				return this.create_cons("tangent", geo_0, geo_1)
+			} else if (arc > 0) {
+				return this.create_cons("tangent", geo_0, geo_1)
+			} else if (ellipse > 0) {
+				return this.create_cons("tangent", geo_0, geo_1)
+			}
+		}
+		else if (circle > 0)
+		{
+			if (circle > 1) {
+				return this.create_cons("tangent_circumf", geo_0, geo_1)
+			} else if (arc > 0) {
+				return this.create_cons("tangent", geo_0, geo_1)
+			} else if (ellipse > 0) {
+				return this.create_cons("tangent", geo_0, geo_1)
+			}
 		}
 
 		return nil
