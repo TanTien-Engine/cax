@@ -1,8 +1,12 @@
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VarConstraint
+import "sketchgraph.context" for CONTEXT
 import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
 import "sketchnetwork.nodes.sub_solver" for SubSolver
+import "sketchnetwork.nodes.geometry" for Geometry
+import "sketchnetwork.nodes.constraint" for Constraint
+import "geometry" for Point, Line, Circle, Arc, Ellipse
 
 class Scene
 {
@@ -23,6 +27,28 @@ class Scene
 		this.geos.list.clear()
 		this.cons.list.clear()
 
+		this.resolve_curr_nodes(scene)
+		this.resolve_curr_conns(scene)
+
+		Blueprint.send_pin_dirty_root(this.slover.imports[0])		
+
+		var geos = Blueprint.calc_output_value(this.slover, "geo")
+		for (var geo in geos.value) {
+			out_list.add(geo)
+		}
+
+		// update Sketchgraph
+		for (var node in scene.nodes) {
+			var bp_node = node.components["bp"]
+			if (bp_node and bp_node is Sketchgraph) {
+				bp_node.remap_geos(geos)
+				out_list.add(Blueprint.calc_output_value(bp_node.impl, "geo"))
+			}
+		}
+	}
+
+	resolve_curr_nodes(scene)
+	{
 		for (var node in scene.nodes) 
 		{
 			var bp_node = node.components["bp"]
@@ -44,22 +70,65 @@ class Scene
 					}
 				}
 			}
-		}
+		}		
+	}
 
-		Blueprint.send_pin_dirty_root(this.slover.imports[0])		
-
-		var geos = Blueprint.calc_output_value(this.slover, "geo")
-		for (var geo in geos.value) {
-			out_list.add(geo)
-		}
-
-		// update Sketchgraph
-		for (var node in scene.nodes) {
+	resolve_curr_conns(scene)
+	{
+		for (var node in scene.nodes) 
+		{
 			var bp_node = node.components["bp"]
-			if (bp_node and bp_node is Sketchgraph) {
-				bp_node.remap_geos(geos)
-				out_list.add(Blueprint.calc_output_value(bp_node.impl, "geo"))
+			if (bp_node)
+			{
+				for (var p in bp_node.pins)
+				{
+					var e = p.edge
+					if (e.pin0.vert == bp_node) 
+					{
+						var geo_0 = this.trans_to_geo(e.pin0)
+						var geo_1 = this.trans_to_geo(e.pin1)
+						if (geo_0 and geo_1) 
+						{
+							var cons = this.gen_cons_between_2geos(geo_0, geo_1)
+							if (cons) {
+								this.cons.list.add(cons)
+							}
+						}
+					}
+				}
 			}
 		}
+	}
+
+	trans_to_geo(pin)
+	{
+		var vert = pin.vert
+		if (vert is Geometry) {
+			return vert.resolve_geo().value
+		} else if (vert is Sketchgraph) {
+			return vert.get_input_geo(pin)
+		} else {
+			return nil
+		}
+	}
+
+	gen_cons_between_2geos(geo_0, geo_1)
+	{
+		var a = geo_0.shape
+		var b = geo_1.shape
+		if (a is Point and b is Circle) {
+			return this.create_cons("point_on_circle", geo_0, geo_1)
+		}
+
+		return nil
+	}
+
+	create_cons(type, a, b)
+	{
+		var id = CONTEXT.advance_cons_id()
+		var val = 0
+		var driving = true
+		var cons = VarConstraint(id, type, a, b, val, driving)
+		return Variant(VAR_TYPE_CONSTRAINT, cons)		
 	}
 }
