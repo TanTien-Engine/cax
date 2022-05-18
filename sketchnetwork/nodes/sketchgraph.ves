@@ -8,12 +8,24 @@ import "network.vertex_shape" for SHAPE_PANEL
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
 import "sketchgraph.nodes.draw" for Draw
 import "sketchgraph.nodes.sk_solver" for SkSolver
+import "sketchgraph.nodes.solver" for Solver
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.context" for CONTEXT
 import "maths.vector" for Vector2
 import "graphics" for Painter, Graphics
 import "geometry" for Point
 import "maths" for Matrix44
+
+class PinInfo
+{
+	init(geo, name)
+	{
+		this.geo  = geo
+		this.name = name
+
+		this.pos = geo.shape.get()
+	}
+}
 
 class Sketchgraph is Vertex
 {
@@ -34,8 +46,7 @@ class Sketchgraph is Vertex
 
 		this.draw_node = Draw()
 
-		this.pin_geos  = []
-		this.pin_names = []
+		this.pins_info = []
 
 		this.selected = false
 	}
@@ -86,8 +97,7 @@ class Sketchgraph is Vertex
 		for (var i in 0 .. this.pins.count)
 		{
 			var pin = this.pins[i]
-			var geo = this.pin_geos[i]
-			var pos = geo.shape.get()
+			var pos = this.pins_info[i].pos
 			pt.add_circle(mat, pos[0], pos[1], 5.0, pin.color, 1.0, 12)
 		}
 		Graphics.draw_painter(pt)
@@ -103,7 +113,7 @@ class Sketchgraph is Vertex
 		}
 
 		this.reset_geos(v_sketch)
-		this.reset_pins()
+		this.reset_pins(v_sketch)
 	}
 
 	reset_geos(v_sketch)
@@ -118,18 +128,46 @@ class Sketchgraph is Vertex
 		Blueprint.connect(VariantProxy(Variant(draw_geos)), "out", this.draw_node, "geo")
 	}
 
-	reset_pins()
+	reset_pins(v_sketch)
 	{
-		this.pin_geos.clear()
-		this.pin_names.clear()
+		this.pins_info.clear()
+
 		for (var i in 0 .. this.impl.exports.count)
 		{
 			var v_out = Blueprint.calc_output_value(this.impl, i)
 			if (v_out.type == VAR_TYPE_GEOMETRY and v_out.value.shape is Point)
 			{
-				this.pin_geos.add(v_out.value)
-				this.pin_names.add(this.impl.exports[i].name)
+				var geo = v_out.value
+				var name = this.impl.exports[i].name
+				this.pins_info.add(PinInfo(geo, name))
+
 				this.pins.add(Pin(this, 0))
+			}
+		}
+
+		if (!this.pins_info.isEmpty) {
+			this.fix_pins_pos(v_sketch)
+		}
+	}
+
+	fix_pins_pos(v_sketch)
+	{
+		var solver = Solver()
+		Blueprint.connect(VariantProxy(v_sketch.value.geos), "out", solver, "geo")
+		Blueprint.connect(VariantProxy(v_sketch.value.cons), "out", solver, "cons")
+
+		var solved = Blueprint.calc_output_value(solver, "geo")
+
+		for (var pin in this.pins_info)
+		{
+			for (var geo in solved.value)
+			{
+				if (geo.value.shape is Point and geo.value.id == pin.geo.id)
+				{
+					var pos = geo.value.shape.get()
+					pin.pos[0] = pos[0]
+					pin.pos[1] = pos[1]
+				}
 			}
 		}
 	}
@@ -140,8 +178,7 @@ class Sketchgraph is Vertex
 		{
 			if (this.pins[i] == pin)
 			{
-				var geo = this.pin_geos[i]
-				var pos = geo.shape.get()
+				var pos = this.pins_info[i].pos
 				var x = pos[0] * this.draw_node.scale * 0.25 + this.pos.x
 				var y = pos[1] * this.draw_node.scale * 0.25 + this.pos.y
 				return Vector2(x, y)
@@ -154,7 +191,7 @@ class Sketchgraph is Vertex
 	{
 		for (var i in 0 .. this.pins.count) {
 			if (this.pins[i] == pin) {
-				return this.pin_names[i]
+				return this.pins_info[i].name
 			}
 		}
 		return "unknown"
@@ -164,7 +201,7 @@ class Sketchgraph is Vertex
 	{
 		for (var i in 0 .. this.pins.count) {
 			if (this.pins[i] == pin) {
-				return this.pin_geos[i]
+				return this.pins_info[i].geo
 			}
 		}
 		return nil
@@ -172,8 +209,8 @@ class Sketchgraph is Vertex
 
 	query_pin(name)
 	{
-		for (var i in 0 .. this.pin_names.count) {
-			if (this.pin_names[i] == name) {
+		for (var i in 0 .. this.pins_info.count) {
+			if (this.pins_info[i].name == name) {
 				return this.pins[i]
 			}
 		}
