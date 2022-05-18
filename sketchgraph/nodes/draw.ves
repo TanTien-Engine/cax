@@ -32,10 +32,10 @@ class Draw is Node
 		var mat = Matrix44.init()
 		mat.scale(this.scale, this.scale, this.scale)
 
-		this.draw_input_geo(mat)
+		this.draw_input(mat)
 	}
 
-	draw_input_geo(mat)
+	draw_input(mat)
 	{
 		var v_geo = Blueprint.calc_input_value(this, 1)
 		if (!v_geo or !v_geo.value) {
@@ -43,58 +43,60 @@ class Draw is Node
 		}
 
 		var pt = Painter.init()
-		this.draw_geo(mat, pt, v_geo)
+		this.draw_input(mat, pt, v_geo)
 
 		Graphics.draw_painter(pt)
 	}
 
-	draw_geo(mat, pt, v_geo)
+	draw_input(mat, pt, v_geo)
 	{
-		if (v_geo.type == VAR_TYPE_ARRAY)
-		{
+		if (v_geo.type == VAR_TYPE_ARRAY) {
 			for (var v in v_geo.value) {
-				this.draw_geo(mat, pt, v)
+				this.draw_input(mat, pt, v)
 			}
-		}
-		else if (v_geo.type == VAR_TYPE_GEOMETRY)
-		{
-			var col = v_geo.value.color
-
-			var shape = v_geo.value.shape
-			if (shape is Point) 
-			{
-				var pos = shape.get()
-				pt.add_circle_filled(mat, pos[0], pos[1], 5.0, col, 32)
-			} 
-			else if (shape is Line) 
-			{
-				var line = shape.get()
-				pt.add_line(mat, line, col, 2)
-			} 
-			else if (shape is Circle) 
-			{
-				var circle = shape.get()
-				pt.add_circle(mat, circle[0], circle[1], circle[2] * this.scale, col, 2.0, 24)
-			} 
-			else if (shape is Arc)
-			{
-				 var verts = shape.get_vertices()
-				 pt.add_polyline(mat, verts, col, 2.0)
-			}
-			else if (shape is Ellipse)
-			{
-				 var verts = shape.get_vertices()
-				 pt.add_polygon(mat, verts, col, 2.0)
-			}
-			else if (shape is Polyline)
-			{
-				var verts = shape.get_vertices()
-				if (shape.get_closed()) {
-					verts.add(verts[0])
-					verts.add(verts[1])
-				}
-				pt.add_polyline(mat, verts, col, 2.0)
-			}
+		} else if (v_geo.type == VAR_TYPE_GEOMETRY) {
+			this.draw_geo(mat, pt, v_geo.value)
 		}
 	}
+
+	draw_geo(mat, pt, geo)
+	{
+		var col = geo.color
+
+		var shape = geo.shape
+		if (shape is Point) 
+		{
+			var pos = shape.get()
+			pt.add_circle_filled(mat, pos[0], pos[1], 5.0, col, 32)
+		} 
+		else if (shape is Line) 
+		{
+			var line = shape.get()
+			pt.add_line(mat, line, col, 2)
+		} 
+		else if (shape is Circle) 
+		{
+			var circle = shape.get()
+			pt.add_circle(mat, circle[0], circle[1], circle[2] * this.scale, col, 2.0, 24)
+		} 
+		else if (shape is Arc)
+		{
+			 var verts = shape.get_vertices()
+			 pt.add_polyline(mat, verts, col, 2.0)
+		}
+		else if (shape is Ellipse)
+		{
+			 var verts = shape.get_vertices()
+			 pt.add_polygon(mat, verts, col, 2.0)
+		}
+		else if (shape is Polyline)
+		{
+			var verts = shape.get_vertices()
+			if (shape.get_closed()) {
+				verts.add(verts[0])
+				verts.add(verts[1])
+			}
+			pt.add_polyline(mat, verts, col, 2.0)
+		}
+	}	
 }
