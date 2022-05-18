@@ -1,53 +1,61 @@
 import "blueprint.blueprint" for Blueprint
-import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VarConstraint
+import "blueprint.variant" for Variant
+import "blueprint.variant_proxy" for VariantProxy
+import "sketchgraph.variant" for VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH, VarConstraint, VarSketch
 import "sketchgraph.context" for CONTEXT
 import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
-import "sketchnetwork.nodes.sub_solver" for SubSolver
 import "sketchnetwork.nodes.geometry" for Geometry
-import "sketchnetwork.nodes.constraint" for Constraint
 import "geometry" for Point, Line, Circle, Arc, Ellipse
 
 class Scene
 {
 	init()
 	{
-		import "blueprint.nodes.array" for Array	
-		this.geos = Array()
-		this.cons = Array()
-
-		import "sketchgraph.nodes.solver" for Solver
-		this.slover = Solver()
-		Blueprint.connect(this.geos.exports[0], this.slover.imports[0])
-		Blueprint.connect(this.cons.exports[0], this.slover.imports[1])
 	}
 
 	resolve(scene, out_list)
 	{
-		this.geos.list.clear()
-		this.cons.list.clear()
+		var geos = []
+		var cons = []
+		this.resolve_curr_nodes(scene, geos, cons)
+		this.resolve_curr_conns(scene, cons)
 
-		this.resolve_curr_nodes(scene)
-		this.resolve_curr_conns(scene)
+		var sk = VarSketch()
+		sk.geos = Variant(geos)
+		sk.cons = Variant(cons)
 
-		Blueprint.send_pin_dirty_root(this.slover.imports[0])		
+		var sketches = []
+		this.resolve_curr_sketches(scene, sketches)
+		sketches.add(Variant(VAR_TYPE_SKETCH, sk))
 
-		var geos = Blueprint.calc_output_value(this.slover, "geo")
-		for (var geo in geos.value) {
-			out_list.add(geo)
-		}
+		import "sketchgraph.nodes.sk_solver" for SkSolver
+		var solver = SkSolver()
+		Blueprint.connect(VariantProxy(Variant(sketches)), 0, solver, "sketch")
 
-		// update Sketchgraph
-		for (var node in scene.nodes) {
-			var bp_node = node.components["bp"]
-			if (bp_node and bp_node is Sketchgraph) {
-				bp_node.remap_geos(geos)
-				out_list.add(Blueprint.calc_output_value(bp_node.impl, "geo"))
+		var v_geos = Blueprint.calc_output_value(solver, "geos")
+		if (v_geos) {
+			for (var geo in v_geos.value) {
+				out_list.add(geo)
 			}
 		}
 	}
 
-	resolve_curr_nodes(scene)
+	resolve_curr_sketches(scene, sketches)
+	{
+		for (var node in scene.nodes) 
+		{
+			var bp_node = node.components["bp"]
+			if (bp_node and bp_node is Sketchgraph)
+			{
+				var v_sketch = Blueprint.calc_output_value(bp_node.impl, "sketch")
+				if (v_sketch) {
+					sketches.add(v_sketch)
+				}
+			}
+		}
+	}
+
+	resolve_curr_nodes(scene, geos, cons)
 	{
 		for (var node in scene.nodes) 
 		{
@@ -55,25 +63,15 @@ class Scene
 			if (bp_node)
 			{
 				if (bp_node.has_method("resolve_geo()")) {
-					this.geos.list.add(bp_node.resolve_geo())
+					geos.add(bp_node.resolve_geo())
 				} else if (bp_node.has_method("resolve_cons()")) {
-					this.cons.list.add(bp_node.resolve_cons())
-				}
-
-				if (bp_node is Sketchgraph)
-				{
-					for (var geo in bp_node.geos) {
-						this.geos.list.add(Variant(VAR_TYPE_GEOMETRY, geo))
-					}
-					for (var cons in bp_node.cons) {
-						this.cons.list.add(Variant(VAR_TYPE_CONSTRAINT, cons))
-					}
+					cons.add(bp_node.resolve_cons())
 				}
 			}
 		}		
 	}
 
-	resolve_curr_conns(scene)
+	resolve_curr_conns(scene, cons)
 	{
 		for (var node in scene.nodes) 
 		{
@@ -89,9 +87,9 @@ class Scene
 						var geo_1 = this.trans_to_geo(e.pin1)
 						if (geo_0 and geo_1) 
 						{
-							var cons = this.gen_cons_between_2geos(geo_0, geo_1)
-							if (cons) {
-								this.cons.list.add(cons)
+							var c = this.gen_cons_between_2geos(geo_0, geo_1)
+							if (c) {
+								cons.add(c)
 							}
 						}
 					}

@@ -1,7 +1,5 @@
 import "network.network" for Network
 import "network.vertex_shape" for PIN_ROD_START_IDX, PIN_ROD_END_IDX
-import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
-import "sketchnetwork.nodes.geo_proxy" for GeoProxy
 
 class ConsHelper
 {
@@ -24,13 +22,6 @@ class ConsHelper
 
 		var pin = pins.front()
 		var vert = pin.vert
-
-		if (vert is Sketchgraph)
-		{
-			var geo = vert.get_input_geo(pin)
-			return GeoProxy(geo)
-		}
-
 		return vert
 	}
 }
