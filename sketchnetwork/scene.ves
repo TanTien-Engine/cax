@@ -17,15 +17,15 @@ class Scene
 	{
 		var geos = []
 		var cons = []
-		this.resolve_curr_nodes(scene, geos, cons)
-		this.resolve_curr_conns(scene, cons)
+		this.resolve_nodes(scene, geos, cons)
+		this.resolve_conns(scene, cons)
 
 		var sk = VarSketch()
 		sk.geos = Variant(geos)
 		sk.cons = Variant(cons)
 
 		var sketches = []
-		this.resolve_curr_sketches(scene, sketches)
+		this.resolve_sketches(scene, sketches)
 		sketches.add(Variant(VAR_TYPE_SKETCH, sk))
 
 		import "sketchgraph.nodes.sk_solver" for SkSolver
@@ -40,7 +40,7 @@ class Scene
 		}
 	}
 
-	resolve_curr_sketches(scene, sketches)
+	resolve_sketches(scene, sketches)
 	{
 		for (var node in scene.nodes) 
 		{
@@ -55,7 +55,7 @@ class Scene
 		}
 	}
 
-	resolve_curr_nodes(scene, geos, cons)
+	resolve_nodes(scene, geos, cons)
 	{
 		for (var node in scene.nodes) 
 		{
@@ -71,7 +71,7 @@ class Scene
 		}		
 	}
 
-	resolve_curr_conns(scene, cons)
+	resolve_conns(scene, cons)
 	{
 		for (var node in scene.nodes) 
 		{
