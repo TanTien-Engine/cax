@@ -1,0 +1,132 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "blueprint.variant_helper" for VariantHelper
+import "blueprint.nodes.func_call" for FuncCall
+import "blueprint.variant_proxy" for VariantProxy
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH
+import "sketchgraph.solver" for Solver as SolverImpl
+
+class SkSolver is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "sketch", [ VAR_TYPE_ARRAY, VAR_TYPE_SKETCH ]),
+		]
+		this.exports = [
+			Pin(this, "geos", [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ]),
+		]
+
+		this.layout()
+
+		this.solver = nil
+		this.results = nil
+	}
+
+	on_pin_dirty(pin)
+	{
+		super.on_pin_dirty(pin)
+
+		this.solver = nil
+		this.results = nil
+	}
+
+	calc_value(idx)
+	{
+		if (this.results) {
+			return this.results
+		}
+
+		var v_sketches = Blueprint.calc_input_value(this, 0)
+		var sketches = VariantHelper.flatten_values(v_sketches, VAR_TYPE_SKETCH)
+		if (sketches.isEmpty) {
+			return nil
+		}
+
+		if (!this.solver) 
+		{
+			var cons = []
+			for (var sk in sketches) {
+				var items = VariantHelper.flatten_values(sk.cons, VAR_TYPE_CONSTRAINT)
+				for (var i in items) {
+					cons.add(i)
+				}
+			}
+			this.solver = SolverImpl(cons)
+		}
+		if (!this.solver) {
+			return nil
+		}
+
+		var counts = []
+
+		var tot_geos = []
+		for (var sk in sketches) 
+		{
+			var items = VariantHelper.flatten_values(sk.geos, VAR_TYPE_GEOMETRY)
+			for (var i in items) {
+				tot_geos.add(i)
+			}
+
+			counts.add(items.count)
+		}
+
+		var resolved = this.solver.resolve(tot_geos).value
+
+		var result = []
+
+		var ptr = 0
+		for (var i in 0..sketches.count)
+		{
+			var geos = []
+			for (var j in 0..counts[i])
+			{
+				geos.add(resolved[ptr])
+				ptr = ptr + 1
+			}
+
+			if (sketches[i].func) {
+				geos = this.do_callback(geos, sketches[i].func)
+			}
+
+			for (var geo in geos) {
+				result.add(geo)
+			}
+		}
+
+		this.results = Variant(result)
+
+		return this.results
+	}
+
+	do_callback(geos, func)
+	{
+		if (!func) {
+			return geos
+		}
+
+		var func_node = func.value
+
+		var call_node = FuncCall()
+		Blueprint.connect(func_node, 0, call_node, 0)
+		Blueprint.connect(VariantProxy(Variant(geos)), 0, call_node, 1)
+
+		var ret = Blueprint.calc_output_value(call_node, 0)
+		if (ret) 
+		{
+			if (ret.type == VAR_TYPE_ARRAY) {
+				return ret.value			
+			} else {
+				return [ ret ]
+			}
+		} 
+		else 
+		{
+			return []
+		}
+	}
+}

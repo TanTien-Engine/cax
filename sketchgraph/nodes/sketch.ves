@@ -1,0 +1,36 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for VAR_TYPE_FUNCTION, VAR_TYPE_ARRAY
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_PAIR, VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH, VarGeometry, VarGeoPoint, VarGeoPair, VarSketch
+
+class Sketch is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "geos", [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_PAIR ]),
+			Pin(this, "cons", [ VAR_TYPE_ARRAY, VAR_TYPE_CONSTRAINT ]),
+			Pin(this, "func", VAR_TYPE_FUNCTION),
+		]
+		this.exports = [
+			Pin(this, "sketch", VAR_TYPE_SKETCH),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var sketch = VarSketch()
+
+		sketch.geos = Blueprint.calc_input_value(this, 0)		
+		sketch.cons = Blueprint.calc_input_value(this, 1)
+		sketch.func = Blueprint.calc_input_value(this, 2)
+
+		return Variant(VAR_TYPE_SKETCH, sketch)
+	}
+}

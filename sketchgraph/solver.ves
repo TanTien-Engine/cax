@@ -1,0 +1,80 @@
+import "blueprint.variant" for Variant
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry, VarGeoPoint, VarGeoPair
+import "sketchlib" for SketchScene
+
+class Solver
+{
+	init(cons)
+	{
+		import "logger.logger" for Logger
+		Logger.info("build solver")
+
+		this.scene = SketchScene.init()
+
+		for (var c in cons) 
+		{
+			if (c.geo1 is VarGeoPair and c.geo2 is VarGeoPair)
+			{
+				var geo1 = this.geo2params(c.geo1.geo1)
+				var geo2 = this.geo2params(c.geo1.geo2)
+				var geo3 = this.geo2params(c.geo2.geo1)
+				var geo4 = this.geo2params(c.geo2.geo2)
+				this.scene.add_cons_4(c.id, c.type, geo1, geo2, geo3, geo4, c.val, c.driving)
+			}
+			else
+			{
+				var geo1 = this.geo2params(c.geo1)
+				var geo2 = this.geo2params(c.geo2)
+				this.scene.add_cons_2(c.id, c.type, geo1, geo2, c.val, c.driving)
+			}
+		}
+	}
+
+	resolve(geos)
+	{
+		var ret_geos = []
+		for (var geo in geos) {
+			ret_geos.add(Variant(VAR_TYPE_GEOMETRY, geo.clone()))
+		}
+
+		if (this.scene) 
+		{
+			var ids = []
+			var shapes = []
+			for (var v_geo in ret_geos) {
+				ids.add(v_geo.value.id)
+				shapes.add(v_geo.value.shape)
+			}
+			this.scene.solve(ids, shapes)
+
+			import "logger.logger" for Logger
+			Logger.info("resolve")
+		}
+
+		return Variant(ret_geos)
+	}
+
+	geo2params(geo)
+	{
+		if (!geo) {
+			return {}
+		}
+
+		if (geo is VarGeometry) {
+			return { "geo_id" : geo.id, "shape" : geo.shape }
+		} else if (geo is VarGeoPoint) {
+			return { "geo_id" : geo.geo_id, "point_id" : geo.point_id, "shape" : geo.shape }
+		}
+
+		return {}
+	}
+
+	get_dof()
+	{
+		if (this.scene) {
+			return this.scene.get_dof()
+		} else {
+			return 0
+		}
+	}
+}

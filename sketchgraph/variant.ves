@@ -3,6 +3,7 @@ var VAR_TYPE_GEO_POINT  = "geo_point"
 var VAR_TYPE_GEO_PAIR   = "geo_pair"
 var VAR_TYPE_CONSTRAINT = "constraint"
 var VAR_TYPE_SOLVER     = "solver"
+var VAR_TYPE_SKETCH     = "sketch"
 
 var GEO_PT_ID_NONE   = 0
 var GEO_PT_ID_START  = 1
@@ -70,5 +71,16 @@ class VarConstraint
 		this.val  = val
 
 		this.driving = driving
+	}
+}
+
+class VarSketch
+{
+	init()
+	{
+		this.geos = nil
+		this.cons = nil
+
+		this.func = nil
 	}
 }
