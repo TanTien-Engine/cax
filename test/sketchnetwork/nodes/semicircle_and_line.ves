@@ -1,0 +1,12 @@
+var node0 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node0.load_from_file(_editor, "../../../assets/blueprints/shapes/semicircle_h.ves")
+
+_editor.add_node(node0, -82.812865, 102.943322)
+
+var node1 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node1.load_from_file(_editor, "../../../assets/blueprints/shapes/line_h.ves")
+
+_editor.add_node(node1, -85.8309, -172.9231)
+
+Network.connect(node1, "left", node0, "right")
+Network.connect(node1, "right", node0, "left")

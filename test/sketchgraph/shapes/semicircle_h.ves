@@ -1,0 +1,15 @@
+var node0 = ::blueprint::nodes::subgraph::Subgraph()
+node0.load_from_file(_editor, "../../../assets/blueprints/shapes/semicircle_h.ves")
+
+_editor.add_node(node0, -297.23187077385, -22.01553719008)
+
+var node1 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node1, 26.62285711038, 31.11281259111)
+
+var node2 = ::sketchgraph::nodes::sk_solver::SkSolver()
+
+_editor.add_node(node2, -110.94123592789, 18.912894900125)
+
+Blueprint.connect(node0, "sketch", node2, "sketch")
+Blueprint.connect(node2, "geos", node1, "geo")

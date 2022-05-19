@@ -1,0 +1,75 @@
+var node0 = ::blueprint::nodes::subgraph::Subgraph()
+node0.load_from_file(_editor, "rect.ves")
+
+_editor.add_node(node0, -312, 28.5)
+
+var node1 = ::blueprint::nodes::output::Output()
+
+node1.var_name = "sketch"
+node1.var_type = "sketch"
+
+_editor.add_node(node1, 495.67218909591, -13.06836543974)
+
+var node2 = ::blueprint::nodes::output::Output()
+
+node2.var_name = "l_btm"
+node2.var_type = "geometry"
+
+_editor.add_node(node2, -24.452017645521, 162.89497866486)
+
+var node3 = ::blueprint::nodes::output::Output()
+
+node3.var_name = "r_btm"
+node3.var_type = "geometry"
+
+_editor.add_node(node3, -23.542951705361, 117.44041656436)
+
+var node4 = ::blueprint::nodes::output::Output()
+
+node4.var_name = "r_top"
+node4.var_type = "geometry"
+
+_editor.add_node(node4, -21.724747692581, 71.98587388414)
+
+var node5 = ::blueprint::nodes::output::Output()
+
+node5.var_name = "l_top"
+node5.var_type = "geometry"
+
+_editor.add_node(node5, -22.633855247621, 27.44042488734)
+
+var node6 = ::sketchgraph::nodes::geo_pair::GeoPair()
+
+_editor.add_node(node6, -52.383157867021, -56.506029807368)
+
+var node7 = ::sketchgraph::nodes::geo_pair::GeoPair()
+
+_editor.add_node(node7, -53.23965674005, -123.20837254352)
+
+var node8 = ::sketchgraph::nodes::cons_nodes::Equal()
+node8.query_param("driving").value = true
+
+_editor.add_node(node8, 88.827147804887, -94.52180958387)
+
+var node9 = ::sketchgraph::nodes::sketch::Sketch()
+
+_editor.add_node(node9, 230.6032540943, -75.005119693189)
+
+var node10 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node10, 363.37936055567, -33.337741257495)
+
+Blueprint.connect(node0, "l_btm", node7, "geo1")
+Blueprint.connect(node0, "l_top", node7, "geo2")
+Blueprint.connect(node0, "l_btm", node6, "geo1")
+Blueprint.connect(node0, "r_btm", node6, "geo2")
+Blueprint.connect(node6, "pair", node8, "a")
+Blueprint.connect(node7, "pair", node8, "b")
+Blueprint.connect(node8, "cons", node9, "cons")
+Blueprint.connect(node0, "sketch", node10, "in0")
+Blueprint.connect(node9, "sketch", node10, "in1")
+Blueprint.connect(node10, "list", node1, "var")
+Blueprint.connect(node0, "l_top", node5, "var")
+Blueprint.connect(node0, "r_top", node4, "var")
+Blueprint.connect(node0, "r_btm", node3, "var")
+Blueprint.connect(node0, "l_btm", node2, "var")

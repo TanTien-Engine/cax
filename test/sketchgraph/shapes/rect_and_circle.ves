@@ -1,0 +1,53 @@
+var node0 = ::blueprint::nodes::subgraph::Subgraph()
+node0.load_from_file(_editor, "../../../assets/blueprints/shapes/rect.ves")
+
+_editor.add_node(node0, -297.23187077385, -22.01553719008)
+
+var node1 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node1, 651.50073711038, -52.63370740889)
+
+var node2 = ::sketchgraph::nodes::sk_solver::SkSolver()
+
+_editor.add_node(node2, 513.93664407211, -64.833625099875)
+
+var node3 = ::sketchgraph::nodes::circle::Circle()
+node3.query_param("center").value.set(0, 0)
+node3.query_param("radius").value = 1
+
+_editor.add_node(node3, -252.06028994546, -176.82511698724)
+
+var node4 = ::sketchgraph::nodes::cons_nodes::PointOnCircle()
+node4.query_param("driving").value = true
+
+_editor.add_node(node4, -76.835541582085, -81.27189570988)
+
+var node5 = ::sketchgraph::nodes::sketch::Sketch()
+
+_editor.add_node(node5, 217.162778274, -125.17910269057)
+
+var node6 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node6, 367.15100528709, -87.230855367133)
+
+var node7 = ::sketchgraph::nodes::cons_nodes::PointOnCircle()
+node7.query_param("driving").value = true
+
+_editor.add_node(node7, -79.148930011837, -167.53768083385)
+
+var node8 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node8, 66.158234770651, -147.43536884586)
+
+Blueprint.connect(node0, "l_top", node7, "a")
+Blueprint.connect(node3, "geo", node7, "b")
+Blueprint.connect(node0, "l_btm", node4, "a")
+Blueprint.connect(node3, "geo", node4, "b")
+Blueprint.connect(node4, "cons", node8, "in0")
+Blueprint.connect(node7, "cons", node8, "in1")
+Blueprint.connect(node3, "geo", node5, "geos")
+Blueprint.connect(node8, "list", node5, "cons")
+Blueprint.connect(node0, "sketch", node6, "in0")
+Blueprint.connect(node5, "sketch", node6, "in1")
+Blueprint.connect(node6, "list", node2, "sketch")
+Blueprint.connect(node2, "geos", node1, "geo")

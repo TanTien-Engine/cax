@@ -1,0 +1,11 @@
+var node0 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node0.load_from_file(_editor, "../../../assets/blueprints/shapes/line_h.ves")
+
+_editor.add_node(node0, -273, 4)
+
+var node1 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node1.load_from_file(_editor, "../../../assets/blueprints/shapes/line_v.ves")
+
+_editor.add_node(node1, 201, -138)
+
+Network.connect(node0, "right", node1, "bottom")

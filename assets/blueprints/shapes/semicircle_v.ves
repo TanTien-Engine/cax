@@ -23,12 +23,12 @@ node3.var_type = "geo_point"
 
 _editor.add_node(node3, -133.99369009091, 62.138547181818)
 
-var node4 = ::sketchgraph::nodes::cons_nodes::Horizontal()
+var node4 = ::sketchgraph::nodes::cons_nodes::Vertical()
 node4.query_param("driving").value = true
 
 _editor.add_node(node4, -132.83050632233, 265.67943890857)
 
-var node5 = ::sketchgraph::nodes::cons_nodes::Horizontal()
+var node5 = ::sketchgraph::nodes::cons_nodes::Vertical()
 node5.query_param("driving").value = true
 
 _editor.add_node(node5, -133.16997581228, 178.02870191858)
@@ -39,13 +39,13 @@ _editor.add_node(node6, 8.2696359176274, 233.89977849437)
 
 var node7 = ::sketchgraph::nodes::geo_point::GeoPoint()
 
-_editor.add_node(node7, -309.20366234064, 201.59574043194)
+_editor.add_node(node7, -318.29457143155, 243.74450076252)
 
 var node8 = ::sketchgraph::nodes::arc::Arc()
 node8.query_param("center").value.set(0, 0)
-node8.query_param("radius").value = 1.1495585448764
-node8.query_param("start_angle").value = 0.014700513378719
-node8.query_param("end_angle").value = 2.907275994086
+node8.query_param("radius").value = 0.9662424397634
+node8.query_param("start_angle").value = -1.4935164004959
+node8.query_param("end_angle").value = 1.3461202026012
 
 _editor.add_node(node8, -477.99147757366, 394.46244348274)
 

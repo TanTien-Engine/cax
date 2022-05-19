@@ -1,87 +1,47 @@
-var node0 = ::sketchgraph::nodes::point::Point()
-node0.query_param("x").value = -2.66
-node0.query_param("y").value = -1.79
+var node0 = ::sketchgraph::nodes::sketch::Sketch()
 
-_editor.add_node(node0, -348.73765056198, -84.432285738021)
+_editor.add_node(node0, 174.47476864211, 60.37405717963)
 
-var node1 = ::sketchgraph::nodes::point::Point()
-node1.query_param("x").value = -0.79
-node1.query_param("y").value = 2.74
+var node1 = ::blueprint::nodes::output::Output()
 
-_editor.add_node(node1, -348.377158, -195.3623783)
+node1.var_name = "sketch"
+node1.var_type = "sketch"
 
-var node2 = ::blueprint::nodes::merge::Merge()
+_editor.add_node(node1, 310.14731809231, 81.0850207547)
 
-_editor.add_node(node2, 175.72715990178, -157.26658530772)
+var node2 = ::sketchgraph::nodes::line::Line()
+node2.query_param("p1").value.set(-1.36, -1.027)
+node2.query_param("p2").value.set(-0.85, 2.308)
 
-var node3 = ::sketchgraph::nodes::solver::Solver()
+_editor.add_node(node2, -217.12796477191, 84.450929973906)
 
-_editor.add_node(node3, 323.45978745454, -210.83790557273)
+var node3 = ::sketchgraph::nodes::geo_point::GeoPoint()
 
-var node4 = ::sketchgraph::nodes::polyline::Polyline()
-node4.query_param("closed").value = false
+_editor.add_node(node3, -39, 194.5)
 
-_editor.add_node(node4, 465.35342381818, -212.12336011818)
+var node4 = ::blueprint::nodes::output::Output()
 
-var node5 = ::blueprint::nodes::store::Store()
+node4.var_name = "top"
+node4.var_type = "geo_point"
+
+_editor.add_node(node4, 110, 226.5)
+
+var node5 = ::blueprint::nodes::output::Output()
 
 node5.var_name = "bottom"
+node5.var_type = "geo_point"
 
-_editor.add_node(node5, -206.02828099845, -63.42750504248)
+_editor.add_node(node5, 111, 177.5)
 
-var node6 = ::blueprint::nodes::store::Store()
+var node6 = ::sketchgraph::nodes::cons_nodes::Vertical()
+node6.query_param("driving").value = true
 
-node6.var_name = "top"
+_editor.add_node(node6, 21.603305785124, -22.053719008264)
 
-_editor.add_node(node6, -206.02829487008, -175.27711300509)
-
-var node7 = ::blueprint::nodes::load::Load()
-
-node7.var_name = "bottom"
-
-_editor.add_node(node7, 34.758179922377, -245.09862572497)
-
-var node8 = ::blueprint::nodes::load::Load()
-
-node8.var_name = "top"
-
-_editor.add_node(node8, 33.107453685073, -292.45165755168)
-
-var node9 = ::blueprint::nodes::load::Load()
-
-node9.var_name = "bottom"
-
-_editor.add_node(node9, 26.609336567112, -130.44729000913)
-
-var node10 = ::blueprint::nodes::load::Load()
-
-node10.var_name = "top"
-
-_editor.add_node(node10, 28.738762505462, -174.45088451752)
-
-var node11 = ::blueprint::nodes::output::Output()
-
-node11.var_name = "geo"
-node11.var_type = "geometry"
-
-_editor.add_node(node11, 603.38418575, -199.25127810469)
-
-var node12 = ::sketchgraph::nodes::cons_nodes::Vertical()
-node12.query_param("driving").value = true
-
-_editor.add_node(node12, 173.95190942832, -275.38330043645)
-
-Blueprint.connect(node1, "geo", node6, "var")
-Blueprint.connect(node6, "var", node10, "var")
-Blueprint.connect(node6, "var", node8, "var")
-Blueprint.connect(node0, "geo", node5, "var")
-Blueprint.connect(node5, "var", node9, "var")
-Blueprint.connect(node9, "var", node2, "in0")
-Blueprint.connect(node10, "var", node2, "in1")
-Blueprint.connect(node5, "var", node7, "var")
-Blueprint.connect(node7, "var", node12, "a")
-Blueprint.connect(node8, "var", node12, "b")
-Blueprint.connect(node2, "list", node3, "geo")
-Blueprint.connect(node12, "cons", node3, "cons")
-Blueprint.connect(node3, "geo", node4, "pts")
-Blueprint.connect(node4, "geo", node11, "var")
+Blueprint.connect(node2, "geo", node6, "a")
+Blueprint.connect(node2, "geo", node0, "geos")
+Blueprint.connect(node6, "cons", node0, "cons")
+Blueprint.connect(node0, "sketch", node1, "var")
+Blueprint.connect(node2, "geo", node3, "geo")
+Blueprint.connect(node3, "end", node5, "var")
+Blueprint.connect(node3, "start", node4, "var")
