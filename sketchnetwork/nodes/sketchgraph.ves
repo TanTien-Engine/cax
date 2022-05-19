@@ -1,5 +1,5 @@
 import "blueprint.blueprint" for Blueprint
-import "blueprint.variant" for Variant
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.nodes.subgraph" for Subgraph
 import "network.vertex" for Vertex
@@ -54,8 +54,19 @@ class Sketchgraph is Vertex
 	calc_output_sketch()
 	{
 		var v_sketch = Blueprint.calc_output_value(this.impl, "sketch")
-		v_sketch.value.selected = this.selected
+		this.prepare_output_sketch(v_sketch)
 		return v_sketch
+	}
+
+	prepare_output_sketch(v_sketch)
+	{
+		if (v_sketch.type == VAR_TYPE_SKETCH) {
+			v_sketch.value.selected = this.selected
+		} else if (v_sketch.type == VAR_TYPE_ARRAY) {
+			for (var i in v_sketch.value) {
+				this.prepare_output_sketch(i)
+			}
+		}
 	}
 
 	get_title()
