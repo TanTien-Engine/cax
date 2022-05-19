@@ -1,7 +1,7 @@
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "blueprint.variant_proxy" for VariantProxy
-import "sketchgraph.variant" for VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH, VarConstraint, VarSketch
+import "sketchgraph.variant" for VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH, VarConstraint, VarSketch, VarGeometry, VarGeoPoint
 import "sketchgraph.context" for CONTEXT
 import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
 import "sketchnetwork.nodes.geometry" for Geometry
@@ -118,31 +118,31 @@ class Scene
 		var arc = 0
 		var ellipse = 0
 
-		var a = geo_0.shape
-		if (a is Point) {
-			point = point + 1
-		} else if (a is Line) {
-			line = line + 1
-		} else if (a is Circle) {
-			circle = circle + 1
-		} else if (a is Arc) {
-			arc = arc + 1
-		} else if (a is Ellipse) {
-			ellipse = ellipse + 1
+		fun get_shape_type(geo)
+		{
+			if (geo is VarGeometry)
+			{
+				var shape = geo.shape
+				if (shape is Point) {
+					point = point + 1
+				} else if (shape is Line) {
+					line = line + 1
+				} else if (shape is Circle) {
+					circle = circle + 1
+				} else if (shape is Arc) {
+					arc = arc + 1
+				} else if (shape is Ellipse) {
+					ellipse = ellipse + 1
+				}
+			}
+			else if (geo is VarGeoPoint)
+			{
+				point = point + 1
+			}
 		}
 
-		var b = geo_1.shape
-		if (b is Point) {
-			point = point + 1
-		} else if (b is Line) {
-			line = line + 1
-		} else if (b is Circle) {
-			circle = circle + 1
-		} else if (b is Arc) {
-			arc = arc + 1
-		} else if (b is Ellipse) {
-			ellipse = ellipse + 1
-		}
+		get_shape_type(geo_0)
+		get_shape_type(geo_1)
 
 		if (point > 0)
 		{
