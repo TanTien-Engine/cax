@@ -5,7 +5,7 @@ import "blueprint.nodes.subgraph" for Subgraph
 import "network.vertex" for Vertex
 import "network.pin" for Pin
 import "network.vertex_shape" for SHAPE_PANEL
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, GEO_PT_ID_START, GEO_PT_ID_END, VarGeometry, VarGeoPoint
 import "sketchgraph.nodes.draw" for Draw
 import "sketchgraph.nodes.sk_solver" for SkSolver
 import "sketchgraph.nodes.solver" for Solver
@@ -13,17 +13,16 @@ import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.context" for CONTEXT
 import "maths.vector" for Vector2
 import "graphics" for Painter, Graphics
-import "geometry" for Point
+import "geometry" for Point, Line
 import "maths" for Matrix44
 
 class PinInfo
 {
-	init(geo, name)
+	init(geo, name, pos)
 	{
 		this.geo  = geo
 		this.name = name
-
-		this.pos = geo.shape.get()
+		this.pos  = pos
 	}
 }
 
@@ -142,11 +141,12 @@ class Sketchgraph is Vertex
 		for (var i in 0 .. this.impl.exports.count)
 		{
 			var v_out = Blueprint.calc_output_value(this.impl, i)
-			if (v_out.type == VAR_TYPE_GEOMETRY and v_out.value.shape is Point)
+			if (v_out and this.is_point_geo(v_out))
 			{
-				var geo = v_out.value
+				var geo  = v_out.value
 				var name = this.impl.exports[i].name
-				this.pins_info.add(PinInfo(geo, name))
+				var pos  = this.calc_geo_pos(geo, nil)
+				this.pins_info.add(PinInfo(geo, name, pos))
 
 				this.pins.add(Pin(this, 0))
 			}
@@ -164,14 +164,18 @@ class Sketchgraph is Vertex
 		Blueprint.connect(VariantProxy(v_sketch.value.cons), "out", solver, "cons")
 
 		var solved = Blueprint.calc_output_value(solver, "geo")
-
 		for (var pin in this.pins_info)
 		{
 			for (var geo in solved.value)
 			{
-				if (geo.value.shape is Point and geo.value.id == pin.geo.id)
+				if (this.is_geo_id_equal(pin.geo, geo.value.id))
 				{
-					var pos = geo.value.shape.get()
+					var pos = nil
+					if (pin.geo is VarGeometry) {
+						pos = this.calc_geo_pos(geo.value, nil)
+					} else if (pin.geo is VarGeoPoint) {
+						pos = this.calc_geo_pos(geo.value, pin.geo.point_id)
+					}
 					pin.pos[0] = pos[0]
 					pin.pos[1] = pos[1]
 				}
@@ -222,5 +226,56 @@ class Sketchgraph is Vertex
 			}
 		}
 		return nil
+	}
+
+	is_point_geo(v_geo)
+	{
+		if (v_geo.type == VAR_TYPE_GEOMETRY and v_geo.value.shape is Point) {
+			return true
+		} else if (v_geo.type == VAR_TYPE_GEO_POINT) {
+			return true
+		}
+		return false
+	}
+
+	calc_shape_pos(shape, point_id)
+	{
+		if (shape is Point) 
+		{
+			return shape.get()
+		} 
+		else if (shape is Line) 
+		{
+			var line = shape.get()
+			if (point_id == GEO_PT_ID_START) {
+				return [ line[0], line[1] ]
+			} else if (point_id == GEO_PT_ID_END) {
+				return [ line[2], line[3] ]
+			}
+		}
+
+		return nil
+	}
+
+	calc_geo_pos(geo, point_id)
+	{
+		if (geo is VarGeometry) {
+			return this.calc_shape_pos(geo.shape, point_id)
+		} else if (geo is VarGeoPoint) {
+			return this.calc_shape_pos(geo.shape, geo.point_id)
+		} else {		
+			return nil
+		}
+	}
+
+	is_geo_id_equal(geo, id)
+	{
+		if (geo is VarGeometry) {
+			return geo.id == id
+		} else if (geo is VarGeoPoint) {
+			return geo.geo_id == id
+		} else {
+			return false
+		}
 	}
 }
