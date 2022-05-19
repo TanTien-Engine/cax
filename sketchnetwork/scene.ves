@@ -147,50 +147,47 @@ class Scene
 		if (point > 0)
 		{
 			if (point > 1) {
-//				return this.create_cons("coincident", geo_0, geo_1)
-				return this.create_cons("distance", geo_0, geo_1)
+				return this.create_cons("coincident", geo_0, geo_1, 0, false)
 			} else if (line > 0) {
-				return this.create_cons("point_on_line", geo_0, geo_1)
+				return this.create_cons("point_on_line", geo_0, geo_1, 0, true)
 			} else if (circle > 0) {
-				return this.create_cons("point_on_circle", geo_0, geo_1)
+				return this.create_cons("point_on_circle", geo_0, geo_1, 0, true)
 			} else if (arc > 0) {
-				return this.create_cons("point_on_arc", geo_0, geo_1)
+				return this.create_cons("point_on_arc", geo_0, geo_1, 0, true)
 			} else if (ellipse > 0) {
-				return this.create_cons("point_on_ellipse", geo_0, geo_1)
+				return this.create_cons("point_on_ellipse", geo_0, geo_1, 0, true)
 			}
 		}
 		else if (line > 0)
 		{
 			if (line > 1) {
-				return this.create_cons("parallel", geo_0, geo_1)
+				return this.create_cons("parallel", geo_0, geo_1, 0, true)
 			} else if (circle > 0) {
-				return this.create_cons("tangent", geo_0, geo_1)
+				return this.create_cons("tangent", geo_0, geo_1, 0, true)
 			} else if (arc > 0) {
-				return this.create_cons("tangent", geo_0, geo_1)
+				return this.create_cons("tangent", geo_0, geo_1, 0, true)
 			} else if (ellipse > 0) {
-				return this.create_cons("tangent", geo_0, geo_1)
+				return this.create_cons("tangent", geo_0, geo_1, 0, true)
 			}
 		}
 		else if (circle > 0)
 		{
 			if (circle > 1) {
-				return this.create_cons("tangent_circumf", geo_0, geo_1)
+				return this.create_cons("tangent_circumf", geo_0, geo_1, 0, true)
 			} else if (arc > 0) {
-				return this.create_cons("tangent", geo_0, geo_1)
+				return this.create_cons("tangent", geo_0, geo_1, 0, true)
 			} else if (ellipse > 0) {
-				return this.create_cons("tangent", geo_0, geo_1)
+				return this.create_cons("tangent", geo_0, geo_1, 0, true)
 			}
 		}
 
 		return nil
 	}
 
-	create_cons(type, a, b)
+	create_cons(type, a, b, value, driving)
 	{
 		var id = CONTEXT.advance_cons_id()
-		var val = 0
-		var driving = true
-		var cons = VarConstraint(id, type, a, b, val, driving)
-		return Variant(VAR_TYPE_CONSTRAINT, cons)		
+		var cons = VarConstraint(id, type, a, b, value, driving)
+		return Variant(VAR_TYPE_CONSTRAINT, cons)
 	}
 }
