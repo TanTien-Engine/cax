@@ -2,8 +2,9 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for VAR_TYPE_ARRAY, VAR_TYPE_PORT
-import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT
 import "sketchgraph.util" for DRAW_SCALE
+import "sketchgraph.geo_helper" for GeoHelper
 import "graphics" for Painter, Graphics
 import "geometry" for Point, Line, Circle, Arc, Ellipse, Polyline
 import "maths" for Matrix44
@@ -56,6 +57,8 @@ class Draw is Node
 			}
 		} else if (v_geo.type == VAR_TYPE_GEOMETRY) {
 			this.draw_geo(mat, pt, v_geo.value)
+		} else if (v_geo.type == VAR_TYPE_GEO_POINT) {
+			this.draw_geo_point(mat, pt, v_geo.value)
 		}
 	}
 
@@ -98,5 +101,12 @@ class Draw is Node
 			}
 			pt.add_polyline(mat, verts, col, 2.0)
 		}
-	}	
+	}
+
+	draw_geo_point(mat, pt, geo_pt)
+	{
+		var pos = GeoHelper.calc_pos(geo_pt.shape, geo_pt.point_id)
+		var col = [ 255, 255, 255, 255 ]
+		pt.add_circle_filled(mat, pos[0], pos[1], 5.0, col, 32)		
+	}
 }

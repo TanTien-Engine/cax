@@ -1,0 +1,53 @@
+import "sketchgraph.variant" for GEO_PT_ID_START, GEO_PT_ID_END, GEO_PT_ID_MIDDLE
+import "geometry" for Point, Line, Circle, Arc
+import "math" for Math
+
+class GeoHelper
+{
+	static calc_pos(shape, point_id)
+	{
+		if (shape is Point) 
+		{
+			return shape.get()
+		} 
+		else if (shape is Line) 
+		{
+			var line = shape.get()
+			if (point_id == GEO_PT_ID_START) {
+				return [ line[0], line[1] ]
+			} else if (point_id == GEO_PT_ID_END) {
+				return [ line[2], line[3] ]
+			}
+		}
+		else if (shape is Circle)
+		{
+			// [x, y, radius]
+			var circle = shape.get()
+			return [ circle[0], circle[1] ]
+		}
+		else if (shape is Arc)
+		{
+			// [x, y, radius, start_angle, end_angle]
+			var arc = shape.get()
+
+			if (point_id == GEO_PT_ID_START) 
+			{
+				var x = arc[0] + arc[2] * Math.cos(arc[3])
+				var y = arc[1] + arc[2] * Math.sin(arc[3])
+				return [ x, y ]
+			} 
+			else if (point_id == GEO_PT_ID_END) 
+			{
+				var x = arc[0] + arc[2] * Math.cos(arc[4])
+				var y = arc[1] + arc[2] * Math.sin(arc[4])
+				return [ x, y ]
+			}
+			else if (point_id == GEO_PT_ID_MIDDLE)
+			{
+				return [ arc[0], arc[1] ]
+			}
+		}
+
+		return nil
+	}
+}
