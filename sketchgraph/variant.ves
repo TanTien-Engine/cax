@@ -82,5 +82,7 @@ class VarSketch
 		this.cons = nil
 
 		this.func = nil
+
+		this.selected = false
 	}
 }

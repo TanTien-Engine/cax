@@ -47,7 +47,7 @@ class Scene
 			var bp_node = node.components["bp"]
 			if (bp_node and bp_node is Sketchgraph)
 			{
-				var v_sketch = Blueprint.calc_output_value(bp_node.impl, "sketch")
+				var v_sketch = bp_node.calc_output_sketch()
 				if (v_sketch) {
 					sketches.add(v_sketch)
 				}

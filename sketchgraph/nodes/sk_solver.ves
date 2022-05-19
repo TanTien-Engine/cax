@@ -7,6 +7,7 @@ import "blueprint.nodes.func_call" for FuncCall
 import "blueprint.variant_proxy" for VariantProxy
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH
 import "sketchgraph.solver" for Solver as SolverImpl
+import "sketchgraph.util" for GEO_SELECTED_COLOR
 
 class SkSolver is Node
 {
@@ -89,8 +90,16 @@ class SkSolver is Node
 				ptr = ptr + 1
 			}
 
-			if (sketches[i].func) {
-				geos = this.do_callback(geos, sketches[i].func)
+			var sk = sketches[i]
+
+			if (sk.func) {
+				geos = this.do_callback(geos, sk.func)
+			}
+
+			if (sk.selected) {
+				for (var i in geos) {
+					i.value.set_color(GEO_SELECTED_COLOR)
+				}
 			}
 
 			for (var geo in geos) {
