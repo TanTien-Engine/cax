@@ -18,7 +18,7 @@ class Scene
 		var geos = []
 		var cons = []
 		this.resolve_nodes(scene, geos, cons)
-		this.resolve_conns(scene, cons)
+		this.resolve_edges(scene, cons)
 
 		var sk = VarSketch()
 		sk.geos = Variant(geos)
@@ -71,7 +71,7 @@ class Scene
 		}		
 	}
 
-	resolve_conns(scene, cons)
+	resolve_edges(scene, cons)
 	{
 		for (var node in scene.nodes) 
 		{
