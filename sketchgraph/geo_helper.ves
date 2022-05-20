@@ -1,4 +1,5 @@
 import "sketchgraph.variant" for GEO_PT_ID_START, GEO_PT_ID_END, GEO_PT_ID_MIDDLE
+import "sketchgraph.util" for GEO_COLOR, GEO_SELECTED_COLOR
 import "geometry" for Point, Line, Circle, Arc
 import "math" for Math
 
@@ -49,5 +50,14 @@ class GeoHelper
 		}
 
 		return nil
+	}
+
+	static set_color(geo, selected)
+	{
+		if (selected) {
+			geo.set_color(GEO_SELECTED_COLOR)
+		} else {
+			geo.set_color(GEO_COLOR)
+		}
 	}
 }

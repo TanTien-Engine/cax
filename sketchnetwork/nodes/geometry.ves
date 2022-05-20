@@ -44,7 +44,7 @@ class Geometry is Vertex
 	{
 		super.on_selected()
 
-		this.set_geo_color([255, 0, 0, 255])
+		this.impl.on_selected()
 
 		CONTEXT.need_rebuild = true
 	}
@@ -53,16 +53,9 @@ class Geometry is Vertex
 	{ 
 		super.on_deselected()
 
-		this.set_geo_color([255, 255, 255, 255])
+		this.impl.on_deselected()
 
 		CONTEXT.need_rebuild = true
-	}
-
-	set_geo_color(col)
-	{
-		for (var i in 0..4) {
-			this.impl.geo_col[i] = col[i]			
-		}
 	}
 
 	bind_editor()
