@@ -10,10 +10,10 @@ node1.var_type = "sketch"
 _editor.add_node(node1, 310.14731809231, 81.0850207547)
 
 var node2 = ::sketchgraph::nodes::line::Line()
-node2.query_param("p1").value.set(-1.25, -0.07)
-node2.query_param("p2").value.set(2.01, 0.24)
+node2.query_param("p1").value.set(0, 0)
+node2.query_param("p2").value.set(1, 1)
 
-_editor.add_node(node2, -217.12796477191, 84.450929973906)
+_editor.add_node(node2, -206.35164428907, 37.753541214912)
 
 var node3 = ::sketchgraph::nodes::cons_nodes::Horizontal()
 node3.query_param("driving").value = true
@@ -38,6 +38,48 @@ node6.var_type = "geo_point"
 
 _editor.add_node(node6, 111, 177.5)
 
+var node7 = ::blueprint::nodes::subgraph::Subgraph()
+node7.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node7, -406.94380384404, 142.64535969989)
+
+var node8 = ::blueprint::nodes::input::Input()
+
+node8.var_name = "left"
+node8.var_type = "num2"
+
+_editor.add_node(node8, -599.41927701955, 165.52227039464)
+
+var node9 = ::blueprint::nodes::number2::Number2()
+
+node9.value.set(-2, -0.2)
+
+_editor.add_node(node9, -598.46601901793, 89.639035671146)
+
+var node10 = ::blueprint::nodes::subgraph::Subgraph()
+node10.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node10, -407.17458644455, -15.564259336142)
+
+var node11 = ::blueprint::nodes::input::Input()
+
+node11.var_name = "right"
+node11.var_type = "num2"
+
+_editor.add_node(node11, -599.65005962006, 7.3126513586082)
+
+var node12 = ::blueprint::nodes::number2::Number2()
+
+node12.value.set(2, 0.2)
+
+_editor.add_node(node12, -598.69680161844, -68.570583364886)
+
+Blueprint.connect(node11, "var", node10, "val")
+Blueprint.connect(node12, "v2", node10, "default")
+Blueprint.connect(node8, "var", node7, "val")
+Blueprint.connect(node9, "v2", node7, "default")
+Blueprint.connect(node7, "val", node2, "p1")
+Blueprint.connect(node10, "val", node2, "p2")
 Blueprint.connect(node2, "geo", node4, "geo")
 Blueprint.connect(node4, "end", node6, "var")
 Blueprint.connect(node4, "start", node5, "var")

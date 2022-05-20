@@ -10,10 +10,8 @@ node1.var_type = "sketch"
 _editor.add_node(node1, 310.14731809231, 81.0850207547)
 
 var node2 = ::sketchgraph::nodes::line::Line()
-node2.query_param("p1").value.set(-1.36, -1.027)
-node2.query_param("p2").value.set(-0.85, 2.308)
 
-_editor.add_node(node2, -217.12796477191, 84.450929973906)
+_editor.add_node(node2, -217.9544110529, 45.607954767294)
 
 var node3 = ::sketchgraph::nodes::geo_point::GeoPoint()
 
@@ -38,6 +36,48 @@ node6.query_param("driving").value = true
 
 _editor.add_node(node6, 21.603305785124, -22.053719008264)
 
+var node7 = ::blueprint::nodes::subgraph::Subgraph()
+node7.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node7, -421.28708640671, 153.57357498573)
+
+var node8 = ::blueprint::nodes::input::Input()
+
+node8.var_name = "top"
+node8.var_type = "num2"
+
+_editor.add_node(node8, -613.76255958222, 176.45048568048)
+
+var node9 = ::blueprint::nodes::number2::Number2()
+
+node9.value.set(-0.2, 2)
+
+_editor.add_node(node9, -612.8093015806, 100.56725095699)
+
+var node10 = ::blueprint::nodes::subgraph::Subgraph()
+node10.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node10, -420.74023851381, -5.9912429911844)
+
+var node11 = ::blueprint::nodes::input::Input()
+
+node11.var_name = "bottom"
+node11.var_type = "num2"
+
+_editor.add_node(node11, -613.21571168932, 16.885667703566)
+
+var node12 = ::blueprint::nodes::number2::Number2()
+
+node12.value.set(-0.2, -2)
+
+_editor.add_node(node12, -612.2624536877, -58.997567019924)
+
+Blueprint.connect(node11, "var", node10, "val")
+Blueprint.connect(node12, "v2", node10, "default")
+Blueprint.connect(node8, "var", node7, "val")
+Blueprint.connect(node9, "v2", node7, "default")
+Blueprint.connect(node7, "val", node2, "p1")
+Blueprint.connect(node10, "val", node2, "p2")
 Blueprint.connect(node2, "geo", node6, "a")
 Blueprint.connect(node2, "geo", node0, "geos")
 Blueprint.connect(node6, "cons", node0, "cons")

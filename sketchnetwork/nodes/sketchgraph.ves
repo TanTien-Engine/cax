@@ -1,12 +1,16 @@
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "blueprint.variant_proxy" for VariantProxy
+import "blueprint.node_editor" for NodeEditor
 import "blueprint.nodes.subgraph" for Subgraph
+import "blueprint.nodes.array" for Array
+import "blueprint.nodes.number2" for Number2
 import "network.vertex" for Vertex
 import "network.pin" for Pin
 import "network.vertex_shape" for SHAPE_PANEL
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VAR_TYPE_SKETCH, VarGeometry, VarGeoPoint
 import "sketchgraph.geo_helper" for GeoHelper
+import "sketchgraph.util" for DRAW_SCALE
 import "sketchgraph.nodes.draw" for Draw
 import "sketchgraph.nodes.sk_solver" for SkSolver
 import "sketchgraph.nodes.solver" for Solver
@@ -14,8 +18,11 @@ import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.context" for CONTEXT
 import "maths.vector" for Vector2
 import "graphics" for Painter, Graphics
-import "geometry" for Point, Line, Circle, Arc
+import "geometry" for Point
 import "maths" for Matrix44
+import "math" for Math
+
+var EDITOR = nil
 
 class PinInfo
 {
@@ -48,6 +55,7 @@ class Sketchgraph is Vertex
 
 		this.pins_info = []
 
+		this.editor_pts = Array()
 	}
 
 	calc_output_sketch()
@@ -121,12 +129,10 @@ class Sketchgraph is Vertex
 		this.impl.load_from_file(editor, filepath, editor)
 
 		var v_sketch = this.calc_output_sketch()
-		if (!v_sketch) {
-			return
+		if (v_sketch) {
+			this.reset_geos(v_sketch)
+			this.reset_pins(v_sketch)
 		}
-
-		this.reset_geos(v_sketch)
-		this.reset_pins(v_sketch)
 	}
 
 	reset_geos(v_sketch)
@@ -256,6 +262,17 @@ class Sketchgraph is Vertex
 		}
 	}
 
+	get_geo_id(geo)
+	{
+		if (geo is VarGeometry) {
+			return geo.id
+		} else if (geo is VarGeoPoint) {
+			return geo.geo_id
+		} else {
+			return nil
+		}
+	}
+
 	is_geo_id_equal(geo, id)
 	{
 		if (geo is VarGeometry) {
@@ -265,5 +282,78 @@ class Sketchgraph is Vertex
 		} else {
 			return false
 		}
+	}
+
+	bind_editor()
+	{
+		if (!EDITOR) {
+			EDITOR = NodeEditor("assets/blueprints/editorgraph/select_and_translate.ves")
+		}
+
+		this.editor_pts.list.clear()
+		for (var pin in this.pins_info)
+		{
+			var x = pin.pos[0] * DRAW_SCALE
+			var y = pin.pos[1] * DRAW_SCALE
+			this.editor_pts.list.add(Variant(Vector2(x, y)))
+		}
+
+		Blueprint.connect(this.editor_pts.exports[0], EDITOR.editor_node.imports[1])
+
+		Blueprint.send_node_dirty_root(EDITOR.editor_node)
+
+		return true
+	}
+
+	draw_editor() 
+	{
+		if (EDITOR) {
+			EDITOR.draw()		
+		}
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		EDITOR.on_mouse_pressed(x, y, btn)
+	}
+
+	on_mouse_released(x, y, btn) 
+	{
+		EDITOR.on_mouse_released(x, y, btn)
+
+		var v_sketch = this.calc_output_sketch()
+		if (v_sketch) {
+			this.reset_geos(v_sketch)
+			this.fix_pins_pos(v_sketch)
+		}
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		EDITOR.on_mouse_dragged(x, y, btn)
+
+		for (var i in 0 .. this.pins_info.count)
+		{
+			var src = this.editor_pts.list[i].value
+			var dst = this.pins_info[i].pos
+
+			var x = src.x / DRAW_SCALE
+			var y = src.y / DRAW_SCALE
+			dst[0] = x
+			dst[1] = y
+
+			var pin_name = this.pins_info[i].name
+			var in_node = Blueprint.get_input_node(this.impl, pin_name)
+			if (!in_node) {
+				in_node = Number2()
+				Blueprint.connect(in_node, "v2", this.impl, pin_name)
+			}
+			if (in_node is Number2) {
+				in_node.value.set(x, y)
+				Blueprint.send_pin_dirty_root(in_node.exports[0])
+			}
+		}
+
+		CONTEXT.need_rebuild = true
 	}
 }
