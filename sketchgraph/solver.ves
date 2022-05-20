@@ -34,7 +34,9 @@ class Solver
 	{
 		var ret_geos = []
 		for (var geo in geos) {
-			ret_geos.add(Variant(VAR_TYPE_GEOMETRY, geo.clone()))
+			if (geo is VarGeometry) {
+				ret_geos.add(Variant(VAR_TYPE_GEOMETRY, geo.clone()))
+			}
 		}
 
 		if (this.scene) 
