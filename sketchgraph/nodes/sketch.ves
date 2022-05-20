@@ -27,7 +27,13 @@ class Sketch is Node
 	{
 		var sketch = VarSketch()
 
-		sketch.geos = Blueprint.calc_input_value(this, 0)		
+		var geos = Blueprint.calc_input_value(this, 0)
+		if (geos.type == VAR_TYPE_ARRAY) {
+			sketch.geos = geos
+		} else {
+			sketch.geos = Variant([geos])
+		}
+
 		sketch.cons = Blueprint.calc_input_value(this, 1)
 		sketch.func = Blueprint.calc_input_value(this, 2)
 
