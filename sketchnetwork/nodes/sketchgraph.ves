@@ -58,6 +58,20 @@ class Sketchgraph is Vertex
 		this.editor_pts = Array()
 	}
 
+	resolve_geo()
+	{
+		var geos = []
+		for (var pin in this.pins_info) 
+		{
+			if (pin.geo is VarGeometry) {
+				geos.add(Variant(VAR_TYPE_GEOMETRY, pin.geo))
+			} else if (pin.geo is VarGeoPoint) {
+				geos.add(Variant(VAR_TYPE_GEO_POINT, pin.geo))
+			}
+		}
+		return Variant(geos)
+	}
+
 	calc_output_sketch()
 	{
 		var v_sketch = Blueprint.calc_output_value(this.impl, "sketch")

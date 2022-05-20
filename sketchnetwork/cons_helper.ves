@@ -1,20 +1,25 @@
+import "blueprint.blueprint" for Blueprint
 import "network.network" for Network
 import "network.vertex_shape" for PIN_ROD_START_IDX, PIN_ROD_END_IDX
+import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
 
 class ConsHelper
 {
-	static get_start_node(node)
+	static get_start_pin(node)
 	{
-		return this.get_conn_node(node, PIN_ROD_START_IDX)
+		return this.get_conn_pin(node, PIN_ROD_START_IDX)
 	}
 
-	static get_end_node(node)
+	static get_end_pin(node)
 	{
-		return this.get_conn_node(node, PIN_ROD_END_IDX)
+		return this.get_conn_pin(node, PIN_ROD_END_IDX)
 	}
 
-	static get_conn_node(node, type)
+	static get_conn_pin(node, type)
 	{
+		import "sketchnetwork.nodes.geometry" for Geometry
+		import "sketchnetwork.nodes.constraint" for Constraint
+
 		var pins = Network.neighbors_pins(node, type)
 		if (pins.isEmpty) {
 			return nil
@@ -22,6 +27,72 @@ class ConsHelper
 
 		var pin = pins.front()
 		var vert = pin.vert
-		return vert
+
+		if (vert is Sketchgraph)
+		{
+			var name = vert.get_pin_name(pin)
+			for (var node in vert.impl.out_nodes) {
+				if (node.var_name == name) {
+
+					System.print("++++ sub %(name)")
+
+					return Blueprint.get_input_pin(node, 0)
+				}
+			}
+			return nil
+		}
+		else if (vert is Geometry or vert is Constraint)
+		{
+			return vert.impl.exports[0]
+		}
+
+		return nil
+	}
+
+	static get_start_shape(node)
+	{
+		return this.get_conn_shape(node, PIN_ROD_START_IDX)
+	}
+
+	static get_end_shape(node)
+	{
+		return this.get_conn_shape(node, PIN_ROD_END_IDX)
+	}
+
+	static get_conn_shape(node, type)
+	{
+		import "sketchnetwork.nodes.geometry" for Geometry
+		import "sketchnetwork.nodes.constraint" for Constraint
+
+		var pins = Network.neighbors_pins(node, type)
+		if (pins.isEmpty) {
+			return nil
+		}
+
+		var pin = pins.front()
+		var vert = pin.vert
+
+		if (vert is Sketchgraph)
+		{
+			var name = vert.get_pin_name(pin)
+			for (var node in vert.impl.out_nodes) {
+				if (node.var_name == name) {
+					var v_geo = Blueprint.calc_input_value(node, 0)
+					if (v_geo) {
+						return v_geo.value.shape
+					}
+				}
+			}
+			return nil
+		}
+		else if (vert is Geometry)
+		{
+			var v_geo = vert.resolve_geo()
+			if (v_geo) {
+				return v_geo.value.shape
+			}
+		}
+
+		return nil
 	}
 }

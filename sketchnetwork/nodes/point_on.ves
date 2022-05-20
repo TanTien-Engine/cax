@@ -35,17 +35,17 @@ class PointOn is Vertex
 			return nil
 		}
 
-		var na = ConsHelper.get_start_node(this)
-		var nb = ConsHelper.get_end_node(this)
-		if (!na and !nb) {
+		var pa = ConsHelper.get_start_pin(this)
+		var pb = ConsHelper.get_end_pin(this)
+		if (!pa and !pb) {
 			return nil
 		}
 
-		if (na) {
-			Blueprint.connect(na.impl.exports[0], impl.imports[0])
+		if (pa) {
+			Blueprint.connect(pa, impl.imports[0])
 		}
-		if (nb) {
-			Blueprint.connect(nb.impl.exports[0], impl.imports[1])
+		if (pb) {
+			Blueprint.connect(pb, impl.imports[1])
 		}
 
 		return Blueprint.calc_output_value(impl, "cons")
@@ -66,43 +66,35 @@ class PointOn is Vertex
 
 	create_conn_impl()
 	{
-		var na = ConsHelper.get_start_node(this)
-		var nb = ConsHelper.get_end_node(this)		
-		if (!na or !nb) {
+		var sa = ConsHelper.get_start_shape(this)
+		var sb = ConsHelper.get_end_shape(this)		
+		if (!sa or !sb) {
 			return nil
 		}
 
-		var v_a = na.resolve_geo()
-		var v_b = nb.resolve_geo()
-		if (!v_a or !v_b) {
+		if (!(sa is Point) and !(sb is Point)) {
 			return nil
 		}
 
-		var a = v_a.value.shape
-		var b = v_b.value.shape
-		if (!(a is Point) and !(b is Point)) {
-			return nil
-		}
-
-		if (a is Line or b is Line) 
+		if (sa is Line or sb is Line) 
 		{
 			this.title = "点在线上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnLine
 			return PointOnLine()
 		} 
-		else if (a is Circle or b is Circle) 
+		else if (sa is Circle or sb is Circle) 
 		{
 			this.title = "点在圆上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnCircle
 			return PointOnCircle()
 		} 
-		else if (a is Arc or b is Arc) 
+		else if (sa is Arc or sb is Arc) 
 		{
 			this.title = "点在弧上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnArc
 			return PointOnArc()
 		} 
-		else if (a is Ellipse or b is Ellipse) 
+		else if (sa is Ellipse or sb is Ellipse) 
 		{
 			this.title = "点在椭圆上"
 			import "sketchgraph.nodes.cons_nodes" for PointOnEllipse

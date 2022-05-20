@@ -29,17 +29,17 @@ class Constraint is Vertex
 
 	resolve_cons()
 	{
-		var na = ConsHelper.get_start_node(this)
-		var nb = ConsHelper.get_end_node(this)
-		if (!na and !nb) {
+		var pa = ConsHelper.get_start_pin(this)
+		var pb = ConsHelper.get_end_pin(this)
+		if (!pa and !pb) {
 			return nil
 		}
 
-		if (na) {
-			Blueprint.connect(na.impl.exports[0], this.impl.imports[0])
+		if (pa) {
+			Blueprint.connect(pa, this.impl.imports[0])
 		}
-		if (nb) {
-			Blueprint.connect(nb.impl.exports[0], this.impl.imports[1])
+		if (pb) {
+			Blueprint.connect(pb, this.impl.imports[1])
 		}
 
 		return Blueprint.calc_output_value(this.impl, "cons")
