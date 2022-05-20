@@ -9,6 +9,24 @@ class Distance is Constraint
 	}
 }
 
+class DistanceX is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for DistanceX as sg_DistanceX
+		super.init("水平距离", sg_DistanceX())
+	}
+}
+
+class DistanceY is Constraint
+{
+	init()
+	{
+		import "sketchgraph.nodes.cons_nodes" for DistanceY as sg_DistanceY
+		super.init("竖直距离", sg_DistanceY())
+	}
+}
+
 class Angle is Constraint
 {
 	init()
