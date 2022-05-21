@@ -33,9 +33,6 @@ class ConsHelper
 			var name = vert.get_pin_name(pin)
 			for (var node in vert.impl.out_nodes) {
 				if (node.var_name == name) {
-
-					System.print("++++ sub %(name)")
-
 					return Blueprint.get_input_pin(node, 0)
 				}
 			}
@@ -62,7 +59,6 @@ class ConsHelper
 	static get_conn_shape(node, type)
 	{
 		import "sketchnetwork.nodes.geometry" for Geometry
-		import "sketchnetwork.nodes.constraint" for Constraint
 
 		var pins = Network.neighbors_pins(node, type)
 		if (pins.isEmpty) {

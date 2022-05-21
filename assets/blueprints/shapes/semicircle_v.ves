@@ -11,14 +11,14 @@ _editor.add_node(node1, 281.08090072867, 296.2417497547)
 
 var node2 = ::blueprint::nodes::output::Output()
 
-node2.var_name = "left"
+node2.var_name = "bottom"
 node2.var_type = "geo_point"
 
 _editor.add_node(node2, -134.99369009091, 111.13854718182)
 
 var node3 = ::blueprint::nodes::output::Output()
 
-node3.var_name = "right"
+node3.var_name = "top"
 node3.var_type = "geo_point"
 
 _editor.add_node(node3, -133.99369009091, 62.138547181818)
