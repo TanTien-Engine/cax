@@ -80,16 +80,18 @@ class Scene
 			{
 				for (var p in bp_node.pins)
 				{
-					var e = p.edge
-					if (e.pin0.vert == bp_node) 
+					for (var edge in p.edges)
 					{
-						var geo_0 = this.trans_to_geo(e.pin0)
-						var geo_1 = this.trans_to_geo(e.pin1)
-						if (geo_0 and geo_1) 
+						if (edge.pin0.vert == bp_node) 
 						{
-							var c = this.gen_cons_between_2geos(geo_0, geo_1)
-							if (c) {
-								cons.add(c)
+							var geo_0 = this.trans_to_geo(edge.pin0)
+							var geo_1 = this.trans_to_geo(edge.pin1)
+							if (geo_0 and geo_1) 
+							{
+								var c = this.gen_cons_between_2geos(geo_0, geo_1)
+								if (c) {
+									cons.add(c)
+								}
 							}
 						}
 					}
