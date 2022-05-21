@@ -349,6 +349,11 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<Geo, Geo>& g
 
     switch (type)
     {
+    case ConsType::Parallel:
+        if (is_point(g1) && is_point(g2) && is_point(g3) && is_point(g4)) {
+            AddParallelCons(id, geo1_idx, geo2_idx, geo3_idx, geo4_idx, driving);
+        }
+        break;
     case ConsType::Equal:
         if (is_point(g1) && is_point(g2) && is_point(g3) && is_point(g4)) {
             AddEqualLengthCons(id, geo1_idx, geo2_idx, geo3_idx, geo4_idx, driving);
@@ -713,6 +718,17 @@ void Scene::AddParallelCons(ConsID id, int line1, int line2, bool driving)
     assert(line1 < m_geos.size() && line2 < m_geos.size());
 
     m_gcs->addConstraintParallel(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id, driving);
+
+    ResetSolver();
+}
+
+void Scene::AddParallelCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bool driving)
+{
+    assert(pt1 < m_geos.size() && pt2 < m_geos.size()
+        && pt3 < m_geos.size() && pt4 < m_geos.size());
+
+    m_gcs->addConstraintParallel(m_points[m_geos[pt1].index], m_points[m_geos[pt2].index],
+        m_points[m_geos[pt3].index], m_points[m_geos[pt4].index], id, driving);
 
     ResetSolver();
 }

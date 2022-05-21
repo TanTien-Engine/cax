@@ -284,7 +284,7 @@ namespace GCS
         inline double* l2p2x() { return pvec[6]; }
         inline double* l2p2y() { return pvec[7]; }
     public:
-        ConstraintParallel(Line &l1, Line &l2);
+        ConstraintParallel(Point& l1p1, Point& l1p2, Point& l2p1, Point& l2p2);
         #ifdef _GCS_EXTRACT_SOLVER_SUBSYSTEM_
         inline ConstraintParallel(){}
         #endif

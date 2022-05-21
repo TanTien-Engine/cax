@@ -570,16 +570,16 @@ double ConstraintPointOnPerpBisector::grad(double *param)
 }
 
 // Parallel
-ConstraintParallel::ConstraintParallel(Line &l1, Line &l2)
+ConstraintParallel::ConstraintParallel(Point& l1p1, Point& l1p2, Point& l2p1, Point& l2p2)
 {
-    pvec.push_back(l1.p1.x);
-    pvec.push_back(l1.p1.y);
-    pvec.push_back(l1.p2.x);
-    pvec.push_back(l1.p2.y);
-    pvec.push_back(l2.p1.x);
-    pvec.push_back(l2.p1.y);
-    pvec.push_back(l2.p2.x);
-    pvec.push_back(l2.p2.y);
+    pvec.push_back(l1p1.x);
+    pvec.push_back(l1p1.y);
+    pvec.push_back(l1p2.x);
+    pvec.push_back(l1p2.y);
+    pvec.push_back(l2p1.x);
+    pvec.push_back(l2p1.y);
+    pvec.push_back(l2p2.x);
+    pvec.push_back(l2p2.y);
     origpvec = pvec;
     rescale();
 }

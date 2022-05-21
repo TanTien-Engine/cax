@@ -750,9 +750,17 @@ int System::addConstraintPointOnPerpBisector(Point &p, Point &lp1, Point &lp2, i
     return addConstraint(constr);
 }
 
-int System::addConstraintParallel(Line &l1, Line &l2, int tagId, bool driving)
+int System::addConstraintParallel(Line& l1, Line& l2, int tagId, bool driving)
 {
-    Constraint *constr = new ConstraintParallel(l1, l2);
+    Constraint* constr = new ConstraintParallel(l1.p1, l1.p2, l2.p1, l2.p2);
+    constr->setTag(tagId);
+    constr->setDriving(driving);
+    return addConstraint(constr);
+}
+
+int System::addConstraintParallel(Point& p1, Point& p2, Point& p3, Point& p4, int tagId, bool driving)
+{
+    Constraint* constr = new ConstraintParallel(p1, p2, p3, p4);
     constr->setTag(tagId);
     constr->setDriving(driving);
     return addConstraint(constr);

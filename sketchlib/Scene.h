@@ -50,6 +50,7 @@ private:
 	void AddCoordinateYCons(ConsID id, int geo, PointPos pos, double* value, bool driving);
 	void AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving);
 	void AddParallelCons(ConsID id, int line1, int line2, bool driving);
+	void AddParallelCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bool driving);
 	void AddPerpendicularCons(ConsID id, int line1, int line2, bool driving);
 	void AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving);
 	void AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving);

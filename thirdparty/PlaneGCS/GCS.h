@@ -243,7 +243,8 @@ namespace GCS
         int addConstraintPointOnLine(Point &p, Point &lp1, Point &lp2, int tagId=0, bool driving = true);
         int addConstraintPointOnPerpBisector(Point &p, Line &l, int tagId=0, bool driving = true);
         int addConstraintPointOnPerpBisector(Point &p, Point &lp1, Point &lp2, int tagId=0, bool driving = true);
-        int addConstraintParallel(Line &l1, Line &l2, int tagId=0, bool driving = true);
+        int addConstraintParallel(Line& l1, Line& l2, int tagId = 0, bool driving = true);
+        int addConstraintParallel(Point& p1, Point& p2, Point& p3, Point& p4, int tagId=0, bool driving = true);
         int addConstraintPerpendicular(Line &l1, Line &l2, int tagId=0, bool driving = true);
         int addConstraintPerpendicular(Point &l1p1, Point &l1p2,
                                        Point &l2p1, Point &l2p2, int tagId=0, bool driving = true);
