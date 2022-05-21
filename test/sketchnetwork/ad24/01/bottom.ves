@@ -1,0 +1,28 @@
+var node0 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node0.load_from_file(_editor, "../../../../assets/blueprints/shapes/semicircle_v.ves")
+
+_editor.add_node(node0, 75, 9)
+
+var node1 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node1.load_from_file(_editor, "../../../../assets/blueprints/shapes/rect.ves")
+
+_editor.add_node(node1, -268, 5)
+
+var node2 = ::sketchnetwork::nodes::cons_nodes::DistanceX()
+node2.impl.query_param("driving").value = true
+node2.impl.query_param("dist").value = 6
+
+_editor.add_node(node2, -257, 216)
+
+var node3 = ::sketchnetwork::nodes::cons_nodes::DistanceY()
+node3.impl.query_param("driving").value = true
+node3.impl.query_param("dist").value = 3
+
+_editor.add_node(node3, -453.74121245077, 13.209326121433)
+
+Network.connect(node0, "bottom", node1, "r_btm")
+Network.connect(node0, "top", node1, "r_top")
+Network.connect(node1, "l_btm", node3, "start")
+Network.connect(node1, "l_top", node2, "start")
+Network.connect(node2, "end", node1, "r_top")
+Network.connect(node3, "end", node1, "l_top")
