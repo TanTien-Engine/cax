@@ -64,7 +64,16 @@ class BinaryCons is Node
 
 		var driving = this.query_param("driving").value
 
-		var cons = VarConstraint(this.cons_id, this.cons_type, a, b, val, driving)
+		var geo1 = a
+		var geo2 = b
+		if (CONTEXT.focus_geo and CONTEXT.focus_geo.is_equal(b)) {
+			geo1 = b
+			geo2 = a
+		}
+
+		var cons = VarConstraint(this.cons_id, this.cons_type, geo1, geo2, val, driving)
 		return Variant(VAR_TYPE_CONSTRAINT, cons)
 	}
+
+
 }

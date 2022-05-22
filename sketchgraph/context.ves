@@ -3,7 +3,9 @@ class Context
 	init()
 	{
 		this.next_geo_id  = 0
-		this.next_cons_id = 0		
+		this.next_cons_id = 0
+
+		this.focus_geo = nil
 	}
 
 	advance_geo_id()

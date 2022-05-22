@@ -19,6 +19,11 @@ class VarGeometry
 		this.color = [ 255, 255, 255, 255 ]
 	}
 
+	is_equal(geo)
+	{
+		return geo is VarGeometry and geo.id == this.id
+	}
+
 	clone()
 	{
 		var shape = nil
@@ -48,6 +53,11 @@ class VarGeoPoint
 		this.geo_id   = geo_id
 		this.point_id = point_id
 		this.shape    = shape
+	}
+
+	is_equal(geo)
+	{
+		return geo is VarGeoPoint and geo.geo_id == this.geo_id and geo.point_id == this.point_id
 	}
 }
 

@@ -1,6 +1,7 @@
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "blueprint.variant_proxy" for VariantProxy
+import "blueprint.blackboard" for BLACKBOARD
 import "blueprint.node_editor" for NodeEditor
 import "blueprint.nodes.subgraph" for Subgraph
 import "blueprint.nodes.array" for Array
@@ -8,15 +9,18 @@ import "blueprint.nodes.number2" for Number2
 import "network.vertex" for Vertex
 import "network.pin" for Pin
 import "network.vertex_shape" for SHAPE_PANEL
+import "geograph.config" for POINT_RADIUS
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_GEO_POINT, VAR_TYPE_SKETCH, VarGeometry, VarGeoPoint
 import "sketchgraph.geo_helper" for GeoHelper
 import "sketchgraph.util" for DRAW_SCALE
+import "sketchgraph.context" for CONTEXT as sg_CONTEXT
 import "sketchgraph.nodes.draw" for Draw
 import "sketchgraph.nodes.sk_solver" for SkSolver
 import "sketchgraph.nodes.solver" for Solver
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.context" for CONTEXT
 import "maths.vector" for Vector2
+import "maths.calc" for Calc
 import "graphics" for Painter, Graphics
 import "geometry" for Point
 import "maths" for Matrix44
@@ -315,6 +319,19 @@ class Sketchgraph is Vertex
 	on_mouse_pressed(x, y, btn) 
 	{
 		EDITOR.on_mouse_pressed(x, y, btn)
+
+		for (var pin in this.pins_info)
+		{
+			var pos = BLACKBOARD.editor_cam.screen2world(Vector2(x, y))
+
+			var px = pin.pos[0] * DRAW_SCALE
+			var py = pin.pos[1] * DRAW_SCALE
+			var dist = Calc.dis_pos_to_pos(pos, Vector2(px, py))
+
+			if (dist < POINT_RADIUS) {
+				sg_CONTEXT.focus_geo = pin.geo
+			}
+		}
 	}
 
 	on_mouse_released(x, y, btn) 
@@ -326,6 +343,8 @@ class Sketchgraph is Vertex
 			this.reset_geos(v_sketch)
 			this.fix_pins_pos(v_sketch)
 		}
+
+		sg_CONTEXT.focus_geo = nil
 	}
 
 	on_mouse_dragged(x, y, btn) 
