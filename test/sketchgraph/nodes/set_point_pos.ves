@@ -1,0 +1,39 @@
+var node0 = ::blueprint::nodes::subgraph::Subgraph()
+node0.load_from_file(_editor, "../../../assets/blueprints/shapes/rect.ves")
+
+_editor.add_node(node0, -616.75192951301, -31.071784714159)
+
+var node1 = ::sketchgraph::nodes::sk_solver::SkSolver()
+
+_editor.add_node(node1, 266.06891605765, 74.948466634793)
+
+var node2 = ::sketchgraph::nodes::draw::Draw()
+
+_editor.add_node(node2, 409.06891605765, 89.948466634793)
+
+var node3 = ::sketchgraph::nodes::sketch::Sketch()
+
+_editor.add_node(node3, -59.089028587156, -113.91540273465)
+
+var node4 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node4, 128.73968678447, 53.422883695482)
+
+var node5 = ::blueprint::nodes::subgraph::Subgraph()
+node5.load_from_file(_editor, "../../../assets/blueprints/cons/set_point_pos.ves")
+
+_editor.add_node(node5, -296, -119)
+
+var node6 = ::blueprint::nodes::number2::Number2()
+
+node6.value.set(0, 0)
+
+_editor.add_node(node6, -500.39782714844, -176.62536621094)
+
+Blueprint.connect(node0, "r_top", node5, "point")
+Blueprint.connect(node6, "v2", node5, "pos")
+Blueprint.connect(node5, "cons", node3, "cons")
+Blueprint.connect(node0, "sketch", node4, "in0")
+Blueprint.connect(node3, "sketch", node4, "in1")
+Blueprint.connect(node4, "list", node1, "sketch")
+Blueprint.connect(node1, "geos", node2, "geo")

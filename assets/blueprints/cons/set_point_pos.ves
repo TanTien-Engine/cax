@@ -1,0 +1,62 @@
+var node0 = ::sketchgraph::nodes::cons_nodes::DistanceX()
+node0.query_param("driving").value = true
+node0.query_param("dist").value = 0
+
+_editor.add_node(node0, -333.66042192656, -79.764719717441)
+
+var node1 = ::sketchgraph::nodes::cons_nodes::DistanceY()
+node1.query_param("driving").value = true
+node1.query_param("dist").value = 0
+
+_editor.add_node(node1, -335.70948509381, -206.12221909429)
+
+var node2 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node2, -189.54459620131, -133.03976785397)
+
+var node3 = ::blueprint::nodes::output::Output()
+
+node3.var_name = "cons"
+node3.var_type = "array"
+
+_editor.add_node(node3, -55.090906998701, -112.95378698611)
+
+var node4 = ::blueprint::nodes::input::Input()
+
+node4.var_name = "point"
+node4.var_type = "geometry"
+
+_editor.add_node(node4, -647.53758907727, 11.928556403356)
+
+var node5 = ::blueprint::nodes::input::Input()
+
+node5.var_name = "pos"
+node5.var_type = "num2"
+
+_editor.add_node(node5, -1035.8483996986, -74.514769046689)
+
+var node6 = ::blueprint::nodes::subgraph::Subgraph()
+node6.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node6, -835.59292160763, -100.19261093872)
+
+var node7 = ::blueprint::nodes::number2::Number2()
+
+node7.value.set(0, 0)
+
+_editor.add_node(node7, -1034.8522028967, -150.9952671619)
+
+var node8 = ::blueprint::nodes::split::Split()
+
+_editor.add_node(node8, -648.752052785, -91.161031562539)
+
+Blueprint.connect(node5, "var", node6, "val")
+Blueprint.connect(node7, "v2", node6, "default")
+Blueprint.connect(node6, "val", node8, "xy")
+Blueprint.connect(node4, "var", node1, "a")
+Blueprint.connect(node8, "y", node1, "dist")
+Blueprint.connect(node4, "var", node0, "a")
+Blueprint.connect(node8, "x", node0, "dist")
+Blueprint.connect(node0, "cons", node2, "in0")
+Blueprint.connect(node1, "cons", node2, "in1")
+Blueprint.connect(node2, "list", node3, "var")
