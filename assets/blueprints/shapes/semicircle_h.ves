@@ -47,8 +47,79 @@ node8.query_param("radius").value = 1.1495585448764
 node8.query_param("start_angle").value = 0.014700513378719
 node8.query_param("end_angle").value = 2.907275994086
 
-_editor.add_node(node8, -477.99147757366, 394.46244348274)
+_editor.add_node(node8, -493.76908839259, 328.3467410034)
 
+var node9 = ::blueprint::nodes::subgraph::Subgraph()
+node9.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node9, -1206.0488810385, 491.11967251257)
+
+var node10 = ::blueprint::nodes::input::Input()
+
+node10.var_name = "left"
+node10.var_type = "num2"
+
+_editor.add_node(node10, -1398.524354214, 513.99658320732)
+
+var node11 = ::blueprint::nodes::number2::Number2()
+
+node11.value.set(-3, 0)
+
+_editor.add_node(node11, -1397.5710962124, 438.11334848383)
+
+var node12 = ::blueprint::nodes::subgraph::Subgraph()
+node12.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node12, -1255.2348810385, 298.12867251257)
+
+var node13 = ::blueprint::nodes::input::Input()
+
+node13.var_name = "right"
+node13.var_type = "num2"
+
+_editor.add_node(node13, -1447.710354214, 321.00558320732)
+
+var node14 = ::blueprint::nodes::number2::Number2()
+
+node14.value.set(3, 0)
+
+_editor.add_node(node14, -1446.7570962124, 245.12234848383)
+
+var node15 = ::blueprint::nodes::add::Add()
+
+_editor.add_node(node15, -983.454296875, 462.64117431641)
+
+var node16 = ::blueprint::nodes::subtract::Subtract()
+
+_editor.add_node(node16, -1030.70546875, 312.79350585937)
+
+var node17 = ::blueprint::nodes::length::Length()
+
+_editor.add_node(node17, -902.59969593395, 324.73567005504)
+
+var node18 = ::blueprint::nodes::subgraph::Subgraph()
+node18.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/half.ves")
+
+_editor.add_node(node18, -790.19294433594, 470.97998046875)
+
+var node19 = ::blueprint::nodes::subgraph::Subgraph()
+node19.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/half.ves")
+
+_editor.add_node(node19, -715.39289550781, 322.48000030518)
+
+Blueprint.connect(node13, "var", node12, "val")
+Blueprint.connect(node14, "v2", node12, "default")
+Blueprint.connect(node10, "var", node9, "val")
+Blueprint.connect(node11, "v2", node9, "default")
+Blueprint.connect(node9, "val", node16, "a")
+Blueprint.connect(node12, "val", node16, "b")
+Blueprint.connect(node16, "v", node17, "v")
+Blueprint.connect(node17, "v", node19, "val")
+Blueprint.connect(node9, "val", node15, "a")
+Blueprint.connect(node12, "val", node15, "b")
+Blueprint.connect(node15, "v", node18, "val")
+Blueprint.connect(node18, "val", node8, "center")
+Blueprint.connect(node19, "val", node8, "radius")
 Blueprint.connect(node8, "geo", node7, "geo")
 Blueprint.connect(node7, "end", node5, "a")
 Blueprint.connect(node7, "middle", node5, "b")

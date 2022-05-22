@@ -1,13 +1,13 @@
 var node0 = ::sketchgraph::nodes::sketch::Sketch()
 
-_editor.add_node(node0, 174.47476864211, 60.37405717963)
+_editor.add_node(node0, 241.34178592235, 40.839872356189)
 
 var node1 = ::blueprint::nodes::output::Output()
 
 node1.var_name = "sketch"
 node1.var_type = "sketch"
 
-_editor.add_node(node1, 310.14731809231, 81.0850207547)
+_editor.add_node(node1, 377.01433537255, 61.550835931259)
 
 var node2 = ::sketchgraph::nodes::line::Line()
 node2.query_param("p1").value.set(0, 0)
@@ -18,7 +18,7 @@ _editor.add_node(node2, -206.35164428907, 37.753541214912)
 var node3 = ::sketchgraph::nodes::cons_nodes::Horizontal()
 node3.query_param("driving").value = true
 
-_editor.add_node(node3, 3.4456195544095, -51.16469015318)
+_editor.add_node(node3, 106.37574727793, -8.3397465017901)
 
 var node4 = ::sketchgraph::nodes::geo_point::GeoPoint()
 
@@ -74,16 +74,22 @@ node12.value.set(2, 0.2)
 
 _editor.add_node(node12, -598.69680161844, -68.570583364886)
 
+var node13 = ::sketchgraph::nodes::geo_point::GeoPoint()
+
+_editor.add_node(node13, -32.887381194678, -8.2376388905195)
+
 Blueprint.connect(node11, "var", node10, "val")
 Blueprint.connect(node12, "v2", node10, "default")
 Blueprint.connect(node8, "var", node7, "val")
 Blueprint.connect(node9, "v2", node7, "default")
 Blueprint.connect(node7, "val", node2, "p1")
 Blueprint.connect(node10, "val", node2, "p2")
-Blueprint.connect(node2, "geo", node4, "geo")
-Blueprint.connect(node4, "end", node6, "var")
-Blueprint.connect(node4, "start", node5, "var")
-Blueprint.connect(node2, "geo", node3, "a")
+Blueprint.connect(node2, "geo", node13, "geo")
+Blueprint.connect(node13, "start", node3, "a")
+Blueprint.connect(node13, "end", node3, "b")
 Blueprint.connect(node2, "geo", node0, "geos")
 Blueprint.connect(node3, "cons", node0, "cons")
 Blueprint.connect(node0, "sketch", node1, "var")
+Blueprint.connect(node2, "geo", node4, "geo")
+Blueprint.connect(node4, "end", node6, "var")
+Blueprint.connect(node4, "start", node5, "var")
