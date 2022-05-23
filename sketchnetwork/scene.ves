@@ -1,8 +1,10 @@
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "blueprint.variant_proxy" for VariantProxy
-import "sketchgraph.variant" for VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH, VarConstraint, VarSketch, VarGeometry, VarGeoPoint
+import "blueprint.variant_helper" for VariantHelper
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT, VAR_TYPE_SKETCH, VarConstraint, VarSketch, VarGeometry, VarGeoPoint
 import "sketchgraph.context" for CONTEXT
+import "sketchgraph.solver" for Solver
 import "sketchnetwork.nodes.sketchgraph" for Sketchgraph
 import "sketchnetwork.nodes.geometry" for Geometry
 import "geometry" for Point, Line, Circle, Arc, Ellipse
@@ -80,17 +82,26 @@ class Scene
 			{
 				for (var p in bp_node.pins)
 				{
-					for (var edge in p.edges)
+					for (var e in p.edges)
 					{
-						if (edge.pin0.vert == bp_node) 
+						if (e.pin0.vert == bp_node) 
 						{
-							var geo_0 = this.trans_to_geo(edge.pin0)
-							var geo_1 = this.trans_to_geo(edge.pin1)
+							var geo_0 = this.trans_to_geo(e.pin0)
+							var geo_1 = this.trans_to_geo(e.pin1)
 							if (geo_0 and geo_1) 
 							{
-								var c = this.gen_cons_between_2geos(geo_0, geo_1)
-								if (c) {
-									cons.add(c)
+								var resolved = false
+								if (e.pin0.vert is Sketchgraph and e.pin1.vert is Sketchgraph) {
+									if (this.resolve_without_cons(e)) {
+										resolved = true
+									}
+								}
+
+								if (!resolved) {
+									var c = this.gen_cons_between_2geos(geo_0, geo_1)
+									if (c) {
+										cons.add(c)
+									}
 								}
 							}
 						}
@@ -191,5 +202,78 @@ class Scene
 		var id = CONTEXT.advance_cons_id()
 		var cons = VarConstraint(id, type, a, b, value, driving)
 		return Variant(VAR_TYPE_CONSTRAINT, cons)
+	}
+
+	resolve_without_cons(edge)
+	{
+		var v0 = edge.pin0.vert
+		var v1 = edge.pin1.vert
+		if (!v0.dof or !v1.dof) {
+			return false
+		}
+
+		if (v0.dof > 0 and v1.dof > 0) {
+			return false
+		}
+
+		if (v0.dof == 0)
+		{
+			var pos = this.calc_point_pos(v0, edge.pin0)
+			if (pos) 
+			{
+				var pin_name = v1.get_pin_name(edge.pin1)
+				v1.set_input_pos(pin_name, pos)
+				return true
+			}
+		}
+		else if (v1.dof == 0)
+		{
+			var pos = this.calc_point_pos(v1, edge.pin1)
+			if (pos) 
+			{
+				var pin_name = v0.get_pin_name(edge.pin0)
+				v0.set_input_pos(pin_name, pos)
+				return true
+			}
+		}
+		
+		return false
+	}
+
+	calc_point_pos(sg_vert, pin)
+	{
+		var pin_info = nil
+		for (var i in 0 .. sg_vert.pins.count) 
+		{
+			if (sg_vert.pins[i] == pin) {
+				pin_info = sg_vert.pins_info[i]
+			}
+		}
+		if (!pin_info) {
+			return nil
+		}
+
+		var v_sketch = sg_vert.calc_output_sketch()
+
+		var cons = sg_vert.calc_all_cons(v_sketch)
+		var solver = Solver(cons)
+
+		var src_geos = VariantHelper.flatten_values(v_sketch.value.geos, VAR_TYPE_GEOMETRY)
+		var geos = solver.resolve(src_geos)
+		for (var geo in geos.value)
+		{
+			if (sg_vert.is_geo_id_equal(pin_info.geo, geo.value.id))
+			{
+				var pos = nil
+				if (pin_info.geo is VarGeometry) {
+					pos = sg_vert.calc_geo_pos(geo.value, nil)
+				} else if (pin_info.geo is VarGeoPoint) {
+					pos = sg_vert.calc_geo_pos(geo.value, pin_info.geo.point_id)
+				}
+				return pos
+			}
+		}
+
+		return nil
 	}
 }

@@ -372,15 +372,7 @@ class Sketchgraph is Vertex
 			dst[1] = y
 
 			var pin_name = this.pins_info[i].name
-			var in_node = Blueprint.get_input_node(this.impl, pin_name)
-			if (!in_node) {
-				in_node = Number2()
-				Blueprint.connect(in_node, "v2", this.impl, pin_name)
-			}
-			if (in_node is Number2) {
-				in_node.value.set(x, y)
-				Blueprint.send_pin_dirty_root(in_node.exports[0])
-			}
+			this.set_input_pos(pin_name, dst)
 		}
 
 		CONTEXT.need_rebuild = true
@@ -392,7 +384,7 @@ class Sketchgraph is Vertex
 		this.dof = this.calc_dof(v_sketch)
 	}
 
-	calc_dof(v_sketch)
+	calc_all_cons(v_sketch)
 	{
 		var cons = []
 
@@ -434,7 +426,26 @@ class Sketchgraph is Vertex
 			}
 		}
 
+		return cons
+	}
+
+	calc_dof(v_sketch)
+	{
+		var cons = this.calc_all_cons(v_sketch)
 		var solver = SolverImpl(cons)
 		return solver.get_dof()
+	}
+
+	set_input_pos(pin_name, pos)
+	{
+		var in_node = Blueprint.get_input_node(this.impl, pin_name)
+		if (!in_node) {
+			in_node = Number2()
+			Blueprint.connect(in_node, "v2", this.impl, pin_name)
+		}
+		if (in_node is Number2) {
+			in_node.value.set(pos[0], pos[1])
+			Blueprint.send_pin_dirty_root(in_node.exports[0])
+		}
 	}
 }

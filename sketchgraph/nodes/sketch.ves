@@ -34,7 +34,13 @@ class Sketch is Node
 			sketch.geos = Variant([geos])
 		}
 
-		sketch.cons = Blueprint.calc_input_value(this, 1)
+		var cons = Blueprint.calc_input_value(this, 1)
+		if (cons.type == VAR_TYPE_ARRAY) {
+			sketch.cons = cons
+		} else {
+			sketch.cons = Variant([cons])
+		}
+
 		sketch.func = Blueprint.calc_input_value(this, 2)
 
 		return Variant(VAR_TYPE_SKETCH, sketch)
