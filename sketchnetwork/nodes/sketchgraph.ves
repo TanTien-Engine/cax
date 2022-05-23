@@ -17,6 +17,7 @@ import "sketchgraph.context" for CONTEXT as sg_CONTEXT
 import "sketchgraph.nodes.draw" for Draw
 import "sketchgraph.nodes.sk_solver" for SkSolver
 import "sketchgraph.nodes.solver" for Solver
+import "sketchgraph.solver" for Solver as SolverImpl
 import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY, VAR_TYPE_CONSTRAINT
 import "sketchnetwork.context" for CONTEXT
 import "maths.vector" for Vector2
@@ -60,6 +61,8 @@ class Sketchgraph is Vertex
 		this.pins_info = []
 
 		this.editor_pts = Array()
+
+		this.dof = nil
 	}
 
 	calc_output_sketch()
@@ -82,7 +85,11 @@ class Sketchgraph is Vertex
 
 	get_title()
 	{
-		return this.impl.title
+		if (this.dof) {
+			return "%(this.impl.title) (dof %(this.dof))"
+		} else {
+			return this.impl.title
+		}
 	}
 
 	to_string(name) 
@@ -133,9 +140,12 @@ class Sketchgraph is Vertex
 		this.impl.load_from_file(editor, filepath, editor)
 
 		var v_sketch = this.calc_output_sketch()
-		if (v_sketch) {
+		if (v_sketch) 
+		{
 			this.reset_geos(v_sketch)
 			this.reset_pins(v_sketch)
+
+			this.dof = this.calc_dof(v_sketch)
 		}
 	}
 
@@ -374,5 +384,57 @@ class Sketchgraph is Vertex
 		}
 
 		CONTEXT.need_rebuild = true
+	}
+
+	on_connection_changed() 
+	{
+		var v_sketch = Blueprint.calc_output_value(this.impl, "sketch")
+		this.dof = this.calc_dof(v_sketch)
+	}
+
+	calc_dof(v_sketch)
+	{
+		var cons = []
+
+		// inside
+		for (var v_cons in v_sketch.value.cons.value) {
+			cons.add(v_cons.value)
+		}
+
+		// outside
+		var cons_nodes = Set.new()
+		for (var p in this.pins)
+		{
+			for (var e in p.edges)
+			{
+				var v0 = e.pin0.vert
+				var v1 = e.pin1.vert
+
+				var v = nil
+				if (v0 == this) {
+					v = v1
+				} else {
+					v = v0
+				}
+
+				if (v.has_method("resolve_cons()")) {
+					cons_nodes.add(v)
+				}
+			}
+		}
+		for (var cn in cons_nodes) 
+		{
+			var cs = cn.resolve_cons()
+			if (cs.type == VAR_TYPE_ARRAY) {
+				for (var c in cs.value) {
+					cons.add(c.value)
+				}
+			} else if (cs.type == VAR_TYPE_CONSTRAINT) {
+				cons.add(cs.value)
+			}
+		}
+
+		var solver = SolverImpl(cons)
+		return solver.get_dof()
 	}
 }
