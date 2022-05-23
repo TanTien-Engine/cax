@@ -1,0 +1,11 @@
+var node0 = ::sketchnetwork::nodes::point_pos::PointPos()
+node0.query_param("pos").value.set(-4, -2)
+
+_editor.add_node(node0, -166.51801687, -69.43570605)
+
+var node1 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node1.load_from_file(_editor, "../../../assets/blueprints/shapes/rect.ves")
+
+_editor.add_node(node1, 56.48198313, -6.4357060500003)
+
+Network.connect(node1, "l_btm", node0, "around")

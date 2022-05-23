@@ -1,4 +1,4 @@
-import "sketchnetwork.nodes.point_on" for PointOn
+import "sketchnetwork.nodes.*"
 import "sketchnetwork.nodes.geo_nodes" for Point, Line, Circle, Arc, Ellipse
 import "sketchnetwork.nodes.cons_nodes" for Distance, DistanceX, DistanceY, Angle, Coincident, Horizontal, Vertical, Parallel, Perpendicular, 
 PointOnPerpBisector, MidpointOnLine, 
@@ -10,4 +10,5 @@ Distance, DistanceX, DistanceY, Angle,
 Coincident, Horizontal, Vertical, Parallel, Perpendicular, 
 PointOn, PointOnPerpBisector, MidpointOnLine, 
 Tangent, TangentCircumf,
+PointPos,
 ]
