@@ -1,0 +1,57 @@
+var node0 = ::solidgraph::nodes::extrude::Extrude()
+node0.query_param("dist").value = 0.17943216860294
+
+_editor.add_node(node0, 249.15689259397, 310.04698256107)
+
+var node1 = ::sketchgraph::nodes::sk_solver::SkSolver()
+
+_editor.add_node(node1, 111.29752066116, 331.60743801653)
+
+var node2 = ::blueprint::nodes::camera3d::Camera3d()
+
+node2.cam.position.set(-0.95613202503781, 1.2805566299393, 0.80160538311713)
+node2.cam.yaw = -45.6
+node2.cam.pitch = -42.3
+node2.cam.zoom = 45
+node2.cam.update_vectors()
+node2.speed = 0.29285714030266
+
+_editor.add_node(node2, 447.64462809917, 90.87603305785)
+
+var node3 = ::blueprint::nodes::subgraph::Subgraph()
+node3.load_from_file(_editor, "../../../assets/blueprints/shapes/square.ves")
+
+_editor.add_node(node3, -69.30290083452, 159.12288076227)
+
+var node4 = ::blueprint::nodes::subgraph::Subgraph()
+node4.load_from_file(_editor, "../../../assets/blueprints/shapes/semicircle_h.ves")
+
+_editor.add_node(node4, -72.03020685369, 311.03196716309)
+
+var node5 = ::geograph::nodes::boolean::Boolean()
+node5.query_param("operator").value = "subtract"
+
+_editor.add_node(node5, 444.50135286189, 243.63787867018)
+
+var node6 = ::solidgraph::nodes::extrude::Extrude()
+node6.query_param("dist").value = 0.25945806503296
+
+_editor.add_node(node6, 256.64877689149, 178.06020570157)
+
+var node7 = ::sketchgraph::nodes::sk_solver::SkSolver()
+
+_editor.add_node(node7, 116.78940495868, 197.62066115702)
+
+var node8 = ::blueprint::nodes::subgraph::Subgraph()
+node8.load_from_file(_editor, "../../../../tantien/assets/blueprints/geograph/draw_geos_deferred.ves")
+
+_editor.add_node(node8, 638.12360177234, 184.15380308134)
+
+Blueprint.connect(node4, "sketch", node1, "sketch")
+Blueprint.connect(node1, "geos", node0, "shape")
+Blueprint.connect(node3, "sketch", node7, "sketch")
+Blueprint.connect(node7, "geos", node6, "shape")
+Blueprint.connect(node0, "geo", node5, "a")
+Blueprint.connect(node6, "geo", node5, "b")
+Blueprint.connect(node5, "geo", node8, "geos")
+Blueprint.connect(node2, "this", node8, "view_cam")

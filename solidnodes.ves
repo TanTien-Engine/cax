@@ -1,0 +1,5 @@
+import "solidgraph.nodes.*"
+
+var SOLID_NODES = [
+Extrude
+]

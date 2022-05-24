@@ -1,0 +1,100 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.variant_helper" for VariantHelper
+import "blueprint.node_param" for NodeParam
+import "blueprint.blueprint" for Blueprint
+import "geograph.variant" for VAR_TYPE_GEO, VarGeo
+import "geograph.brush" for Brush
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY as VAR_TYPE_SHAPE
+import "solidgraph.util" for DRAW_SCALE
+import "geometry" for Arc, Polyline, PolyPoint, PolyFace, Polytope
+
+class Extrude is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TYPE_SHAPE),
+			Pin(this, "dist",  VAR_TYPE_NUMBER),
+		]
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEO),
+		]
+
+		this.params.add(NodeParam("dist", 0.0))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_geo = Blueprint.calc_input_value(this, "shape")
+		if (!v_geo) {
+			return nil
+		}
+
+		var shapes = []
+		var geos = VariantHelper.flatten_values(v_geo, VAR_TYPE_SHAPE)
+		for (var geo in geos) {
+			shapes.add(geo.shape)
+		}
+
+		var polys = []
+		for (var shape in shapes)
+		{
+			var poly = this.build_poly_from_shape(shape)
+			if (poly) {
+				polys.add(poly)
+			}
+		}
+		if (polys.isEmpty) {
+			return nil
+		}
+
+		var dist = nil
+		var v_dist = Blueprint.calc_input_value(this, "dist")
+		if (v_dist) {
+			dist = v_dist.value
+		} else {
+			dist = this.query_param("dist").value
+		}
+		for (var poly in polys) {
+			poly.extrude(dist)
+		}
+
+		var geo = VarGeo()
+		geo.shape = Brush(polys)
+		return Variant(VAR_TYPE_GEO, geo)
+	}
+
+	build_poly_from_shape(shape)
+	{
+		var verts = nil
+		if (shape is Polyline) {
+			verts = shape.get_vertices()
+		} else if (shape is Arc) {
+			verts = shape.get_vertices()
+		}
+		if (!verts or verts.count < 3 * 2) {
+			return nil
+		}
+
+		var points = []
+		var border = []
+		var n = verts.count / 2
+		for (var i = 0; i < n; i = i + 1)
+		{
+			var x = verts[i * 2] / DRAW_SCALE
+			var y = verts[i * 2 + 1] / DRAW_SCALE
+			points.add(PolyPoint.init([ x, 0, -y ]))
+
+			border.add(i)
+		}
+
+		var face = PolyFace.init(border, [])
+		return Polytope.init(points, [ face ])
+	}
+}

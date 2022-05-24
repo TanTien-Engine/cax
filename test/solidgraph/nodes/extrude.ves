@@ -1,0 +1,50 @@
+var node0 = ::solidgraph::nodes::extrude::Extrude()
+node0.query_param("dist").value = 0.17943216860294
+
+_editor.add_node(node0, -181.84310740603, -36.953017438926)
+
+var node1 = ::blueprint::nodes::subgraph::Subgraph()
+node1.load_from_file(_editor, "../../../assets/blueprints/shapes/rect.ves")
+
+_editor.add_node(node1, -793.54545454545, 27.772727272727)
+
+var node2 = ::sketchgraph::nodes::sk_solver::SkSolver()
+
+_editor.add_node(node2, -355.70247933884, -46.392561983471)
+
+var node3 = ::blueprint::nodes::camera3d::Camera3d()
+
+node3.cam.position.set(-0.4335165739878, 0.90449979120936, 0.68089707986199)
+node3.cam.yaw = -53.9
+node3.cam.pitch = -45.1
+node3.cam.zoom = 45
+node3.cam.update_vectors()
+node3.speed = 0.29285714030266
+
+_editor.add_node(node3, -180.35537190083, -190.12396694215)
+
+var node4 = ::blueprint::nodes::subgraph::Subgraph()
+node4.load_from_file(_editor, "../../../assets/blueprints/shapes/square.ves")
+
+_editor.add_node(node4, -559.30290083452, 25.122880762274)
+
+var node5 = ::blueprint::nodes::subgraph::Subgraph()
+node5.load_from_file(_editor, "../../../assets/blueprints/shapes/semicircle_h.ves")
+
+_editor.add_node(node5, -562.03020685369, -123.96803283691)
+
+var node6 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node6, -335.97250366211, 87.855758666992)
+
+var node7 = ::blueprint::nodes::subgraph::Subgraph()
+node7.load_from_file(_editor, "../../../../tantien/assets/blueprints/geograph/draw_geos_deferred.ves")
+
+_editor.add_node(node7, 41.541595458984, -99.22526550293)
+
+Blueprint.connect(node4, "sketch", node6, "in0")
+Blueprint.connect(node5, "sketch", node6, "in1")
+Blueprint.connect(node6, "list", node2, "sketch")
+Blueprint.connect(node2, "geos", node0, "shape")
+Blueprint.connect(node0, "geo", node7, "geos")
+Blueprint.connect(node3, "this", node7, "view_cam")
