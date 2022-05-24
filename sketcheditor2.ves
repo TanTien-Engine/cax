@@ -43,8 +43,18 @@ class Sketcheditor2 is Editor
 		this.all_geos.list.clear()
 
 		var scene = this.scene_stack.root()
-		if (!scene.nodes.isEmpty) {
-			this.scene.resolve(scene, this.all_geos.list)
+
+		var bp_nodes = []
+		for (var node in scene.nodes) 
+		{
+			var bp_node = node.components["bp"]
+			if (bp_node) {
+				bp_nodes.add(bp_node)
+			}
+		}
+
+		if (!bp_nodes.isEmpty) {
+			this.scene.resolve(bp_nodes, this.all_geos.list)
 		}
 	}
 

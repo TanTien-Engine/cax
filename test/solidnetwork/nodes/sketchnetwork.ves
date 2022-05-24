@@ -1,0 +1,5 @@
+var node0 = ::solidnetwork::nodes::sketchnetwork::Sketchnetwork()
+node0.load_from_file(_editor, "../../sketchnetwork/ad24/01/bottom.ves")
+
+_editor.add_node(node0, -10, -19)
+

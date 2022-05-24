@@ -15,19 +15,19 @@ class Scene
 	{
 	}
 
-	resolve(scene, out_list)
+	resolve(bp_nodes, out_list)
 	{
 		var geos = []
 		var cons = []
-		this.resolve_nodes(scene, geos, cons)
-		this.resolve_edges(scene, cons)
+		this.resolve_nodes(bp_nodes, geos, cons)
+		this.resolve_edges(bp_nodes, cons)
 
 		var sk = VarSketch()
 		sk.geos = Variant(geos)
 		sk.cons = Variant(cons)
 
 		var sketches = []
-		this.resolve_sketches(scene, sketches)
+		this.resolve_sketches(bp_nodes, sketches)
 		sketches.add(Variant(VAR_TYPE_SKETCH, sk))
 
 		import "sketchgraph.nodes.sk_solver" for SkSolver
@@ -42,14 +42,13 @@ class Scene
 		}
 	}
 
-	resolve_sketches(scene, sketches)
+	resolve_sketches(bp_nodes, sketches)
 	{
-		for (var node in scene.nodes) 
+		for (var node in bp_nodes) 
 		{
-			var bp_node = node.components["bp"]
-			if (bp_node and bp_node is Sketchgraph)
+			if (node is Sketchgraph)
 			{
-				var v_sketch = bp_node.calc_output_sketch()
+				var v_sketch = node.calc_output_sketch()
 				if (v_sketch) {
 					sketches.add(v_sketch)
 				}
@@ -57,51 +56,43 @@ class Scene
 		}
 	}
 
-	resolve_nodes(scene, geos, cons)
+	resolve_nodes(bp_nodes, geos, cons)
 	{
-		for (var node in scene.nodes) 
+		for (var node in bp_nodes) 
 		{
-			var bp_node = node.components["bp"]
-			if (bp_node)
-			{
-				if (bp_node.has_method("resolve_geo()")) {
-					geos.add(bp_node.resolve_geo())
-				} else if (bp_node.has_method("resolve_cons()")) {
-					cons.add(bp_node.resolve_cons())
-				}
+			if (node.has_method("resolve_geo()")) {
+				geos.add(node.resolve_geo())
+			} else if (node.has_method("resolve_cons()")) {
+				cons.add(node.resolve_cons())
 			}
 		}		
 	}
 
-	resolve_edges(scene, cons)
+	resolve_edges(bp_nodes, cons)
 	{
-		for (var node in scene.nodes) 
+		for (var node in bp_nodes) 
 		{
-			var bp_node = node.components["bp"]
-			if (bp_node)
+			for (var p in node.pins)
 			{
-				for (var p in bp_node.pins)
+				for (var e in p.edges)
 				{
-					for (var e in p.edges)
+					if (e.pin0.vert == node) 
 					{
-						if (e.pin0.vert == bp_node) 
+						var geo_0 = this.trans_to_geo(e.pin0)
+						var geo_1 = this.trans_to_geo(e.pin1)
+						if (geo_0 and geo_1) 
 						{
-							var geo_0 = this.trans_to_geo(e.pin0)
-							var geo_1 = this.trans_to_geo(e.pin1)
-							if (geo_0 and geo_1) 
-							{
-								var resolved = false
-								if (e.pin0.vert is Sketchgraph and e.pin1.vert is Sketchgraph) {
-									if (this.resolve_without_cons(e)) {
-										resolved = true
-									}
+							var resolved = false
+							if (e.pin0.vert is Sketchgraph and e.pin1.vert is Sketchgraph) {
+								if (this.resolve_without_cons(e)) {
+									resolved = true
 								}
+							}
 
-								if (!resolved) {
-									var c = this.gen_cons_between_2geos(geo_0, geo_1)
-									if (c) {
-										cons.add(c)
-									}
+							if (!resolved) {
+								var c = this.gen_cons_between_2geos(geo_0, geo_1)
+								if (c) {
+									cons.add(c)
 								}
 							}
 						}
