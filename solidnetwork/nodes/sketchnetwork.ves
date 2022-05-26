@@ -47,7 +47,7 @@ class Sketchnetwork is Node
 		super.draw(mt, cam_mt)
 
 		var mat = Matrix44.init()
-		var s = this.draw_node.scale * 0.2
+		var s = this.draw_node.scale * 2
 		mat.scale(s, s, s)
 		mat.translate(this.pos.x, this.pos.y, 0)
 

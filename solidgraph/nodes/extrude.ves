@@ -7,8 +7,8 @@ import "blueprint.blueprint" for Blueprint
 import "geograph.variant" for VAR_TYPE_GEO, VarGeo
 import "geograph.brush" for Brush
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY as VAR_TYPE_SHAPE
-import "solidgraph.util" for DRAW_SCALE
-import "geometry" for Arc, Polyline, PolyPoint, PolyFace, Polytope
+import "geometry" for Circle, Arc, Ellipse, Polyline, PolyPoint, PolyFace, Polytope
+import "math" for Math
 
 class Extrude is Node
 {
@@ -61,6 +61,7 @@ class Extrude is Node
 		} else {
 			dist = this.query_param("dist").value
 		}
+
 		for (var poly in polys) {
 			poly.extrude(dist)
 		}
@@ -77,7 +78,12 @@ class Extrude is Node
 			verts = shape.get_vertices()
 		} else if (shape is Arc) {
 			verts = shape.get_vertices()
+		} else if (shape is Ellipse) {
+			verts = shape.get_vertices()
+		} else if (shape is Circle) {
+			verts = this.get_circle_vertices(shape)
 		}
+
 		verts = this.simplify_polyline(verts)
 		if (!verts or verts.count < 3 * 2) {
 			return nil
@@ -88,8 +94,8 @@ class Extrude is Node
 		var n = verts.count / 2
 		for (var i = 0; i < n; i = i + 1)
 		{
-			var x = verts[i * 2] / DRAW_SCALE
-			var y = verts[i * 2 + 1] / DRAW_SCALE
+			var x = verts[i * 2]
+			var y = verts[i * 2 + 1]
 			points.add(PolyPoint.init([ x, 0, -y ]))
 
 			border.add(i)
@@ -99,9 +105,30 @@ class Extrude is Node
 		return Polytope.init(points, [ face ])
 	}
 
+	get_circle_vertices(circle)
+	{
+		var c = circle.get()
+		var x = c[0]
+		var y = c[1]
+		var r = c[2]
+
+		var num = 32
+
+		var verts = []
+
+		for (var i in 0..num)
+		{
+			var a = Math.pi() * 2 / num * i
+			verts.add(r * Math.cos(a))
+			verts.add(r * Math.sin(a))
+		}
+
+		return verts		
+	}
+
 	simplify_polyline(polyline)
 	{
-		if (polyline.count <= 2) {
+		if (!polyline or polyline.count <= 2) {
 			return polyline
 		}
 

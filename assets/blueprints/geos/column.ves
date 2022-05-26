@@ -1,0 +1,62 @@
+var node0 = ::solidgraph::nodes::extrude::Extrude()
+node0.query_param("dist").value = 0.53159010410309
+
+_editor.add_node(node0, 404.61744856692, 192.20974466748)
+
+var node1 = ::sketchgraph::nodes::circle::Circle()
+node1.query_param("center").value.set(0, 0)
+node1.query_param("radius").value = 1
+
+_editor.add_node(node1, 248.01736904176, 237.33954160076)
+
+var node2 = ::blueprint::nodes::input::Input()
+
+node2.var_name = "radius"
+node2.var_type = "num"
+
+_editor.add_node(node2, -122.60618326174, 273.44171050448)
+
+var node3 = ::blueprint::nodes::input::Input()
+
+node3.var_name = "height"
+node3.var_type = "num"
+
+_editor.add_node(node3, 21.50966871851, 140.93710546218)
+
+var node4 = ::blueprint::nodes::output::Output()
+
+node4.var_name = "geo"
+node4.var_type = "geo"
+
+_editor.add_node(node4, 544.69795842467, 213.67802688602)
+
+var node5 = ::blueprint::nodes::subgraph::Subgraph()
+node5.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node5, 61.807458725794, 246.46269070474)
+
+var node6 = ::blueprint::nodes::number::Number()
+
+node6.value = 1
+
+_editor.add_node(node6, -124.65522391861, 200.01777098907)
+
+var node7 = ::blueprint::nodes::subgraph::Subgraph()
+node7.load_from_file(_editor, "../../../../tantien/assets/blueprints/tools/opt_value.ves")
+
+_editor.add_node(node7, 202.80124330335, 113.89592613948)
+
+var node8 = ::blueprint::nodes::number::Number()
+
+node8.value = 1
+
+_editor.add_node(node8, 18.387601025042, 70.866073700633)
+
+Blueprint.connect(node3, "var", node7, "val")
+Blueprint.connect(node8, "v", node7, "default")
+Blueprint.connect(node2, "var", node5, "val")
+Blueprint.connect(node6, "v", node5, "default")
+Blueprint.connect(node5, "val", node1, "radius")
+Blueprint.connect(node1, "geo", node0, "shape")
+Blueprint.connect(node7, "val", node0, "dist")
+Blueprint.connect(node0, "geo", node4, "var")

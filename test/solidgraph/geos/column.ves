@@ -1,0 +1,38 @@
+var node0 = ::blueprint::nodes::camera3d::Camera3d()
+
+node0.cam.position.set(-1.8289424936802, 1.9369316902605, 1.4583190333979)
+node0.cam.yaw = -40.1
+node0.cam.pitch = -36.9
+node0.cam.zoom = 45
+node0.cam.update_vectors()
+node0.speed = 0.29285714030266
+
+_editor.add_node(node0, 446.55371900826, 90.87603305785)
+
+var node1 = ::blueprint::nodes::subgraph::Subgraph()
+node1.load_from_file(_editor, "../../../../tantien/assets/blueprints/geograph/draw_geos_deferred.ves")
+node1.set_prop_value("no_bg", false)
+
+_editor.add_node(node1, 638.12360177234, 184.15380308134)
+
+var node2 = ::blueprint::nodes::subgraph::Subgraph()
+node2.load_from_file(_editor, "../../../assets/blueprints/geos/column.ves")
+
+_editor.add_node(node2, 400.99300292969, 250.26300140381)
+
+var node3 = ::blueprint::nodes::number::Number()
+
+node3.value = 0.61144053936005
+
+_editor.add_node(node3, 210.97035522461, 220.22781616211)
+
+var node4 = ::blueprint::nodes::number::Number()
+
+node4.value = 0.21005554497242
+
+_editor.add_node(node4, 213.0950012207, 286.46099853516)
+
+Blueprint.connect(node4, "v", node2, "radius")
+Blueprint.connect(node3, "v", node2, "height")
+Blueprint.connect(node2, "geo", node1, "geos")
+Blueprint.connect(node0, "this", node1, "view_cam")

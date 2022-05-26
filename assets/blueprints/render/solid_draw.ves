@@ -1,8 +1,8 @@
 var node0 = ::blueprint::nodes::camera3d::Camera3d()
 
-node0.cam.position.set(1.0589102698911, 0.57054933493071, 0.47786658672263)
-node0.cam.yaw = -147
-node0.cam.pitch = -22.1
+node0.cam.position.set(0.56643212081172, 0.78000788815915, 0.44567864403192)
+node0.cam.yaw = -149.5
+node0.cam.pitch = -42.2
 node0.cam.zoom = 45
 node0.cam.update_vectors()
 node0.speed = 0.29386684298515

@@ -1,5 +1,5 @@
 var node0 = ::solidgraph::nodes::extrude::Extrude()
-node0.query_param("dist").value = 0.17943216860294
+node0.query_param("dist").value = 1
 
 _editor.add_node(node0, -181.84310740603, -36.953017438926)
 
@@ -14,9 +14,9 @@ _editor.add_node(node2, -355.70247933884, -46.392561983471)
 
 var node3 = ::blueprint::nodes::camera3d::Camera3d()
 
-node3.cam.position.set(-0.4335165739878, 0.90449979120936, 0.68089707986199)
-node3.cam.yaw = -53.9
-node3.cam.pitch = -45.1
+node3.cam.position.set(-5.7318313067649, 7.5765104807787, 4.3257559411907)
+node3.cam.yaw = -37.9
+node3.cam.pitch = -44.6
 node3.cam.zoom = 45
 node3.cam.update_vectors()
 node3.speed = 0.29285714030266
@@ -39,6 +39,7 @@ _editor.add_node(node6, -335.97250366211, 87.855758666992)
 
 var node7 = ::blueprint::nodes::subgraph::Subgraph()
 node7.load_from_file(_editor, "../../../../tantien/assets/blueprints/geograph/draw_geos_deferred.ves")
+node7.set_prop_value("no_bg", false)
 
 _editor.add_node(node7, 41.541595458984, -99.22526550293)
 
