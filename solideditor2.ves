@@ -1,5 +1,5 @@
 import "editor.editor" for Editor
-import "network.edit_op" for EditOP as NetworkEditOP
+import "tree.edit_op" for EditOP as TreeEditOP
 import "solidnetwork.nodes.sketchnetwork" for Sketchnetwork
 import "filesystem" for Filesystem
 
@@ -9,7 +9,7 @@ class Solideditor2 is Editor
 	{
 		super.load()
 
-		this.nodes_op = NetworkEditOP(this.camera, this.scene_stack, this.popup_cb)
+		this.nodes_op = TreeEditOP(this.camera, this.scene_stack, this.popup_cb)
 		this.editop = this.nodes_op
 
 		this.prepare_nodes()
@@ -29,6 +29,7 @@ class Solideditor2 is Editor
 	{
 		return super.load_file_imports() + "
 import \"network.network\" for Network
+import \"tree.tree\" for Tree
 "
 	}
 	

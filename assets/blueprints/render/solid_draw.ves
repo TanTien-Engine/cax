@@ -1,0 +1,164 @@
+var node0 = ::blueprint::nodes::camera3d::Camera3d()
+
+node0.cam.position.set(1.0589102698911, 0.57054933493071, 0.47786658672263)
+node0.cam.yaw = -147
+node0.cam.pitch = -22.1
+node0.cam.zoom = 45
+node0.cam.update_vectors()
+node0.speed = 0.29386684298515
+
+_editor.add_node(node0, 400.92687393083, -186.38384646203)
+
+var node1 = ::blueprint::nodes::cache::Cache()
+node1.query_param("disable").value = false
+
+_editor.add_node(node1, 445.44014876454, 244.38364508525)
+
+var node2 = ::blueprint::nodes::list_flatten::ListFlatten()
+
+_editor.add_node(node2, 130.40744100034, 278.45999017131)
+
+var node3 = ::blueprint::nodes::number3::Number3()
+
+node3.value.set(0.60332572460175, 0.61443686485291, 0.56999242305756)
+
+_editor.add_node(node3, 159.23238771264, 97.421113253561)
+
+var node4 = ::blueprint::nodes::subtract::Subtract()
+
+_editor.add_node(node4, 305.73878691174, 131.98157570656)
+
+var node5 = ::blueprint::nodes::number3::Number3()
+
+node5.value.set(0.48828125, 0.48828125, 0.48828125)
+
+_editor.add_node(node5, 157.34826315454, -7.3892928597386)
+
+var node6 = ::blueprint::nodes::multiply::Multiply()
+
+_editor.add_node(node6, 432.71108437954, 123.71713330276)
+
+var node7 = ::blueprint::nodes::integer::Integer()
+
+node7.value = 100
+
+_editor.add_node(node7, 310.99799822194, 65.114568652361)
+
+var node8 = ::blueprint::nodes::input::Input()
+
+node8.var_name = "geos"
+node8.var_type = "array"
+
+_editor.add_node(node8, -63.485019, 224.003559)
+
+var node9 = ::geograph::nodes::brush_merge::BrushMerge()
+
+_editor.add_node(node9, 308.29977505839, 258.45941377635)
+
+var node10 = ::blueprint::nodes::number3::Number3()
+
+node10.value.set(0, 0, 0)
+
+_editor.add_node(node10, 97.35108656031, -202.13885522138)
+
+var node11 = ::blueprint::nodes::property::Property()
+
+node11.var_name = "ortho"
+node11.var_type = "bool"
+
+_editor.add_node(node11, -225.4714646662, -78.046968616831)
+
+var node12 = ::blueprint::nodes::store::Store()
+
+node12.var_name = "ortho"
+
+_editor.add_node(node12, -84.86150705788, -77.738313831681)
+
+var node13 = ::blueprint::nodes::load::Load()
+
+node13.var_name = "ortho"
+
+_editor.add_node(node13, 460.34047907049, 65.064708362926)
+
+var node14 = ::blueprint::nodes::load::Load()
+
+node14.var_name = "ortho"
+
+_editor.add_node(node14, 112.07251314189, -123.15726227589)
+
+var node15 = ::blueprint::nodes::branch_f::BranchF()
+
+_editor.add_node(node15, 240.2373921282, -145.52156933082)
+
+var node16 = ::blueprint::nodes::number3::Number3()
+
+node16.value.set(0.48011863231659, 0, 0)
+
+_editor.add_node(node16, 99.789320411699, -312.35891843117)
+
+var node17 = ::blueprint::nodes::negate::Negate()
+
+_editor.add_node(node17, 233.70059798182, -283.09685064892)
+
+var node18 = ::blueprint::nodes::input::Input()
+
+node18.var_name = "model"
+node18.var_type = "mat4"
+
+_editor.add_node(node18, 461.99673228045, 7.0878761343087)
+
+var node19 = ::rendergraph::nodes::pass::Pass()
+
+node19.once = false
+
+_editor.add_node(node19, 1106.2688175376, 124.53393999497)
+
+var node20 = ::rendergraph::nodes::render_target::RenderTarget()
+
+_editor.add_node(node20, 798.00435170117, -69.455545885415)
+
+var node21 = ::blueprint::nodes::input::Input()
+
+node21.var_name = "rt_tex"
+node21.var_type = [ "texture", "rbo" ]
+
+_editor.add_node(node21, 641.50550238124, 2.520411536534)
+
+var node22 = ::blueprint::nodes::branch_f::BranchF()
+
+_editor.add_node(node22, 937.37290368146, 7.857086669388)
+
+var node23 = ::blueprint::nodes::is_null::IsNull()
+
+_editor.add_node(node23, 801.47025959981, 34.935846066492)
+
+var node24 = ::blueprint::nodes::subgraph::Subgraph()
+node24.load_from_file(_editor, "../../../../tantien/assets/blueprints/geograph/draw_geos_deferred.ves")
+node24.set_prop_value("no_bg", true)
+
+_editor.add_node(node24, 784.08880615234, 204.22381591797)
+
+Blueprint.connect(node21, "var", node23, "in")
+Blueprint.connect(node21, "var", node20, "col0")
+Blueprint.connect(node23, "out", node22, "cond")
+Blueprint.connect(node20, "fbo", node22, "false")
+Blueprint.connect(node24, "next", node19, "do")
+Blueprint.connect(node22, "result", node19, "fbo")
+Blueprint.connect(node16, "v3", node17, "v")
+Blueprint.connect(node11, "var", node12, "var")
+Blueprint.connect(node12, "var", node14, "var")
+Blueprint.connect(node14, "var", node15, "cond")
+Blueprint.connect(node16, "v3", node15, "true")
+Blueprint.connect(node15, "result", node0, "eye")
+Blueprint.connect(node12, "var", node13, "var")
+Blueprint.connect(node8, "var", node9, "list")
+Blueprint.connect(node9, "brush", node1, "var")
+Blueprint.connect(node3, "v3", node4, "a")
+Blueprint.connect(node5, "v3", node4, "b")
+Blueprint.connect(node4, "v", node6, "a")
+Blueprint.connect(node7, "v", node6, "b")
+Blueprint.connect(node1, "var", node24, "geos")
+Blueprint.connect(node0, "this", node24, "view_cam")
+Blueprint.connect(node6, "v", node24, "light_pos")
+Blueprint.connect(node13, "var", node24, "ortho")
+Blueprint.connect(node18, "var", node24, "model")

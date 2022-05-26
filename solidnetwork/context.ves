@@ -1,0 +1,20 @@
+import "editor.node_cache" for NODE_CACHE
+
+class Context
+{
+	init()
+	{
+		this.draw_node = nil
+	}
+
+	get_draw_node()
+	{
+		if (!this.draw_node) {
+			this.draw_node = NODE_CACHE.fetch("../cax/assets/blueprints/render/solid_draw.ves", nil)
+		}
+
+		return this.draw_node
+	}
+}
+
+var CONTEXT = Context()

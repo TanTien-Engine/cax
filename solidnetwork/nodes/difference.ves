@@ -1,0 +1,22 @@
+import "geograph.variant" for VAR_TYPE_GEO
+import "tree.node" for Node
+import "tree.pin" for Pin
+import "tree.node_shape" for SHAPE_PANEL
+
+class Difference is Node
+{
+	init()
+	{
+		super.init()
+
+		this.shape = SHAPE_PANEL
+
+		this.parent = Pin(this, "out", VAR_TYPE_GEO)
+		this.children = [
+			Pin(this, "in_0", VAR_TYPE_GEO),
+			Pin(this, "in_1", VAR_TYPE_GEO),
+		]
+
+		this.layout()
+	}
+}

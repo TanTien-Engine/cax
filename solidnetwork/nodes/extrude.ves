@@ -1,0 +1,99 @@
+import "blueprint.variant" for Variant, VAR_TYPE_MATRIX4
+import "blueprint.variant_proxy" for VariantProxy
+import "blueprint.blueprint" for Blueprint
+import "tree.node" for Node
+import "tree.pin" for Pin
+import "tree.node_shape" for SHAPE_PANEL, SHAPE_PANEL_WIDTH, SHAPE_PANEL_HEIGHT
+import "geograph.variant" for VAR_TYPE_GEO
+import "rendergraph.variant" for VAR_TYPE_TEXTURE, VarTexture
+import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY as VAR_TYPE_SHP
+import "solidgraph.nodes.extrude" for Extrude as sg_Extrude
+import "solidnetwork.context" for CONTEXT
+import "maths" for Matrix44
+import "render" for Texture2D
+import "graphics" for Graphics
+
+class Extrude is Node
+{
+	init()
+	{
+		super.init()
+
+		this.shape = SHAPE_PANEL
+
+		this.parent = Pin(this, "out", VAR_TYPE_GEO)
+		this.children = [
+			Pin(this, "in", VAR_TYPE_SHP),
+		]
+
+		this.layout()
+
+		this.geos = nil
+
+		this.v_preview_tex = nil
+	}
+
+	calc_value(idx)
+	{
+		return nil
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		if (!this.v_preview_tex) {
+			this.v_preview_tex = VarTexture()
+			this.v_preview_tex.tex = Texture2D.init(SHAPE_PANEL_WIDTH, SHAPE_PANEL_HEIGHT, "rgba8", false)
+		}
+
+		var geos = this.get_geos()
+		if (!geos) {
+			return
+		}
+
+		var draw_node = CONTEXT.get_draw_node()
+		if (!draw_node) {
+			return
+		}
+
+		Blueprint.connect(VariantProxy(geos), "out", draw_node, "geos")
+
+		var mat = Matrix44.init()
+//		var s = 0.25
+//		mat.scale(s, s, s)
+//		mat.translate(this.pos.x * 0.01, this.pos.y * 0.01, 0)
+
+//		Blueprint.connect(VariantProxy(Variant(VAR_TYPE_MATRIX4, mat)), "out", draw_node, "model")
+		Blueprint.connect(VariantProxy(Variant(VAR_TYPE_TEXTURE, this.v_preview_tex)), "out", draw_node, "rt_tex")
+
+		draw_node.render_run()
+
+		var x = this.pos.x
+		var y = this.pos.y
+		var scale = 1.0
+		Graphics.draw_texture(this.v_preview_tex.tex, [x, y], 0, [scale, scale], [0, 0])
+	}
+
+	get_geos()
+	{
+		if (this.geos) {
+			return this.geos
+		}
+
+		var edge = this.children[0].edge
+		if (!edge) {
+			return nil
+		}
+
+		var child = edge.pin1.node
+		var v_shp = child.calc_value(0)
+
+		var impl = sg_Extrude()
+		Blueprint.connect(VariantProxy(v_shp), "out", impl, "shape")
+		Blueprint.connect(VariantProxy(Variant(0.1)), "out", impl, "dist")
+
+		this.geos = Blueprint.calc_output_value(impl, "geo")
+		return this.geos
+	}
+}

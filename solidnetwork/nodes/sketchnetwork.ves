@@ -2,14 +2,15 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.nodes.subgraph" for Subgraph
-import "network.vertex" for Vertex
-import "network.vertex_shape" for SHAPE_PANEL
-import "geograph.variant" for VAR_TYPE_GEO
+import "tree.node" for Node
+import "tree.pin" for Pin
+import "tree.node_shape" for SHAPE_PANEL
 import "sketchgraph.nodes.draw" for Draw
 import "sketchnetwork.scene" for Scene
+import "sketchnetwork.variant" for VAR_TYPE_GEOMETRY as VAR_TYPE_SHAPE
 import "maths" for Matrix44
 
-class Sketchnetwork is Vertex
+class Sketchnetwork is Node
 {
 	init()
 	{
@@ -17,16 +18,18 @@ class Sketchnetwork is Vertex
 
 		this.shape = SHAPE_PANEL
 
-		this.pin_types_f = [ VAR_TYPE_GEO ]
-		this.pin_types_t = [ 
-			[ VAR_TYPE_GEO ]
-		]
-
-		this.pin_dynamic = false
+		this.parent = Pin(this, "out", VAR_TYPE_SHAPE)
 
 		this.impl = Subgraph()
 
 		this.draw_node = Draw()
+
+		this.geos = nil
+	}
+
+	calc_value(idx)
+	{
+		return Variant(this.geos)
 	}
 
 	get_title()
@@ -60,11 +63,11 @@ class Sketchnetwork is Vertex
 			nodes.add(item[0])
 		}
 
-		var draw_geos = []
+		this.geos = []
 
 		var solver = Scene()
-		solver.resolve(nodes, draw_geos)
+		solver.resolve(nodes, this.geos)
 
-		Blueprint.connect(VariantProxy(Variant(draw_geos)), "out", this.draw_node, "geo")
+		Blueprint.connect(VariantProxy(Variant(this.geos)), "out", this.draw_node, "geo")
 	}
 }
