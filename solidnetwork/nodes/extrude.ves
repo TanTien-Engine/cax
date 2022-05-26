@@ -1,6 +1,7 @@
 import "blueprint.variant" for Variant, VAR_TYPE_MATRIX4
 import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
 import "tree.node" for Node
 import "tree.pin" for Pin
 import "tree.node_shape" for SHAPE_PANEL, SHAPE_PANEL_WIDTH, SHAPE_PANEL_HEIGHT
@@ -25,6 +26,8 @@ class Extrude is Node
 		this.children = [
 			Pin(this, "in", VAR_TYPE_SHP),
 		]
+
+		this.params.add(NodeParam("dist", 0.0))
 
 		this.layout()
 
@@ -86,12 +89,14 @@ class Extrude is Node
 			return nil
 		}
 
-		var child = edge.pin1.node
-		var v_shp = child.calc_value(0)
-
 		var impl = sg_Extrude()
+
+		var child = edge.pin1.node
+		var v_shp = child.calc_value(0)		
 		Blueprint.connect(VariantProxy(v_shp), "out", impl, "shape")
-		Blueprint.connect(VariantProxy(Variant(0.1)), "out", impl, "dist")
+
+		var dist = this.query_param("dist").value
+		Blueprint.connect(VariantProxy(Variant(dist)), "out", impl, "dist")
 
 		this.geos = Blueprint.calc_output_value(impl, "geo")
 		return this.geos
