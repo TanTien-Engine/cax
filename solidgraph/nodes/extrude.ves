@@ -78,6 +78,7 @@ class Extrude is Node
 		} else if (shape is Arc) {
 			verts = shape.get_vertices()
 		}
+		verts = this.simplify_polyline(verts)
 		if (!verts or verts.count < 3 * 2) {
 			return nil
 		}
@@ -96,5 +97,33 @@ class Extrude is Node
 
 		var face = PolyFace.init(border, [])
 		return Polytope.init(points, [ face ])
+	}
+
+	simplify_polyline(polyline)
+	{
+		if (polyline.count <= 2) {
+			return polyline
+		}
+
+		var ret = [ polyline[0], polyline[1] ]
+
+		var last_x = polyline[0]
+		var last_y = polyline[1]
+
+		var n = polyline.count / 2
+		for (var i = 1; i < n; i = i + 1)
+		{
+			var x = polyline[i * 2]
+			var y = polyline[i * 2 + 1]
+			if (x != last_x or y != last_y) {
+				ret.add(x)
+				ret.add(y)
+			}
+
+			last_x = x
+			last_y = y
+		}
+
+		return ret
 	}
 }
