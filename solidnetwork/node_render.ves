@@ -1,0 +1,41 @@
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "blueprint.variant_proxy" for VariantProxy
+import "tree.node_shape" for SHAPE_PANEL_WIDTH, SHAPE_PANEL_HEIGHT
+import "rendergraph.variant" for VAR_TYPE_TEXTURE, VarTexture
+import "render" for Texture2D
+import "graphics" for Graphics
+import "solidnetwork.context" for CONTEXT
+
+class NodeRender
+{
+	init()
+	{
+		this.v_preview_tex = nil
+	}
+
+	draw_geo(v_geos, pos)
+	{
+		if (!v_geos) {
+			return
+		}
+
+		var draw_node = CONTEXT.get_draw_node()
+		if (!draw_node) {
+			return
+		}
+
+		if (!this.v_preview_tex) {
+			this.v_preview_tex = VarTexture()
+			this.v_preview_tex.tex = Texture2D.init(SHAPE_PANEL_WIDTH, SHAPE_PANEL_HEIGHT, "rgba8", false)
+		}
+
+		Blueprint.connect(VariantProxy(v_geos), "out", draw_node, "geos")
+		Blueprint.connect(VariantProxy(Variant(VAR_TYPE_TEXTURE, this.v_preview_tex)), "out", draw_node, "rt_tex")
+
+		draw_node.render_run()
+
+		var scale = 1.0
+		Graphics.draw_texture(this.v_preview_tex.tex, [pos.x, pos.y], 0, [scale, scale], [0, 0])
+	}
+}

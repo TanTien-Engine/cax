@@ -1,0 +1,22 @@
+import "solidnetwork.nodes.boolean" for Boolean
+
+class Union is Boolean
+{
+	init() {
+		super.init("union")
+	}
+}
+
+class Intersection is Boolean
+{
+	init() {
+		super.init("intersect")
+	}
+}
+
+class Difference is Boolean
+{
+	init() {
+		super.init("subtract")
+	}
+}

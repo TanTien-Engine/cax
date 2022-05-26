@@ -1,12 +1,12 @@
-var node0 = ::solidnetwork::nodes::union::Union()
+var node0 = ::solidnetwork::nodes::boolean_nodes::Union()
 
 _editor.add_node(node0, -91.803155522164, 483.48234410218)
 
-var node1 = ::solidnetwork::nodes::intersection::Intersection()
+var node1 = ::solidnetwork::nodes::boolean_nodes::Intersection()
 
 _editor.add_node(node1, -324.85950413223, 158.38842975207)
 
-var node2 = ::solidnetwork::nodes::difference::Difference()
+var node2 = ::solidnetwork::nodes::boolean_nodes::Difference()
 
 _editor.add_node(node2, 137.99173553719, 156.77685950413)
 

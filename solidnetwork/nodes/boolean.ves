@@ -1,0 +1,68 @@
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant_proxy" for VariantProxy
+import "geograph.nodes.boolean" for Boolean as gg_Boolean
+import "geograph.variant" for VAR_TYPE_GEO
+import "tree.node" for Node
+import "tree.pin" for Pin
+import "tree.node_shape" for SHAPE_PANEL
+import "tree.tree" for Tree
+import "solidnetwork.node_render" for NodeRender
+
+class Boolean is Node
+{
+	init(operator)
+	{
+		super.init()
+
+		this.shape = SHAPE_PANEL
+
+		this.parent = Pin(this, "out", VAR_TYPE_GEO)
+		this.children = [
+			Pin(this, "in_0", VAR_TYPE_GEO),
+			Pin(this, "in_1", VAR_TYPE_GEO),
+		]
+
+		this.layout()
+
+		this.v_geos = nil
+
+		this.render = NodeRender()
+
+		this.operator = operator
+	}
+
+	calc_value(idx)
+	{
+		return this.get_out_geos()
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		var v_geos = this.get_out_geos()
+		this.render.draw_geo(v_geos, this.pos)
+	}
+
+	get_out_geos()
+	{
+		if (this.v_geos) {
+			return this.v_geos
+		}
+
+		var v_a = Tree.calc_input_value(this.children[0])
+		var v_b = Tree.calc_input_value(this.children[1])
+		if (!v_a or !v_b) {
+			return nil
+		}
+
+		var boolean = gg_Boolean()
+		Blueprint.connect(VariantProxy(v_a), "out", boolean, "a")
+		Blueprint.connect(VariantProxy(v_b), "out", boolean, "b")
+		boolean.query_param("operator").value = this.operator
+
+		this.v_geos = Blueprint.calc_output_value(boolean, "geo")
+
+		this.v_geos
+	}
+}
