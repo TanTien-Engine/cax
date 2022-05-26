@@ -1,6 +1,6 @@
 import "solidnetwork.nodes.*"
 
 var SOLID_NODES2 = [
-Sketchnetwork, Extrude,
+Extrude,
 Union, Intersection, Difference
 ]

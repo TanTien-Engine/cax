@@ -39,7 +39,7 @@ class Sketchnetwork is Node
 
 	to_string(name) 
 	{
-		return this.impl.to_string(name)
+		return this.impl.to_string(name) + super.to_string(name)
 	}
 
 	draw(mt, cam_mt)

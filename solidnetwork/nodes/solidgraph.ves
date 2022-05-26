@@ -1,0 +1,104 @@
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "blueprint.variant_proxy" for VariantProxy
+import "blueprint.node_param" for NodeParam
+import "blueprint.nodes.subgraph" for Subgraph
+import "blueprint.nodes.input" for Input
+import "tree.node" for Node
+import "tree.pin" for Pin
+import "tree.node_shape" for SHAPE_PANEL, SHAPE_PANEL_WIDTH, SHAPE_PANEL_HEIGHT
+import "geograph.variant" for VAR_TYPE_GEO
+import "rendergraph.variant" for VAR_TYPE_TEXTURE, VarTexture
+import "solidnetwork.context" for CONTEXT
+import "render" for Texture2D
+import "graphics" for Graphics
+
+class Solidgraph is Node
+{
+	init()
+	{
+		super.init()
+
+		this.shape = SHAPE_PANEL
+
+		this.parent = Pin(this, "out", VAR_TYPE_GEO)
+
+		this.impl = Subgraph()
+
+		this.v_geos = nil
+
+		this.v_preview_tex = nil
+	}
+
+	calc_value(idx)
+	{
+		return this.get_out_geos()
+	}
+
+	get_title()
+	{
+		return this.impl.title
+	}
+
+	to_string(name) 
+	{
+		return this.impl.to_string(name) + super.to_string(name)
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		var v_geos = this.get_out_geos()
+		if (!v_geos) {
+			return
+		}
+
+		var draw_node = CONTEXT.get_draw_node()
+		if (!draw_node) {
+			return
+		}
+
+		if (!this.v_preview_tex) {
+			this.v_preview_tex = VarTexture()
+			this.v_preview_tex.tex = Texture2D.init(SHAPE_PANEL_WIDTH, SHAPE_PANEL_HEIGHT, "rgba8", false)
+		}
+
+		Blueprint.connect(VariantProxy(v_geos), "out", draw_node, "geos")
+		Blueprint.connect(VariantProxy(Variant(VAR_TYPE_TEXTURE, this.v_preview_tex)), "out", draw_node, "rt_tex")
+
+		draw_node.render_run()
+
+		var x = this.pos.x
+		var y = this.pos.y
+		var scale = 1.0
+		Graphics.draw_texture(this.v_preview_tex.tex, [x, y], 0, [scale, scale], [0, 0])		
+	}
+
+	load_from_file(editor, filepath)
+	{
+		this.impl.load_from_file(editor, filepath, editor)
+
+		this.params.clear()
+		for (var item in this.impl.all_items) {
+			if (item[0] is Input) {
+				this.params.add(NodeParam(item[0].var_name, 0))
+			}
+		}
+	}
+
+	get_out_geos()
+	{
+		if (this.v_geos) {
+			return this.v_geos
+		}
+
+		for (var p in this.params) {
+			Blueprint.connect(VariantProxy(Variant(p.value)), "out", this.impl, p.name)
+		}
+
+		this.v_geos = Blueprint.calc_output_value(this.impl, "geo")
+
+		return this.v_geos
+	}
+}

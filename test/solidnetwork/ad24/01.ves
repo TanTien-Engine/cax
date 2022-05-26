@@ -1,0 +1,34 @@
+var node0 = ::solidnetwork::nodes::union::Union()
+
+_editor.add_node(node0, -91.803155522164, 483.48234410218)
+
+var node1 = ::solidnetwork::nodes::intersection::Intersection()
+
+_editor.add_node(node1, -324.85950413223, 158.38842975207)
+
+var node2 = ::solidnetwork::nodes::difference::Difference()
+
+_editor.add_node(node2, 137.99173553719, 156.77685950413)
+
+var node3 = ::solidnetwork::nodes::sketchnetwork::Sketchnetwork()
+node3.load_from_file(_editor, "../../sketchnetwork/ad24/01/bottom.ves")
+
+_editor.add_node(node3, 7.1241947322203, -424.082860508)
+
+var node4 = ::solidnetwork::nodes::extrude::Extrude()
+node4.query_param("dist").value = 0.3
+
+_editor.add_node(node4, 5.6162207031203, -140.87096710205)
+
+var node5 = ::solidnetwork::nodes::solidgraph::Solidgraph()
+node5.load_from_file(_editor, "../../../assets/blueprints/geos/column.ves")
+node5.query_param("radius").value = 0.075
+node5.query_param("height").value = 0.3
+
+_editor.add_node(node5, 295.41645019531, -139.98569458008)
+
+Tree.connect(node0, "in_0", node1, "out")
+Tree.connect(node0, "in_1", node2, "out")
+Tree.connect(node2, "in_0", node4, "out")
+Tree.connect(node2, "in_1", node5, "out")
+Tree.connect(node4, "in", node3, "out")

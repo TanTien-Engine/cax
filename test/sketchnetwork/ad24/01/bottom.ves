@@ -10,18 +10,18 @@ _editor.add_node(node1, -357.88101535728, -494.02114401909)
 
 var node2 = ::sketchnetwork::nodes::cons_nodes::DistanceX()
 node2.impl.query_param("driving").value = true
-node2.impl.query_param("dist").value = 6
+node2.impl.query_param("dist").value = 0.6
 
 _editor.add_node(node2, -353.15374263, -272.11205311)
 
 var node3 = ::sketchnetwork::nodes::cons_nodes::DistanceY()
 node3.impl.query_param("driving").value = true
-node3.impl.query_param("dist").value = 3
+node3.impl.query_param("dist").value = 0.3
 
 _editor.add_node(node3, -528.98586417168, -494.15892533567)
 
 var node4 = ::sketchnetwork::nodes::point_pos::PointPos()
-node4.query_param("pos").value.set(0, -1.5)
+node4.query_param("pos").value.set(0, -0.15)
 
 _editor.add_node(node4, -262.61582870067, -648.34916687348)
 
