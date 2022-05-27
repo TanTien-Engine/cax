@@ -33,6 +33,14 @@ class Extrude is Node
 		this.render = NodeRender()
 	}
 
+	on_pin_dirty(pin)
+	{
+		if (pin.is_child) {
+			this.v_geos = nil
+			Tree.send_pin_dirty(this.parent)
+		}
+	}
+
 	calc_value(idx)
 	{
 		return this.get_out_geos()

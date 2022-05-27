@@ -31,6 +31,14 @@ class Boolean is Node
 		this.operator = operator
 	}
 
+	on_pin_dirty(pin)
+	{
+		if (pin.is_child) {
+			this.v_geos = nil
+			Tree.send_pin_dirty(this.parent)
+		}
+	}
+
 	calc_value(idx)
 	{
 		return this.get_out_geos()
@@ -52,17 +60,23 @@ class Boolean is Node
 
 		var v_a = Tree.calc_input_value(this.children[0])
 		var v_b = Tree.calc_input_value(this.children[1])
-		if (!v_a or !v_b) {
+		if (!v_a and !v_b) {
 			return nil
 		}
 
-		var boolean = gg_Boolean()
-		Blueprint.connect(VariantProxy(v_a), "out", boolean, "a")
-		Blueprint.connect(VariantProxy(v_b), "out", boolean, "b")
-		boolean.query_param("operator").value = this.operator
+		if (!v_a) {
+			this.v_geos = v_b
+		} else if (!v_b) {
+			this.v_geos = v_a
+		} else {
+			var boolean = gg_Boolean()
+			Blueprint.connect(VariantProxy(v_a), "out", boolean, "a")
+			Blueprint.connect(VariantProxy(v_b), "out", boolean, "b")
+			boolean.query_param("operator").value = this.operator
 
-		this.v_geos = Blueprint.calc_output_value(boolean, "geo")
+			this.v_geos = Blueprint.calc_output_value(boolean, "geo")
+		}
 
-		this.v_geos
+		return this.v_geos
 	}
 }

@@ -1,10 +1,17 @@
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.nodes.subgraph" for Subgraph
 import "network.vertex" for Vertex
-import "editor.editor" for Editor
+import "tree.tree" for Tree
+import "tree.node" for Node as TR_Node
+import "rendergraph.variant" for VAR_TYPE_TEXTURE
 import "tree.edit_op" for EditOP as TreeEditOP
 import "solidnetwork.nodes.sketchnetwork" for Sketchnetwork
 import "solidnetwork.nodes.solidgraph" for Solidgraph
 import "filesystem" for Filesystem
+import "editor.editor" for Editor
+import "editor.node_cache" for NODE_CACHE
 
 class Solideditor2 is Editor
 {
@@ -16,6 +23,10 @@ class Solideditor2 is Editor
 		this.editop = this.nodes_op
 
 		this.prepare_nodes()
+
+		this.root_node = nil
+
+		this.render_node = NODE_CACHE.fetch("../cax/assets/blueprints/render/solid_main_draw.ves", nil)
 	}
 
 	prepare_nodes()
@@ -25,6 +36,43 @@ class Solideditor2 is Editor
 		import "solidnodes2" for SOLID_NODES2
 		for (var node in SOLID_NODES2) {
 			super.add_popup_node(node)
+		}
+	}
+
+	update_root_node()
+	{
+		var scene = this.scene_stack.root()
+
+		var root = nil
+		var max_num = 0
+		for (var node in scene.nodes) 
+		{
+			var bp_node = node.components["bp"]
+			if (bp_node and bp_node is TR_Node and !bp_node.parent.edge) 
+			{
+				var num = Tree.get_successor_nodes(bp_node).count
+				if (num > max_num) {
+					root = bp_node
+					max_num = num
+				}
+			}
+		}
+
+		this.root_node = root
+	}
+
+	draw_preview()
+	{
+		if (this.scene_stack.bp_dirty) {
+			this.update_root_node()
+		}
+
+		super.draw_preview()
+
+		if (this.root_node and this.root_node.v_geos)
+		{
+			Blueprint.connect(VariantProxy(this.root_node.v_geos), "out", this.render_node, "geos")
+			this.render_node.render_run()
 		}
 	}
 

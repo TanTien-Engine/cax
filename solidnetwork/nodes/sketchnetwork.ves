@@ -24,12 +24,12 @@ class Sketchnetwork is Node
 
 		this.draw_node = Draw()
 
-		this.geos = nil
+		this.v_geos = nil
 	}
 
 	calc_value(idx)
 	{
-		return Variant(this.geos)
+		return this.v_geos
 	}
 
 	get_title()
@@ -63,11 +63,13 @@ class Sketchnetwork is Node
 			nodes.add(item[0])
 		}
 
-		this.geos = []
+		var geos = []
 
 		var solver = Scene()
-		solver.resolve(nodes, this.geos)
+		solver.resolve(nodes, geos)
 
-		Blueprint.connect(VariantProxy(Variant(this.geos)), "out", this.draw_node, "geo")
+		this.v_geos = Variant(geos)
+
+		Blueprint.connect(VariantProxy(this.v_geos), "out", this.draw_node, "geo")
 	}
 }
