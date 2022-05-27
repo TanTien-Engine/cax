@@ -1,0 +1,99 @@
+import "blueprint.variant" for Variant
+import "blueprint.variant_proxy" for VariantProxy
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "tree.tree" for Tree
+import "tree.node" for Node
+import "tree.pin" for Pin
+import "tree.node_shape" for SHAPE_PANEL
+import "geograph.variant" for VAR_TYPE_GEO
+import "geograph.nodes.translate_f" for TranslateF as gg_TranslateF
+import "geograph.nodes.rotate" for Rotate as gg_Rotate
+import "solidnetwork.node_render" for NodeRender
+import "maths.vector" for Vector3
+
+class Transform is Node
+{
+	init()
+	{
+		super.init()
+
+		this.shape = SHAPE_PANEL
+
+		this.parent = Pin(this, "out", VAR_TYPE_GEO)
+		this.children = [
+			Pin(this, "in", VAR_TYPE_GEO),
+		]
+
+		this.params.add(NodeParam("tx", 0.0))
+		this.params.add(NodeParam("ty", 0.0))
+		this.params.add(NodeParam("tz", 0.0))
+		this.params.add(NodeParam("rx", 0.0))
+		this.params.add(NodeParam("ry", 0.0))
+		this.params.add(NodeParam("rz", 0.0))
+
+		this.layout()
+
+		this.v_geos = nil
+
+		this.render = NodeRender()
+	}
+
+	on_pin_dirty(pin)
+	{
+		if (pin.is_child) {
+			this.v_geos = nil
+			Tree.send_pin_dirty(this.parent)
+		}
+	}
+
+	calc_value(idx)
+	{
+		return this.get_out_geos()
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		var v_geos = this.get_out_geos()
+		this.render.draw_geo(v_geos, this.pos)
+	}
+
+	get_out_geos()
+	{
+		if (this.v_geos) {
+			return this.v_geos
+		}
+
+		var v_in_geo = Tree.calc_input_value(this.children[0])
+		if (!v_in_geo) {
+			return nil
+		}
+
+		// rotate
+		var r = Vector3()
+		r.x = this.query_param("rx").value
+		r.y = this.query_param("ry").value
+		r.z = this.query_param("rz").value
+
+		var r_node = gg_Rotate()
+		Blueprint.connect(VariantProxy(v_in_geo), "out", r_node, "geo")
+		Blueprint.connect(VariantProxy(Variant(r)), "out", r_node, "rot_xyz")
+
+		var rotated_geos = Blueprint.calc_output_value(r_node, "geo")
+
+		// translate
+		var t = Vector3()
+		t.x = this.query_param("tx").value
+		t.y = this.query_param("ty").value
+		t.z = this.query_param("tz").value
+
+		var impl = gg_TranslateF()
+		Blueprint.connect(VariantProxy(rotated_geos), "out", impl, "geo")
+		Blueprint.connect(VariantProxy(Variant(t)), "out", impl, "xyz")
+
+		this.v_geos = Blueprint.calc_output_value(impl, "geo")
+		return this.v_geos
+	}		
+}

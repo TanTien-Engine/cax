@@ -2,6 +2,6 @@ import "solidnetwork.nodes.*"
 import "solidnetwork.nodes.boolean_nodes" for Union, Intersection, Difference
 
 var SOLID_NODES2 = [
-Extrude,
+Extrude, Transform,
 Union, Intersection, Difference
 ]
