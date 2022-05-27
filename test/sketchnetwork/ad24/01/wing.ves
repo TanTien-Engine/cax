@@ -1,0 +1,27 @@
+var node0 = ::sketchnetwork::nodes::cons_nodes::DistanceX()
+node0.impl.query_param("driving").value = true
+node0.impl.query_param("dist").value = 0.42
+
+_editor.add_node(node0, -90.04529263, -273.20105311)
+
+var node1 = ::sketchnetwork::nodes::cons_nodes::DistanceY()
+node1.impl.query_param("driving").value = true
+node1.impl.query_param("dist").value = 0.21
+
+_editor.add_node(node1, -240.46741417168, -122.56792533567)
+
+var node2 = ::sketchnetwork::nodes::sketchgraph::Sketchgraph()
+node2.load_from_file(_editor, "../../../../assets/blueprints/shapes/tri_right.ves")
+
+_editor.add_node(node2, -77.594169628906, -114.60416113281)
+
+var node3 = ::sketchnetwork::nodes::point_pos::PointPos()
+node3.query_param("pos").value.set(0, 0)
+
+_editor.add_node(node3, -260.38977661133, -285.07400817871)
+
+Network.connect(node1, "end", node2, "y")
+Network.connect(node1, "start", node2, "o")
+Network.connect(node2, "o", node0, "start")
+Network.connect(node2, "x", node0, "end")
+Network.connect(node3, "around", node2, "o")
