@@ -91,6 +91,7 @@ import \"tree.tree\" for Tree
 
 		var is_network = false
 		var sg = Subgraph()
+		sg.load_from_file(this, filepath)
 		for (var item in sg.all_items) {
 			if (item[0] is Vertex) {
 				is_network = true
