@@ -1,0 +1,27 @@
+var node0 = ::geograph::nodes::polyline::Polyline()
+node0.query_param("vertices").value = [ -321, 36, -80, -178, 244, 148, 347, 107 ]
+node0.query_param("closed").value = false
+
+_editor.add_node(node0, -261, 221.5)
+
+var node1 = ::geograph::nodes::draw_geometry::DrawGeometry()
+node1.query_param("skip").value = false
+
+_editor.add_node(node1, 120, 176.5)
+
+var node2 = ::blueprint::nodes::camera2d::Camera2d()
+
+node2.x = 24.19080777
+node2.y = 89.679612116
+node2.scale = 0.82644628099174
+node2.speed = 0.01
+
+_editor.add_node(node2, -74, 83)
+
+var node3 = ::nurbsgraph::nodes::bezier::Bezier()
+
+_editor.add_node(node3, -103.10948705689, 220.67129977461)
+
+Blueprint.connect(node0, "geo", node3, "ctrl")
+Blueprint.connect(node3, "geo", node1, "geos")
+Blueprint.connect(node2, "mat", node1, "cam_mat")

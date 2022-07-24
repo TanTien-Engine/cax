@@ -1,0 +1,5 @@
+import "nurbsgraph.nodes.*"
+
+var NURBS_NODES = [
+Bezier, 
+]
