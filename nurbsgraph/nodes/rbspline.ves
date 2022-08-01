@@ -1,0 +1,44 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "geograph.variant" for VAR_TYPE_GEO, VarGeo
+import "nurbslib" for NurbsLib
+import "math" for Math
+
+class Rbspline is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "ctrl", VAR_TYPE_GEO),
+		]
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEO),
+		]
+
+		this.params.add(NodeParam("order", 3, { "integer" : true, "region" : 5 }))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_ctrl = Blueprint.calc_input_value(this, 0)
+		if (!v_ctrl) {
+			return nil
+		}
+
+		var ctrl = v_ctrl.value.shape
+		var order = this.query_param("order").value
+		var num = Math.max(10, ctrl.calc_length() / 25)
+		var bspline = NurbsLib.rbspline(v_ctrl.value.shape, order, num)
+
+		var geo = VarGeo()
+		geo.shape = bspline
+		return Variant(VAR_TYPE_GEO, geo)
+	}
+}

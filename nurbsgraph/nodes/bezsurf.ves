@@ -1,0 +1,38 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "geograph.variant" for VAR_TYPE_GEO, VarGeo
+import "nurbslib" for NurbsLib
+import "math" for Math
+
+class Bezsurf is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "ctrl", VAR_TYPE_GEO),
+		]
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEO),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_ctrl = Blueprint.calc_input_value(this, 0)
+		if (!v_ctrl) {
+			return nil
+		}
+
+		var bezier = NurbsLib.bezsurf(v_ctrl.value.shape, 4, 4, 10, 10)
+
+		var geo = VarGeo()
+		geo.shape = bezier
+		return Variant(VAR_TYPE_GEO, geo)
+	}
+}
