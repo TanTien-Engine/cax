@@ -1,0 +1,31 @@
+var node0 = ::geograph::nodes::draw_geometry::DrawGeometry()
+node0.query_param("skip").value = false
+
+_editor.add_node(node0, 70, 153.5)
+
+var node1 = ::geograph::nodes::polyline3d::Polyline3d()
+node1.query_param("vertices").value = [  ]
+node1.query_param("closed").value = false
+
+_editor.add_node(node1, -250.5869140625, 167.46270751953)
+
+var node2 = ::blueprint::nodes::camera3d::Camera3d()
+
+node2.cam.position.set(3.5735848054829, 5.3684053898667, 5.8801899421072)
+node2.cam.yaw = -121.6
+node2.cam.pitch = -37.4
+node2.cam.zoom = 45
+node2.cam.update_vectors()
+node2.speed = 0.27463629841805
+
+_editor.add_node(node2, -103.44908230364, 42.45064878858)
+
+var node3 = ::nurbsgraph::nodes::rbspsurf::Rbspsurf()
+node3.query_param("order_u").value = 3
+node3.query_param("order_v").value = 3
+
+_editor.add_node(node3, -94.873505908066, 199.27293217676)
+
+Blueprint.connect(node1, "geo", node3, "ctrl")
+Blueprint.connect(node3, "geo", node0, "geos")
+Blueprint.connect(node2, "mat", node0, "cam_mat")

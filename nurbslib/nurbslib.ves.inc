@@ -7,6 +7,8 @@ foreign class NurbsLib
 	foreign static bspline(ctrl_poly, order, out_poly_num)
 	foreign static rbspline(ctrl_poly, order, out_poly_num)
 	foreign static bezsurf(ctl_pts, npts, mpts, p1, p2)
+	foreign static bspsurf(ctl_pts, order_u, order_v, npts, mpts, p1, p2)
+	foreign static rbspsurf(ctl_pts, order_u, order_v, npts, mpts, p1, p2)
 }
 
 );

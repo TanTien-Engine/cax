@@ -103,6 +103,62 @@ void w_NurbsLib_bezsurf()
     ves_pop(1);
 }
 
+void w_NurbsLib_bspsurf()
+{
+    auto polyline = ((tt::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
+//    auto& verts = polyline->GetVertices();
+
+    auto order_u = (int)ves_tonumber(2);
+    auto order_v = (int)ves_tonumber(3);
+    auto npts = (int)ves_tonumber(4);
+    auto mpts = (int)ves_tonumber(5);
+    auto p1 = (int)ves_tonumber(6);
+    auto p2 = (int)ves_tonumber(7);
+
+    auto poly_num = (int)ves_tonumber(3);
+    std::vector<sm::vec3> surface(p1 * p2);
+
+    nurbs::bspsurf(nullptr, order_u, order_v, npts, mpts, p1, p2, surface);
+
+    auto poly = std::make_shared<gs::Polyline3D>(surface, false);
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("geometry", "Polyline3D");
+    auto proxy = (tt::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline3D>));
+    proxy->obj = poly;
+    ves_pop(1);
+}
+
+void w_NurbsLib_rbspsurf()
+{
+    auto polyline = ((tt::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
+//    auto& verts = polyline->GetVertices();
+
+    auto order_u = (int)ves_tonumber(2);
+    auto order_v = (int)ves_tonumber(3);
+    auto npts = (int)ves_tonumber(4);
+    auto mpts = (int)ves_tonumber(5);
+    auto p1 = (int)ves_tonumber(6);
+    auto p2 = (int)ves_tonumber(7);
+
+    auto poly_num = (int)ves_tonumber(3);
+    std::vector<sm::vec3> surface(p1 * p2);
+
+    nurbs::rbspsurf(nullptr, order_u, order_v, npts, mpts, p1, p2, surface);
+
+    auto poly = std::make_shared<gs::Polyline3D>(surface, false);
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("geometry", "Polyline3D");
+    auto proxy = (tt::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline3D>));
+    proxy->obj = poly;
+    ves_pop(1);
+}
+
 }
 
 namespace nurbslib
@@ -114,6 +170,8 @@ VesselForeignMethodFn NurbsLibBindMethod(const char* signature)
     if (strcmp(signature, "static NurbsLib.bspline(_,_,_)") == 0) return w_NurbsLib_bspline;
     if (strcmp(signature, "static NurbsLib.rbspline(_,_,_)") == 0) return w_NurbsLib_rbspline;
     if (strcmp(signature, "static NurbsLib.bezsurf(_,_,_,_,_)") == 0) return w_NurbsLib_bezsurf;
+    if (strcmp(signature, "static NurbsLib.bspsurf(_,_,_,_,_,_,_)") == 0) return w_NurbsLib_bspsurf;
+    if (strcmp(signature, "static NurbsLib.rbspsurf(_,_,_,_,_,_,_)") == 0) return w_NurbsLib_rbspsurf;
 
     return nullptr;
 }
