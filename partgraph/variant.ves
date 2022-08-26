@@ -1,0 +1,2 @@
+var VAR_TYPE_TOPO = "topo"
+var VAR_TYPE_BREP = "brep"

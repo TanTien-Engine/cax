@@ -1,0 +1,5 @@
+import "partgraph.nodes.*"
+
+var PART_NODES = [
+Box, Mesh,
+]

@@ -1,0 +1,31 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "partgraph.variant" for VAR_TYPE_TOPO
+import "maths.vector" for Vector3
+import "partgraph" for BRepPrimAPI
+
+class Box is Node
+{
+	init()
+	{
+		super.init()
+
+		this.exports = [
+			Pin(this, "topo", VAR_TYPE_TOPO),
+		]
+
+		this.params.add(NodeParam("size", Vector3(1, 1, 1), { "region" : 1 }))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_size = this.query_param("size").value
+		var topo = BRepPrimAPI.box(v_size.x, v_size.z, v_size.y)
+		return Variant(VAR_TYPE_TOPO, topo)
+	}
+}
