@@ -8,6 +8,10 @@
 // OCCT
 #include <Precision.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
+#include <BRepFilletAPI_MakeFillet.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
 
 namespace
 {
@@ -56,6 +60,31 @@ void w_BRepPrimAPI_box()
     ves_pop(1);
 }
 
+void w_BRepFilletAPI_make_fillet()
+{
+    auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    double thickness = ves_tonumber(2);
+
+    auto shape = topo->GetShape();
+    BRepFilletAPI_MakeFillet fillet(shape);
+    TopExp_Explorer edge_explorer(shape, TopAbs_EDGE);
+    while (edge_explorer.More())
+    {
+        TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
+        //Add edge to fillet algorithm
+        fillet.Add(thickness / 12., edge);
+        edge_explorer.Next();
+    }
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("partgraph", "TopoShape");
+    auto proxy = (tt::Proxy<partgraph::TopoShape>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoShape>));
+    proxy->obj = std::make_shared<partgraph::TopoShape>(fillet.Shape());
+    ves_pop(1);
+}
+
 void w_MeshBuilder_build_from_topo()
 {
     auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -92,6 +121,8 @@ namespace partgraph
 VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 {
     if (strcmp(signature, "static BRepPrimAPI.box(_,_,_)") == 0) return w_BRepPrimAPI_box;
+
+    if (strcmp(signature, "static BRepFilletAPI.make_fillet(_,_)") == 0) return w_BRepFilletAPI_make_fillet;
 
     if (strcmp(signature, "static MeshBuilder.build_from_topo(_)") == 0) return w_MeshBuilder_build_from_topo;
 

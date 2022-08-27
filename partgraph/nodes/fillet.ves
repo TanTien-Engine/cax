@@ -1,0 +1,38 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TYPE_TOPO
+import "partgraph" for BRepFilletAPI
+
+class Fillet is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "topo", VAR_TYPE_TOPO),
+		]
+		this.exports = [
+			Pin(this, "topo", VAR_TYPE_TOPO),
+		]
+
+		this.params.add(NodeParam("thickness", 0.5, { "region" : 2 }))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_topo = Blueprint.calc_input_value(this, 0)
+		if (!v_topo) {
+			return nil
+		}
+
+		var thickness = this.query_param("thickness").value
+		var ret = BRepFilletAPI.make_fillet(v_topo.value, thickness)
+		return Variant(VAR_TYPE_TOPO, ret)
+	}
+}
