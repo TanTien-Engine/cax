@@ -16,6 +16,17 @@
 namespace
 {
 
+void return_topo_shape(const std::shared_ptr<partgraph::TopoShape>& shape)
+{
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("partgraph", "TopoShape");
+    auto proxy = (tt::Proxy<partgraph::TopoShape>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoShape>));
+    proxy->obj = shape;
+    ves_pop(1);
+}
+
 void w_BRepPrimAPI_box()
 {
     double L = ves_tonumber(1);
@@ -51,13 +62,7 @@ void w_BRepPrimAPI_box()
         return;
     }
 
-    ves_pop(ves_argnum());
-
-    ves_pushnil();
-    ves_import_class("partgraph", "TopoShape");
-    auto proxy = (tt::Proxy<partgraph::TopoShape>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoShape>));
-    proxy->obj = shape;
-    ves_pop(1);
+    return_topo_shape(shape);
 }
 
 void w_BRepFilletAPI_make_fillet()
@@ -65,9 +70,9 @@ void w_BRepFilletAPI_make_fillet()
     auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double thickness = ves_tonumber(2);
 
-    auto shape = topo->GetShape();
-    BRepFilletAPI_MakeFillet fillet(shape);
-    TopExp_Explorer edge_explorer(shape, TopAbs_EDGE);
+    auto src = topo->GetShape();
+    BRepFilletAPI_MakeFillet fillet(src);
+    TopExp_Explorer edge_explorer(src, TopAbs_EDGE);
     while (edge_explorer.More())
     {
         TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
@@ -76,13 +81,9 @@ void w_BRepFilletAPI_make_fillet()
         edge_explorer.Next();
     }
 
-    ves_pop(ves_argnum());
+    auto dst = std::make_shared<partgraph::TopoShape>(fillet.Shape());
 
-    ves_pushnil();
-    ves_import_class("partgraph", "TopoShape");
-    auto proxy = (tt::Proxy<partgraph::TopoShape>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoShape>));
-    proxy->obj = std::make_shared<partgraph::TopoShape>(fillet.Shape());
-    ves_pop(1);
+    return_topo_shape(dst);
 }
 
 void w_MeshBuilder_build_from_topo()

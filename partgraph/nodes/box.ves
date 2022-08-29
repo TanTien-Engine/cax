@@ -2,7 +2,7 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
-import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TYPE_TOPO
 import "maths.vector" for Vector3
 import "partgraph" for BRepPrimAPI
