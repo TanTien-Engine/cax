@@ -1,0 +1,153 @@
+var node0 = ::partgraph::nodes::box::Box()
+node0.query_param("size").value.set(1, 1, 1)
+
+_editor.add_node(node0, -238.99957550714, -486.63488437265)
+
+var node1 = ::partgraph::nodes::mesh::Mesh()
+
+_editor.add_node(node1, 49.030202727273, -455.19845454545)
+
+var node2 = ::rendergraph::nodes::draw::Draw()
+
+node2.set_prim_type("triangles")
+node2.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "less", "clip_plane" : false }
+node2.skip = false
+
+_editor.add_node(node2, 824.03550510997, -397.35560619224)
+
+var node3 = ::rendergraph::nodes::shader::Shader()
+node3.query_param("inc_dir").value = ""
+
+node3.vs = "
+#version 330 core
+layout (location = 0) in vec3 aPos;
+
+out VS_OUT {
+    vec3 frag_pos;
+} vs_out;
+
+uniform UBO
+{
+    mat4 model;
+    mat4 view;
+    mat4 projection;
+};
+
+void main()
+{
+    vs_out.frag_pos = vec3(model * vec4(aPos, 1.0));
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+}
+"
+node3.tcs = ""
+node3.tes = ""
+node3.gs = ""
+node3.fs = "
+#version 330 core
+out vec4 FragColor;
+
+in VS_OUT {
+    vec3 frag_pos;
+} fs_in;
+
+uniform UBO
+{
+    vec3 light_pos;
+    vec3 cam_pos;
+};
+
+void main()
+{
+    vec3 dFdxPos = dFdx( fs_in.frag_pos );
+    vec3 dFdyPos = dFdy( fs_in.frag_pos );
+    vec3 N = normalize( cross(dFdxPos,dFdyPos ));
+
+    // ambient
+    vec3 ambient = vec3(0.25);
+
+    // diffuse
+    const vec3 LIGHT_POS = vec3(-5.0, -5.0, 10);
+    vec3 light_dir = normalize(light_pos - fs_in.frag_pos);
+    float diff = max(dot(N, light_dir), 0.0);
+    vec3 diffuse = diff * vec3(1.0);
+
+    // specular
+    vec3 view_dir = normalize(cam_pos - fs_in.frag_pos);
+    vec3 halfway_dir = normalize(light_dir + view_dir);  
+    float spec = pow(max(dot(N, halfway_dir), 0.0), 32.0);
+    vec3 specular = spec * vec3(1.0);
+
+    FragColor = vec4(ambient + diffuse + specular, 1.0); 
+}
+"
+node3.cs = ""
+node3.render_gen()
+
+_editor.add_node(node3, 626.54114003572, -348.50753372377)
+
+var node4 = ::rendergraph::nodes::clear::Clear()
+
+node4.masks = [ "color", "depth" ]
+node4.values = { "color" : [ 0.5, 0.5, 0.5, 1 ] }
+
+_editor.add_node(node4, 642.844330497, -73.280642865847)
+
+var node5 = ::blueprint::nodes::perspective::Perspective()
+
+node5.fovy = 19
+node5.aspect = 0
+node5.znear = 0.1
+node5.zfar = 100
+
+_editor.add_node(node5, 453.33570900157, -304.80120392899)
+
+var node6 = ::blueprint::nodes::camera3d::Camera3d()
+
+node6.cam.position.set(2.9899784124265, 3.5603630900545, -3.1662389882126)
+node6.cam.yaw = -235.8
+node6.cam.pitch = -37.1
+node6.cam.zoom = 19
+node6.cam.update_vectors()
+node6.speed = 0.30111083388329
+
+_editor.add_node(node6, 443.84448040418, -114.33788049069)
+
+var node7 = ::blueprint::nodes::cache::Cache()
+node7.query_param("disable").value = false
+
+_editor.add_node(node7, 189.66487548828, -466.74138427734)
+
+var node8 = ::blueprint::nodes::number3::Number3()
+
+node8.value.set(0.48650479316711, 0.40872702002525, 0)
+
+_editor.add_node(node8, 260.21458296342, -568.52801967652)
+
+var node9 = ::blueprint::nodes::multiply::Multiply()
+
+_editor.add_node(node9, 410.00259399414, -592.90585327148)
+
+var node10 = ::blueprint::nodes::integer::Integer()
+
+node10.value = 10
+
+_editor.add_node(node10, 255.00259399414, -655.90585327149)
+
+var node11 = ::partgraph::nodes::chamfer::Chamfer()
+node11.query_param("dist").value = 0.1
+
+_editor.add_node(node11, -93.069302833194, -467.72063957815)
+
+Blueprint.connect(node8, "v3", node9, "a")
+Blueprint.connect(node10, "v", node9, "b")
+Blueprint.connect(node6, "zoom", node5, "fovy")
+Blueprint.connect(node6, "mat", node3, "view")
+Blueprint.connect(node5, "mat", node3, "projection")
+Blueprint.connect(node9, "v", node3, "light_pos")
+Blueprint.connect(node6, "pos", node3, "cam_pos")
+Blueprint.connect(node0, "topo", node11, "topo")
+Blueprint.connect(node11, "topo", node1, "topo")
+Blueprint.connect(node1, "va", node7, "var")
+Blueprint.connect(node4, "next", node2, "prev")
+Blueprint.connect(node3, "out", node2, "shader")
+Blueprint.connect(node7, "var", node2, "va")

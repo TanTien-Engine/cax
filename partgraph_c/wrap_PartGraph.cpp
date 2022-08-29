@@ -1,23 +1,25 @@
 #include "wrap_PartGraph.h"
 #include "TopoShape.h"
 #include "MeshBuilder.h"
+#include "PrimMaker.h"
+#include "TopoAlgo.h"
 #include "modules/script/TransHelper.h"
 
 #include <logger/logger.h>
 
 // OCCT
 #include <Precision.hxx>
-#include <BRepPrimAPI_MakeBox.hxx>
-#include <BRepFilletAPI_MakeFillet.hxx>
-#include <TopExp_Explorer.hxx>
-#include <TopoDS.hxx>
-#include <TopoDS_Edge.hxx>
 
 namespace
 {
 
 void return_topo_shape(const std::shared_ptr<partgraph::TopoShape>& shape)
 {
+    if (!shape) {
+        ves_set_nil(0);
+        return;
+    }
+
     ves_pop(ves_argnum());
 
     ves_pushnil();
@@ -27,7 +29,7 @@ void return_topo_shape(const std::shared_ptr<partgraph::TopoShape>& shape)
     ves_pop(1);
 }
 
-void w_BRepPrimAPI_box()
+void w_PrimMaker_box()
 {
     double L = ves_tonumber(1);
     double W = ves_tonumber(2);
@@ -51,39 +53,49 @@ void w_BRepPrimAPI_box()
         return;
     }
 
-    std::shared_ptr<partgraph::TopoShape> shape = nullptr;
-    try {
-        // Build a box using the dimension attributes
-        BRepPrimAPI_MakeBox mkBox(L, W, H);
-        shape = std::make_shared<partgraph::TopoShape>(mkBox.Shape());
-    } catch (Standard_Failure& e) {
-        LOGI("Build box fail: %s", e.GetMessageString());
+    auto shape = partgraph::PrimMaker::Box(L, W, H);
+    return_topo_shape(shape);
+}
+
+void w_PrimMaker_cylinder()
+{
+    double radius = ves_tonumber(1);
+    double length = ves_tonumber(2);
+
+    bool skip = false;
+    if (radius < Precision::Confusion()) {
+        LOGI("Radius of Cylinder too small");
+        skip = true;
+    }
+    if (length < Precision::Confusion()) {
+        LOGI("Length of Cylinder too small");
+        skip = true;
+    }
+    if (skip) {
         ves_set_nil(0);
         return;
     }
 
+    auto shape = partgraph::PrimMaker::Cylinder(radius, length);
     return_topo_shape(shape);
 }
 
-void w_BRepFilletAPI_make_fillet()
+void w_TopoAlgo_make_fillet()
 {
     auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double thickness = ves_tonumber(2);
 
-    auto src = topo->GetShape();
-    BRepFilletAPI_MakeFillet fillet(src);
-    TopExp_Explorer edge_explorer(src, TopAbs_EDGE);
-    while (edge_explorer.More())
-    {
-        TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
-        //Add edge to fillet algorithm
-        fillet.Add(thickness / 12., edge);
-        edge_explorer.Next();
-    }
+    auto shape = partgraph::TopoAlgo::Fillet(topo, thickness);
+    return_topo_shape(shape);
+}
 
-    auto dst = std::make_shared<partgraph::TopoShape>(fillet.Shape());
+void w_TopoAlgo_make_chamfer()
+{
+    auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    double dist = ves_tonumber(2);
 
-    return_topo_shape(dst);
+    auto shape = partgraph::TopoAlgo::Chamfer(topo, dist);
+    return_topo_shape(shape);
 }
 
 void w_MeshBuilder_build_from_topo()
@@ -121,9 +133,11 @@ namespace partgraph
 
 VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 {
-    if (strcmp(signature, "static BRepPrimAPI.box(_,_,_)") == 0) return w_BRepPrimAPI_box;
+    if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
+    if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
 
-    if (strcmp(signature, "static BRepFilletAPI.make_fillet(_,_)") == 0) return w_BRepFilletAPI_make_fillet;
+    if (strcmp(signature, "static TopoAlgo.make_fillet(_,_)") == 0) return w_TopoAlgo_make_fillet;
+    if (strcmp(signature, "static TopoAlgo.make_chamfer(_,_)") == 0) return w_TopoAlgo_make_chamfer;
 
     if (strcmp(signature, "static MeshBuilder.build_from_topo(_)") == 0) return w_MeshBuilder_build_from_topo;
 

@@ -6,7 +6,7 @@ import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TYPE_TOPO
 import "partgraph" for TopoAlgo
 
-class Fillet is Node
+class Chamfer is Node
 {
 	init()
 	{
@@ -19,7 +19,7 @@ class Fillet is Node
 			Pin(this, "topo", VAR_TYPE_TOPO),
 		]
 
-		this.params.add(NodeParam("thickness", 0.5, { "region" : 2 }))
+		this.params.add(NodeParam("dist", 0.1, { "region" : 0.2 }))
 
 		this.layout()
 	}
@@ -31,8 +31,8 @@ class Fillet is Node
 			return nil
 		}
 
-		var thickness = this.query_param("thickness").value
-		var ret = TopoAlgo.make_fillet(v_topo.value, thickness)
+		var dist = this.query_param("dist").value
+		var ret = TopoAlgo.make_chamfer(v_topo.value, dist)
 		return Variant(VAR_TYPE_TOPO, ret)
 	}
 }

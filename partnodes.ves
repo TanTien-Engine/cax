@@ -1,5 +1,7 @@
 import "partgraph.nodes.*"
 
 var PART_NODES = [
-Box, Mesh, Fillet,
+Box, Cylinder,
+Fillet, Chamfer,
+Mesh, 
 ]

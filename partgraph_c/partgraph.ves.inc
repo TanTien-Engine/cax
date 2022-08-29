@@ -6,14 +6,16 @@ foreign class TopoShape
 	init() {}
 }
 
-foreign class BRepPrimAPI
+foreign class PrimMaker
 {
 	foreign static box(length, width, height)
+	foreign static cylinder(radius, length)
 }
 
-foreign class BRepFilletAPI
+foreign class TopoAlgo
 {
 	foreign static make_fillet(topo, thickness)
+	foreign static make_chamfer(topo, dist)
 }
 
 foreign class MeshBuilder

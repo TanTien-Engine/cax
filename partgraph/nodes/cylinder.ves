@@ -7,7 +7,7 @@ import "partgraph.variant" for VAR_TYPE_TOPO
 import "maths.vector" for Vector3
 import "partgraph" for PrimMaker
 
-class Box is Node
+class Cylinder is Node
 {
 	init()
 	{
@@ -17,15 +17,17 @@ class Box is Node
 			Pin(this, "topo", VAR_TYPE_TOPO),
 		]
 
-		this.params.add(NodeParam("size", Vector3(1, 1, 1), { "region" : 1 }))
+		this.params.add(NodeParam("radius", 0.5, { "region" : 2 }))
+		this.params.add(NodeParam("length", 1.0, { "region" : 2 }))
 
 		this.layout()
 	}
 
 	calc_value(idx)
 	{
-		var v_size = this.query_param("size").value
-		var topo = PrimMaker.box(v_size.x, v_size.z, v_size.y)
+		var v_radius = this.query_param("radius").value
+		var v_length = this.query_param("length").value
+		var topo = PrimMaker.cylinder(v_radius, v_length)
 		return Variant(VAR_TYPE_TOPO, topo)
 	}
 }
