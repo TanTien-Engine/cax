@@ -133,6 +133,10 @@ std::shared_ptr<ur::VertexArray> MeshBuilder::Build(const TopoShape& topo)
         }
     }
 
+    if (vertices.empty()) {
+        return nullptr;
+    }
+
     auto dev = tt::Render::Instance()->Device();
 
     auto va = dev->CreateVertexArray();
