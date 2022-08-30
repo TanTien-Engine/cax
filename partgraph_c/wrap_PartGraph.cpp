@@ -98,6 +98,40 @@ void w_TopoAlgo_make_chamfer()
     return_topo_shape(shape);
 }
 
+void w_TopoAlgo_cut()
+{
+    auto s1 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto s2 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    auto shape = partgraph::TopoAlgo::Cut(s1, s2);
+    return_topo_shape(shape);
+}
+
+void w_TopoAlgo_fuse()
+{
+    auto s1 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto s2 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    auto shape = partgraph::TopoAlgo::Fuse(s1, s2);
+    return_topo_shape(shape);
+}
+
+void w_TopoAlgo_section()
+{
+    auto s1 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto s2 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    auto shape = partgraph::TopoAlgo::Section(s1, s2);
+    return_topo_shape(shape);
+}
+
+void w_TopoAlgo_translate()
+{
+    auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    double x = ves_tonumber(2);
+    double y = ves_tonumber(3);
+    double z = ves_tonumber(4);
+    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z);
+    return_topo_shape(dst);
+}
+
 void w_MeshBuilder_build_from_topo()
 {
     auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -138,6 +172,10 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static TopoAlgo.make_fillet(_,_)") == 0) return w_TopoAlgo_make_fillet;
     if (strcmp(signature, "static TopoAlgo.make_chamfer(_,_)") == 0) return w_TopoAlgo_make_chamfer;
+    if (strcmp(signature, "static TopoAlgo.cut(_,_)") == 0) return w_TopoAlgo_cut;
+    if (strcmp(signature, "static TopoAlgo.fuse(_,_)") == 0) return w_TopoAlgo_fuse;
+    if (strcmp(signature, "static TopoAlgo.section(_,_)") == 0) return w_TopoAlgo_section;
+    if (strcmp(signature, "static TopoAlgo.translate(_,_,_,_)") == 0) return w_TopoAlgo_translate;
 
     if (strcmp(signature, "static MeshBuilder.build_from_topo(_)") == 0) return w_MeshBuilder_build_from_topo;
 

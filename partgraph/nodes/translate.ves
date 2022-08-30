@@ -1,0 +1,39 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TYPE_TOPO
+import "maths.vector" for Vector3
+import "partgraph" for TopoAlgo
+
+class Translate is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "topo", VAR_TYPE_TOPO),
+		]
+		this.exports = [
+			Pin(this, "topo", VAR_TYPE_TOPO),
+		]
+
+		this.params.add(NodeParam("offset", Vector3(0, 0, 0), { "region" : 2 }))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_topo = Blueprint.calc_input_value(this, 0)
+		if (!v_topo) {
+			return nil
+		}
+
+		var offset = this.query_param("offset").value
+		var topo = TopoAlgo.translate(v_topo.value, offset.x, offset.z, offset.y)
+		return Variant(VAR_TYPE_TOPO, topo)
+	}
+}

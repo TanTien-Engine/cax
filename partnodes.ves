@@ -2,6 +2,7 @@ import "partgraph.nodes.*"
 
 var PART_NODES = [
 Box, Cylinder,
-Fillet, Chamfer,
+Fillet, Chamfer, Cut, Fuse, Section,
+Translate,
 Mesh, 
 ]

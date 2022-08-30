@@ -1,0 +1,39 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TYPE_TOPO
+import "partgraph" for TopoAlgo
+
+class Fuse is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "a", VAR_TYPE_TOPO),
+			Pin(this, "b", VAR_TYPE_TOPO),			
+		]
+		this.exports = [
+			Pin(this, "topo", VAR_TYPE_TOPO),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_a = Blueprint.calc_input_value(this, 0)
+		if (!v_a) {
+			return nil
+		}
+		var v_b = Blueprint.calc_input_value(this, 1)
+		if (!v_b) {
+			return nil
+		}
+
+		var ret = TopoAlgo.fuse(v_a.value, v_b.value)
+		return Variant(VAR_TYPE_TOPO, ret)
+	}
+}
