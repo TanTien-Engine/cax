@@ -32,7 +32,7 @@ class Fillet is Node
 		}
 
 		var thickness = this.query_param("thickness").value
-		var ret = TopoAlgo.make_fillet(v_topo.value, thickness)
+		var ret = TopoAlgo.fillet(v_topo.value, thickness)
 		return Variant(VAR_TYPE_TOPO, ret)
 	}
 }

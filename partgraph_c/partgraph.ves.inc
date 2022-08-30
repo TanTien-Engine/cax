@@ -14,8 +14,8 @@ foreign class PrimMaker
 
 foreign class TopoAlgo
 {
-	foreign static make_fillet(topo, thickness)
-	foreign static make_chamfer(topo, dist)
+	foreign static fillet(topo, thickness)
+	foreign static chamfer(topo, dist)
 
 	foreign static cut(s1, s2)
 	foreign static fuse(s1, s2)

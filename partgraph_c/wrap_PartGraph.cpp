@@ -80,7 +80,7 @@ void w_PrimMaker_cylinder()
     return_topo_shape(shape);
 }
 
-void w_TopoAlgo_make_fillet()
+void w_TopoAlgo_fillet()
 {
     auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double thickness = ves_tonumber(2);
@@ -89,7 +89,7 @@ void w_TopoAlgo_make_fillet()
     return_topo_shape(shape);
 }
 
-void w_TopoAlgo_make_chamfer()
+void w_TopoAlgo_chamfer()
 {
     auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double dist = ves_tonumber(2);
@@ -170,8 +170,8 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
     if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
 
-    if (strcmp(signature, "static TopoAlgo.make_fillet(_,_)") == 0) return w_TopoAlgo_make_fillet;
-    if (strcmp(signature, "static TopoAlgo.make_chamfer(_,_)") == 0) return w_TopoAlgo_make_chamfer;
+    if (strcmp(signature, "static TopoAlgo.fillet(_,_)") == 0) return w_TopoAlgo_fillet;
+    if (strcmp(signature, "static TopoAlgo.chamfer(_,_)") == 0) return w_TopoAlgo_chamfer;
     if (strcmp(signature, "static TopoAlgo.cut(_,_)") == 0) return w_TopoAlgo_cut;
     if (strcmp(signature, "static TopoAlgo.fuse(_,_)") == 0) return w_TopoAlgo_fuse;
     if (strcmp(signature, "static TopoAlgo.section(_,_)") == 0) return w_TopoAlgo_section;
