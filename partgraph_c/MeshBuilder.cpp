@@ -84,13 +84,19 @@ namespace partgraph
 
 std::shared_ptr<ur::VertexArray> MeshBuilder::Build(const TopoShape& topo)
 {
-    std::vector<Vertex> vertices;
+    auto& shape = topo.GetShape();
+
+    auto algo = std::make_unique<BRepMesh_IncrementalMesh>();
+    algo->SetShape(shape);
+    algo->Perform();
 
     TopLoc_Location aLoc;
 //    shape.Location(aLoc);
 
+    std::vector<Vertex> vertices;
+
     TopTools_IndexedMapOfShape face_map; 
-    TopExp::MapShapes(topo.GetShape(), TopAbs_FACE, face_map);
+    TopExp::MapShapes(shape, TopAbs_FACE, face_map);
     for (int i=1; i <= face_map.Extent(); i++) 
     {
         const TopoDS_Face& act_face = TopoDS::Face(face_map(i));
