@@ -3,7 +3,7 @@ node0.query_param("size").value.set(1, 1, 1)
 
 _editor.add_node(node0, -238.99957550714, -486.63488437265)
 
-var node1 = ::partgraph::nodes::mesh::Mesh()
+var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node1, 49.030202727273, -455.19845454545)
 
@@ -145,8 +145,8 @@ Blueprint.connect(node6, "mat", node3, "view")
 Blueprint.connect(node5, "mat", node3, "projection")
 Blueprint.connect(node10, "v", node3, "light_pos")
 Blueprint.connect(node6, "pos", node3, "cam_pos")
-Blueprint.connect(node0, "topo", node8, "topo")
-Blueprint.connect(node8, "topo", node1, "topo")
+Blueprint.connect(node0, "shape", node8, "shape")
+Blueprint.connect(node8, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node7, "var")
 Blueprint.connect(node4, "next", node2, "prev")
 Blueprint.connect(node3, "out", node2, "shader")

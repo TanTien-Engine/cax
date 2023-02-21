@@ -3,7 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TYPE_TOPO
+import "partgraph.variant" for VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "partgraph" for PrimMaker
 
@@ -14,7 +14,7 @@ class Cylinder is Node
 		super.init()
 
 		this.exports = [
-			Pin(this, "topo", VAR_TYPE_TOPO),
+			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 
 		this.params.add(NodeParam("radius", 0.5, { "region" : 2 }))
@@ -27,7 +27,7 @@ class Cylinder is Node
 	{
 		var v_radius = this.query_param("radius").value
 		var v_length = this.query_param("length").value
-		var topo = PrimMaker.cylinder(v_radius, v_length)
-		return Variant(VAR_TYPE_TOPO, topo)
+		var shape = PrimMaker.cylinder(v_radius, v_length)
+		return Variant(VAR_TOPO_SHAPE, shape)
 	}
 }

@@ -1,4 +1,4 @@
-var node0 = ::partgraph::nodes::mesh::Mesh()
+var node0 = ::partgraph::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node0, 126.30293, -280.653)
 
@@ -311,7 +311,7 @@ node8.query_param("length").value = 1
 
 _editor.add_node(node8, -30.5752226937, -299.17191727187)
 
-Blueprint.connect(node8, "topo", node0, "topo")
+Blueprint.connect(node8, "shape", node0, "shape")
 Blueprint.connect(node0, "va", node7, "var")
 Blueprint.connect(node6, "zoom", node4, "fovy")
 Blueprint.connect(node6, "mat", node2, "view")

@@ -3,7 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TYPE_TOPO
+import "partgraph.variant" for VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "partgraph" for PrimMaker
 
@@ -14,7 +14,7 @@ class Box is Node
 		super.init()
 
 		this.exports = [
-			Pin(this, "topo", VAR_TYPE_TOPO),
+			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 
 		this.params.add(NodeParam("size", Vector3(1, 1, 1), { "region" : 1 }))
@@ -25,7 +25,7 @@ class Box is Node
 	calc_value(idx)
 	{
 		var v_size = this.query_param("size").value
-		var topo = PrimMaker.box(v_size.x, v_size.z, v_size.y)
-		return Variant(VAR_TYPE_TOPO, topo)
+		var shape = PrimMaker.box(v_size.x, v_size.z, v_size.y)
+		return Variant(VAR_TOPO_SHAPE, shape)
 	}
 }

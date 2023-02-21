@@ -3,7 +3,7 @@ node0.query_param("size").value.set(0.49427762627602, 0.4609442949295, 0.4164998
 
 _editor.add_node(node0, -682.490030645, -202.210010917)
 
-var node1 = ::partgraph::nodes::mesh::Mesh()
+var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node1, -363.302100645, -114.904910917)
 
@@ -315,7 +315,7 @@ node9.query_param("offset").value.set(0.73031717538834, 0, 0)
 
 _editor.add_node(node9, -520.86930967504, -144.03233835279)
 
-var node10 = ::partgraph::nodes::mesh::Mesh()
+var node10 = ::partgraph::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node10, -519.324100645, -233.379010917)
 
@@ -327,9 +327,9 @@ Blueprint.connect(node7, "zoom", node5, "fovy")
 Blueprint.connect(node7, "mat", node3, "view")
 Blueprint.connect(node5, "mat", node3, "projection")
 Blueprint.connect(node6, "v3", node3, "light_pos")
-Blueprint.connect(node0, "topo", node10, "topo")
-Blueprint.connect(node0, "topo", node9, "topo")
-Blueprint.connect(node9, "topo", node1, "topo")
+Blueprint.connect(node0, "shape", node10, "shape")
+Blueprint.connect(node0, "shape", node9, "shape")
+Blueprint.connect(node9, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node11, "in0")
 Blueprint.connect(node10, "va", node11, "in1")
 Blueprint.connect(node11, "list", node8, "var")

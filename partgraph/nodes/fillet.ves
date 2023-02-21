@@ -3,7 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TYPE_TOPO
+import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for TopoAlgo
 
 class Fillet is Node
@@ -13,10 +13,10 @@ class Fillet is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "topo", VAR_TYPE_TOPO),
+			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 		this.exports = [
-			Pin(this, "topo", VAR_TYPE_TOPO),
+			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 
 		this.params.add(NodeParam("thickness", 0.5, { "region" : 2 }))
@@ -26,13 +26,13 @@ class Fillet is Node
 
 	calc_value(idx)
 	{
-		var v_topo = Blueprint.calc_input_value(this, 0)
-		if (!v_topo) {
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
 			return nil
 		}
 
 		var thickness = this.query_param("thickness").value
-		var ret = TopoAlgo.fillet(v_topo.value, thickness)
-		return Variant(VAR_TYPE_TOPO, ret)
+		var ret = TopoAlgo.fillet(v_shape.value, thickness)
+		return Variant(VAR_TOPO_SHAPE, ret)
 	}
 }
