@@ -1,0 +1,39 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph" for TopoAlgo
+
+class Common is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "a", VAR_TOPO_SHAPE),
+			Pin(this, "b", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_a = Blueprint.calc_input_value(this, 0)
+		if (!v_a) {
+			return nil
+		}
+		var v_b = Blueprint.calc_input_value(this, 1)
+		if (!v_b) {
+			return nil
+		}
+
+		var ret = TopoAlgo.common(v_a.value, v_b.value)
+		return Variant(VAR_TOPO_SHAPE, ret)
+	}
+}

@@ -1,11 +1,11 @@
 var node0 = ::partgraph::nodes::box::Box()
-node0.query_param("size").value.set(1, 1, 0.16212904453278)
+node0.query_param("size").value.set(0.49427762627602, 0.4609442949295, 0.41649982333183)
 
-_editor.add_node(node0, -541.59161157024, -364.90686033058)
+_editor.add_node(node0, -682.490030645, -202.210010917)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
-_editor.add_node(node1, 48.10458289256, -557.52903305786)
+_editor.add_node(node1, -363.302100645, -114.904910917)
 
 var node2 = ::rendergraph::nodes::draw::Draw()
 
@@ -13,7 +13,7 @@ node2.set_prim_type("triangles")
 node2.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "less", "clip_plane" : false }
 node2.skip = false
 
-_editor.add_node(node2, 824.03550510997, -397.35560619224)
+_editor.add_node(node2, 600.03047446497, -130.90751710924)
 
 var node3 = ::rendergraph::nodes::shader::Shader()
 node3.query_param("inc_dir").value = ""
@@ -270,14 +270,14 @@ node3.render_gen()
 node3.set_uniform("cam_pos", [ 0, 0, 0 ])
 node3.set_uniform("size", [ 0, 0, 0 ])
 
-_editor.add_node(node3, 626.54114003572, -348.50753372377)
+_editor.add_node(node3, 402.53610939072, -82.05944464077)
 
 var node4 = ::rendergraph::nodes::clear::Clear()
 
 node4.masks = [ "color", "depth" ]
 node4.values = { "color" : [ 0.5, 0.5, 0.5, 1 ] }
 
-_editor.add_node(node4, 607.705930497, 81.913957134153)
+_editor.add_node(node4, 383.700899852, 348.36204621715)
 
 var node5 = ::blueprint::nodes::perspective::Perspective()
 
@@ -286,83 +286,59 @@ node5.aspect = 0
 node5.znear = 0.1
 node5.zfar = 100
 
-_editor.add_node(node5, 453.33570900157, -304.80120392899)
+_editor.add_node(node5, 229.33067835657, -38.35311484599)
 
 var node6 = ::blueprint::nodes::number3::Number3()
 
 node6.value.set(5.9766573905945, 5.6433238983154, 5.3099908828735)
 
-_editor.add_node(node6, 452.24179772878, -455.7281346786)
+_editor.add_node(node6, 228.23676708378, -189.2800455956)
 
 var node7 = ::blueprint::nodes::camera3d::Camera3d()
 
-node7.cam.position.set(-1.0457545047841, 2.5839048749824, 2.0886187269315)
-node7.cam.yaw = -51.6
-node7.cam.pitch = -41.7
+node7.cam.position.set(-0.42454294861347, 1.9906413663896, 2.2659857698824)
+node7.cam.yaw = -62.1
+node7.cam.pitch = -41.1
 node7.cam.zoom = 45
 node7.cam.update_vectors()
 node7.speed = 0.30111083388329
 
-_editor.add_node(node7, 443.84448040418, -114.33788049069)
+_editor.add_node(node7, 219.83944975918, 152.11020859231)
 
 var node8 = ::blueprint::nodes::cache::Cache()
 node8.query_param("disable").value = false
 
-_editor.add_node(node8, 200.21033003374, -577.83229336825)
+_editor.add_node(node8, -64.34015515672, -180.29329519434)
 
-var node9 = ::partgraph::nodes::cut::Cut()
+var node9 = ::partgraph::nodes::translate::Translate()
+node9.query_param("offset").value.set(0.73031717538834, 0, 0)
 
-_editor.add_node(node9, -126.28327927927, -404.61748769162)
+_editor.add_node(node9, -520.86930967504, -144.03233835279)
 
-var node10 = ::partgraph::nodes::cylinder::Cylinder()
-node10.query_param("radius").value = 0.5
-node10.query_param("length").value = 1
+var node10 = ::partgraph::nodes::to_mesh::ToMesh()
 
-_editor.add_node(node10, -543.48700200692, -508.87001307589)
+_editor.add_node(node10, -519.324100645, -233.379010917)
 
-var node11 = ::partgraph::nodes::box::Box()
-node11.query_param("size").value.set(0.12547709047794, 0.12547709047794, 1)
+var node11 = ::blueprint::nodes::merge::Merge()
 
-_editor.add_node(node11, -545.16555096422, -634.56542616148)
+_editor.add_node(node11, -204.45470105516, -192.19556936427)
 
-var node12 = ::partgraph::nodes::fuse::Fuse()
+var node12 = ::partgraph::nodes::extrude::Extrude()
+node12.query_param("dist").value.set(0, 0, 0)
 
-_editor.add_node(node12, -125.75678700849, -471.38112659296)
+_editor.add_node(node12, -508.56344748941, -29.498459412584)
 
-var node13 = ::partgraph::nodes::section::Section()
-
-_editor.add_node(node13, -122.88072065874, -603.27367193049)
-
-var node14 = ::partgraph::nodes::translate::Translate()
-node14.query_param("offset").value.set(0.38548448681831, 0.40770670771599, 0)
-
-_editor.add_node(node14, -351.34681134185, -661.7318284216)
-
-var node15 = ::partgraph::nodes::translate::Translate()
-node15.query_param("offset").value.set(0, 0, 0.53479611873627)
-
-_editor.add_node(node15, -385.06582994697, -363.38472741498)
-
-var node16 = ::partgraph::nodes::common::Common()
-
-_editor.add_node(node16, -124.08779907227, -537.1828918457)
-
-Blueprint.connect(node11, "shape", node14, "shape")
 Blueprint.connect(node7, "zoom", node5, "fovy")
 Blueprint.connect(node7, "mat", node3, "view")
 Blueprint.connect(node5, "mat", node3, "projection")
 Blueprint.connect(node6, "v3", node3, "light_pos")
-Blueprint.connect(node0, "shape", node15, "shape")
-Blueprint.connect(node15, "shape", node16, "a")
-Blueprint.connect(node14, "shape", node16, "b")
-Blueprint.connect(node15, "shape", node13, "a")
-Blueprint.connect(node14, "shape", node13, "b")
-Blueprint.connect(node15, "shape", node12, "a")
-Blueprint.connect(node14, "shape", node12, "b")
-Blueprint.connect(node15, "shape", node9, "a")
-Blueprint.connect(node14, "shape", node9, "b")
+Blueprint.connect(node0, "shape", node12, "shape")
+Blueprint.connect(node0, "shape", node10, "shape")
+Blueprint.connect(node0, "shape", node9, "shape")
 Blueprint.connect(node9, "shape", node1, "shape")
-Blueprint.connect(node1, "va", node8, "var")
+Blueprint.connect(node1, "va", node11, "in0")
+Blueprint.connect(node10, "va", node11, "in1")
+Blueprint.connect(node11, "list", node8, "var")
 Blueprint.connect(node4, "next", node2, "prev")
 Blueprint.connect(node3, "out", node2, "shader")
 Blueprint.connect(node8, "var", node2, "va")

@@ -1,0 +1,39 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "maths.vector" for Vector3
+import "partgraph" for TopoAlgo
+
+class Extrude is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("dist", Vector3(0, 0, 0), { "region" : 2 }))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
+			return nil
+		}
+
+		var dist = this.query_param("dist").value
+		var shape = TopoAlgo.extrude(v_shape.value, dist.x, dist.z, dist.y)
+		return Variant(VAR_TOPO_SHAPE, shape)
+	}
+}

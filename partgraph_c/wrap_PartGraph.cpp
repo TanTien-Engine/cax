@@ -82,20 +82,30 @@ void w_PrimMaker_cylinder()
 
 void w_TopoAlgo_fillet()
 {
-    auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double thickness = ves_tonumber(2);
 
-    auto shape = partgraph::TopoAlgo::Fillet(topo, thickness);
-    return_topo_shape(shape);
+    auto dst = partgraph::TopoAlgo::Fillet(src, thickness);
+    return_topo_shape(dst);
 }
 
 void w_TopoAlgo_chamfer()
 {
-    auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double dist = ves_tonumber(2);
 
-    auto shape = partgraph::TopoAlgo::Chamfer(topo, dist);
-    return_topo_shape(shape);
+    auto dst = partgraph::TopoAlgo::Chamfer(src, dist);
+    return_topo_shape(dst);
+}
+
+void w_TopoAlgo_extrude()
+{
+    auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    double x = ves_tonumber(2);
+    double y = ves_tonumber(3);
+    double z = ves_tonumber(4);
+    auto dst = partgraph::TopoAlgo::Prism(src, x, y, z);
+    return_topo_shape(dst);
 }
 
 void w_TopoAlgo_cut()
@@ -111,6 +121,14 @@ void w_TopoAlgo_fuse()
     auto s1 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto s2 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
     auto shape = partgraph::TopoAlgo::Fuse(s1, s2);
+    return_topo_shape(shape);
+}
+
+void w_TopoAlgo_common()
+{
+    auto s1 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto s2 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    auto shape = partgraph::TopoAlgo::Common(s1, s2);
     return_topo_shape(shape);
 }
 

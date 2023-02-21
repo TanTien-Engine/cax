@@ -1,0 +1,21 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+
+class Pattern is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("size", Vector3(1, 1, 1), { "region" : 1 }))
+
+		this.layout()
+	}
+}
