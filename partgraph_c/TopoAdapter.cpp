@@ -1,5 +1,5 @@
-#include "MeshBuilder.h"
-#include "TopoShape.h"
+#include "TopoAdapter.h"
+#include "TopoDataset.h"
 
 #include "modules/render/Render.h"
 
@@ -9,6 +9,7 @@
 #include <unirender/IndexBuffer.h>
 #include <unirender/VertexArray.h>
 #include <unirender/VertexInputAttribute.h>
+#include <geoshape/Line3D.h>
 
 // OCCT
 #include <Standard_Handle.hxx>
@@ -82,9 +83,9 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
 namespace partgraph
 {
 
-std::shared_ptr<ur::VertexArray> MeshBuilder::Build(const TopoShape& topo)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoShape& topo_shape)
 {
-    auto& shape = topo.GetShape();
+    auto& shape = topo_shape.GetShape();
 
     auto algo = std::make_unique<BRepMesh_IncrementalMesh>();
     algo->SetShape(shape);
@@ -164,6 +165,31 @@ std::shared_ptr<ur::VertexArray> MeshBuilder::Build(const TopoShape& topo)
 	va->SetVertexBufferAttrs(vbuf_attrs);
 
     return va;
+}
+
+std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeo(const TopoEdge& shape)
+{
+    std::vector<sm::vec3> pts;
+
+    auto& edge = shape.GetEdge();
+    TopoDS_Iterator it;
+    int itr = 0;
+    for (it.Initialize(edge); it.More(); it.Next(), ++itr)
+    {
+        auto& v = TopoDS::Vertex(it.Value());
+        gp_Pnt p = BRep_Tool::Pnt(v);
+        pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
+    }
+
+    if (pts.size() < 2) {
+        return nullptr;
+    }
+
+    auto geo = std::make_shared<gs::Line3D>();
+    geo->SetStart(pts[0]);
+    geo->SetEnd(pts[1]);
+
+    return geo;
 }
 
 }

@@ -1,2 +1,4 @@
-var VAR_TYPE_TOPO = "topo"
-var VAR_TYPE_BREP = "brep"
+var VAR_TOPO_EDGE = "topo_edge"
+var VAR_TOPO_WIRE = "topo_wire"
+
+var VAR_TOPO_SHAPE = "topo_shape"

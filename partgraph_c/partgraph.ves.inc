@@ -6,6 +6,24 @@ foreign class TopoShape
 	init() {}
 }
 
+foreign class TopoEdge
+{
+	init() {}
+}
+
+foreign class TopoWire
+{
+	init() {}
+}
+
+foreign class BRepBuilder
+{
+	foreign static make_edge_from_line(line)
+	foreign static make_edge_from_arc(arc)
+
+	foreign static make_wire(edges)
+}
+
 foreign class PrimMaker
 {
 	foreign static box(length, width, height)
@@ -29,9 +47,10 @@ foreign class TopoAlgo
 	foreign static translate(shape, x, y, z)
 }
 
-foreign class MeshBuilder
+foreign class TopoAdapter
 {
-	foreign static build_from_topo(topo)
+	foreign static build_mesh(shape)
+	foreign static build_edge_geo(edge)
 }
 
 );

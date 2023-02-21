@@ -1,0 +1,46 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "partgraph.variant" for VAR_TOPO_EDGE
+import "partgraph" for BRepBuilder
+import "geometry" for Line3D, Arc
+import "geograph.variant" for VAR_TYPE_GEO
+
+class Edge is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "geo", VAR_TYPE_GEO),
+		]
+		this.exports = [
+			Pin(this, "edge", VAR_TOPO_EDGE),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_geo = Blueprint.calc_input_value(this, 0)
+		if (v_geo)
+		{
+			var geo = v_geo.value.shape
+			if (geo is Line3D)
+			{
+				var edge = BRepBuilder.make_edge_from_line(geo)
+				return Variant(VAR_TOPO_EDGE, edge)
+			}
+			else if (geo is Arc)
+			{
+				var edge = BRepBuilder.make_edge_from_arc(geo)
+				return Variant(VAR_TOPO_EDGE, edge)
+			}
+		}
+
+		return nil
+	}
+}

@@ -1,9 +1,10 @@
 import "partgraph.nodes.*"
 
 var PART_NODES = [
+Edge,
 Box, Cylinder,
 Extrude, 
 Fillet, Chamfer, Cut, Fuse, Common, Section,
 Translate,
-Mesh, 
+ToMesh, ToGeometry,
 ]

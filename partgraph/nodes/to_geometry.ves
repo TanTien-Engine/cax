@@ -1,0 +1,38 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TOPO_EDGE
+import "partgraph" for TopoAdapter
+import "geograph.variant" for VAR_TYPE_GEO, VarGeo
+
+class ToGeometry is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "topo", [ VAR_TOPO_EDGE ]),
+		]
+		this.exports = [
+			Pin(this, "geo", VAR_TYPE_GEO),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_topo = Blueprint.calc_input_value(this, 0)
+		if (!v_topo) {
+			return nil
+		}
+
+		var geo = TopoAdapter.build_edge_geo(v_topo.value)
+
+		var v_geo = VarGeo()
+		v_geo.shape = geo
+		return Variant(VAR_TYPE_GEO, v_geo)
+	}
+}

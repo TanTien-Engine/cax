@@ -1,5 +1,5 @@
 #include "PrimMaker.h"
-#include "TopoShape.h"
+#include "TopoDataset.h"
 
 // OCCT
 #include <BRepPrimAPI_MakeBox.hxx>

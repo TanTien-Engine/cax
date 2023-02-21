@@ -3,17 +3,17 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "rendergraph.variant" for VAR_TYPE_VERTEX_ARRAY
-import "partgraph.variant" for VAR_TYPE_TOPO
-import "partgraph" for MeshBuilder
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph" for TopoAdapter
 
-class Mesh is Node
+class ToMesh is Node
 {
 	init()
 	{
 		super.init()
 
 		this.imports = [
-			Pin(this, "topo", VAR_TYPE_TOPO),
+			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 		this.exports = [
 			Pin(this, "va", VAR_TYPE_VERTEX_ARRAY),
@@ -24,12 +24,12 @@ class Mesh is Node
 
 	calc_value(idx)
 	{
-		var v_topo = Blueprint.calc_input_value(this, 0)
-		if (!v_topo) {
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
 			return nil
 		}
 
-		var va = MeshBuilder.build_from_topo(v_topo.value)
+		var va = TopoAdapter.build_mesh(v_shape.value)
 		return Variant(VAR_TYPE_VERTEX_ARRAY, va)
 	}	
 }

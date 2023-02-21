@@ -1,11 +1,13 @@
 #include "wrap_PartGraph.h"
-#include "TopoShape.h"
-#include "MeshBuilder.h"
+#include "TopoDataset.h"
+#include "TopoAdapter.h"
 #include "PrimMaker.h"
+#include "BRepBuilder.h"
 #include "TopoAlgo.h"
 #include "modules/script/TransHelper.h"
 
 #include <logger/logger.h>
+#include <geoshape/Line3D.h>
 
 // OCCT
 #include <Precision.hxx>
@@ -27,6 +29,36 @@ void return_topo_shape(const std::shared_ptr<partgraph::TopoShape>& shape)
     auto proxy = (tt::Proxy<partgraph::TopoShape>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoShape>));
     proxy->obj = shape;
     ves_pop(1);
+}
+
+void w_BRepBuilder_make_edge_from_line()
+{
+    auto line = ((tt::Proxy<gs::Line3D>*)ves_toforeign(1))->obj;
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("partgraph", "TopoEdge");
+    auto proxy = (tt::Proxy<partgraph::TopoEdge>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoEdge>));
+    proxy->obj = partgraph::BRepBuilder::MakeEdge(*line);
+    ves_pop(1);
+}
+
+void w_BRepBuilder_make_edge_from_arc()
+{
+    auto arc = ((tt::Proxy<gs::Arc>*)ves_toforeign(1))->obj;
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("partgraph", "TopoEdge");
+    auto proxy = (tt::Proxy<partgraph::TopoEdge>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoEdge>));
+    proxy->obj = partgraph::BRepBuilder::MakeEdge(*arc);
+    ves_pop(1);
+}
+
+void w_BRepBuilder_make_wire()
+{
 }
 
 void w_PrimMaker_box()
@@ -150,11 +182,11 @@ void w_TopoAlgo_translate()
     return_topo_shape(dst);
 }
 
-void w_MeshBuilder_build_from_topo()
+void w_TopoAdapter_build_mesh()
 {
-    auto topo = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
 
-    auto va = partgraph::MeshBuilder::Build(*topo);
+    auto va = partgraph::TopoAdapter::BuildMesh(*shape);
 
     ves_pop(ves_argnum());
 
@@ -162,6 +194,21 @@ void w_MeshBuilder_build_from_topo()
     ves_import_class("render", "VertexArray");
     auto proxy = (tt::Proxy<ur::VertexArray>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<ur::VertexArray>));
     proxy->obj = va;
+    ves_pop(1);
+}
+
+void w_TopoAdapter_build_edge_geo()
+{
+    auto edge = ((tt::Proxy<partgraph::TopoEdge>*)ves_toforeign(1))->obj;
+
+    auto geo = partgraph::TopoAdapter::BuildGeo(*edge);
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("geometry", "Line3D");
+    auto proxy = (tt::Proxy<gs::Line3D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Line3D>));
+    proxy->obj = geo;
     ves_pop(1);
 }
 
@@ -178,6 +225,32 @@ int w_TopoShape_finalize(void* data)
     return sizeof(tt::Proxy<partgraph::TopoShape>);
 }
 
+void w_TopoEdge_allocate()
+{
+    auto proxy = (tt::Proxy<partgraph::TopoEdge>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoEdge>));
+    proxy->obj = std::make_shared<partgraph::TopoEdge>();
+}
+
+int w_TopoEdge_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<partgraph::TopoEdge>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<partgraph::TopoEdge>);
+}
+
+void w_TopoWire_allocate()
+{
+    auto proxy = (tt::Proxy<partgraph::TopoWire>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoWire>));
+    proxy->obj = std::make_shared<partgraph::TopoWire>();
+}
+
+int w_TopoWire_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<partgraph::TopoWire>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<partgraph::TopoWire>);
+}
+
 }
 
 namespace partgraph
@@ -185,17 +258,24 @@ namespace partgraph
 
 VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 {
+    if (strcmp(signature, "static BRepBuilder.make_edge_from_line(_)") == 0) return w_BRepBuilder_make_edge_from_line;
+    if (strcmp(signature, "static BRepBuilder.make_edge_from_arc(_)") == 0) return w_BRepBuilder_make_edge_from_arc;
+    if (strcmp(signature, "static BRepBuilder.make_wire(_)") == 0) return w_BRepBuilder_make_wire;
+
     if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
     if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
 
     if (strcmp(signature, "static TopoAlgo.fillet(_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_)") == 0) return w_TopoAlgo_chamfer;
+    if (strcmp(signature, "static TopoAlgo.extrude(_,_,_,_)") == 0) return w_TopoAlgo_extrude;
     if (strcmp(signature, "static TopoAlgo.cut(_,_)") == 0) return w_TopoAlgo_cut;
     if (strcmp(signature, "static TopoAlgo.fuse(_,_)") == 0) return w_TopoAlgo_fuse;
+    if (strcmp(signature, "static TopoAlgo.common(_,_)") == 0) return w_TopoAlgo_common;
     if (strcmp(signature, "static TopoAlgo.section(_,_)") == 0) return w_TopoAlgo_section;
     if (strcmp(signature, "static TopoAlgo.translate(_,_,_,_)") == 0) return w_TopoAlgo_translate;
 
-    if (strcmp(signature, "static MeshBuilder.build_from_topo(_)") == 0) return w_MeshBuilder_build_from_topo;
+    if (strcmp(signature, "static TopoAdapter.build_mesh(_)") == 0) return w_TopoAdapter_build_mesh;
+    if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
 
     return nullptr;
 }
@@ -206,6 +286,20 @@ void PartGraphBindClass(const char* class_name, VesselForeignClassMethods* metho
     {
         methods->allocate = w_TopoShape_allocate;
         methods->finalize = w_TopoShape_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "TopoEdge") == 0)
+    {
+        methods->allocate = w_TopoEdge_allocate;
+        methods->finalize = w_TopoEdge_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "TopoWire") == 0)
+    {
+        methods->allocate = w_TopoWire_allocate;
+        methods->finalize = w_TopoWire_finalize;
         return;
     }
 }
