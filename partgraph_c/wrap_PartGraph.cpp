@@ -34,26 +34,36 @@ void return_topo_shape(const std::shared_ptr<partgraph::TopoShape>& shape)
 void w_BRepBuilder_make_edge_from_line()
 {
     auto line = ((tt::Proxy<gs::Line3D>*)ves_toforeign(1))->obj;
+    auto edge = partgraph::BRepBuilder::MakeEdge(*line);
+    if (!edge) {
+        ves_set_nil(0);
+        return;
+    }
 
     ves_pop(ves_argnum());
 
     ves_pushnil();
     ves_import_class("partgraph", "TopoEdge");
     auto proxy = (tt::Proxy<partgraph::TopoEdge>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoEdge>));
-    proxy->obj = partgraph::BRepBuilder::MakeEdge(*line);
+    proxy->obj = edge;
     ves_pop(1);
 }
 
 void w_BRepBuilder_make_edge_from_arc()
 {
     auto arc = ((tt::Proxy<gs::Arc>*)ves_toforeign(1))->obj;
+    auto edge = partgraph::BRepBuilder::MakeEdge(*arc);
+    if (!edge) {
+        ves_set_nil(0);
+        return;
+    }
 
     ves_pop(ves_argnum());
 
     ves_pushnil();
     ves_import_class("partgraph", "TopoEdge");
     auto proxy = (tt::Proxy<partgraph::TopoEdge>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoEdge>));
-    proxy->obj = partgraph::BRepBuilder::MakeEdge(*arc);
+    proxy->obj = edge;
     ves_pop(1);
 }
 

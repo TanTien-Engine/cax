@@ -33,11 +33,15 @@ std::shared_ptr<TopoEdge> BRepBuilder::MakeEdge(const gs::Line3D& l)
 
 std::shared_ptr<TopoEdge> BRepBuilder::MakeEdge(const gs::Arc& arc)
 {
-	auto& c = arc.GetCenter();
-	auto r = arc.GetRadius();
-
 	float s, e;
 	arc.GetAngles(s, e);
+	if (s == e) {
+		return nullptr;
+	}
+
+	auto& c = arc.GetCenter();
+	auto  r = arc.GetRadius();
+
 	float m = (s + e) * 0.5f;
 
 	sm::vec3 p1(c.x + r * cos(s), 0, c.y + r * sin(s));
@@ -62,6 +66,8 @@ std::shared_ptr<TopoWire> BRepBuilder::MakeWire(const std::vector<std::shared_pt
 		wire = BRepBuilderAPI_MakeWire(edges[0]->GetEdge(), edges[1]->GetEdge(), edges[2]->GetEdge());
 	} else if (edges.size() == 4) {
 		wire = BRepBuilderAPI_MakeWire(edges[0]->GetEdge(), edges[1]->GetEdge(), edges[2]->GetEdge(), edges[3]->GetEdge());
+	} else {
+		return nullptr;
 	}
 	return std::make_shared<TopoWire>(wire);
 }
