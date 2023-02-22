@@ -1,7 +1,7 @@
 import "partgraph.nodes.*"
 
 var PART_NODES = [
-Edge,
+Edge, Wire, Face,
 Box, Cylinder,
 Extrude, 
 Fillet, Chamfer, Cut, Fuse, Common, Section,

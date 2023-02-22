@@ -69,6 +69,39 @@ void w_BRepBuilder_make_edge_from_arc()
 
 void w_BRepBuilder_make_wire()
 {
+    std::vector<std::shared_ptr<partgraph::TopoEdge>> edges;
+    tt::list_to_foreigns(1, edges);
+    auto wire = partgraph::BRepBuilder::MakeWire(edges);
+    if (!wire) {
+        ves_set_nil(0);
+        return;
+    }
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("partgraph", "TopoWire");
+    auto proxy = (tt::Proxy<partgraph::TopoWire>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoWire>));
+    proxy->obj = wire;
+    ves_pop(1);
+}
+
+void w_BRepBuilder_make_face()
+{
+    auto wire = ((tt::Proxy<partgraph::TopoWire>*)ves_toforeign(1))->obj;
+    auto face = partgraph::BRepBuilder::MakeFace(*wire);
+    if (!face) {
+        ves_set_nil(0);
+        return;
+    }
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("partgraph", "TopoFace");
+    auto proxy = (tt::Proxy<partgraph::TopoFace>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<partgraph::TopoFace>));
+    proxy->obj = face;
+    ves_pop(1);
 }
 
 void w_PrimMaker_box()
@@ -142,7 +175,7 @@ void w_TopoAlgo_chamfer()
 
 void w_TopoAlgo_extrude()
 {
-    auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto src = ((tt::Proxy<partgraph::TopoFace>*)ves_toforeign(1))->obj;
     double x = ves_tonumber(2);
     double y = ves_tonumber(3);
     double z = ves_tonumber(4);
@@ -261,6 +294,19 @@ int w_TopoWire_finalize(void* data)
     return sizeof(tt::Proxy<partgraph::TopoWire>);
 }
 
+void w_TopoFace_allocate()
+{
+    auto proxy = (tt::Proxy<partgraph::TopoFace>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoFace>));
+    proxy->obj = std::make_shared<partgraph::TopoFace>();
+}
+
+int w_TopoFace_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<partgraph::TopoFace>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<partgraph::TopoFace>);
+}
+
 }
 
 namespace partgraph
@@ -271,6 +317,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static BRepBuilder.make_edge_from_line(_)") == 0) return w_BRepBuilder_make_edge_from_line;
     if (strcmp(signature, "static BRepBuilder.make_edge_from_arc(_)") == 0) return w_BRepBuilder_make_edge_from_arc;
     if (strcmp(signature, "static BRepBuilder.make_wire(_)") == 0) return w_BRepBuilder_make_wire;
+    if (strcmp(signature, "static BRepBuilder.make_face(_)") == 0) return w_BRepBuilder_make_face;
 
     if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
     if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
@@ -310,6 +357,13 @@ void PartGraphBindClass(const char* class_name, VesselForeignClassMethods* metho
     {
         methods->allocate = w_TopoWire_allocate;
         methods->finalize = w_TopoWire_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "TopoFace") == 0)
+    {
+        methods->allocate = w_TopoFace_allocate;
+        methods->finalize = w_TopoFace_finalize;
         return;
     }
 }

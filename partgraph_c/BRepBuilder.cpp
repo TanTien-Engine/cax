@@ -8,6 +8,7 @@
 #include <TopoDS_Edge.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 
 namespace
@@ -70,6 +71,12 @@ std::shared_ptr<TopoWire> BRepBuilder::MakeWire(const std::vector<std::shared_pt
 		return nullptr;
 	}
 	return std::make_shared<TopoWire>(wire);
+}
+
+std::shared_ptr<TopoFace> BRepBuilder::MakeFace(const TopoWire& wire)
+{
+	TopoDS_Face face = BRepBuilderAPI_MakeFace(wire.GetWire());
+	return std::make_shared<TopoFace>(face);
 }
 
 }

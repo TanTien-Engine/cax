@@ -16,12 +16,18 @@ foreign class TopoWire
 	init() {}
 }
 
+foreign class TopoFace
+{
+	init() {}
+}
+
 foreign class BRepBuilder
 {
 	foreign static make_edge_from_line(line)
 	foreign static make_edge_from_arc(arc)
 
 	foreign static make_wire(edges)
+	foreign static make_face(wire)
 }
 
 foreign class PrimMaker

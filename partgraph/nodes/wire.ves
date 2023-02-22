@@ -1,0 +1,46 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "partgraph.variant" for VAR_TOPO_EDGE, VAR_TOPO_WIRE
+import "partgraph" for BRepBuilder
+
+class Wire is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "edge1", VAR_TOPO_EDGE),
+			Pin(this, "edge2", VAR_TOPO_EDGE),
+			Pin(this, "edge3", VAR_TOPO_EDGE),
+			Pin(this, "edge4", VAR_TOPO_EDGE),
+		]
+		this.exports = [
+			Pin(this, "wire", VAR_TOPO_WIRE),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var edges = []
+
+		for (var i in 0..4)
+		{
+			var v_edge = Blueprint.calc_input_value(this, i)
+			if (v_edge) {
+				edges.add(v_edge.value)
+			}
+		}
+
+		var wire = BRepBuilder.make_wire(edges)
+		if (wire) {
+			return Variant(VAR_TOPO_WIRE, wire)		
+		} else {
+			return nil
+		}
+	}
+}

@@ -3,6 +3,7 @@
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Wire.hxx>
+#include <TopoDS_Face.hxx>
 
 namespace partgraph
 {
@@ -54,5 +55,21 @@ private:
 	TopoDS_Wire m_wire;
 
 }; // TopoWire
+
+class TopoFace
+{
+public:
+	TopoFace() {}
+	TopoFace(const TopoDS_Face& face)
+		: m_face(face)
+	{
+	}
+
+	auto& GetFace() const { return m_face; }
+
+private:
+	TopoDS_Face m_face;
+
+}; // TopoFace
 
 }
