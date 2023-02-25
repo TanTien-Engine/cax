@@ -1,7 +1,7 @@
 #include "BRepBuilder.h"
 #include "TopoDataset.h"
 
-#include <geoshape/Arc.h>
+#include <geoshape/Arc3D.h>
 #include <geoshape/Line3D.h>
 
 // OCCT
@@ -32,22 +32,11 @@ std::shared_ptr<TopoEdge> BRepBuilder::MakeEdge(const gs::Line3D& l)
 	return std::make_shared<TopoEdge>(edge);
 }
 
-std::shared_ptr<TopoEdge> BRepBuilder::MakeEdge(const gs::Arc& arc)
+std::shared_ptr<TopoEdge> BRepBuilder::MakeEdge(const gs::Arc3D& arc)
 {
-	float s, e;
-	arc.GetAngles(s, e);
-	if (s == e) {
-		return nullptr;
-	}
-
-	auto& c = arc.GetCenter();
-	auto  r = arc.GetRadius();
-
-	float m = (s + e) * 0.5f;
-
-	sm::vec3 p1(c.x + r * cos(s), 0, c.y + r * sin(s));
-	sm::vec3 p2(c.x + r * cos(m), 0, c.y + r * sin(m));
-	sm::vec3 p3(c.x + r * cos(e), 0, c.y + r * sin(e));
+	sm::vec3 p1(arc.GetStart());
+	sm::vec3 p2(arc.GetMiddle());
+	sm::vec3 p3(arc.GetEnd());
 
 	Handle(Geom_TrimmedCurve) curve = GC_MakeArcOfCircle(
 		trans_pnt(p1), trans_pnt(p2), trans_pnt(p3)

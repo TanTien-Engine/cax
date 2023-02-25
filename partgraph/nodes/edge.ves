@@ -4,7 +4,7 @@ import "blueprint.variant" for Variant
 import "blueprint.blueprint" for Blueprint
 import "partgraph.variant" for VAR_TOPO_EDGE
 import "partgraph" for BRepBuilder
-import "geometry" for Line3D, Arc
+import "geometry" for Line3D, Arc3D
 import "geograph.variant" for VAR_TYPE_GEO
 
 class Edge is Node
@@ -35,7 +35,7 @@ class Edge is Node
 		var geo = v_geo.value.shape
 		if (geo is Line3D) {
 			edge = BRepBuilder.make_edge_from_line(geo)
-		} else if (geo is Arc) {
+		} else if (geo is Arc3D) {
 			edge = BRepBuilder.make_edge_from_arc(geo)
 		}
 
