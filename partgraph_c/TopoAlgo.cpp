@@ -4,8 +4,8 @@
 // OCCT
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
-#include <TopTools_IndexedMapOfShape.hxx>
-#include <TopExp.hxx>
+#include <BRepOffsetAPI_MakeDraft.hxx>
+#include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
@@ -15,10 +15,25 @@
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 
+namespace
+{
+
+gp_Vec trans_vec(const sm::vec3& v)
+{
+    return gp_Vec(v.x, v.y, v.z);
+}
+
+gp_Pnt trans_pnt(const sm::vec3& v)
+{
+    return gp_Pnt(v.x, v.y, v.z);
+}
+
+}
+
 namespace partgraph
 {
 
-std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double thickness)
+std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius)
 {
     BRepFilletAPI_MakeFillet fillet(shape->GetShape());
 
@@ -26,8 +41,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     while (edge_explorer.More())
     {
         TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
-        //Add edge to fillet algorithm
-        fillet.Add(thickness / 12., edge);
+        fillet.Add(radius, edge);
         edge_explorer.Next();
     }
 
@@ -131,6 +145,42 @@ std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>&
     trsf.SetTranslation(gp_Vec(x, y, z));
     auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
     return std::make_shared<partgraph::TopoShape>(trans.Shape());
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::Mirror(const std::shared_ptr<TopoShape>& shape, const sm::vec3& pos, const sm::vec3& dir)
+{
+    gp_Ax1 axis;
+    axis.SetLocation(trans_pnt(pos));
+    axis.SetDirection(trans_vec(dir));
+
+    gp_Trsf trsf;
+    trsf.SetMirror(axis);
+
+    auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
+    return std::make_shared<partgraph::TopoShape>(trans.Shape());
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::Draft(const std::shared_ptr<TopoShape>& shape, 
+                                           const sm::vec3& dir, float angle, float len_max)
+{
+    TopTools_IndexedMapOfShape faces;
+    TopExp::MapShapes(shape->GetShape(), TopAbs_FACE, faces);
+
+    const auto& face = TopoDS::Face(faces.FindKey(1));
+
+    BRepOffsetAPI_MakeDraft draft(face, trans_vec(dir), angle);
+    draft.Perform(len_max);
+    return std::make_shared<partgraph::TopoShape>(draft.Shape());
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::shared_ptr<TopoFace>& face, float offset)
+{
+    TopTools_ListOfShape faces_to_rm;
+    faces_to_rm.Append(face->GetFace());
+    BRepOffsetAPI_MakeThickSolid thick_solid;
+    thick_solid.MakeThickSolidByJoin(shape->GetShape(), faces_to_rm, offset, 1.e-3);
+
+    return std::make_shared<partgraph::TopoShape>(thick_solid.Shape());
 }
 
 }

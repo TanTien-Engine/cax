@@ -10,13 +10,15 @@ namespace partgraph
 
 class TopoShape;
 class TopoEdge;
+class TopoWire;
 
 class TopoAdapter
 {
 public:
 	static std::shared_ptr<ur::VertexArray> BuildMesh(const TopoShape& shape);
-
 	static std::shared_ptr<gs::Line3D> BuildGeo(const TopoEdge& edge);
+
+	static std::shared_ptr<TopoWire> ToWire(const TopoShape& shape);
 
 }; // TopoAdapter
 

@@ -118,7 +118,7 @@ node7.query_param("disable").value = false
 _editor.add_node(node7, 189.66487548828, -466.74138427734)
 
 var node8 = ::partgraph::nodes::fillet::Fillet()
-node8.query_param("thickness").value = 1
+node8.query_param("radius").value = 0.1
 
 _editor.add_node(node8, -90.964449246484, -466.35966881868)
 

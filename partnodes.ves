@@ -1,10 +1,18 @@
 import "partgraph.nodes.*"
 
 var PART_NODES = [
+// BRep
 Edge, Wire, Face,
+// Prim
 Box, Cylinder,
-Extrude, 
-Fillet, Chamfer, Cut, Fuse, Common, Section,
-Translate,
+// DressUpFeatures
+Chamfer, Fillet, Draft, Thickness,
+// SketchBasedFeatures
+Extrude, Cut, Fuse, Common, Section, 
+// FeaturesTransformed
+Translate, Mirror,
+// Selector
+FaceSelector,
+// Tools
 ToMesh, ToGeometry,
 ]

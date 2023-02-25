@@ -21,6 +21,16 @@ foreign class TopoFace
 	init() {}
 }
 
+foreign class WireBuilder
+{
+	init() {}
+
+	foreign add_edge(edge)
+	foreign add_wire(wire)
+
+	foreign gen_wire() 
+}
+
 foreign class BRepBuilder
 {
 	foreign static make_edge_from_line(line)
@@ -36,9 +46,14 @@ foreign class PrimMaker
 	foreign static cylinder(radius, length)
 }
 
+foreign class BRepSelector
+{
+	foreign static select_face(shape)
+}
+
 foreign class TopoAlgo
 {
-	foreign static fillet(shape, thickness)
+	foreign static fillet(shape, radius)
 	foreign static chamfer(shape, dist)
 
 	// sweep
@@ -51,12 +66,19 @@ foreign class TopoAlgo
 	foreign static section(s1, s2)
 
 	foreign static translate(shape, x, y, z)
+	foreign static mirror(shape, pos, dir)
+
+	// offset
+	foreign static draft(shape, dir, angle, len)
+	foreign static thick_solid(shape, face, offset)
 }
 
 foreign class TopoAdapter
 {
 	foreign static build_mesh(shape)
 	foreign static build_edge_geo(edge)
+
+	foreign static shape2wire(shape)
 }
 
 );

@@ -192,4 +192,9 @@ std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeo(const TopoEdge& shape)
     return geo;
 }
 
+std::shared_ptr<TopoWire> TopoAdapter::ToWire(const TopoShape& shape)
+{
+    return std::make_shared<TopoWire>(TopoDS::Wire(shape.GetShape()));
+}
+
 }

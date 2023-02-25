@@ -1,0 +1,46 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
+import "maths.vector" for Vector3
+import "partgraph" for TopoAlgo
+
+class Mirror is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "obj", [ VAR_TOPO_SHAPE, VAR_TOPO_WIRE ]),
+		]
+		this.exports = [
+			Pin(this, "obj", [ VAR_TOPO_SHAPE, VAR_TOPO_WIRE ]),
+		]
+
+		this.params.add(NodeParam("pos", Vector3(0, 0, 0), { "region" : 2 }))
+		this.params.add(NodeParam("dir", Vector3(0, 0, 1), { "region" : 1 }))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_obj = Blueprint.calc_input_value(this, 0)
+		if (!v_obj) {
+			return nil
+		}
+
+		var type = VAR_TOPO_SHAPE
+		if (v_obj.type == VAR_TOPO_WIRE) {
+			type = VAR_TOPO_WIRE
+		}
+
+		var pos = this.query_param("pos").value
+		var dir = this.query_param("dir").value
+		var obj = TopoAlgo.mirror(v_obj.value, [ pos.x, pos.z, pos.y], [ dir.x, dir.z, dir.y ])
+		return Variant(type, obj)
+	}
+}
