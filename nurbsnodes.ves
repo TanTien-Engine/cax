@@ -1,5 +1,6 @@
 import "nurbsgraph.nodes.*"
 
 var NURBS_NODES = [
-Bezier, Bspline, Rbspline, Bezsurf, Bspsurf, Rbspsurf
+Bezier, Bspline, Rbspline, Bezsurf, Bspsurf, Rbspsurf,
+AABB,
 ]

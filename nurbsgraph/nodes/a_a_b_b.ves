@@ -1,0 +1,108 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_ARRAY, VAR_TYPE_RECT
+import "blueprint.blueprint" for Blueprint
+import "geograph.variant" for VAR_TYPE_GEO
+import "maths.rect" for Rect
+import "maths.vector" for Vector2
+import "geometry" for Polyline
+import "math" for Math
+
+class AABB is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "geo", VAR_TYPE_GEO),
+			Pin(this, "max", VAR_TYPE_NUMBER),
+		]
+		this.exports = [
+			Pin(this, "rect", [ VAR_TYPE_RECT, VAR_TYPE_ARRAY ]),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_geo = Blueprint.calc_input_value(this, 0)
+		if (!v_geo) {
+			return nil
+		}
+
+		var aabbs = []
+
+		var v_max_area = Blueprint.calc_input_value(this, 1)
+
+		var shape = v_geo.value.shape
+		if (shape is Polyline) 
+		{
+			var verts = shape.get_vertices()
+			if (verts.count >= 4) 
+			{
+				if (v_max_area) {
+					this.gen_aabbs(verts, 0, verts.count / 2, aabbs, v_max_area.value)
+				} else {
+					var aabb = this.calc_aabb(verts, 0, verts.count / 2)
+					if (aabb) {
+						aabbs.add(Variant(VAR_TYPE_RECT, aabb))
+					}
+				}
+			}
+		}
+
+		return Variant(VAR_TYPE_ARRAY, aabbs)
+	}
+
+	calc_aabb(verts, begin_idx, end_idx)
+	{
+		if (end_idx - begin_idx < 2) {
+			return nil
+		}
+
+		var xmin = verts[begin_idx * 2]
+		var xmax = xmin
+		var ymin = verts[begin_idx * 2 + 1]
+		var ymax = ymin
+		for (var i in begin_idx + 1 .. end_idx)
+		{
+			var x = verts[i * 2]
+			var y = verts[i * 2 + 1]
+			if (x < xmin) {
+				xmin = x
+			}
+			if (x > xmax) {
+				xmax = x
+			}
+			if (y < ymin) {
+				ymin = y
+			}
+			if (y > ymax) {
+				ymax = y
+			}
+		}
+
+		return Rect(Vector2(xmin, ymin), Vector2(xmax, ymax))
+	}
+
+	gen_aabbs(verts, begin_idx, end_idx, aabbs, max_area)
+	{
+		var aabb = this.calc_aabb(verts, begin_idx, end_idx)
+		if (!aabb) {
+			return
+		}
+
+		if (aabb.w * aabb.h < max_area) 
+		{
+			aabbs.add(Variant(VAR_TYPE_RECT, aabb))
+		} 
+		else
+		{
+			var mid = Math.floor((begin_idx + end_idx) / 2)
+			this.gen_aabbs(verts, begin_idx, mid + 1, aabbs, max_area)
+			this.gen_aabbs(verts, mid, end_idx, aabbs, max_area)
+		}
+	}
+}

@@ -1,0 +1,46 @@
+var node0 = ::geograph::nodes::polyline::Polyline()
+node0.query_param("vertices").value = [ -330, 91, -190, 54, 1, 194, 260, 66, 418, 62 ]
+node0.query_param("closed").value = false
+
+_editor.add_node(node0, -313, -200.5)
+
+var node1 = ::geograph::nodes::draw_geometry::DrawGeometry()
+node1.query_param("skip").value = false
+
+_editor.add_node(node1, 349, -235.5)
+
+var node2 = ::blueprint::nodes::camera2d::Camera2d()
+
+node2.x = 23.261561157025
+node2.y = 65.838925619835
+node2.scale = 1.21
+node2.speed = 0.33571428060532
+
+_editor.add_node(node2, 192, -293)
+
+var node3 = ::nurbsgraph::nodes::rbspline::Rbspline()
+node3.query_param("order").value = 3
+
+_editor.add_node(node3, -174, -187)
+
+var node4 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node4, 187.65480041504, -204.7467956543)
+
+var node5 = ::nurbsgraph::nodes::a_a_b_b::AABB()
+
+_editor.add_node(node5, 34.536987304688, -242.16400146484)
+
+var node6 = ::blueprint::nodes::number::Number()
+
+node6.value = 5000
+
+_editor.add_node(node6, -112.45966868755, -278.52181830288)
+
+Blueprint.connect(node0, "geo", node3, "ctrl")
+Blueprint.connect(node3, "geo", node5, "geo")
+Blueprint.connect(node6, "v", node5, "max")
+Blueprint.connect(node3, "geo", node4, "in0")
+Blueprint.connect(node5, "rect", node4, "in1")
+Blueprint.connect(node4, "list", node1, "geos")
+Blueprint.connect(node2, "mat", node1, "cam_mat")
