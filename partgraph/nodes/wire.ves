@@ -2,8 +2,9 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.variant" for Variant
 import "blueprint.blueprint" for Blueprint
+import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_EDGE, VAR_TOPO_WIRE
-import "partgraph" for BRepBuilder
+import "partgraph" for WireBuilder
 
 class Wire is Node
 {
@@ -12,10 +13,8 @@ class Wire is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "edge1", VAR_TOPO_EDGE),
-			Pin(this, "edge2", VAR_TOPO_EDGE),
-			Pin(this, "edge3", VAR_TOPO_EDGE),
-			Pin(this, "edge4", VAR_TOPO_EDGE),
+			Pin(this, "edge0", [ VAR_TOPO_EDGE, VAR_TOPO_WIRE ]),
+			Pin(this, "edge1", [ VAR_TOPO_EDGE, VAR_TOPO_WIRE ]),
 		]
 		this.exports = [
 			Pin(this, "wire", VAR_TOPO_WIRE),
@@ -26,21 +25,39 @@ class Wire is Node
 
 	calc_value(idx)
 	{
-		var edges = []
-
-		for (var i in 0..4)
+		var builder = WireBuilder.init()
+		for (var i in 0 .. this.imports.count)
 		{
 			var v_edge = Blueprint.calc_input_value(this, i)
-			if (v_edge) {
-				edges.add(v_edge.value)
+			if (v_edge) 
+			{
+				if (v_edge.type == VAR_TOPO_EDGE) {
+					builder.add_edge(v_edge.value)
+				} else if (v_edge.type == VAR_TOPO_WIRE) {
+					builder.add_wire(v_edge.value)				
+				}
 			}
 		}
 
-		var wire = BRepBuilder.make_wire(edges)
+		var wire = builder.gen_wire()
 		if (wire) {
 			return Variant(VAR_TOPO_WIRE, wire)		
 		} else {
 			return nil
+		}
+	}
+
+	on_connected(pin)
+	{
+		if (pin.is_input) {
+			NodeHelper.dynamic_imports_update(this, 0, "edge", [ VAR_TOPO_EDGE, VAR_TOPO_WIRE ])
+		}
+	}
+
+	on_disconnected(pin)
+	{
+		if (pin.is_input) {
+			NodeHelper.dynamic_imports_update(this, 0, "edge", [ VAR_TOPO_EDGE, VAR_TOPO_WIRE ])
 		}
 	}
 }
