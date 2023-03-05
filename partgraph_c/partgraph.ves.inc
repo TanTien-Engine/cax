@@ -71,6 +71,8 @@ foreign class TopoAlgo
 	// offset
 	foreign static draft(shape, dir, angle, len)
 	foreign static thick_solid(shape, face, offset)
+	foreign static thru_sections(wires)
+
 }
 
 foreign class TopoAdapter

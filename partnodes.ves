@@ -11,6 +11,8 @@ Chamfer, Fillet, Draft, Shelling,
 Extrude, Cut, Fuse, Common, Section, 
 // FeaturesTransformed
 Translate, Mirror,
+// SketchBasedFeatures
+Loft,
 // Selector
 FaceSelector,
 // Tools

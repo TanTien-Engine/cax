@@ -6,6 +6,7 @@
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepOffsetAPI_MakeDraft.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
+#include <BRepOffsetAPI_ThruSections.hxx>
 #include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
@@ -181,6 +182,16 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
     thick_solid.MakeThickSolidByJoin(shape->GetShape(), faces_to_rm, offset, 1.e-3);
 
     return std::make_shared<partgraph::TopoShape>(thick_solid.Shape());
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_ptr<TopoWire>>& wires)
+{
+    BRepOffsetAPI_ThruSections thru_sections(Standard_False);
+    for (auto& wire : wires) {
+        thru_sections.AddWire(wire->GetWire());
+    }
+
+    return std::make_shared<partgraph::TopoShape>(thru_sections.Shape());
 }
 
 }

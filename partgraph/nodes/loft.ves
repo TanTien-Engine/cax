@@ -1,0 +1,54 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_helper" for NodeHelper
+import "partgraph.variant" for VAR_TOPO_WIRE, VAR_TOPO_SHAPE
+import "partgraph" for TopoAlgo
+
+class Loft is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "wire0", [ VAR_TOPO_WIRE ]),
+			Pin(this, "wire1", [ VAR_TOPO_WIRE ]),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var wires = []
+		for (var i in 0 .. this.imports.count)
+		{
+			var v_wire = Blueprint.calc_input_value(this, i)
+			if (v_wire) {
+				wires.add(v_wire.value)
+			}
+		}
+
+		var shape = TopoAlgo.thru_sections(wires)
+		return Variant(VAR_TOPO_SHAPE, shape)
+	}
+
+	on_connected(pin)
+	{
+		if (pin.is_input) {
+			NodeHelper.dynamic_imports_update(this, 0, "wire", [ VAR_TOPO_WIRE ])
+		}
+	}
+
+	on_disconnected(pin)
+	{
+		if (pin.is_input) {
+			NodeHelper.dynamic_imports_update(this, 0, "wire", [ VAR_TOPO_WIRE ])
+		}
+	}
+}

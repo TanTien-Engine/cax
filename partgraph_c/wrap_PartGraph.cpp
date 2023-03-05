@@ -237,6 +237,14 @@ void w_TopoAlgo_thick_solid()
     return_topo_shape(dst);
 }
 
+void w_TopoAlgo_thru_sections()
+{
+    std::vector<std::shared_ptr<partgraph::TopoWire>> wires;
+    tt::list_to_foreigns(1, wires);
+    auto shape = partgraph::TopoAlgo::ThruSections(wires);
+    return_topo_shape(shape);
+}
+
 void w_TopoAdapter_build_mesh()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -412,6 +420,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.mirror(_,_,_)") == 0) return w_TopoAlgo_mirror;
     if (strcmp(signature, "static TopoAlgo.draft(_,_,_,_)") == 0) return w_TopoAlgo_draft;
     if (strcmp(signature, "static TopoAlgo.thick_solid(_,_,_)") == 0) return w_TopoAlgo_thick_solid;
+    if (strcmp(signature, "static TopoAlgo.thru_sections(_)") == 0) return w_TopoAlgo_thru_sections;
 
     if (strcmp(signature, "static TopoAdapter.build_mesh(_)") == 0) return w_TopoAdapter_build_mesh;
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
