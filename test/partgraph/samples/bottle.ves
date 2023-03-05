@@ -89,7 +89,7 @@ _editor.add_node(node14, -2075.3228088614, 487.55809516868)
 
 var node15 = ::blueprint::nodes::store::Store()
 
-node15.var_name = "thickness"
+node15.var_name = "offset"
 
 _editor.add_node(node15, -1926.8201792596, 488.55809516868)
 
@@ -117,7 +117,7 @@ _editor.add_node(node19, -1473.9313272754, 617.79256804688)
 
 var node20 = ::blueprint::nodes::load::Load()
 
-node20.var_name = "thickness"
+node20.var_name = "offset"
 
 _editor.add_node(node20, -1753.4413407031, 510.10259001953)
 
@@ -133,7 +133,7 @@ _editor.add_node(node22, -1753.4413382617, 454.44259062988)
 
 var node23 = ::blueprint::nodes::store::Store()
 
-node23.var_name = "q_thickness"
+node23.var_name = "q_offset"
 
 _editor.add_node(node23, -1466.5213205615, 483.09259368164)
 
@@ -199,7 +199,7 @@ _editor.add_node(node35, -1639.5958831691, -384.27471680609)
 
 var node36 = ::blueprint::nodes::load::Load()
 
-node36.var_name = "thickness"
+node36.var_name = "offset"
 
 _editor.add_node(node36, -2334.6433407031, -18.130409980471)
 
@@ -215,7 +215,7 @@ _editor.add_node(node38, -2334.6433382617, -73.790409370121)
 
 var node39 = ::blueprint::nodes::load::Load()
 
-node39.var_name = "q_thickness"
+node39.var_name = "q_offset"
 
 _editor.add_node(node39, -2098.7798148242, 32.419145195312)
 
@@ -313,7 +313,7 @@ _editor.add_node(node57, 473.40647720578, -509.57125251707)
 
 var node58 = ::blueprint::nodes::load::Load()
 
-node58.var_name = "thickness"
+node58.var_name = "offset"
 
 _editor.add_node(node58, 164.81873382576, -644.35114772045)
 
@@ -335,7 +335,7 @@ _editor.add_node(node61, 233.54522744141, -804.96270795899)
 
 var node62 = ::blueprint::nodes::load::Load()
 
-node62.var_name = "q_thickness"
+node62.var_name = "q_offset"
 
 _editor.add_node(node62, 85.69852602938, -767.78989075625)
 
@@ -378,8 +378,8 @@ var node70 = ::partgraph::nodes::face_selector::FaceSelector()
 
 _editor.add_node(node70, 954.21281103516, -671.51576953125)
 
-var node71 = ::partgraph::nodes::thickness::Thickness()
-node71.query_param("thickness").value = 0
+var node71 = ::partgraph::nodes::shelling::Shelling()
+node71.query_param("offset").value = 0
 
 _editor.add_node(node71, 1090.0498476563, -671.45378173828)
 
@@ -390,7 +390,7 @@ _editor.add_node(node72, 813.69305126953, -605.45751293945)
 
 var node73 = ::blueprint::nodes::load::Load()
 
-node73.var_name = "thickness"
+node73.var_name = "offset"
 
 _editor.add_node(node73, 683.42010370856, -704.61046354915)
 
@@ -490,7 +490,7 @@ Blueprint.connect(node69, "shape", node72, "var")
 Blueprint.connect(node72, "var", node70, "shape")
 Blueprint.connect(node72, "var", node71, "shape")
 Blueprint.connect(node70, "face", node71, "face")
-Blueprint.connect(node76, "v", node71, "thickness")
+Blueprint.connect(node76, "v", node71, "offset")
 Blueprint.connect(node71, "shape", node0, "shape")
 Blueprint.connect(node0, "va", node3, "var")
 Blueprint.connect(node2, "mat", node4, "cam_mat")

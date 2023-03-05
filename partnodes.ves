@@ -6,7 +6,7 @@ Edge, Wire, Face,
 // Prim
 Box, Cylinder,
 // DressUpFeatures
-Chamfer, Fillet, Draft, Thickness,
+Chamfer, Fillet, Draft, Shelling,
 // SketchBasedFeatures
 Extrude, Cut, Fuse, Common, Section, 
 // FeaturesTransformed

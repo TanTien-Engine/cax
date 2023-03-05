@@ -29,8 +29,8 @@ node4.set_prop_value("no_bg", false)
 
 _editor.add_node(node4, 182.96644027874, 54.501669149355)
 
-var node5 = ::partgraph::nodes::thickness::Thickness()
-node5.query_param("thickness").value = 0.099346585571766
+var node5 = ::partgraph::nodes::shelling::Shelling()
+node5.query_param("offset").value = 0.099346585571766
 
 _editor.add_node(node5, -303.61888690034, 92.627152750312)
 
@@ -58,7 +58,7 @@ Blueprint.connect(node0, "shape", node9, "var")
 Blueprint.connect(node9, "var", node6, "shape")
 Blueprint.connect(node9, "var", node5, "shape")
 Blueprint.connect(node6, "face", node5, "face")
-Blueprint.connect(node7, "v", node5, "thickness")
+Blueprint.connect(node7, "v", node5, "offset")
 Blueprint.connect(node5, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")
