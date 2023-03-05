@@ -10,6 +10,7 @@
 #include <unirender/VertexArray.h>
 #include <unirender/VertexInputAttribute.h>
 #include <geoshape/Line3D.h>
+#include <geoshape/Polyline3D.h>
 
 // OCCT
 #include <Standard_Handle.hxx>
@@ -188,6 +189,33 @@ std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeo(const TopoEdge& shape)
     auto geo = std::make_shared<gs::Line3D>();
     geo->SetStart(pts[0]);
     geo->SetEnd(pts[1]);
+
+    return geo;
+}
+
+std::shared_ptr<gs::Polyline3D> TopoAdapter::BuildGeo(const TopoWire& wire)
+{
+    std::vector<sm::vec3> pts;
+
+    auto& w = wire.GetWire();
+    TopoDS_Iterator it;
+    int itr = 0;
+    for (it.Initialize(w); it.More(); it.Next(), ++itr)
+    {
+        auto& e = TopoDS::Edge(it.Value());
+
+        int itr2 = 0;
+        TopoDS_Iterator it2;
+        for (it2.Initialize(e); it2.More(); it2.Next(), ++itr2)
+        {
+            auto& v = TopoDS::Vertex(it2.Value());
+            gp_Pnt p = BRep_Tool::Pnt(v);
+            pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
+        }
+    }
+
+    auto geo = std::make_shared<gs::Polyline3D>();
+    geo->SetVertices(pts);
 
     return geo;
 }

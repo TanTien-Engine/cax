@@ -2,7 +2,7 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TOPO_EDGE
+import "partgraph.variant" for VAR_TOPO_EDGE, VAR_TOPO_WIRE
 import "partgraph" for TopoAdapter
 import "geograph.variant" for VAR_TYPE_GEO, VarGeo
 
@@ -13,7 +13,7 @@ class ToGeometry is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "topo", [ VAR_TOPO_EDGE ]),
+			Pin(this, "topo", [ VAR_TOPO_EDGE, VAR_TOPO_WIRE ]),
 		]
 		this.exports = [
 			Pin(this, "geo", VAR_TYPE_GEO),
@@ -29,7 +29,12 @@ class ToGeometry is Node
 			return nil
 		}
 
-		var geo = TopoAdapter.build_edge_geo(v_topo.value)
+		var geo = nil
+		if (v_topo.type == VAR_TOPO_EDGE) {
+			geo = TopoAdapter.build_edge_geo(v_topo.value)
+		} else if (v_topo.type == VAR_TOPO_WIRE) {
+			geo = TopoAdapter.build_wire_geo(v_topo.value)
+		}
 
 		var v_geo = VarGeo()
 		v_geo.shape = geo

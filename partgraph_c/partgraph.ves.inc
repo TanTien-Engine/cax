@@ -77,6 +77,7 @@ foreign class TopoAdapter
 {
 	foreign static build_mesh(shape)
 	foreign static build_edge_geo(edge)
+	foreign static build_wire_geo(wire)
 
 	foreign static shape2wire(shape)
 }

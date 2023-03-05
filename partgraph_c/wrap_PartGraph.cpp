@@ -267,6 +267,21 @@ void w_TopoAdapter_build_edge_geo()
     ves_pop(1);
 }
 
+void w_TopoAdapter_build_wire_geo()
+{
+    auto wire = ((tt::Proxy<partgraph::TopoWire>*)ves_toforeign(1))->obj;
+
+    auto geo = partgraph::TopoAdapter::BuildGeo(*wire);
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("geometry", "Polyline3D");
+    auto proxy = (tt::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline3D>));
+    proxy->obj = geo;
+    ves_pop(1);
+}
+
 void w_TopoAdapter_shape2wire()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -400,6 +415,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static TopoAdapter.build_mesh(_)") == 0) return w_TopoAdapter_build_mesh;
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
+    if (strcmp(signature, "static TopoAdapter.build_wire_geo(_)") == 0) return w_TopoAdapter_build_wire_geo;
     if (strcmp(signature, "static TopoAdapter.shape2wire(_)") == 0) return w_TopoAdapter_shape2wire;
 
     return nullptr;
