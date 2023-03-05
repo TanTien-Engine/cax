@@ -14,5 +14,5 @@ Translate, Mirror,
 // Selector
 FaceSelector,
 // Tools
-ToMesh, ToGeometry,
+ToMesh, ToGeometry, Defeature,
 ]

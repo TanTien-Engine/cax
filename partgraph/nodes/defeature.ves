@@ -1,0 +1,32 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "partgraph.variant" for VAR_TOPO_SHAPE
+
+class Defeature is Node
+{
+	init() 
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.layout()
+
+		this.v_shape = nil
+	}
+	
+	calc_value(idx)
+	{
+		if (!this.v_shape) {
+			this.v_shape = Blueprint.calc_input_value(this, 0)
+		}
+
+		return this.v_shape
+	}
+}
