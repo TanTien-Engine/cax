@@ -5,6 +5,7 @@
 #include "BRepBuilder.h"
 #include "TopoAlgo.h"
 #include "BRepSelector.h"
+#include "GeomDataset.h"
 #include "modules/script/TransHelper.h"
 
 #include <logger/logger.h>
@@ -66,6 +67,14 @@ void w_BRepBuilder_make_edge_from_arc()
     return_topo_edge(edge);
 }
 
+void w_BRepBuilder_make_edge_from_curve_surf()
+{
+    auto c = ((tt::Proxy<partgraph::TrimmedCurve>*)ves_toforeign(1))->obj;
+    auto s = ((tt::Proxy<partgraph::CylindricalSurface>*)ves_toforeign(2))->obj;
+    auto edge = partgraph::BRepBuilder::MakeEdge(*c, *s);
+    return_topo_edge(edge);
+}
+
 void w_BRepBuilder_make_wire()
 {
     std::vector<std::shared_ptr<partgraph::TopoEdge>> edges;
@@ -79,6 +88,14 @@ void w_BRepBuilder_make_face()
     auto wire = ((tt::Proxy<partgraph::TopoWire>*)ves_toforeign(1))->obj;
     auto face = partgraph::BRepBuilder::MakeFace(*wire);
     return_topo_face(face);
+}
+
+void w_BRepBuilder_make_compound()
+{
+    std::vector<std::shared_ptr<partgraph::TopoShape>> shapes;
+    tt::list_to_foreigns(1, shapes);
+    auto shape = partgraph::BRepBuilder::MakeCompound(shapes);
+    return_topo_shape(shape);
 }
 
 void w_PrimMaker_box()
@@ -129,6 +146,14 @@ void w_PrimMaker_cylinder()
     }
 
     auto shape = partgraph::PrimMaker::Cylinder(radius, length);
+    return_topo_shape(shape);
+}
+
+void w_PrimMaker_threading()
+{
+    double thickness = ves_tonumber(1);
+    double height = ves_tonumber(2);
+    auto shape = partgraph::PrimMaker::Threading(thickness, height);
     return_topo_shape(shape);
 }
 
@@ -222,8 +247,8 @@ void w_TopoAlgo_draft()
 {
     auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto dir = tt::list_to_vec3(2);
-    auto angle = ves_tonumber(3);
-    auto len_max = ves_tonumber(4);
+    auto angle = (float)ves_tonumber(3);
+    auto len_max = (float)ves_tonumber(4);
     auto dst = partgraph::TopoAlgo::Draft(src, dir, angle, len_max);
     return_topo_shape(dst);
 }
@@ -232,7 +257,7 @@ void w_TopoAlgo_thick_solid()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto face = ((tt::Proxy<partgraph::TopoFace>*)ves_toforeign(2))->obj;
-    auto offset = ves_tonumber(3);
+    auto offset = (float)ves_tonumber(3);
     auto dst = partgraph::TopoAlgo::ThickSolid(shape, face, offset);
     return_topo_shape(dst);
 }
@@ -295,6 +320,58 @@ void w_TopoAdapter_shape2wire()
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto wire = partgraph::TopoAdapter::ToWire(*shape);
     return_topo_wire(wire);
+}
+
+void w_CylindricalSurface_allocate()
+{
+    auto pos = tt::list_to_vec3(1);
+    auto dir = tt::list_to_vec3(2);
+    float radius = (float)ves_tonumber(3);
+
+    auto proxy = (tt::Proxy<partgraph::CylindricalSurface>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::CylindricalSurface>));
+    proxy->obj = std::make_shared<partgraph::CylindricalSurface>(pos, dir, radius);
+}
+
+int w_CylindricalSurface_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<partgraph::CylindricalSurface>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<partgraph::CylindricalSurface>);
+}
+
+void w_EllipseCurve_allocate()
+{
+    auto pos = tt::list_to_vec2(1);
+    auto dir = tt::list_to_vec2(2);
+    float major_radius = (float)ves_tonumber(3);
+    float minor_radius = (float)ves_tonumber(4);
+
+    auto proxy = (tt::Proxy<partgraph::EllipseCurve>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::EllipseCurve>));
+    proxy->obj = std::make_shared<partgraph::EllipseCurve>(pos, dir, major_radius, minor_radius);
+}
+
+int w_EllipseCurve_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<partgraph::EllipseCurve>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<partgraph::EllipseCurve>);
+}
+
+void w_TrimmedCurve_allocate()
+{
+    auto ellipse = ((tt::Proxy<partgraph::EllipseCurve>*)ves_toforeign(1))->obj;
+    float u1 = (float)ves_tonumber(2);
+    float u2 = (float)ves_tonumber(3);
+
+    auto proxy = (tt::Proxy<partgraph::TrimmedCurve>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TrimmedCurve>));
+    proxy->obj = std::make_shared<partgraph::TrimmedCurve>(*ellipse, u1, u2);
+}
+
+int w_TrimmedCurve_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<partgraph::TrimmedCurve>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<partgraph::TrimmedCurve>);
 }
 
 void w_TopoShape_allocate()
@@ -401,11 +478,14 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static BRepBuilder.make_edge_from_line(_)") == 0) return w_BRepBuilder_make_edge_from_line;
     if (strcmp(signature, "static BRepBuilder.make_edge_from_arc(_)") == 0) return w_BRepBuilder_make_edge_from_arc;
+    if (strcmp(signature, "static BRepBuilder.make_edge_from_curve_surf(_,_)") == 0) return w_BRepBuilder_make_edge_from_curve_surf;
     if (strcmp(signature, "static BRepBuilder.make_wire(_)") == 0) return w_BRepBuilder_make_wire;
     if (strcmp(signature, "static BRepBuilder.make_face(_)") == 0) return w_BRepBuilder_make_face;
+    if (strcmp(signature, "static BRepBuilder.make_compound(_)") == 0) return w_BRepBuilder_make_compound;
 
     if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
     if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
+    if (strcmp(signature, "static PrimMaker.threading(_,_)") == 0) return w_PrimMaker_threading;
 
     if (strcmp(signature, "static BRepSelector.select_face(_)") == 0) return w_BRepSelector_select_face;
 
@@ -432,6 +512,27 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
 void PartGraphBindClass(const char* class_name, VesselForeignClassMethods* methods)
 {
+    if (strcmp(class_name, "CylindricalSurface") == 0)
+    {
+        methods->allocate = w_CylindricalSurface_allocate;
+        methods->finalize = w_CylindricalSurface_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "EllipseCurve") == 0)
+    {
+        methods->allocate = w_EllipseCurve_allocate;
+        methods->finalize = w_EllipseCurve_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "TrimmedCurve") == 0)
+    {
+        methods->allocate = w_TrimmedCurve_allocate;
+        methods->finalize = w_TrimmedCurve_finalize;
+        return;
+    }
+
     if (strcmp(class_name, "TopoShape") == 0)
     {
         methods->allocate = w_TopoShape_allocate;

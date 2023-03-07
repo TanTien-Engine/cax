@@ -1,5 +1,8 @@
 #include "BRepBuilder.h"
 #include "TopoDataset.h"
+#include "occt_adapter.h"
+
+#include "GeomDataset.h"
 
 #include <geoshape/Arc3D.h>
 #include <geoshape/Line3D.h>
@@ -10,16 +13,8 @@
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <GC_MakeArcOfCircle.hxx>
-
-namespace
-{
-
-gp_Pnt trans_pnt(const sm::vec3& p)
-{
-	return gp_Pnt(p.x, p.y, p.z);
-}
-
-}
+#include <TopoDS_Compound.hxx>
+#include <BRep_Builder.hxx>
 
 namespace partgraph
 {
@@ -41,7 +36,16 @@ std::shared_ptr<TopoEdge> BRepBuilder::MakeEdge(const gs::Arc3D& arc)
 	Handle(Geom_TrimmedCurve) curve = GC_MakeArcOfCircle(
 		trans_pnt(p1), trans_pnt(p2), trans_pnt(p3)
 	);
-	TopoDS_Edge edge = BRepBuilderAPI_MakeEdge(curve);
+
+	Geom_TrimmedCurve* c2 = curve.get();
+
+	TopoDS_Edge edge = BRepBuilderAPI_MakeEdge(c2);
+	return std::make_shared<TopoEdge>(edge);
+}
+
+std::shared_ptr<TopoEdge> BRepBuilder::MakeEdge(const TrimmedCurve& c, const CylindricalSurface& s)
+{
+	TopoDS_Edge edge = BRepBuilderAPI_MakeEdge(c.GetShape(), s.GetShape());
 	return std::make_shared<TopoEdge>(edge);
 }
 
@@ -66,6 +70,17 @@ std::shared_ptr<TopoFace> BRepBuilder::MakeFace(const TopoWire& wire)
 {
 	TopoDS_Face face = BRepBuilderAPI_MakeFace(wire.GetWire());
 	return std::make_shared<TopoFace>(face);
+}
+
+std::shared_ptr<TopoShape> BRepBuilder::MakeCompound(const std::vector<std::shared_ptr<TopoShape>>& shapes)
+{
+	TopoDS_Compound res;
+	BRep_Builder builder;
+	builder.MakeCompound(res);
+	for (auto& shape : shapes) {
+		builder.Add(res, shape->GetShape());
+	}
+	return std::make_shared<TopoShape>(res);
 }
 
 }

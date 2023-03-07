@@ -6,6 +6,7 @@ import "partgraph.variant" for VAR_TOPO_EDGE
 import "partgraph" for BRepBuilder
 import "geometry" for Line3D, Arc3D
 import "geograph.variant" for VAR_TYPE_GEO
+import "partgraph.variant" for VAR_GEOM_SHAPE
 
 class Edge is Node
 {
@@ -14,7 +15,8 @@ class Edge is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "geo", VAR_TYPE_GEO),
+			Pin(this, "shape1", [ VAR_TYPE_GEO, VAR_GEOM_SHAPE ]),
+			Pin(this, "shape2", [ VAR_TYPE_GEO, VAR_GEOM_SHAPE ]),
 		]
 		this.exports = [
 			Pin(this, "edge", VAR_TOPO_EDGE),
@@ -25,18 +27,30 @@ class Edge is Node
 
 	calc_value(idx)
 	{
-		var v_geo = Blueprint.calc_input_value(this, 0)
-		if (!v_geo) {
+		var v_shape1 = Blueprint.calc_input_value(this, 0)
+		if (!v_shape1) {
 			return nil
 		}
 
 		var edge = nil
-
-		var geo = v_geo.value.shape
-		if (geo is Line3D) {
-			edge = BRepBuilder.make_edge_from_line(geo)
-		} else if (geo is Arc3D) {
-			edge = BRepBuilder.make_edge_from_arc(geo)
+		if (v_shape1.type == VAR_TYPE_GEO)
+		{
+			var shape1 = v_shape1.value.shape
+			if (shape1 is Line3D) {
+				edge = BRepBuilder.make_edge_from_line(shape1)
+			} else if (shape1 is Arc3D) {
+				edge = BRepBuilder.make_edge_from_arc(shape1)
+			}
+		}
+		else if (v_shape1.type == VAR_GEOM_SHAPE)
+		{
+			var v_shape2 = Blueprint.calc_input_value(this, 1)
+			if (v_shape2 and v_shape2.type == VAR_GEOM_SHAPE) 
+			{
+				var c = v_shape1.value
+				var s = v_shape2.value
+				edge = BRepBuilder.make_edge_from_curve_surf(c, s)
+			}
 		}
 
 		if (edge) {

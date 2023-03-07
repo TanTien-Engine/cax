@@ -1,0 +1,43 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_NUMBER2
+import "blueprint.node_helper" for NodeHelper
+import "partgraph.variant" for VAR_GEOM_SHAPE
+import "maths.vector" for Vector2
+import "partgraph" for EllipseCurve as tt_EllipseCurve
+
+class EllipseCurve is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "pos",   VAR_TYPE_NUMBER2),
+			Pin(this, "dir",   VAR_TYPE_NUMBER2),
+			Pin(this, "major", VAR_TYPE_NUMBER),
+			Pin(this, "minor", VAR_TYPE_NUMBER),			
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_GEOM_SHAPE),
+		]
+
+		this.params.add(NodeParam("pos", Vector2(0, 0), { "region" : 1 }))
+		this.params.add(NodeParam("dir", Vector2(1, 1), { "region" : 1 }))
+		this.params.add(NodeParam("major", 3.14, { "region" : 6.28 }))
+		this.params.add(NodeParam("minor", 0, { "region" : 6.28 }))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var pos = NodeHelper.calc_prop_value(this, "pos")
+		var dir = NodeHelper.calc_prop_value(this, "dir")
+		var major = NodeHelper.calc_prop_value(this, "major")
+		var minor = NodeHelper.calc_prop_value(this, "minor")
+		var shape = tt_EllipseCurve.init([pos.x, pos.y], [dir.x, dir.y], major, minor)
+		return Variant(VAR_GEOM_SHAPE, shape)
+	}
+}

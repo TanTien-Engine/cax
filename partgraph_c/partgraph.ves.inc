@@ -1,5 +1,20 @@
 #define QUOTE(...) #__VA_ARGS__
 static const char* partgraphModuleSource = QUOTE(
+	
+foreign class CylindricalSurface
+{
+	init(pos, dir, radius) {}
+}
+
+foreign class EllipseCurve
+{
+	init(pos, dir, major, minor) {}
+}
+
+foreign class TrimmedCurve
+{
+	init(curve, u1, u2) {}
+}
 
 foreign class TopoShape
 {
@@ -35,15 +50,19 @@ foreign class BRepBuilder
 {
 	foreign static make_edge_from_line(line)
 	foreign static make_edge_from_arc(arc)
+	foreign static make_edge_from_curve_surf(c, s)
 
 	foreign static make_wire(edges)
 	foreign static make_face(wire)
+
+	foreign static make_compound(shapes)
 }
 
 foreign class PrimMaker
 {
 	foreign static box(length, width, height)
 	foreign static cylinder(radius, length)
+	foreign static threading(thickness, height)
 }
 
 foreign class BRepSelector

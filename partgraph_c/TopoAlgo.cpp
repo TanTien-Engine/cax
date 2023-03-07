@@ -1,5 +1,6 @@
 #include "TopoAlgo.h"
 #include "TopoDataset.h"
+#include "occt_adapter.h"
 
 // OCCT
 #include <BRepFilletAPI_MakeFillet.hxx>
@@ -15,21 +16,6 @@
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
-
-namespace
-{
-
-gp_Vec trans_vec(const sm::vec3& v)
-{
-    return gp_Vec(v.x, v.y, v.z);
-}
-
-gp_Pnt trans_pnt(const sm::vec3& v)
-{
-    return gp_Pnt(v.x, v.y, v.z);
-}
-
-}
 
 namespace partgraph
 {

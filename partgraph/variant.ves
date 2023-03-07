@@ -3,3 +3,5 @@ var VAR_TOPO_WIRE = "topo_wire"
 var VAR_TOPO_FACE = "topo_face"
 
 var VAR_TOPO_SHAPE = "topo_shape"
+
+var VAR_GEOM_SHAPE = "geom_shape"

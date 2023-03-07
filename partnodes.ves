@@ -2,9 +2,11 @@ import "partgraph.nodes.*"
 
 var PART_NODES = [
 // BRep
-Edge, Wire, Face,
+Edge, Wire, Face, Compound,
 // Prim
-Box, Cylinder,
+Box, Cylinder, Threading,
+// Geom
+CylindricalSurface, EllipseCurve, TrimmedCurve,
 // DressUpFeatures
 Chamfer, Fillet, Draft, Shelling,
 // SketchBasedFeatures

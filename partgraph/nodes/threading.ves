@@ -1,0 +1,40 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.blueprint" for Blueprint
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph" for PrimMaker
+
+class Threading is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "thickness", VAR_TYPE_NUMBER),
+			Pin(this, "height", VAR_TYPE_NUMBER),			
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_thickness = Blueprint.calc_input_value(this, 0)
+		if (!v_thickness) {
+			return nil
+		}
+		var v_height = Blueprint.calc_input_value(this, 1)
+		if (!v_height) {
+			return nil
+		}
+
+		var shape = PrimMaker.threading(v_thickness.value, v_height.value)
+		return Variant(VAR_TOPO_SHAPE, shape)
+	}
+}
