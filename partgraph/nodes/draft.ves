@@ -41,7 +41,11 @@ class Draft is Node
 		var dir = NodeHelper.calc_prop_value(this, "dir")
 		var angle = NodeHelper.calc_prop_value(this, "angle")
 		var length = NodeHelper.calc_prop_value(this, "length")		
-		var ret = TopoAlgo.draft(v_shape.value, [ dir.x, dir.z, dir.y ], angle, length)
-		return Variant(VAR_TOPO_SHAPE, ret)
+		var shape = TopoAlgo.draft(v_shape.value, [ dir.x, dir.z, dir.y ], angle, length)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }

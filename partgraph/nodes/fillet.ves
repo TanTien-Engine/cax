@@ -34,7 +34,11 @@ class Fillet is Node
 		}
 
 		var radius = NodeHelper.calc_prop_value(this, "radius")
-		var ret = TopoAlgo.fillet(v_shape.value, radius)
-		return Variant(VAR_TOPO_SHAPE, ret)
+		var shape = TopoAlgo.fillet(v_shape.value, radius)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }

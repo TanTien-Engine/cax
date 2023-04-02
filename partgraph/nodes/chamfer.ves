@@ -32,7 +32,11 @@ class Chamfer is Node
 		}
 
 		var dist = this.query_param("dist").value
-		var ret = TopoAlgo.chamfer(v_shape.value, dist)
-		return Variant(VAR_TOPO_SHAPE, ret)
+		var shape = TopoAlgo.chamfer(v_shape.value, dist)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }

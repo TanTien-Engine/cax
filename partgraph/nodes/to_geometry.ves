@@ -36,8 +36,12 @@ class ToGeometry is Node
 			geo = TopoAdapter.build_wire_geo(v_topo.value)
 		}
 
-		var v_geo = VarGeo()
-		v_geo.shape = geo
-		return Variant(VAR_TYPE_GEO, v_geo)
+		if (geo) {
+			var v_geo = VarGeo()
+			v_geo.shape = geo
+			return Variant(VAR_TYPE_GEO, v_geo)
+		} else {
+			return nil
+		}
 	}
 }

@@ -40,7 +40,11 @@ class Mirror is Node
 
 		var pos = this.query_param("pos").value
 		var dir = this.query_param("dir").value
-		var obj = TopoAlgo.mirror(v_obj.value, [ pos.x, pos.z, pos.y], [ dir.x, dir.z, dir.y ])
-		return Variant(type, obj)
+		var shape = TopoAlgo.mirror(v_obj.value, [ pos.x, pos.z, pos.y], [ dir.x, dir.z, dir.y ])
+		if (shape) {
+			return Variant(type, shape)
+		} else {
+			return nil
+		}
 	}
 }

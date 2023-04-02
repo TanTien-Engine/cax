@@ -33,6 +33,10 @@ class Cylinder is Node
 		var radius = NodeHelper.calc_prop_value(this, "radius")
 		var length = NodeHelper.calc_prop_value(this, "length")
 		var shape = PrimMaker.cylinder(radius, length)
-		return Variant(VAR_TOPO_SHAPE, shape)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }

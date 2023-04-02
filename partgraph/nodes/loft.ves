@@ -35,7 +35,11 @@ class Loft is Node
 		}
 
 		var shape = TopoAlgo.thru_sections(wires)
-		return Variant(VAR_TOPO_SHAPE, shape)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 
 	on_connected(pin)

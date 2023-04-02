@@ -35,6 +35,6 @@ class CylindricalSurface is Node
 		var dir = NodeHelper.calc_prop_value(this, "dir")
 		var radius = NodeHelper.calc_prop_value(this, "radius")
 		var shape = tt_CylindricalSurface.init([pos.x, pos.y, pos.z], [dir.x, dir.y, dir.z], radius)
-		return Variant(VAR_GEOM_SHAPE, shape)
+		return shape
 	}
 }

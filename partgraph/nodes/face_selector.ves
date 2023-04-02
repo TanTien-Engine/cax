@@ -29,6 +29,10 @@ class FaceSelector is Node
 		}
 
 		var face = BRepSelector.select_face(v_shape.value)
-		return Variant(VAR_TOPO_FACE, face)
+		if (face) {
+			return Variant(VAR_TOPO_FACE, face)
+		} else {
+			return nil
+		}
 	}
 }

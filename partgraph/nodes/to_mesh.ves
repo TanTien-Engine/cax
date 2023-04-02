@@ -30,6 +30,10 @@ class ToMesh is Node
 		}
 
 		var va = TopoAdapter.build_mesh(v_shape.value)
-		return Variant(VAR_TYPE_VERTEX_ARRAY, va)
+		if (va) {
+			return Variant(VAR_TYPE_VERTEX_ARRAY, va)
+		} else {
+			return nil
+		}
 	}	
 }

@@ -39,6 +39,10 @@ class TrimmedCurve is Node
 		var u2 = NodeHelper.calc_prop_value(this, "u2")
 
 		var shape = tt_TrimmedCurve.init(v_curve.value, u1, u2)
-		return Variant(VAR_GEOM_SHAPE, shape)
+		if (shape) {
+			return Variant(VAR_GEOM_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }

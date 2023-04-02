@@ -40,7 +40,11 @@ class Shelling is Node
 		}
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")		
-		var ret = TopoAlgo.thick_solid(v_shape.value, v_face.value, offset)
-		return Variant(VAR_TOPO_SHAPE, ret)
+		var shape = TopoAlgo.thick_solid(v_shape.value, v_face.value, offset)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }

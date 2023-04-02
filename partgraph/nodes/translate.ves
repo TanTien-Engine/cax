@@ -36,6 +36,10 @@ class Translate is Node
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var shape = TopoAlgo.translate(v_shape.value, offset.x, offset.z, offset.y)
-		return Variant(VAR_TOPO_SHAPE, shape)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }

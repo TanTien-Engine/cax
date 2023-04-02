@@ -33,7 +33,11 @@ class Common is Node
 			return nil
 		}
 
-		var ret = TopoAlgo.common(v_a.value, v_b.value)
-		return Variant(VAR_TOPO_SHAPE, ret)
+		var shape = TopoAlgo.common(v_a.value, v_b.value)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
 	}
 }
