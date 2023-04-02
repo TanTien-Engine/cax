@@ -2,9 +2,9 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
-import "blueprint.variant" for Variant
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "maths.vector" for Vector3
 import "partgraph" for PrimMaker
 
 class Box is Node
@@ -13,19 +13,28 @@ class Box is Node
 	{
 		super.init()
 
+		this.imports = [
+			Pin(this, "length", VAR_TYPE_NUMBER),
+			Pin(this, "width",  VAR_TYPE_NUMBER),
+			Pin(this, "height", VAR_TYPE_NUMBER),
+		]
 		this.exports = [
 			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 
-		this.params.add(NodeParam("size", Vector3(1, 1, 1), { "region" : 1 }))
+		this.params.add(NodeParam("length", 1.0, { "region" : 2 }))
+		this.params.add(NodeParam("width",  1.0, { "region" : 2 }))
+		this.params.add(NodeParam("height", 1.0, { "region" : 2 }))
 
 		this.layout()
 	}
 
 	calc_value(idx)
 	{
-		var v_size = this.query_param("size").value
-		var shape = PrimMaker.box(v_size.x, v_size.z, v_size.y)
+		var length = NodeHelper.calc_prop_value(this, "length")
+		var width  = NodeHelper.calc_prop_value(this, "width")
+		var height = NodeHelper.calc_prop_value(this, "height")
+		var shape = PrimMaker.box(length, height, width)
 		return Variant(VAR_TOPO_SHAPE, shape)
 	}
 }

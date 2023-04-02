@@ -1,5 +1,7 @@
 var node0 = ::partgraph::nodes::box::Box()
-node0.query_param("size").value.set(1, 1, 1)
+node0.query_param("length").value = 1
+node0.query_param("width").value = 1
+node0.query_param("height").value = 1
 
 _editor.add_node(node0, -782.21641512105, 94.621549372812)
 
