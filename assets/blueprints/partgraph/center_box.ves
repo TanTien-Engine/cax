@@ -1,0 +1,69 @@
+var node0 = ::partgraph::nodes::box::Box()
+node0.query_param("length").value = 1.0102632045746
+node0.query_param("width").value = 1
+node0.query_param("height").value = 1
+
+_editor.add_node(node0, 83.459460431515, 24.16440512329)
+
+var node1 = ::blueprint::nodes::output::Output()
+
+node1.var_name = "shape"
+node1.var_type = "topo_shape"
+
+_editor.add_node(node1, 644.08712649979, -85.356285809777)
+
+var node2 = ::blueprint::nodes::input::Input()
+
+node2.var_name = "length"
+node2.var_type = "num"
+
+_editor.add_node(node2, -98.784815744698, 101.67106910867)
+
+var node3 = ::blueprint::nodes::input::Input()
+
+node3.var_name = "width"
+node3.var_type = "num"
+
+_editor.add_node(node3, -100.56548734633, 30.588402148558)
+
+var node4 = ::blueprint::nodes::input::Input()
+
+node4.var_name = "height"
+node4.var_type = "num"
+
+_editor.add_node(node4, -95.272312381229, -36.856818050628)
+
+var node5 = ::partgraph::nodes::translate::Translate()
+node5.query_param("offset").value.set(0, 0, 0)
+
+_editor.add_node(node5, 508.8130405872, -127.11172169612)
+
+var node6 = ::blueprint::nodes::combine::Combine()
+
+_editor.add_node(node6, 85.285174576956, -131.64237481897)
+
+var node7 = ::blueprint::nodes::divide::Divide()
+
+_editor.add_node(node7, 230.4479712241, -154.27225146775)
+
+var node8 = ::blueprint::nodes::integer::Integer()
+
+node8.value = 2
+
+_editor.add_node(node8, 89.696389429954, -249.8658977748)
+
+var node9 = ::blueprint::nodes::negate::Negate()
+
+_editor.add_node(node9, 364.13232559862, -141.15950397507)
+
+Blueprint.connect(node2, "var", node6, "x")
+Blueprint.connect(node4, "var", node6, "z")
+Blueprint.connect(node6, "xyz", node7, "a")
+Blueprint.connect(node8, "v", node7, "b")
+Blueprint.connect(node7, "v", node9, "v")
+Blueprint.connect(node2, "var", node0, "length")
+Blueprint.connect(node3, "var", node0, "width")
+Blueprint.connect(node4, "var", node0, "height")
+Blueprint.connect(node0, "shape", node5, "shape")
+Blueprint.connect(node9, "v", node5, "offset")
+Blueprint.connect(node5, "shape", node1, "var")
