@@ -3,11 +3,11 @@ node0.query_param("length").value = 0.47211167216301
 node0.query_param("width").value = 0.4609442949295
 node0.query_param("height").value = 0.41649982333183
 
-_editor.add_node(node0, -682.490030645, -202.210010917)
+_editor.add_node(node0, -431.105524745, 158.302652583)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
-_editor.add_node(node1, -376.28500103624, -52.812778611084)
+_editor.add_node(node1, -124.90049513624, 307.69988488892)
 
 var node2 = ::blueprint::nodes::camera3d::Camera3d()
 
@@ -18,32 +18,32 @@ node2.cam.zoom = 45
 node2.cam.update_vectors()
 node2.speed = 0.30111083388329
 
-_editor.add_node(node2, -58.76145933173, -328.38079140769)
+_editor.add_node(node2, 192.62304656827, 32.13187209231)
 
 var node3 = ::blueprint::nodes::cache::Cache()
 node3.query_param("disable").value = false
 
-_editor.add_node(node3, -64.34015515672, -180.29329519434)
+_editor.add_node(node3, 187.04435074328, 180.21936830566)
 
 var node4 = ::partgraph::nodes::to_mesh::ToMesh()
 
-_editor.add_node(node4, -519.324100645, -233.379010917)
+_editor.add_node(node4, -267.939594745, 127.133652583)
 
 var node5 = ::blueprint::nodes::merge::Merge()
 
-_editor.add_node(node5, -204.45470105516, -192.19556936427)
+_editor.add_node(node5, 46.92980484484, 168.31709413573)
 
 var node6 = ::partgraph::nodes::mirror::Mirror()
 node6.query_param("pos").value.set(0, 0, 0)
 node6.query_param("dir").value.set(0, 0, 1)
 
-_editor.add_node(node6, -532.8465529585, -113.96216846975)
+_editor.add_node(node6, -281.4620470585, 246.55049503025)
 
 var node7 = ::blueprint::nodes::subgraph::Subgraph()
 node7.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
 node7.set_prop_value("no_bg", false)
 
-_editor.add_node(node7, 140.64312646484, -232.85926928711)
+_editor.add_node(node7, 392.02763236484, 127.65339421289)
 
 Blueprint.connect(node0, "shape", node6, "obj")
 Blueprint.connect(node6, "obj", node1, "shape")

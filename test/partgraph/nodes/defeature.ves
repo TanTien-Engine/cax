@@ -3,26 +3,26 @@ node0.query_param("length").value = 1
 node0.query_param("width").value = 1
 node0.query_param("height").value = 0.871337890625
 
-_editor.add_node(node0, -468.4204, -61.6124)
+_editor.add_node(node0, -356.4204, 90.3876)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
-_editor.add_node(node1, -176.13247, -26.8073)
+_editor.add_node(node1, -64.13247, 125.1927)
 
 var node2 = ::blueprint::nodes::cache::Cache()
 node2.query_param("disable").value = false
 
-_editor.add_node(node2, -27.27052451172, -34.89568427734)
+_editor.add_node(node2, 84.72947548828, 117.10431572266)
 
 var node3 = ::blueprint::nodes::subgraph::Subgraph()
 node3.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
 node3.set_prop_value("no_bg", false)
 
-_editor.add_node(node3, 171.8987796875, -88.081716992187)
+_editor.add_node(node3, 283.8987796875, 63.918283007813)
 
 var node4 = ::partgraph::nodes::defeature::Defeature()
 
-_editor.add_node(node4, -322, -29)
+_editor.add_node(node4, -210, 123)
 
 var node5 = ::blueprint::nodes::camera3d::Camera3d()
 
@@ -33,7 +33,7 @@ node5.cam.zoom = 45
 node5.cam.update_vectors()
 node5.speed = 0.31119003891945
 
-_editor.add_node(node5, -27.566604614258, -174.53590393066)
+_editor.add_node(node5, 84.433395385742, -22.53590393066)
 
 Blueprint.connect(node0, "shape", node4, "shape")
 Blueprint.connect(node4, "shape", node1, "shape")
