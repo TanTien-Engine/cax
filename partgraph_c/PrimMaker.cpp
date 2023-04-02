@@ -6,6 +6,9 @@
 // OCCT
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
+#include <BRepPrimAPI_MakeCone.hxx>
+#include <BRepPrimAPI_MakeSphere.hxx>
+#include <BRepPrimAPI_MakeTorus.hxx>
 // fixme
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom2d_Ellipse.hxx>
@@ -40,6 +43,71 @@ std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length)
         shape = std::make_shared<partgraph::TopoShape>(cylinder);
     } catch (Standard_Failure& e) {
         LOGI("Build cylinder fail: %s", e.GetMessageString());
+    }
+
+    return shape;
+}
+
+std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height)
+{
+    std::shared_ptr<TopoShape> shape = nullptr;
+    try {
+        TopoDS_Shape cone = BRepPrimAPI_MakeCone(r1, r2, height);
+        shape = std::make_shared<partgraph::TopoShape>(cone);
+    } catch (Standard_Failure& e) {
+        LOGI("Build cone fail: %s", e.GetMessageString());
+    }
+
+    return shape;
+}
+
+std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius)
+{
+    std::shared_ptr<TopoShape> shape = nullptr;
+    try {
+        TopoDS_Shape sphere = BRepPrimAPI_MakeSphere(radius);
+        shape = std::make_shared<partgraph::TopoShape>(sphere);
+    } catch (Standard_Failure& e) {
+        LOGI("Build sphere fail: %s", e.GetMessageString());
+    }
+
+    return shape;
+}
+
+std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle)
+{
+    std::shared_ptr<TopoShape> shape = nullptr;
+    try {
+        TopoDS_Shape sphere = BRepPrimAPI_MakeSphere(radius, angle);
+        shape = std::make_shared<partgraph::TopoShape>(sphere);
+    } catch (Standard_Failure& e) {
+        LOGI("Build sphere fail: %s", e.GetMessageString());
+    }
+
+    return shape;
+}
+
+std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2)
+{
+    std::shared_ptr<TopoShape> shape = nullptr;
+    try {
+        TopoDS_Shape torus = BRepPrimAPI_MakeTorus(r1, r2);
+        shape = std::make_shared<partgraph::TopoShape>(torus);
+    } catch (Standard_Failure& e) {
+        LOGI("Build torus fail: %s", e.GetMessageString());
+    }
+
+    return shape;
+}
+
+std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle)
+{
+    std::shared_ptr<TopoShape> shape = nullptr;
+    try {
+        TopoDS_Shape torus = BRepPrimAPI_MakeTorus(r1, r2, angle);
+        shape = std::make_shared<partgraph::TopoShape>(torus);
+    } catch (Standard_Failure& e) {
+        LOGI("Build torus fail: %s", e.GetMessageString());
     }
 
     return shape;

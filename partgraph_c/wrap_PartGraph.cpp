@@ -149,6 +149,126 @@ void w_PrimMaker_cylinder()
     return_topo_shape(shape);
 }
 
+void w_PrimMaker_cone()
+{
+    double radius1 = ves_tonumber(1);
+    double radius2 = ves_tonumber(2);
+    double height = ves_tonumber(3);
+
+    bool skip = false;
+    if (radius1 < Precision::Confusion()) {
+        LOGI("Radius1 of Cone too small");
+        skip = true;
+    }
+    if (radius2 < Precision::Confusion()) {
+        LOGI("Radius2 of Cone too small");
+        skip = true;
+    }
+    if (height < Precision::Confusion()) {
+        LOGI("Height of Cone too small");
+        skip = true;
+    }
+    if (skip) {
+        ves_set_nil(0);
+        return;
+    }
+
+    auto shape = partgraph::PrimMaker::Cone(radius1, radius2, height);
+    return_topo_shape(shape);
+}
+
+void w_PrimMaker_sphere()
+{
+    double radius = ves_tonumber(1);
+
+    bool skip = false;
+    if (radius < Precision::Confusion()) {
+        LOGI("Radius of sphere too small");
+        skip = true;
+    }
+    if (skip) {
+        ves_set_nil(0);
+        return;
+    }
+
+    auto shape = partgraph::PrimMaker::Sphere(radius);
+    return_topo_shape(shape);
+}
+
+void w_PrimMaker_sphere_with_angle()
+{
+    double radius = ves_tonumber(1);
+    double angle = ves_tonumber(2);
+
+    bool skip = false;
+    if (radius < Precision::Confusion()) {
+        LOGI("Radius of sphere too small");
+        skip = true;
+    }
+    if (angle < Precision::Confusion()) {
+        LOGI("Angle of sphere too small");
+        skip = true;
+    }
+    if (skip) {
+        ves_set_nil(0);
+        return;
+    }
+
+    auto shape = partgraph::PrimMaker::Sphere(radius, angle);
+    return_topo_shape(shape);
+}
+
+void w_PrimMaker_torus()
+{
+    double r1 = ves_tonumber(1);
+    double r2 = ves_tonumber(2);
+
+    bool skip = false;
+    if (r1 < Precision::Confusion()) {
+        LOGI("R1 of torus too small");
+        skip = true;
+    }
+    if (r2 < Precision::Confusion()) {
+        LOGI("R2 of torus too small");
+        skip = true;
+    }
+    if (skip) {
+        ves_set_nil(0);
+        return;
+    }
+
+    auto shape = partgraph::PrimMaker::Torus(r1, r2);
+    return_topo_shape(shape);
+}
+
+void w_PrimMaker_torus_with_angle()
+{
+    double r1 = ves_tonumber(1);
+    double r2 = ves_tonumber(2);
+    double angle = ves_tonumber(3);
+
+    bool skip = false;
+    if (r1 < Precision::Confusion()) {
+        LOGI("R1 of torus too small");
+        skip = true;
+    }
+    if (r2 < Precision::Confusion()) {
+        LOGI("R2 of torus too small");
+        skip = true;
+    }
+    if (angle < Precision::Confusion()) {
+        LOGI("Angle of torus too small");
+        skip = true;
+    }
+    if (skip) {
+        ves_set_nil(0);
+        return;
+    }
+
+    auto shape = partgraph::PrimMaker::Torus(r1, r2, angle);
+    return_topo_shape(shape);
+}
+
 void w_PrimMaker_threading()
 {
     double thickness = ves_tonumber(1);
@@ -485,6 +605,11 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
     if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
+    if (strcmp(signature, "static PrimMaker.cone(_,_,_)") == 0) return w_PrimMaker_cone;
+    if (strcmp(signature, "static PrimMaker.sphere(_)") == 0) return w_PrimMaker_sphere;
+    if (strcmp(signature, "static PrimMaker.sphere_with_angle(_,_)") == 0) return w_PrimMaker_sphere_with_angle;
+    if (strcmp(signature, "static PrimMaker.torus(_,_)") == 0) return w_PrimMaker_torus;
+    if (strcmp(signature, "static PrimMaker.torus_with_angle(_,_,_)") == 0) return w_PrimMaker_torus_with_angle;
     if (strcmp(signature, "static PrimMaker.threading(_,_)") == 0) return w_PrimMaker_threading;
 
     if (strcmp(signature, "static BRepSelector.select_face(_)") == 0) return w_BRepSelector_select_face;

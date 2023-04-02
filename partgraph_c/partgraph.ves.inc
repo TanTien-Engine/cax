@@ -62,6 +62,12 @@ foreign class PrimMaker
 {
 	foreign static box(length, width, height)
 	foreign static cylinder(radius, length)
+	foreign static cone(radius1, radius2, height)
+	foreign static sphere(radius)
+	foreign static sphere_with_angle(radius, angle)
+	foreign static torus(r1, r2)
+	foreign static torus_with_angle(r1, r2, angle)
+
 	foreign static threading(thickness, height)
 }
 

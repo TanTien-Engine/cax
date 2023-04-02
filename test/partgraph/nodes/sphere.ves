@@ -1,0 +1,34 @@
+var node0 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node0, 47.38794, 101.03787)
+
+var node1 = ::blueprint::nodes::camera3d::Camera3d()
+
+node1.cam.position.set(-0.16724301521865, -2.9713087620972, 2.9199762745585)
+node1.cam.yaw = -89.7
+node1.cam.pitch = 44.8
+node1.cam.zoom = 45
+node1.cam.update_vectors()
+node1.speed = 0.30111083388329
+
+_editor.add_node(node1, 175.72949040418, -47.24701049069)
+
+var node2 = ::blueprint::nodes::cache::Cache()
+node2.query_param("disable").value = false
+
+_editor.add_node(node2, 178.94988548828, 90.94948572266)
+
+var node3 = ::partgraph::nodes::sphere::Sphere()
+
+_editor.add_node(node3, -109.4902126937, 82.51895272813)
+
+var node4 = ::blueprint::nodes::subgraph::Subgraph()
+node4.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node4.set_prop_value("no_bg", false)
+
+_editor.add_node(node4, 367.56660179687, 33.580594731445)
+
+Blueprint.connect(node3, "shape", node0, "shape")
+Blueprint.connect(node0, "va", node2, "var")
+Blueprint.connect(node2, "var", node4, "geos")
+Blueprint.connect(node1, "this", node4, "view_cam")
