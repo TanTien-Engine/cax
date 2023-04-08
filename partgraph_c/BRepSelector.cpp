@@ -5,11 +5,13 @@
 // OCCT
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopExp.hxx>
 #include <BRep_Tool.hxx>
 #include <Geom_Plane.hxx>
+#include <Geom_Line.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
-#include <TopExp.hxx>
 #include <BRepIntCurveSurface_Inter.hxx>
+#include <GeomAPI_ExtremaCurveCurve.hxx>
 
 namespace partgraph
 {
@@ -125,6 +127,43 @@ std::shared_ptr<TopoFace> BRepSelector::SelectFace(const std::shared_ptr<TopoSha
     }
 
     return min_dist == DBL_MAX ? nullptr : std::make_shared<TopoFace>(selected);
+}
+
+std::shared_ptr<TopoEdge> BRepSelector::SelectEdge(const std::shared_ptr<TopoShape>& shape, const sm::Ray& ray)
+{
+    gp_Pnt pos = trans_pnt(ray.origin);
+    gp_Dir dir = trans_dir(ray.dir);
+    gp_Lin line(pos, dir);
+    Handle(Geom_Line) geom_line = new Geom_Line(line);
+
+    TopoDS_Edge selected;
+    double min_dist = DBL_MAX;
+
+    for (TopExp_Explorer edge_explorer(shape->GetShape(), TopAbs_EDGE); edge_explorer.More(); edge_explorer.Next())
+    {
+        TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
+        Standard_Real f, l;
+        auto curve = BRep_Tool::Curve(edge, f, l);
+
+        GeomAPI_ExtremaCurveCurve inter(curve, geom_line, f, l, 0, 10);
+        gp_Pnt p1, p2;
+        if (inter.TotalNearestPoints(p1, p2))
+        {
+            const double uncertainty = p1.Distance(p2);
+            if (uncertainty < 0.01)
+            {
+                gp_Pnt p = 0.5 * (p1.XYZ() + p2.XYZ());
+                double dist = p.Distance(pos);
+                if (dist < min_dist)
+                {
+                    selected = edge;
+                    min_dist = dist;
+                }
+            }
+        }
+    }
+
+    return min_dist == DBL_MAX ? nullptr : std::make_shared<TopoEdge>(selected);
 }
 
 }

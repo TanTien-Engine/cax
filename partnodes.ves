@@ -16,7 +16,7 @@ Translate, Mirror,
 // SketchBasedFeatures
 Loft,
 // Selector
-FaceSelector,
+FaceSelector, EdgeSelector,
 // Tools
 ToMesh, ToGeometry, Defeature,
 ]

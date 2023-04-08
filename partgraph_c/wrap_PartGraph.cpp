@@ -5,6 +5,7 @@
 #include "BRepBuilder.h"
 #include "TopoAlgo.h"
 #include "BRepSelector.h"
+#include "BRepTools.h"
 #include "GeomDataset.h"
 #include "modules/script/TransHelper.h"
 
@@ -287,12 +288,49 @@ void w_BRepSelector_select_face()
     return_topo_face(face);
 }
 
+void w_BRepSelector_select_edge()
+{
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto pos = tt::list_to_vec3(2);
+    auto dir = tt::list_to_vec3(3);
+
+    auto edge = partgraph::BRepSelector::SelectEdge(shape, sm::Ray(pos, dir));
+    return_topo_edge(edge);
+}
+
+void w_BRepTools_find_edge_idx()
+{
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto edge = ((tt::Proxy<partgraph::TopoEdge>*)ves_toforeign(2))->obj;
+    int idx = partgraph::BRepTools::FindEdgeIdx(shape, edge);
+    ves_set_number(0, idx);
+}
+
+void w_BRepTools_find_edge_key()
+{
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    int idx = (int)ves_tonumber(2);
+    auto edge = partgraph::BRepTools::FindEdgeKey(shape, idx);
+    return_topo_edge(edge);
+}
+
 void w_TopoAlgo_fillet()
 {
     auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double thickness = ves_tonumber(2);
 
     auto dst = partgraph::TopoAlgo::Fillet(src, thickness);
+    return_topo_shape(dst);
+}
+
+void w_TopoAlgo_fillet_with_edges()
+{
+    auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    double thickness = ves_tonumber(2);
+    std::vector<std::shared_ptr<partgraph::TopoEdge>> edges;
+    tt::list_to_foreigns(3, edges);
+
+    auto dst = partgraph::TopoAlgo::Fillet(src, thickness, edges);
     return_topo_shape(dst);
 }
 
@@ -616,8 +654,13 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static PrimMaker.threading(_,_)") == 0) return w_PrimMaker_threading;
 
     if (strcmp(signature, "static BRepSelector.select_face(_,_,_)") == 0) return w_BRepSelector_select_face;
+    if (strcmp(signature, "static BRepSelector.select_edge(_,_,_)") == 0) return w_BRepSelector_select_edge;
+
+    if (strcmp(signature, "static BRepTools.find_edge_idx(_,_)") == 0) return w_BRepTools_find_edge_idx;
+    if (strcmp(signature, "static BRepTools.find_edge_key(_,_)") == 0) return w_BRepTools_find_edge_key;
 
     if (strcmp(signature, "static TopoAlgo.fillet(_,_)") == 0) return w_TopoAlgo_fillet;
+    if (strcmp(signature, "static TopoAlgo.fillet(_,_,_)") == 0) return w_TopoAlgo_fillet_with_edges;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_)") == 0) return w_TopoAlgo_chamfer;
     if (strcmp(signature, "static TopoAlgo.extrude(_,_,_,_)") == 0) return w_TopoAlgo_extrude;
     if (strcmp(signature, "static TopoAlgo.cut(_,_)") == 0) return w_TopoAlgo_cut;

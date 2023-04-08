@@ -74,11 +74,19 @@ foreign class PrimMaker
 foreign class BRepSelector
 {
 	foreign static select_face(shape, pos, dir)
+	foreign static select_edge(shape, pos, dir)
+}
+
+foreign class BRepTools
+{
+	foreign static find_edge_idx(shape, key)
+	foreign static find_edge_key(shape, idx)
 }
 
 foreign class TopoAlgo
 {
 	foreign static fillet(shape, radius)
+	foreign static fillet(shape, radius, edges)
 	foreign static chamfer(shape, dist)
 
 	// sweep
@@ -97,7 +105,6 @@ foreign class TopoAlgo
 	foreign static draft(shape, dir, angle, len)
 	foreign static thick_solid(shape, face, offset)
 	foreign static thru_sections(wires)
-
 }
 
 foreign class TopoAdapter

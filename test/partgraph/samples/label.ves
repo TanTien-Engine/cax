@@ -7,13 +7,13 @@ _editor.add_node(node0, -453.25738219335, 81.688190721739)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
-_editor.add_node(node1, 233.19797352892, -60.674219694224)
+_editor.add_node(node1, 254.10706443801, -24.310583330588)
 
 var node2 = ::blueprint::nodes::camera3d::Camera3d()
 
-node2.cam.position.set(-2.0511153420685, 1.1893428918681, -1.8441220619536)
-node2.cam.yaw = -315.4
-node2.cam.pitch = -9.4
+node2.cam.position.set(-0.94501332607341, 2.1474238232043, -2.0505494271936)
+node2.cam.yaw = -298.1
+node2.cam.pitch = -29.2
 node2.cam.zoom = 45
 node2.cam.update_vectors()
 node2.speed = 0.30111083388329
@@ -55,11 +55,11 @@ _editor.add_node(node8, -257.73241491353, -215.51535174262)
 
 var node9 = ::partgraph::nodes::cut::Cut()
 
-_editor.add_node(node9, -77.258559126416, -58.402204811787)
+_editor.add_node(node9, -183.62219549005, -52.038568448151)
 
 var node10 = ::partgraph::nodes::face_selector::FaceSelector()
 
-_editor.add_node(node10, 90.059248318347, -132.88185844673)
+_editor.add_node(node10, 90.059248318347, -134.09185844673)
 
 var node11 = ::partgraph::nodes::edge::Edge()
 
@@ -95,8 +95,23 @@ node17.set_prop_value("no_bg", false)
 
 _editor.add_node(node17, 856.73287772365, -188.3939794672)
 
+var node18 = ::partgraph::nodes::edge_selector::EdgeSelector()
+
+node18.selected_indices = [ 12, 16 ]
+
+_editor.add_node(node18, 11.132231404959, -412.90495867769)
+
+var node19 = ::partgraph::nodes::fillet::Fillet()
+node19.query_param("radius").value = 0.029374185949564
+
+_editor.add_node(node19, 174.67816028658, -399.95377240204)
+
+var node20 = ::blueprint::nodes::cache::Cache()
+node20.query_param("disable").value = false
+
+_editor.add_node(node20, -46.192822543057, -40.101613825018)
+
 Blueprint.connect(node14, "geo", node11, "shape1")
-Blueprint.connect(node11, "edge", node12, "topo")
 Blueprint.connect(node7, "shape", node8, "shape")
 Blueprint.connect(node5, "shape", node6, "shape")
 Blueprint.connect(node12, "geo", node13, "geos")
@@ -105,12 +120,17 @@ Blueprint.connect(node0, "shape", node4, "a")
 Blueprint.connect(node6, "shape", node4, "b")
 Blueprint.connect(node4, "shape", node9, "a")
 Blueprint.connect(node8, "shape", node9, "b")
-Blueprint.connect(node9, "shape", node10, "shape")
+Blueprint.connect(node9, "shape", node20, "var")
+Blueprint.connect(node20, "var", node18, "shape")
+Blueprint.connect(node2, "this", node18, "camera")
+Blueprint.connect(node20, "var", node19, "shape")
+Blueprint.connect(node18, "edges", node19, "edges")
+Blueprint.connect(node19, "shape", node1, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node20, "var", node10, "shape")
 Blueprint.connect(node2, "this", node10, "camera")
 Blueprint.connect(node10, "face", node15, "shape")
 Blueprint.connect(node15, "va", node16, "var")
-Blueprint.connect(node9, "shape", node1, "shape")
-Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node17, "geos")
 Blueprint.connect(node2, "this", node17, "view_cam")
 Blueprint.connect(node16, "var", node17, "selected")

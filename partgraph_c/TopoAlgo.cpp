@@ -41,6 +41,15 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     return std::make_shared<partgraph::TopoShape>(fillet.Shape());
 }
 
+std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius, const std::vector<std::shared_ptr<TopoEdge>>& edges)
+{
+    BRepFilletAPI_MakeFillet fillet(shape->GetShape());
+    for (auto& edge : edges) {
+        fillet.Add(radius, edge->GetEdge());
+    }
+    return std::make_shared<partgraph::TopoShape>(fillet.Shape());
+}
+
 std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& shape, double dist)
 {
     BRepFilletAPI_MakeChamfer chamfer(shape->GetShape());

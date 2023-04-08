@@ -3,7 +3,7 @@ node0.query_param("length").value = 1
 node0.query_param("width").value = 1
 node0.query_param("height").value = 1
 
-_editor.add_node(node0, -391.19438101714, 124.28792647735)
+_editor.add_node(node0, -660.28529010805, 101.56065375008)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
@@ -11,9 +11,9 @@ _editor.add_node(node1, -103.16460278273, 155.72435630455)
 
 var node2 = ::blueprint::nodes::camera3d::Camera3d()
 
-node2.cam.position.set(2.9899784124265, 3.5603630900545, -3.1662389882126)
-node2.cam.yaw = -235.8
-node2.cam.pitch = -37.1
+node2.cam.position.set(2.7877078488159, 3.1123710560839, -2.5217219808004)
+node2.cam.yaw = -231.2
+node2.cam.pitch = -34
 node2.cam.zoom = 19
 node2.cam.update_vectors()
 node2.speed = 0.30111083388329
@@ -36,7 +36,22 @@ node5.set_prop_value("no_bg", false)
 
 _editor.add_node(node5, 232.55063474213, 78.95166183544)
 
-Blueprint.connect(node0, "shape", node4, "shape")
+var node6 = ::blueprint::nodes::cache::Cache()
+node6.query_param("disable").value = false
+
+_editor.add_node(node6, -503.93081942472, 141.70633766868)
+
+var node7 = ::partgraph::nodes::edge_selector::EdgeSelector()
+
+node7.selected_indices = [ 7, 11, 8 ]
+
+_editor.add_node(node7, -273.23064859965, 9.0041188412731)
+
+Blueprint.connect(node0, "shape", node6, "var")
+Blueprint.connect(node6, "var", node7, "shape")
+Blueprint.connect(node2, "this", node7, "camera")
+Blueprint.connect(node6, "var", node4, "shape")
+Blueprint.connect(node7, "edges", node4, "edges")
 Blueprint.connect(node4, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node5, "geos")

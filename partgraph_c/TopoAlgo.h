@@ -11,11 +11,14 @@ namespace partgraph
 class TopoShape;
 class TopoFace;
 class TopoWire;
+class TopoEdge;
 
 class TopoAlgo
 {
 public:
 	static std::shared_ptr<TopoShape> Fillet(const std::shared_ptr<TopoShape>& shape, double radius);
+	static std::shared_ptr<TopoShape> Fillet(const std::shared_ptr<TopoShape>& shape, double radius,
+		const std::vector<std::shared_ptr<TopoEdge>>& edges);
 	static std::shared_ptr<TopoShape> Chamfer(const std::shared_ptr<TopoShape>& shape, double dist);
 
 	static std::shared_ptr<TopoShape> Prism(const std::shared_ptr<TopoFace>& face, double x, double y, double z);
