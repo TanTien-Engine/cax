@@ -1,0 +1,156 @@
+var node0 = ::blueprint::nodes::input::Input()
+
+node0.var_name = "geos"
+node0.var_type = "array"
+
+_editor.add_node(node0, 787.93294950249, -5.7075172787282)
+
+var node1 = ::rendergraph::nodes::draw::Draw()
+
+node1.set_prim_type("triangles")
+node1.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "less", "clip_plane" : false }
+node1.skip = false
+
+_editor.add_node(node1, 784.30380359571, -191.81447758435)
+
+var node2 = ::rendergraph::nodes::shader::Shader()
+node2.query_param("inc_dir").value = ""
+
+node2.vs = "
+#version 330 core
+layout (location = 0) in vec3  aPos;
+
+out VS_OUT {
+    vec3 frag_pos;
+} vs_out;
+
+uniform UBO
+{
+	mat4 model;
+	mat4 view;
+	mat4 projection;
+};
+
+void main()
+{
+	vs_out.frag_pos = vec3(model * vec4(aPos, 1.0));
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+}
+"
+node2.tcs = ""
+node2.tes = ""
+node2.gs = ""
+node2.fs = "
+#version 330 core
+layout (location = 0) out vec3 gMain;
+layout (location = 1) out vec3 gDepth;
+layout (location = 2) out vec3 gNormal;
+
+in VS_OUT {
+    vec3 frag_pos;
+} fs_in;
+
+uniform UBO
+{
+	vec3 light_pos;
+	vec3 light_col;	
+	vec3 cam_pos;
+};
+
+float near = 0.01;
+float far = 100.0; 
+float LinearizeDepth(float depth) 
+{
+    float z = depth * 2.0 - 1.0; // back to NDC 
+    return (2.0 * near * far) / (far + near - z * (far - near));	
+}
+
+void main()
+{
+ 	vec3 dFdxPos = dFdx( fs_in.frag_pos );
+    vec3 dFdyPos = dFdy( fs_in.frag_pos );
+    vec3 N = normalize( cross(dFdxPos,dFdyPos ));
+
+	// ambient
+	vec3 ambient = vec3(0.25) * light_col;
+
+	// diffuse
+	const vec3 LIGHT_POS = vec3(-5.0, -5.0, 10);
+	vec3 light_dir = normalize(light_pos - fs_in.frag_pos);
+    float diff = max(dot(N, light_dir), 0.0);
+    vec3 diffuse = vec3(diff) * light_col;
+
+    // specular
+    vec3 view_dir = normalize(cam_pos - fs_in.frag_pos);
+    vec3 halfway_dir = normalize(light_dir + view_dir);  
+    float spec = pow(max(dot(N, halfway_dir), 0.0), 32.0);
+    vec3 specular = spec * vec3(1.0);
+
+    float depth = LinearizeDepth(gl_FragCoord.z) / far; // divide by far to get depth in range [0,1] for visualization purposes
+    gDepth = vec3(depth);
+
+    gMain = ambient + diffuse + specular; 
+    gNormal = N;
+}
+"
+node2.cs = ""
+node2.render_gen()
+
+_editor.add_node(node2, 498.45756861689, -168.49176664733)
+
+var node3 = ::blueprint::nodes::for_each::ForEach()
+
+_editor.add_node(node3, 953.12595909642, -22.086393026029)
+
+var node4 = ::blueprint::nodes::input::Input()
+
+node4.var_name = "model"
+node4.var_type = "mat4"
+
+_editor.add_node(node4, 190.46339958758, -26.218384293485)
+
+var node5 = ::blueprint::nodes::input::Input()
+
+node5.var_name = "view"
+node5.var_type = "mat4"
+
+_editor.add_node(node5, 322.19894787496, -25.309318353322)
+
+var node6 = ::blueprint::nodes::input::Input()
+
+node6.var_name = "light_pos"
+node6.var_type = "num3"
+
+_editor.add_node(node6, 325.50472467596, -101.50765158913)
+
+var node7 = ::blueprint::nodes::input::Input()
+
+node7.var_name = "light_col"
+node7.var_type = "num3"
+
+_editor.add_node(node7, 189.14109940962, -166.05307839134)
+
+var node8 = ::blueprint::nodes::input::Input()
+
+node8.var_name = "cam_pos"
+node8.var_type = "num3"
+
+_editor.add_node(node8, 326.41382945668, -167.87128795277)
+
+var node9 = ::blueprint::nodes::input::Input()
+
+node9.var_name = "projection"
+node9.var_type = "mat4"
+
+_editor.add_node(node9, 191.68089231381, -99.015102291895)
+
+Blueprint.connect(node4, "var", node2, "model")
+Blueprint.connect(node5, "var", node2, "view")
+Blueprint.connect(node9, "var", node2, "projection")
+Blueprint.connect(node6, "var", node2, "light_pos")
+Blueprint.connect(node7, "var", node2, "light_col")
+Blueprint.connect(node8, "var", node2, "cam_pos")
+Blueprint.connect(node2, "out", node1, "shader")
+Blueprint.connect(node3, "out", node1, "va")
+Blueprint.connect(node0, "var", node3, "in")
+Blueprint.connect(node1, "next", node3, "do")
