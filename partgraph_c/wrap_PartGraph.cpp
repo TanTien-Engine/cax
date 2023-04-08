@@ -280,7 +280,10 @@ void w_PrimMaker_threading()
 void w_BRepSelector_select_face()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
-    auto face = partgraph::BRepSelector::SelectFace(shape);
+    auto pos = tt::list_to_vec3(2);
+    auto dir = tt::list_to_vec3(3);
+
+    auto face = partgraph::BRepSelector::SelectFace(shape, sm::Ray(pos, dir));
     return_topo_face(face);
 }
 
@@ -612,7 +615,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static PrimMaker.torus_with_angle(_,_,_)") == 0) return w_PrimMaker_torus_with_angle;
     if (strcmp(signature, "static PrimMaker.threading(_,_)") == 0) return w_PrimMaker_threading;
 
-    if (strcmp(signature, "static BRepSelector.select_face(_)") == 0) return w_BRepSelector_select_face;
+    if (strcmp(signature, "static BRepSelector.select_face(_,_,_)") == 0) return w_BRepSelector_select_face;
 
     if (strcmp(signature, "static TopoAlgo.fillet(_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_)") == 0) return w_TopoAlgo_chamfer;

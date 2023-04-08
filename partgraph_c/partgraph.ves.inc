@@ -73,7 +73,7 @@ foreign class PrimMaker
 
 foreign class BRepSelector
 {
-	foreign static select_face(shape)
+	foreign static select_face(shape, pos, dir)
 }
 
 foreign class TopoAlgo
