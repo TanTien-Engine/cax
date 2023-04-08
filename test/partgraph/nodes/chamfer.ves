@@ -3,7 +3,7 @@ node0.query_param("length").value = 1
 node0.query_param("width").value = 1
 node0.query_param("height").value = 1
 
-_editor.add_node(node0, -184.08118450714, 80.26463562735)
+_editor.add_node(node0, -531.08118450714, 55.26463562735)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
@@ -28,7 +28,7 @@ _editor.add_node(node3, 244.58326648828, 100.15813572266)
 var node4 = ::partgraph::nodes::chamfer::Chamfer()
 node4.query_param("dist").value = 0.1
 
-_editor.add_node(node4, -38.150911833194, 99.17888042185)
+_editor.add_node(node4, -54.5723994365, 80.790450669784)
 
 var node5 = ::blueprint::nodes::subgraph::Subgraph()
 node5.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
@@ -36,7 +36,22 @@ node5.set_prop_value("no_bg", false)
 
 _editor.add_node(node5, 434.22924885164, 40.913420882942)
 
-Blueprint.connect(node0, "shape", node4, "shape")
+var node6 = ::blueprint::nodes::cache::Cache()
+node6.query_param("disable").value = false
+
+_editor.add_node(node6, -388.01652892562, 93.890909090909)
+
+var node7 = ::partgraph::nodes::edge_selector::EdgeSelector()
+
+node7.selected_indices = [ 11, 8, 7 ]
+
+_editor.add_node(node7, -236.3033809166, 53.859278737791)
+
+Blueprint.connect(node0, "shape", node6, "var")
+Blueprint.connect(node6, "var", node7, "shape")
+Blueprint.connect(node2, "this", node7, "camera")
+Blueprint.connect(node6, "var", node4, "shape")
+Blueprint.connect(node7, "edges", node4, "edges")
 Blueprint.connect(node4, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node5, "geos")

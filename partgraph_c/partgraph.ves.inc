@@ -85,9 +85,8 @@ foreign class BRepTools
 
 foreign class TopoAlgo
 {
-	foreign static fillet(shape, radius)
 	foreign static fillet(shape, radius, edges)
-	foreign static chamfer(shape, dist)
+	foreign static chamfer(shape, dist, edges)
 
 	// sweep
 	foreign static extrude(shape, x, y, z)

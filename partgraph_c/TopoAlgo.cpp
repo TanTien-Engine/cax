@@ -20,46 +20,51 @@
 namespace partgraph
 {
 
-std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius)
+std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius, 
+                                            const std::vector<std::shared_ptr<TopoEdge>>& edges)
 {
     BRepFilletAPI_MakeFillet fillet(shape->GetShape());
 
-    TopExp_Explorer edge_explorer(shape->GetShape(), TopAbs_EDGE);
-    while (edge_explorer.More())
+    if (edges.empty())
     {
-        TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
-        fillet.Add(radius, edge);
-        edge_explorer.Next();
+        TopExp_Explorer edge_explorer(shape->GetShape(), TopAbs_EDGE);
+        while (edge_explorer.More())
+        {
+            TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
+            fillet.Add(radius, edge);
+            edge_explorer.Next();
+        }
     }
-
-    //TopTools_IndexedMapOfShape edges;
-    //TopExp::MapShapes(shape->GetShape(), TopAbs_EDGE, edges);
-    //fillet.Add(thickness / 12., TopoDS::Edge(edges.FindKey(1)));
-    //fillet.Add(thickness / 12., TopoDS::Edge(edges.FindKey(3)));
-    //fillet.Add(thickness / 12., TopoDS::Edge(edges.FindKey(5)));
+    else
+    {
+        for (auto& edge : edges) {
+            fillet.Add(radius, edge->GetEdge());
+        }
+    }
 
     return std::make_shared<partgraph::TopoShape>(fillet.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius, const std::vector<std::shared_ptr<TopoEdge>>& edges)
-{
-    BRepFilletAPI_MakeFillet fillet(shape->GetShape());
-    for (auto& edge : edges) {
-        fillet.Add(radius, edge->GetEdge());
-    }
-    return std::make_shared<partgraph::TopoShape>(fillet.Shape());
-}
-
-std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& shape, double dist)
+std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& shape, double dist,
+                                             const std::vector<std::shared_ptr<TopoEdge>>& edges)
 {
     BRepFilletAPI_MakeChamfer chamfer(shape->GetShape());
 
-    TopExp_Explorer edge_explorer(shape->GetShape(), TopAbs_EDGE);
-    while (edge_explorer.More())
+    if (edges.empty())
     {
-        TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
-        chamfer.Add(dist, edge);
-        edge_explorer.Next();
+        TopExp_Explorer edge_explorer(shape->GetShape(), TopAbs_EDGE);
+        while (edge_explorer.More())
+        {
+            TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
+            chamfer.Add(dist, edge);
+            edge_explorer.Next();
+        }
+    }
+    else
+    {
+        for (auto& edge : edges) {
+            chamfer.Add(dist, edge->GetEdge());
+        }
     }
 
     return std::make_shared<partgraph::TopoShape>(chamfer.Shape());

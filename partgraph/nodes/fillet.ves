@@ -39,9 +39,6 @@ class Fillet is Node
 
 		var v_edges = Blueprint.calc_input_value(this, 2)
 		var edges = VariantHelper.flatten_values(v_edges, VAR_TOPO_EDGE)
-		if (edges.isEmpty) {
-			return v_shape
-		}
 
 		var shape = TopoAlgo.fillet(v_shape.value, radius, edges)
 		if (shape) {

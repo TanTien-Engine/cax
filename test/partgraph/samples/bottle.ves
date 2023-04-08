@@ -11,9 +11,9 @@ _editor.add_node(node1, 1601.9254452781, 221.1294027511)
 
 var node2 = ::blueprint::nodes::camera3d::Camera3d()
 
-node2.cam.position.set(-0.21371113123578, 0.42185135115509, 1.2892635809662)
-node2.cam.yaw = -62.6
-node2.cam.pitch = -36.4
+node2.cam.position.set(-0.89616266385957, 0.60874372597366, 1.2103291496964)
+node2.cam.yaw = -45.7
+node2.cam.pitch = -29.1
 node2.cam.zoom = 45
 node2.cam.update_vectors()
 node2.speed = 0.22393144667149
@@ -376,7 +376,7 @@ _editor.add_node(node69, 533.69279731275, 209.95553885478)
 
 var node70 = ::partgraph::nodes::face_selector::FaceSelector()
 
-_editor.add_node(node70, 806.85057287873, 160.36742948877)
+_editor.add_node(node70, 812.63569684567, 172.76412370365)
 
 var node71 = ::partgraph::nodes::shelling::Shelling()
 node71.query_param("offset").value = 0
@@ -592,14 +592,14 @@ Blueprint.connect(node65, "v", node64, "b")
 Blueprint.connect(node100, "v", node102, "length")
 Blueprint.connect(node64, "v", node102, "width")
 Blueprint.connect(node100, "v", node102, "height")
-Blueprint.connect(node102, "shape", node66, "shape")
+Blueprint.connect(node62, "var", node61, "radius")
+Blueprint.connect(node64, "v", node61, "length")
+Blueprint.connect(node61, "shape", node66, "shape")
 Blueprint.connect(node68, "xyz", node66, "offset")
 Blueprint.connect(node66, "shape", node88, "shape")
 Blueprint.connect(node88, "shape", node94, "shape")
 Blueprint.connect(node92, "v", node94, "radius")
 Blueprint.connect(node66, "shape", node86, "var")
-Blueprint.connect(node62, "var", node61, "radius")
-Blueprint.connect(node64, "v", node61, "length")
 Blueprint.connect(node13, "var", node55, "var")
 Blueprint.connect(node55, "var", node56, "y")
 Blueprint.connect(node10, "v", node11, "var")
@@ -653,12 +653,13 @@ Blueprint.connect(node85, "var", node69, "a")
 Blueprint.connect(node86, "var", node69, "b")
 Blueprint.connect(node69, "shape", node72, "var")
 Blueprint.connect(node72, "var", node70, "shape")
+Blueprint.connect(node2, "this", node70, "camera")
 Blueprint.connect(node72, "var", node71, "shape")
 Blueprint.connect(node70, "face", node71, "face")
 Blueprint.connect(node76, "v", node71, "offset")
 Blueprint.connect(node71, "shape", node99, "shape0")
 Blueprint.connect(node96, "shape", node99, "shape1")
-Blueprint.connect(node71, "shape", node87, "var")
+Blueprint.connect(node99, "shape", node87, "var")
 Blueprint.connect(node87, "var", node0, "shape")
 Blueprint.connect(node0, "va", node3, "var")
 Blueprint.connect(node2, "mat", node4, "cam_mat")

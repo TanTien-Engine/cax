@@ -2,8 +2,10 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
-import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_ARRAY
+import "blueprint.node_helper" for NodeHelper
+import "blueprint.variant_helper" for VariantHelper
+import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_EDGE
 import "partgraph" for TopoAlgo
 
 class Chamfer is Node
@@ -14,6 +16,8 @@ class Chamfer is Node
 
 		this.imports = [
 			Pin(this, "shape", VAR_TOPO_SHAPE),
+			Pin(this, "dist",  VAR_TYPE_NUMBER),
+			Pin(this, "edges", VAR_TYPE_ARRAY),
 		]
 		this.exports = [
 			Pin(this, "shape", VAR_TOPO_SHAPE),
@@ -31,8 +35,12 @@ class Chamfer is Node
 			return nil
 		}
 
-		var dist = this.query_param("dist").value
-		var shape = TopoAlgo.chamfer(v_shape.value, dist)
+		var dist = NodeHelper.calc_prop_value(this, "dist")
+
+		var v_edges = Blueprint.calc_input_value(this, 2)
+		var edges = VariantHelper.flatten_values(v_edges, VAR_TOPO_EDGE)
+
+		var shape = TopoAlgo.chamfer(v_shape.value, dist, edges)
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
