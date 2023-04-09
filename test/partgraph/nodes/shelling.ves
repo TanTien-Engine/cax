@@ -11,14 +11,14 @@ _editor.add_node(node1, -152.26345727273, 128.03213645455)
 
 var node2 = ::blueprint::nodes::camera3d::Camera3d()
 
-node2.cam.position.set(-4.7482696622799, 1.8426613234452, 3.5670857332851)
-node2.cam.yaw = -391.8
-node2.cam.pitch = -12.6
+node2.cam.position.set(-4.0606048578122, 2.8989745645149, 2.4620552800536)
+node2.cam.yaw = -382.8
+node2.cam.pitch = -26.2
 node2.cam.zoom = 19
 node2.cam.update_vectors()
 node2.speed = 0.30111083388329
 
-_editor.add_node(node2, -14.50620959582, -24.09443949069)
+_editor.add_node(node2, -20.00620959582, -22.99443949069)
 
 var node3 = ::blueprint::nodes::cache::Cache()
 node3.query_param("disable").value = false
@@ -36,31 +36,35 @@ node5.query_param("offset").value = 0.099346585571766
 
 _editor.add_node(node5, -303.61888690034, 92.627152750312)
 
-var node6 = ::partgraph::nodes::face_selector::FaceSelector()
+var node6 = ::blueprint::nodes::number::Number()
 
-_editor.add_node(node6, -502.78041385046, 68.364660811908)
+node6.value = 0.059326849877834
 
-var node7 = ::blueprint::nodes::number::Number()
+_editor.add_node(node6, -649.3394116431, -67.923605625832)
 
-node7.value = 0.059326849877834
+var node7 = ::blueprint::nodes::negate::Negate()
 
-_editor.add_node(node7, -649.3394116431, -67.923605625832)
+_editor.add_node(node7, -511.84881266215, -57.780854770423)
 
-var node8 = ::blueprint::nodes::negate::Negate()
+var node8 = ::blueprint::nodes::cache::Cache()
+node8.query_param("disable").value = false
 
-_editor.add_node(node8, -511.84881266215, -57.780854770423)
+_editor.add_node(node8, -647.40762009716, 116.44047664183)
 
-var node9 = ::blueprint::nodes::cache::Cache()
-node9.query_param("disable").value = false
+var node9 = ::partgraph::nodes::selector::Selector()
+node9.query_param("type").value = "face"
 
-_editor.add_node(node9, -647.40762009716, 116.44047664183)
+node9.selected_indices = [ 1, 6 ]
 
-Blueprint.connect(node7, "v", node8, "v")
-Blueprint.connect(node0, "shape", node9, "var")
-Blueprint.connect(node9, "var", node6, "shape")
-Blueprint.connect(node9, "var", node5, "shape")
-Blueprint.connect(node6, "face", node5, "face")
-Blueprint.connect(node7, "v", node5, "offset")
+_editor.add_node(node9, -475.43902234795, 49.606047020273)
+
+Blueprint.connect(node6, "v", node7, "v")
+Blueprint.connect(node0, "shape", node8, "var")
+Blueprint.connect(node8, "var", node9, "shape")
+Blueprint.connect(node2, "this", node9, "camera")
+Blueprint.connect(node8, "var", node5, "shape")
+Blueprint.connect(node9, "objs", node5, "face")
+Blueprint.connect(node6, "v", node5, "offset")
 Blueprint.connect(node5, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")

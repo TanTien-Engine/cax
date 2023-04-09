@@ -41,17 +41,17 @@ node6.query_param("disable").value = false
 
 _editor.add_node(node6, -388.01652892562, 93.890909090909)
 
-var node7 = ::partgraph::nodes::edge_selector::EdgeSelector()
+var node7 = ::partgraph::nodes::selector::Selector()
 
-node7.selected_indices = [ 11, 8, 7 ]
+node7.selected_indices = [ 8, 11, 7 ]
 
-_editor.add_node(node7, -236.3033809166, 53.859278737791)
+_editor.add_node(node7, -210.40594077592, 36.194006400923)
 
 Blueprint.connect(node0, "shape", node6, "var")
 Blueprint.connect(node6, "var", node7, "shape")
 Blueprint.connect(node2, "this", node7, "camera")
 Blueprint.connect(node6, "var", node4, "shape")
-Blueprint.connect(node7, "edges", node4, "edges")
+Blueprint.connect(node7, "objs", node4, "edges")
 Blueprint.connect(node4, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node5, "geos")

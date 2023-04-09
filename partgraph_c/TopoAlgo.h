@@ -32,7 +32,7 @@ public:
 	static std::shared_ptr<TopoShape> Mirror(const std::shared_ptr<TopoShape>& shape, const sm::vec3& pos, const sm::vec3& dir);
 
 	static std::shared_ptr<TopoShape> Draft(const std::shared_ptr<TopoShape>& shape, const sm::vec3& dir, float angle, float len_max);
-	static std::shared_ptr<TopoShape> ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::shared_ptr<TopoFace>& face, float offset);
+	static std::shared_ptr<TopoShape> ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoFace>>& faces, float offset);
 	static std::shared_ptr<TopoShape> ThruSections(const std::vector<std::shared_ptr<TopoWire>>& wires);
 
 }; // TopoAlgo

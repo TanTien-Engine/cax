@@ -374,193 +374,196 @@ var node69 = ::partgraph::nodes::fuse::Fuse()
 
 _editor.add_node(node69, 533.69279731275, 209.95553885478)
 
-var node70 = ::partgraph::nodes::face_selector::FaceSelector()
+var node70 = ::partgraph::nodes::shelling::Shelling()
+node70.query_param("offset").value = 0
 
-_editor.add_node(node70, 812.63569684567, 172.76412370365)
+_editor.add_node(node70, 946.44418350437, 155.17021367543)
 
-var node71 = ::partgraph::nodes::shelling::Shelling()
-node71.query_param("offset").value = 0
+var node71 = ::blueprint::nodes::cache::Cache()
+node71.query_param("disable").value = false
 
-_editor.add_node(node71, 946.44418350437, 155.17021367543)
+_editor.add_node(node71, 670.08738711761, 212.90201966434)
 
-var node72 = ::blueprint::nodes::cache::Cache()
-node72.query_param("disable").value = false
+var node72 = ::blueprint::nodes::load::Load()
 
-_editor.add_node(node72, 670.08738711761, 212.90201966434)
+node72.var_name = "offset"
 
-var node73 = ::blueprint::nodes::load::Load()
+_editor.add_node(node72, 536.05786555213, 127.27273547087)
 
-node73.var_name = "offset"
+var node73 = ::blueprint::nodes::divide::Divide()
 
-_editor.add_node(node73, 536.05786555213, 127.27273547087)
+_editor.add_node(node73, 677.35685508333, 101.46487119841)
 
-var node74 = ::blueprint::nodes::divide::Divide()
+var node74 = ::blueprint::nodes::integer::Integer()
 
-_editor.add_node(node74, 677.35685508333, 101.46487119841)
+node74.value = 50
 
-var node75 = ::blueprint::nodes::integer::Integer()
+_editor.add_node(node74, 533.36683799353, 71.214876081219)
 
-node75.value = 50
+var node75 = ::blueprint::nodes::negate::Negate()
 
-_editor.add_node(node75, 533.36683799353, 71.214876081219)
+_editor.add_node(node75, 809.02704162873, 111.4500276333)
 
-var node76 = ::blueprint::nodes::negate::Negate()
+var node76 = ::blueprint::nodes::commentary::Commentary()
 
-_editor.add_node(node76, 809.02704162873, 111.4500276333)
+node76.set_size(317.478, 226.97)
+node76.title = "Params"
+
+_editor.add_node(node76, -2090.4347298283, 466.97692228174)
 
 var node77 = ::blueprint::nodes::commentary::Commentary()
 
-node77.set_size(317.478, 226.97)
-node77.title = "Params"
+node77.set_size(880.16389344, 890.88183749)
+node77.title = "Temp Vars"
 
-_editor.add_node(node77, -2090.4347298283, 466.97692228174)
+_editor.add_node(node77, -1822.3561324476, 199.31179358299)
 
 var node78 = ::blueprint::nodes::commentary::Commentary()
 
-node78.set_size(880.16389344, 890.88183749)
-node78.title = "Temp Vars"
+node78.set_size(1088.71264, 627.08796)
+node78.title = "Profile"
 
-_editor.add_node(node78, -1822.3561324476, 199.31179358299)
+_editor.add_node(node78, -803.50777017203, 442.32387103369)
 
 var node79 = ::blueprint::nodes::commentary::Commentary()
 
-node79.set_size(1088.71264, 627.08796)
-node79.title = "Profile"
+node79.set_size(580.699222, 400)
+node79.title = "Body"
 
-_editor.add_node(node79, -803.50777017203, 442.32387103369)
+_editor.add_node(node79, 70.276062269348, 443.0642524458)
 
 var node80 = ::blueprint::nodes::commentary::Commentary()
 
-node80.set_size(580.699222, 400)
-node80.title = "Body"
+node80.set_size(641.4704, 473.2299)
+node80.title = "Neck"
 
-_editor.add_node(node80, 70.276062269348, 443.0642524458)
+_editor.add_node(node80, 76.575724003242, -2.8933288316629)
 
 var node81 = ::blueprint::nodes::commentary::Commentary()
 
-node81.set_size(641.4704, 473.2299)
-node81.title = "Neck"
+node81.set_size(569.4, 221.8)
+node81.title = "Hollowed Solid"
 
-_editor.add_node(node81, 76.575724003242, -2.8933288316629)
+_editor.add_node(node81, 740.15917541779, 259.89047563135)
 
 var node82 = ::blueprint::nodes::commentary::Commentary()
 
-node82.set_size(569.4, 221.8)
-node82.title = "Hollowed Solid"
+node82.set_size(674.37936768, 522.18456217)
+node82.title = "Render"
 
-_editor.add_node(node82, 740.15917541779, 259.89047563135)
+_editor.add_node(node82, 1625.7464120365, 338.73824381755)
 
-var node83 = ::blueprint::nodes::commentary::Commentary()
+var node83 = ::partgraph::nodes::to_geometry::ToGeometry()
 
-node83.set_size(674.37936768, 522.18456217)
-node83.title = "Render"
+_editor.add_node(node83, -334.96395, 276.62175136719)
 
-_editor.add_node(node83, 1625.7464120365, 338.73824381755)
+var node84 = ::blueprint::nodes::cache::Cache()
+node84.query_param("disable").value = false
 
-var node84 = ::partgraph::nodes::to_geometry::ToGeometry()
-
-_editor.add_node(node84, -334.96395, 276.62175136719)
+_editor.add_node(node84, 287.48656516846, 188.43384040592)
 
 var node85 = ::blueprint::nodes::cache::Cache()
 node85.query_param("disable").value = false
 
-_editor.add_node(node85, 287.48656516846, 188.43384040592)
+_editor.add_node(node85, 322.91149089306, -283.50543541224)
 
 var node86 = ::blueprint::nodes::cache::Cache()
 node86.query_param("disable").value = false
 
-_editor.add_node(node86, 322.91149089306, -283.50543541224)
+_editor.add_node(node86, 1272.7221195005, 13.646581591759)
 
-var node87 = ::blueprint::nodes::cache::Cache()
-node87.query_param("disable").value = false
+var node87 = ::partgraph::nodes::defeature::Defeature()
 
-_editor.add_node(node87, 1272.7221195005, 13.646581591759)
+_editor.add_node(node87, 666.15358306174, -152.23569789734)
 
-var node88 = ::partgraph::nodes::defeature::Defeature()
+var node88 = ::blueprint::nodes::cache::Cache()
+node88.query_param("disable").value = false
 
-_editor.add_node(node88, 666.15358306174, -152.23569789734)
+_editor.add_node(node88, 954.97246225983, -228.95832026024)
 
-var node89 = ::blueprint::nodes::cache::Cache()
-node89.query_param("disable").value = false
+var node89 = ::partgraph::nodes::fuse::Fuse()
 
-_editor.add_node(node89, 954.97246225983, -228.95832026024)
+_editor.add_node(node89, 952.73952158022, -161.18012605882)
 
-var node90 = ::partgraph::nodes::fuse::Fuse()
+var node90 = ::blueprint::nodes::load::Load()
 
-_editor.add_node(node90, 952.73952158022, -161.18012605882)
+node90.var_name = "offset"
 
-var node91 = ::blueprint::nodes::load::Load()
+_editor.add_node(node90, 528.13480448225, -190.87330800171)
 
-node91.var_name = "offset"
+var node91 = ::blueprint::nodes::divide::Divide()
 
-_editor.add_node(node91, 528.13480448225, -190.87330800171)
+_editor.add_node(node91, 669.43379401345, -216.68117227417)
 
-var node92 = ::blueprint::nodes::divide::Divide()
+var node92 = ::blueprint::nodes::integer::Integer()
 
-_editor.add_node(node92, 669.43379401345, -216.68117227417)
+node92.value = 25
 
-var node93 = ::blueprint::nodes::integer::Integer()
+_editor.add_node(node92, 525.44377692365, -246.93116739136)
 
-node93.value = 25
+var node93 = ::partgraph::nodes::fillet::Fillet()
+node93.query_param("radius").value = 0.05
 
-_editor.add_node(node93, 525.44377692365, -246.93116739136)
+_editor.add_node(node93, 813.86956494544, -209.06954788724)
 
-var node94 = ::partgraph::nodes::fillet::Fillet()
-node94.query_param("radius").value = 0.05
+var node94 = ::blueprint::nodes::commentary::Commentary()
 
-_editor.add_node(node94, 813.86956494544, -209.06954788724)
+node94.set_size(574, 161)
+node94.title = "Test Defeature"
 
-var node95 = ::blueprint::nodes::commentary::Commentary()
+_editor.add_node(node94, 745.19533548334, -116.44252276162)
 
-node95.set_size(574, 161)
-node95.title = "Test Defeature"
+var node95 = ::partgraph::nodes::threading::Threading()
 
-_editor.add_node(node95, 745.19533548334, -116.44252276162)
+_editor.add_node(node95, 963.65913563947, -32.69261026682)
 
-var node96 = ::partgraph::nodes::threading::Threading()
+var node96 = ::blueprint::nodes::load::Load()
 
-_editor.add_node(node96, 963.65913563947, -32.69261026682)
+node96.var_name = "offset"
+
+_editor.add_node(node96, 818.74186145439, -13.022528769129)
 
 var node97 = ::blueprint::nodes::load::Load()
 
-node97.var_name = "offset"
+node97.var_name = "height"
 
-_editor.add_node(node97, 818.74186145439, -13.022528769129)
+_editor.add_node(node97, 821.0454709809, -59.05168143838)
 
-var node98 = ::blueprint::nodes::load::Load()
+var node98 = ::partgraph::nodes::compound::Compound()
 
-node98.var_name = "height"
+_editor.add_node(node98, 1126.0314164595, -1.8712158203127)
 
-_editor.add_node(node98, 821.0454709809, -59.05168143838)
+var node99 = ::blueprint::nodes::multiply::Multiply()
 
-var node99 = ::partgraph::nodes::compound::Compound()
+_editor.add_node(node99, -104.97188888533, -251.16775242241)
 
-_editor.add_node(node99, 1126.0314164595, -1.8712158203127)
+var node100 = ::blueprint::nodes::integer::Integer()
 
-var node100 = ::blueprint::nodes::multiply::Multiply()
+node100.value = 2
 
-_editor.add_node(node100, -104.97188888533, -251.16775242241)
+_editor.add_node(node100, -153.57328403427, -337.60062681001)
 
-var node101 = ::blueprint::nodes::integer::Integer()
+var node101 = ::blueprint::nodes::subgraph::Subgraph()
+node101.load_from_file(_editor, "../../../assets/blueprints/partgraph/center_box.ves")
 
-node101.value = 2
+_editor.add_node(node101, 111.77305412571, -225.55156521847)
 
-_editor.add_node(node101, -153.57328403427, -337.60062681001)
+var node102 = ::partgraph::nodes::selector::Selector()
+node102.query_param("type").value = "face"
 
-var node102 = ::blueprint::nodes::subgraph::Subgraph()
-node102.load_from_file(_editor, "../../../assets/blueprints/partgraph/center_box.ves")
+node102.selected_indices = [ 34 ]
 
-_editor.add_node(node102, 111.77305412571, -225.55156521847)
+_editor.add_node(node102, 804.60357468074, 196.49152304369)
 
 Blueprint.connect(node14, "v", node15, "var")
-Blueprint.connect(node15, "var", node97, "var")
-Blueprint.connect(node15, "var", node91, "var")
-Blueprint.connect(node91, "var", node92, "a")
-Blueprint.connect(node93, "v", node92, "b")
-Blueprint.connect(node15, "var", node73, "var")
-Blueprint.connect(node73, "var", node74, "a")
-Blueprint.connect(node75, "v", node74, "b")
-Blueprint.connect(node74, "v", node76, "v")
+Blueprint.connect(node15, "var", node96, "var")
+Blueprint.connect(node15, "var", node90, "var")
+Blueprint.connect(node90, "var", node91, "a")
+Blueprint.connect(node92, "v", node91, "b")
+Blueprint.connect(node15, "var", node72, "var")
+Blueprint.connect(node72, "var", node73, "a")
+Blueprint.connect(node74, "v", node73, "b")
+Blueprint.connect(node73, "v", node75, "v")
 Blueprint.connect(node15, "var", node58, "var")
 Blueprint.connect(node58, "var", node59, "a")
 Blueprint.connect(node60, "v", node59, "b")
@@ -576,30 +579,30 @@ Blueprint.connect(node20, "var", node21, "a")
 Blueprint.connect(node22, "v", node21, "b")
 Blueprint.connect(node21, "v", node23, "var")
 Blueprint.connect(node23, "var", node62, "var")
-Blueprint.connect(node62, "var", node100, "a")
-Blueprint.connect(node101, "v", node100, "b")
+Blueprint.connect(node62, "var", node99, "a")
+Blueprint.connect(node100, "v", node99, "b")
 Blueprint.connect(node23, "var", node39, "var")
 Blueprint.connect(node39, "var", node40, "v")
 Blueprint.connect(node12, "v", node13, "var")
-Blueprint.connect(node13, "var", node98, "var")
-Blueprint.connect(node97, "var", node96, "thickness")
-Blueprint.connect(node98, "var", node96, "height")
+Blueprint.connect(node13, "var", node97, "var")
+Blueprint.connect(node96, "var", node95, "thickness")
+Blueprint.connect(node97, "var", node95, "height")
 Blueprint.connect(node13, "var", node67, "var")
 Blueprint.connect(node67, "var", node68, "y")
 Blueprint.connect(node13, "var", node63, "var")
 Blueprint.connect(node63, "var", node64, "a")
 Blueprint.connect(node65, "v", node64, "b")
-Blueprint.connect(node100, "v", node102, "length")
-Blueprint.connect(node64, "v", node102, "width")
-Blueprint.connect(node100, "v", node102, "height")
+Blueprint.connect(node99, "v", node101, "length")
+Blueprint.connect(node64, "v", node101, "width")
+Blueprint.connect(node99, "v", node101, "height")
 Blueprint.connect(node62, "var", node61, "radius")
 Blueprint.connect(node64, "v", node61, "length")
 Blueprint.connect(node61, "shape", node66, "shape")
 Blueprint.connect(node68, "xyz", node66, "offset")
-Blueprint.connect(node66, "shape", node88, "shape")
-Blueprint.connect(node88, "shape", node94, "shape")
-Blueprint.connect(node92, "v", node94, "radius")
-Blueprint.connect(node66, "shape", node86, "var")
+Blueprint.connect(node66, "shape", node87, "shape")
+Blueprint.connect(node87, "shape", node93, "shape")
+Blueprint.connect(node91, "v", node93, "radius")
+Blueprint.connect(node66, "shape", node85, "var")
 Blueprint.connect(node13, "var", node55, "var")
 Blueprint.connect(node55, "var", node56, "y")
 Blueprint.connect(node10, "v", node11, "var")
@@ -639,28 +642,28 @@ Blueprint.connect(node47, "edge", node48, "edge2")
 Blueprint.connect(node48, "wire", node53, "obj")
 Blueprint.connect(node48, "wire", node54, "edge0")
 Blueprint.connect(node53, "obj", node54, "edge1")
-Blueprint.connect(node54, "wire", node84, "topo")
+Blueprint.connect(node54, "wire", node83, "topo")
 Blueprint.connect(node54, "wire", node6, "wire")
 Blueprint.connect(node6, "face", node7, "face")
 Blueprint.connect(node56, "xyz", node7, "dist")
 Blueprint.connect(node7, "shape", node57, "shape")
 Blueprint.connect(node59, "v", node57, "radius")
-Blueprint.connect(node57, "shape", node85, "var")
-Blueprint.connect(node85, "var", node90, "a")
-Blueprint.connect(node94, "shape", node90, "b")
-Blueprint.connect(node90, "shape", node89, "var")
-Blueprint.connect(node85, "var", node69, "a")
-Blueprint.connect(node86, "var", node69, "b")
-Blueprint.connect(node69, "shape", node72, "var")
-Blueprint.connect(node72, "var", node70, "shape")
-Blueprint.connect(node2, "this", node70, "camera")
-Blueprint.connect(node72, "var", node71, "shape")
-Blueprint.connect(node70, "face", node71, "face")
-Blueprint.connect(node76, "v", node71, "offset")
-Blueprint.connect(node71, "shape", node99, "shape0")
-Blueprint.connect(node96, "shape", node99, "shape1")
-Blueprint.connect(node99, "shape", node87, "var")
-Blueprint.connect(node87, "var", node0, "shape")
+Blueprint.connect(node57, "shape", node84, "var")
+Blueprint.connect(node84, "var", node89, "a")
+Blueprint.connect(node93, "shape", node89, "b")
+Blueprint.connect(node89, "shape", node88, "var")
+Blueprint.connect(node84, "var", node69, "a")
+Blueprint.connect(node85, "var", node69, "b")
+Blueprint.connect(node69, "shape", node71, "var")
+Blueprint.connect(node71, "var", node102, "shape")
+Blueprint.connect(node2, "this", node102, "camera")
+Blueprint.connect(node71, "var", node70, "shape")
+Blueprint.connect(node102, "objs", node70, "face")
+Blueprint.connect(node75, "v", node70, "offset")
+Blueprint.connect(node70, "shape", node98, "shape0")
+Blueprint.connect(node95, "shape", node98, "shape1")
+Blueprint.connect(node98, "shape", node86, "var")
+Blueprint.connect(node86, "var", node0, "shape")
 Blueprint.connect(node0, "va", node3, "var")
 Blueprint.connect(node2, "mat", node4, "cam_mat")
 Blueprint.connect(node1, "next", node8, "prev")

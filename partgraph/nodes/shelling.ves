@@ -2,8 +2,9 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
-import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_ARRAY
 import "blueprint.node_helper" for NodeHelper
+import "blueprint.variant_helper" for VariantHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "partgraph" for TopoAlgo
 
@@ -15,7 +16,7 @@ class Shelling is Node
 
 		this.imports = [
 			Pin(this, "shape",  VAR_TOPO_SHAPE),
-			Pin(this, "face",   VAR_TOPO_FACE),
+			Pin(this, "face",   VAR_TYPE_ARRAY),
 			Pin(this, "offset", VAR_TYPE_NUMBER),
 		]
 		this.exports = [
@@ -34,13 +35,14 @@ class Shelling is Node
 			return nil
 		}
 
-		var v_face = Blueprint.calc_input_value(this, 1)
-		if (!v_face) {
-			return nil
+		var v_faces = Blueprint.calc_input_value(this, 1)
+		var faces = VariantHelper.flatten_values(v_faces, VAR_TOPO_FACE)
+		if (faces.isEmpty) {
+			return v_shape
 		}
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")		
-		var shape = TopoAlgo.thick_solid(v_shape.value, v_face.value, offset)
+		var shape = TopoAlgo.thick_solid(v_shape.value, faces, offset)
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

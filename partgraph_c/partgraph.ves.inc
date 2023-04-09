@@ -81,6 +81,9 @@ foreign class BRepTools
 {
 	foreign static find_edge_idx(shape, key)
 	foreign static find_edge_key(shape, idx)
+
+	foreign static find_face_idx(shape, key)
+	foreign static find_face_key(shape, idx)
 }
 
 foreign class TopoAlgo

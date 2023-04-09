@@ -314,6 +314,22 @@ void w_BRepTools_find_edge_key()
     return_topo_edge(edge);
 }
 
+void w_BRepTools_find_face_idx()
+{
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto face = ((tt::Proxy<partgraph::TopoFace>*)ves_toforeign(2))->obj;
+    int idx = partgraph::BRepTools::FindFaceIdx(shape, face);
+    ves_set_number(0, idx);
+}
+
+void w_BRepTools_find_face_key()
+{
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    int idx = (int)ves_tonumber(2);
+    auto face = partgraph::BRepTools::FindFaceKey(shape, idx);
+    return_topo_face(face);
+}
+
 void w_TopoAlgo_fillet()
 {
     auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -410,9 +426,13 @@ void w_TopoAlgo_draft()
 void w_TopoAlgo_thick_solid()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
-    auto face = ((tt::Proxy<partgraph::TopoFace>*)ves_toforeign(2))->obj;
+
+    std::vector<std::shared_ptr<partgraph::TopoFace>> faces;
+    tt::list_to_foreigns(2, faces);
+
     auto offset = (float)ves_tonumber(3);
-    auto dst = partgraph::TopoAlgo::ThickSolid(shape, face, offset);
+
+    auto dst = partgraph::TopoAlgo::ThickSolid(shape, faces, offset);
     return_topo_shape(dst);
 }
 
@@ -651,6 +671,8 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static BRepTools.find_edge_idx(_,_)") == 0) return w_BRepTools_find_edge_idx;
     if (strcmp(signature, "static BRepTools.find_edge_key(_,_)") == 0) return w_BRepTools_find_edge_key;
+    if (strcmp(signature, "static BRepTools.find_face_idx(_,_)") == 0) return w_BRepTools_find_face_idx;
+    if (strcmp(signature, "static BRepTools.find_face_key(_,_)") == 0) return w_BRepTools_find_face_key;
 
     if (strcmp(signature, "static TopoAlgo.fillet(_,_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_)") == 0) return w_TopoAlgo_chamfer;

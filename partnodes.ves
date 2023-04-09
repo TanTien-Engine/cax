@@ -15,8 +15,6 @@ Extrude, Cut, Fuse, Common, Section,
 Translate, Mirror,
 // SketchBasedFeatures
 Loft,
-// Selector
-FaceSelector, EdgeSelector,
 // Tools
-ToMesh, ToGeometry, Defeature,
+ToMesh, ToGeometry, Defeature, Selector,
 ]

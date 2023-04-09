@@ -174,10 +174,13 @@ std::shared_ptr<TopoShape> TopoAlgo::Draft(const std::shared_ptr<TopoShape>& sha
     return std::make_shared<partgraph::TopoShape>(draft.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::shared_ptr<TopoFace>& face, float offset)
+std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoFace>>& faces, float offset)
 {
     TopTools_ListOfShape faces_to_rm;
-    faces_to_rm.Append(face->GetFace());
+    for (auto& face : faces) {
+        faces_to_rm.Append(face->GetFace());
+    }
+
     BRepOffsetAPI_MakeThickSolid thick_solid;
     thick_solid.MakeThickSolidByJoin(shape->GetShape(), faces_to_rm, offset, 1.e-3);
 
