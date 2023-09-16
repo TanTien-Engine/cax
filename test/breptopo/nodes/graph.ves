@@ -1,0 +1,74 @@
+var node0 = ::partgraph::nodes::box::Box()
+node0.query_param("length").value = 1
+node0.query_param("width").value = 1
+node0.query_param("height").value = 1
+
+_editor.add_node(node0, -571.18529010805, -103.03934624992)
+
+var node1 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node1, -103.16460278273, 155.72435630455)
+
+var node2 = ::blueprint::nodes::camera3d::Camera3d()
+
+node2.cam.position.set(7.6013622221336, 6.4753840843743, 5.5685223752088)
+node2.cam.yaw = -146
+node2.cam.pitch = -34.5
+node2.cam.zoom = 19
+node2.cam.update_vectors()
+node2.speed = 0.30111083388329
+
+_editor.add_node(node2, 24.42867489418, -6.2230696406899)
+
+var node3 = ::blueprint::nodes::cache::Cache()
+node3.query_param("disable").value = false
+
+_editor.add_node(node3, 37.47006997828, 144.18142657266)
+
+var node4 = ::blueprint::nodes::subgraph::Subgraph()
+node4.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node4.set_prop_value("no_bg", false)
+
+_editor.add_node(node4, 295.35063474213, -57.24833816456)
+
+var node5 = ::breptopo::nodes::graph::Graph()
+
+node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(203.28131103516, 46.833526611328)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(281.94354248047, -28.887298583984)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-1.950439453125, -208.45751190186)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-135.30154418945, -59.900848388672)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(246.58819580078, 151.39248657227)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-118.71328735352, 159.66857147217)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-314.44653320312, -137.60516357422)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-323.7092590332, -218.49184036255)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-386.40338134766, -111.10083770752)) ]
+
+_editor.add_node(node5, -117.70107421875, -210.78260447605)
+
+var node6 = ::partgraph::nodes::translate::Translate()
+node6.query_param("offset").value.set(0.63747018575668, 0.54454076290131, 0.45565184950829)
+
+_editor.add_node(node6, -397.50434792258, -158.73475730203)
+
+var node7 = ::partgraph::nodes::compound::Compound()
+
+_editor.add_node(node7, -268.59944654733, -73.48231977983)
+
+var node8 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node8, 30.22596721727, -219.55744369545)
+
+var node9 = ::partgraph::nodes::cut::Cut()
+
+_editor.add_node(node9, -385.33327969638, 72.293800417058)
+
+var node10 = ::blueprint::nodes::cache::Cache()
+node10.query_param("disable").value = false
+
+_editor.add_node(node10, -260.42952704378, 146.04056436131)
+
+Blueprint.connect(node0, "shape", node6, "shape")
+Blueprint.connect(node0, "shape", node9, "a")
+Blueprint.connect(node6, "shape", node9, "b")
+Blueprint.connect(node9, "shape", node10, "var")
+Blueprint.connect(node10, "var", node5, "shape")
+Blueprint.connect(node5, "selected", node8, "shape")
+Blueprint.connect(node10, "var", node1, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node3, "var", node4, "geos")
+Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node8, "va", node4, "selected")
+Blueprint.connect(node0, "shape", node7, "shape0")
+Blueprint.connect(node6, "shape", node7, "shape1")
