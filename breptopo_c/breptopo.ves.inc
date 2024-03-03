@@ -9,6 +9,8 @@ foreign class Graph
 	foreign get_edges()
 
 	foreign query_node(x, y)
+
+	foreign layout()
 }
 
 foreign class Node

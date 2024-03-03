@@ -33,9 +33,9 @@ _editor.add_node(node4, 295.35063474213, -57.24833816456)
 
 var node5 = ::breptopo::nodes::graph::Graph()
 
-node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(203.28131103516, 46.833526611328)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(281.94354248047, -28.887298583984)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-1.950439453125, -208.45751190186)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-135.30154418945, -59.900848388672)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(246.58819580078, 151.39248657227)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-118.71328735352, 159.66857147217)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-314.44653320312, -137.60516357422)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-323.7092590332, -218.49184036255)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-386.40338134766, -111.10083770752)) ]
+node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(203.28131103516, 46.833526611328)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(281.94354248047, -28.88729095459)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-1.950439453125, -208.45750808716)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-135.30154418945, -59.900848388672)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(246.58819580078, 151.39247131348)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-118.71328735352, 159.66856384277)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-314.44653320312, -137.60515594482)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-323.7092590332, -218.49183654785)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-386.40338134766, -111.10084533691)) ]
 
-_editor.add_node(node5, -117.70107421875, -210.78260447605)
+_editor.add_node(node5, -105.70107421875, -148.78260447605)
 
 var node6 = ::partgraph::nodes::translate::Translate()
 node6.query_param("offset").value.set(0.63747018575668, 0.54454076290131, 0.45565184950829)
@@ -57,14 +57,21 @@ _editor.add_node(node9, -385.33327969638, 72.293800417058)
 var node10 = ::blueprint::nodes::cache::Cache()
 node10.query_param("disable").value = false
 
-_editor.add_node(node10, -260.42952704378, 146.04056436131)
+_editor.add_node(node10, -245.42952704378, 71.04056436131)
+
+var node11 = ::breptopo::nodes::graph::Graph()
+
+node11.nodes = [  ]
+
+_editor.add_node(node11, -133, -240.5)
 
 Blueprint.connect(node0, "shape", node6, "shape")
 Blueprint.connect(node0, "shape", node9, "a")
 Blueprint.connect(node6, "shape", node9, "b")
 Blueprint.connect(node9, "shape", node10, "var")
+Blueprint.connect(node10, "var", node11, "shape")
+Blueprint.connect(node11, "selected", node8, "shape")
 Blueprint.connect(node10, "var", node5, "shape")
-Blueprint.connect(node5, "selected", node8, "shape")
 Blueprint.connect(node10, "var", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")

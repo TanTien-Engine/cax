@@ -1,7 +1,6 @@
 #pragma once
 
-#include <vector>
-#include <memory>
+#include <graph/Graph.h>
 
 namespace partgraph 
 { 
@@ -14,21 +13,15 @@ namespace breptopo
 
 class Node;
 
-class Graph
+class Graph : public graph::Graph
 {
 public:
 	Graph() {}
-	Graph(const std::shared_ptr<partgraph::TopoShape>& shape);
-
-	std::shared_ptr<Node> AddNode(const std::shared_ptr<partgraph::TopoFace>& face);
-	void AddEdge(size_t f_node, size_t t_node);
-
-	auto& GetNodes() const { return m_nodes; }
+	Graph(const std::shared_ptr<partgraph::TopoShape>& shape) 
+		: m_shape(shape) {}
 
 private:
 	std::shared_ptr<partgraph::TopoShape> m_shape;
-
-	std::vector<std::shared_ptr<Node>> m_nodes;
 
 }; // Graph
 

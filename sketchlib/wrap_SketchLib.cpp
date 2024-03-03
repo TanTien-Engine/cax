@@ -201,7 +201,7 @@ void w_Scene_solve()
     tt::list_to_foreigns(2, shapes);
 
     std::vector<std::pair<sketchlib::GeoID, std::shared_ptr<gs::Shape2D>>> geos;
-    for (int i = 0, n = ids.size(); i < n; ++i) {
+    for (size_t i = 0, n = ids.size(); i < n; ++i) {
         geos.push_back(std::make_pair(ids[i], shapes[i]));
     }
 

@@ -2,6 +2,8 @@
 #include "TopoDataset.h"
 #include "occt_adapter.h"
 
+#include "BRepHistory.h"
+
 // OCCT
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
@@ -41,6 +43,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
             fillet.Add(radius, edge->GetEdge());
         }
     }
+
+    //BRepHistory hist(fillet, TopAbs_FACE, fillet.Shape(), shape->GetShape());
+    BRepHistory hist(fillet, TopAbs_EDGE, fillet.Shape(), shape->GetShape());
 
     return std::make_shared<partgraph::TopoShape>(fillet.Shape());
 }

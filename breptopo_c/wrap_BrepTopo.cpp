@@ -2,7 +2,6 @@
 #include "Graph.h"
 #include "Node.h"
 #include "TopoAdapter.h"
-#include "GraphTools.h"
 #include "modules/script/Proxy.h"
 #include "modules/script/TransHelper.h"
 
@@ -10,6 +9,9 @@
 #include "../partgraph_c/TransHelper.h"
 
 #include <SM_Vector.h>
+//#include <graph/Graph.h>
+//#include <graph/Node.h>
+#include <graph/GraphTools.h>
 
 #include <set>
 #include <map>
@@ -45,7 +47,7 @@ void w_Graph_get_nodes()
         ves_pushnil();
         ves_import_class("breptopo", "Node");
         auto proxy = (tt::Proxy<breptopo::Node>*)ves_set_newforeign(1, 2, sizeof(tt::Proxy<breptopo::Node>));
-        proxy->obj = nodes[i];
+        proxy->obj = std::static_pointer_cast<breptopo::Node>(nodes[i]);
         ves_pop(1);
         ves_seti(-2, i);
         ves_pop(1);
@@ -58,7 +60,7 @@ void w_Graph_get_edges()
 
     auto& nodes = graph->GetNodes();
 
-    std::map<std::shared_ptr<breptopo::Node>, size_t> node2idx;
+    std::map<std::shared_ptr<graph::Node>, size_t> node2idx;
     for (size_t i = 0, n = nodes.size(); i < n; ++i) {
         node2idx.insert({ nodes[i], i });
     }    
@@ -94,7 +96,7 @@ void w_Graph_query_node()
     float x = (float)ves_tonumber(1);
     float y = (float)ves_tonumber(2);
 
-    auto node = breptopo::GraphTools::QueryNode(*graph, sm::vec2(x, y));
+    auto node = graph::GraphTools::QueryNode(*graph, sm::vec2(x, y));
     if (!node)
     {
         ves_set_nil(0);
@@ -106,8 +108,14 @@ void w_Graph_query_node()
     ves_pushnil();
     ves_import_class("breptopo", "Node");
     auto proxy = (tt::Proxy<breptopo::Node>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<breptopo::Node>));
-    proxy->obj = node;
+    proxy->obj = std::static_pointer_cast<breptopo::Node>(node);
     ves_pop(1);
+}
+
+void w_Graph_layout()
+{
+    auto graph = ((tt::Proxy<breptopo::Graph>*)ves_toforeign(0))->obj;
+    graph::GraphTools::Layout(*graph);
 }
 
 void w_Node_allocate()
@@ -170,6 +178,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "Graph.get_nodes()") == 0) return w_Graph_get_nodes;
     if (strcmp(signature, "Graph.get_edges()") == 0) return w_Graph_get_edges;
     if (strcmp(signature, "Graph.query_node(_,_)") == 0) return w_Graph_query_node;
+    if (strcmp(signature, "Graph.layout()") == 0) return w_Graph_layout;
 
     if (strcmp(signature, "Node.get_pos()") == 0) return w_Node_get_pos;
     if (strcmp(signature, "Node.set_pos(_,_)") == 0) return w_Node_set_pos;

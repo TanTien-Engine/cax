@@ -1,7 +1,9 @@
 #include "TopoAdapter.h"
 #include "Graph.h"
-#include "GraphTools.h"
+#include "Node.h"
 #include "../partgraph_c/TopoDataset.h"
+
+#include <graph/GraphTools.h>
 
 // OCCT
 #include <TopTools_IndexedMapOfShape.hxx>
@@ -51,7 +53,8 @@ std::shared_ptr<Graph> TopoAdapter::BuildGraph(const std::shared_ptr<partgraph::
     for (size_t i = 0, n = adjacency.size(); i < n; ++i) 
     {
         auto face = TopoDS::Face(all_faces.FindKey(int(i) + 1));
-        graph->AddNode(std::make_shared<partgraph::TopoFace>(face));
+        auto pg_face = std::make_shared<partgraph::TopoFace>(face);
+        graph->AddNode(std::make_shared<breptopo::Node>(pg_face));
     }
     for (size_t i = 0, n = adjacency.size(); i < n; ++i) {
         for (auto itr : adjacency[i]) {
@@ -59,7 +62,7 @@ std::shared_ptr<Graph> TopoAdapter::BuildGraph(const std::shared_ptr<partgraph::
         }
     }
 
-    GraphTools::Layout(*graph);
+    graph::GraphTools::Layout(*graph);
 
 	return graph;
 }
