@@ -144,6 +144,15 @@ node24.var_type = "array"
 
 _editor.add_node(node24, -628.07842773437, -540.16245605469)
 
+var node25 = ::blueprint::nodes::camera2d::Camera2d()
+
+node25.x = 0
+node25.y = 0
+node25.scale = 1
+node25.speed = 0.01
+
+_editor.add_node(node25, -205.98158822673, -212.68950218324)
+
 Blueprint.connect(node16, "all", node4, "var")
 Blueprint.connect(node4, "var", node23, "var")
 Blueprint.connect(node23, "var", node24, "var")
@@ -158,12 +167,16 @@ Blueprint.connect(node19, "var", node20, "in1")
 Blueprint.connect(node7, "var", node11, "var")
 Blueprint.connect(node11, "var", node0, "geos")
 Blueprint.connect(node12, "var", node0, "selected")
+Blueprint.connect(node25, "mat", node0, "cam_mat")
 Blueprint.connect(node3, "v2", node6, "var")
 Blueprint.connect(node6, "var", node15, "var")
 Blueprint.connect(node14, "var", node13, "selected")
 Blueprint.connect(node15, "var", node13, "last_pos")
+Blueprint.connect(node25, "mat", node13, "cam_mat")
 Blueprint.connect(node20, "list", node1, "geos")
 Blueprint.connect(node2, "v3", node1, "color")
+Blueprint.connect(node25, "mat", node1, "cam_mat")
 Blueprint.connect(node1, "next", node21, "prev")
 Blueprint.connect(node5, "var", node21, "geos")
 Blueprint.connect(node22, "v3", node21, "color")
+Blueprint.connect(node25, "mat", node21, "cam_mat")

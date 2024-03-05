@@ -49,7 +49,7 @@ class Graph is Node
 
 			this.graph = TopoAdapter.build_graph(v_shape.value)
 
-			this.init_nodes_pos(this.graph, this.nodes)
+			//this.init_nodes_pos(this.graph, this.nodes)
 
 			this.rebuild_graph_drawable(this.graph)
 		}
@@ -111,6 +111,16 @@ class Graph is Node
 		this.update_nodes_pos(this.graph)
 
 		this.rebuild_edge_drawable(this.graph)
+	}
+
+	on_mouse_scrolled(x, y, dx, dy) 
+	{
+		EDITOR.editor_node.on_mouse_scrolled(x, y, dx, dy) 
+	}
+
+	on_key_pressed(key) 
+	{
+		EDITOR.editor_node.on_key_pressed(key)
 	}
 
 	rebuild_graph_drawable(graph)
