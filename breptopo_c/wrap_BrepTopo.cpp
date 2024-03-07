@@ -9,8 +9,7 @@
 #include "../partgraph_c/TransHelper.h"
 
 #include <SM_Vector.h>
-//#include <graph/Graph.h>
-//#include <graph/Node.h>
+#include <graph/GraphLayout.h>
 #include <graph/GraphTools.h>
 
 #include <set>
@@ -115,7 +114,7 @@ void w_Graph_query_node()
 void w_Graph_layout()
 {
     auto graph = ((tt::Proxy<breptopo::Graph>*)ves_toforeign(0))->obj;
-    graph::GraphTools::Layout(*graph);
+    graph::GraphLayout::StressMinimization(*graph);
 }
 
 void w_Node_allocate()

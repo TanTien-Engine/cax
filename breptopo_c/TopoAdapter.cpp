@@ -3,7 +3,7 @@
 #include "Node.h"
 #include "../partgraph_c/TopoDataset.h"
 
-#include <graph/GraphTools.h>
+#include <graph/GraphLayout.h>
 
 // OCCT
 #include <TopTools_IndexedMapOfShape.hxx>
@@ -62,7 +62,7 @@ std::shared_ptr<Graph> TopoAdapter::BuildGraph(const std::shared_ptr<partgraph::
         }
     }
 
-    graph::GraphTools::Layout(*graph);
+    graph::GraphLayout::StressMinimization(*graph);
 
 	return graph;
 }
