@@ -25,7 +25,7 @@ foreign class Node
 
 foreign class TopoAdapter
 {
-	foreign static build_graph(shape)
+	foreign static build_graph(shape_list)
 }
 
 );

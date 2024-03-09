@@ -11,6 +11,7 @@ import "maths.vector" for Vector2
 import "breptopo" for TopoAdapter
 import "graphics" for Graphics
 import "geometry" for Line
+import "graph" for Graph as tt_Graph
 
 var EDITOR = nil
 
@@ -21,7 +22,7 @@ class Graph is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "shape", VAR_TOPO_SHAPE),
+			Pin(this, "shape", [ VAR_TOPO_SHAPE, VAR_TYPE_ARRAY ]),
 		]
 		this.exports = [
 			Pin(this, "graph", VAR_TOPO_GRAPH),
@@ -47,7 +48,19 @@ class Graph is Node
 				return nil
 			}
 
-			this.graph = TopoAdapter.build_graph(v_shape.value)
+			var shapes = []
+			if (v_shape.type == VAR_TOPO_SHAPE)
+			{
+				shapes.add(v_shape.value)
+			}
+			else
+			{
+				for (var shape in v_shape.value) {
+					shapes.add(shape.value)
+				}
+			}
+
+			this.graph = TopoAdapter.build_graph(shapes)
 
 			//this.init_nodes_pos(this.graph, this.nodes)
 

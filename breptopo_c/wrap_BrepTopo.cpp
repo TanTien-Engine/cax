@@ -154,9 +154,10 @@ void w_Node_get_face()
 
 void w_TopoAdapter_build_graph()
 {
-    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    std::vector<std::shared_ptr<partgraph::TopoShape>> shapes;
+    tt::list_to_foreigns(1, shapes);
 
-    auto graph = breptopo::TopoAdapter::BuildGraph(shape);
+    auto graph = breptopo::TopoAdapter::BuildGraph(shapes);
 
     ves_pop(ves_argnum());
 

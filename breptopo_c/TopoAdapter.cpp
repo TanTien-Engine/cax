@@ -17,7 +17,22 @@
 namespace breptopo
 {
 
-std::shared_ptr<Graph> TopoAdapter::BuildGraph(const std::shared_ptr<partgraph::TopoShape>& topo_shape)
+std::shared_ptr<Graph> 
+TopoAdapter::BuildGraph(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes)
+{
+    auto graph = std::make_shared<Graph>(shapes);
+
+    for (auto shape : shapes) {
+        AddShapeToGraph(shape, graph);
+    }
+
+    graph::GraphLayout::StressMinimization(*graph);
+
+	return graph;
+}
+
+void TopoAdapter::AddShapeToGraph(const std::shared_ptr<partgraph::TopoShape>& topo_shape,
+                                  const std::shared_ptr<Graph>& graph)
 {
 	auto& shape = topo_shape->GetShape();
 
@@ -48,7 +63,7 @@ std::shared_ptr<Graph> TopoAdapter::BuildGraph(const std::shared_ptr<partgraph::
         }
     }
 
-    auto graph = std::make_shared<Graph>(topo_shape);
+    const size_t offset_idx = graph->GetNodes().size();
 
     for (size_t i = 0, n = adjacency.size(); i < n; ++i) 
     {
@@ -58,13 +73,9 @@ std::shared_ptr<Graph> TopoAdapter::BuildGraph(const std::shared_ptr<partgraph::
     }
     for (size_t i = 0, n = adjacency.size(); i < n; ++i) {
         for (auto itr : adjacency[i]) {
-            graph->AddEdge(i, itr);
+            graph->AddEdge(offset_idx + i, offset_idx + itr);
         }
     }
-
-    graph::GraphLayout::StressMinimization(*graph);
-
-	return graph;
 }
 
 }

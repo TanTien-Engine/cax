@@ -17,11 +17,11 @@ class Graph : public graph::Graph
 {
 public:
 	Graph() {}
-	Graph(const std::shared_ptr<partgraph::TopoShape>& shape) 
-		: m_shape(shape) {}
+	Graph(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes)
+		: m_shapes(shapes) {}
 
 private:
-	std::shared_ptr<partgraph::TopoShape> m_shape;
+	std::vector<std::shared_ptr<partgraph::TopoShape>> m_shapes;
 
 }; // Graph
 
