@@ -3,6 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.variant" for Variant, VAR_TYPE_NODE, VAR_TYPE_ARRAY
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
+import "blueprint.dirty_types" for DIRTY_EDITOR
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_EDGE, VAR_TOPO_FACE
 import "partgraph" for BRepSelector, BRepTools
 import "maths.vector" for Vector2
@@ -105,7 +106,7 @@ class Selector is Node
 		}
 
 		if (dirty) {
-			Blueprint.send_pin_dirty_root(this.exports[0])
+			Blueprint.send_pin_dirty_root(this.exports[0], DIRTY_EDITOR)
 		}
 	}
 

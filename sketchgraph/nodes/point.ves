@@ -6,6 +6,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.node_editor" for NodeEditor
 import "blueprint.nodes.number2" for Number2
 import "blueprint.node_helper" for NodeHelper
+import "blueprint.dirty_types" for DIRTY_EDITOR
 import "sketchgraph.variant" for VAR_TYPE_GEOMETRY, VarGeometry
 import "sketchgraph.context" for CONTEXT
 import "sketchgraph.util" for DRAW_SCALE
@@ -54,14 +55,14 @@ class Point is Node
 	{
 		super.on_selected()
 
-		Blueprint.send_pin_dirty_root(this.exports[0])
+		Blueprint.send_pin_dirty_root(this.exports[0], DIRTY_EDITOR)
 	}
 
 	on_deselected() 
 	{
 		super.on_deselected()
 
-		Blueprint.send_pin_dirty_root(this.exports[0])
+		Blueprint.send_pin_dirty_root(this.exports[0], DIRTY_EDITOR)
 	}
 
 	bind_editor()
@@ -105,6 +106,6 @@ class Point is Node
 		this.query_param("x").value = this.editor_pos.value.x / DRAW_SCALE
 		this.query_param("y").value = this.editor_pos.value.y / DRAW_SCALE
 
-		Blueprint.send_pin_dirty_root(this.exports[0])
+		Blueprint.send_pin_dirty_root(this.exports[0], DIRTY_EDITOR)
 	}
 }
