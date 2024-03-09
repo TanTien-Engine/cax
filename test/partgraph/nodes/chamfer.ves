@@ -42,17 +42,31 @@ node6.query_param("disable").value = false
 _editor.add_node(node6, -388.01652892562, 93.890909090909)
 
 var node7 = ::partgraph::nodes::selector::Selector()
+node7.query_param("type").value = "edge"
 
 node7.selected_indices = [ 8, 11, 7 ]
 
 _editor.add_node(node7, -210.40594077592, 36.194006400923)
+
+var node8 = ::breptopo::nodes::graph::Graph()
+
+node8.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(296.38938903809, -55.701381355524)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(124.50197601318, -8.0204795300961)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(355.7971572876, -1.6255534291267)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(120.28495788574, -109.13427099586)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(462.05795288086, -109.13264718652)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(296.39122009277, -162.56550675631)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(1.4674758911133, -109.13484233618)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(237.68852233887, -109.13372972608)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(125.50552368164, -211.24803239107)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(355.80081939697, -216.64076334238)) ]
+
+_editor.add_node(node8, 102.40946003704, -160.19698957423)
+
+var node9 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node9, 240.94764016403, -167.71010727202)
 
 Blueprint.connect(node0, "shape", node6, "var")
 Blueprint.connect(node6, "var", node7, "shape")
 Blueprint.connect(node2, "this", node7, "camera")
 Blueprint.connect(node6, "var", node4, "shape")
 Blueprint.connect(node7, "objs", node4, "edges")
+Blueprint.connect(node4, "shape", node8, "shape")
+Blueprint.connect(node8, "selected", node9, "shape")
 Blueprint.connect(node4, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node5, "geos")
 Blueprint.connect(node2, "this", node5, "view_cam")
+Blueprint.connect(node9, "va", node5, "selected")

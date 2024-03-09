@@ -38,8 +38,21 @@ node5.query_param("length").value = 0.58995091915131
 
 _editor.add_node(node5, -325.09558105469, 76.645797729492)
 
+var node6 = ::breptopo::nodes::graph::Graph()
+
+node6.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(212.84568786621, -111.66566947103)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(208.25855255127, 4.3364129066467)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-12.478809356689, 0.92577773332596)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-7.891674041748, -114.0762745738)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(101.18341064453, -54.869930833578)) ]
+
+_editor.add_node(node6, -171.14425897123, -174.24657635109)
+
+var node7 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node7, -32.606078844236, -181.75969404888)
+
 Blueprint.connect(node0, "shape", node5, "shape")
+Blueprint.connect(node5, "shape", node6, "shape")
+Blueprint.connect(node6, "selected", node7, "shape")
 Blueprint.connect(node5, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")
 Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node7, "va", node4, "selected")

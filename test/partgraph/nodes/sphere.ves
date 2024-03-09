@@ -19,6 +19,8 @@ node2.query_param("disable").value = false
 _editor.add_node(node2, 178.94988548828, 90.94948572266)
 
 var node3 = ::partgraph::nodes::sphere::Sphere()
+node3.query_param("radius").value = 1
+node3.query_param("angle").value = 6.2831853071796
 
 _editor.add_node(node3, -109.4902126937, 82.51895272813)
 
@@ -28,7 +30,20 @@ node4.set_prop_value("no_bg", false)
 
 _editor.add_node(node4, 367.56660179687, 33.580594731445)
 
+var node5 = ::breptopo::nodes::graph::Graph()
+
+node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(0, 0)) ]
+
+_editor.add_node(node5, 31.439182050559, -169.03298356371)
+
+var node6 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node6, 169.97736217755, -176.5461012615)
+
+Blueprint.connect(node3, "shape", node5, "shape")
+Blueprint.connect(node5, "selected", node6, "shape")
 Blueprint.connect(node3, "shape", node0, "shape")
 Blueprint.connect(node0, "va", node2, "var")
 Blueprint.connect(node2, "var", node4, "geos")
 Blueprint.connect(node1, "this", node4, "view_cam")
+Blueprint.connect(node6, "va", node4, "selected")

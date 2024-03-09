@@ -70,6 +70,16 @@ node12.set_prop_value("no_bg", false)
 
 _editor.add_node(node12, 545.61171796676, -13.581336888135)
 
+var node13 = ::breptopo::nodes::graph::Graph()
+
+node13.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(313.82274627686, -66.034131228924)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(121.13206481934, -112.01572176814)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(240.0305557251, -170.04576489329)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(124.23148345947, -59.374852389097)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(252.46501922607, -0.40832790732384)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(310.8130645752, -107.09491682053)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-68.449459075928, -58.295657336712)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-10.101413726807, -164.98224624991)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-71.459197998047, -99.356442928314)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(2.3329925537109, 4.6551606655121)) ]
+
+_editor.add_node(node13, 207.63202928529, -240.03691605715)
+
+var node14 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node14, 346.17020941228, -247.55003375494)
+
 Blueprint.connect(node6, "shape", node9, "shape")
 Blueprint.connect(node0, "shape", node10, "shape")
 Blueprint.connect(node10, "shape", node11, "a")
@@ -80,7 +90,10 @@ Blueprint.connect(node10, "shape", node7, "a")
 Blueprint.connect(node9, "shape", node7, "b")
 Blueprint.connect(node10, "shape", node4, "a")
 Blueprint.connect(node9, "shape", node4, "b")
+Blueprint.connect(node4, "shape", node13, "shape")
+Blueprint.connect(node13, "selected", node14, "shape")
 Blueprint.connect(node4, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node12, "geos")
 Blueprint.connect(node2, "this", node12, "view_cam")
+Blueprint.connect(node14, "va", node12, "selected")

@@ -58,6 +58,16 @@ node9.selected_indices = [ 1, 6 ]
 
 _editor.add_node(node9, -475.43902234795, 49.606047020273)
 
+var node10 = ::breptopo::nodes::graph::Graph()
+
+node10.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-52.643157958984, -44.308616638184)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-3.4168701171875, -107.35636138916)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-2.6794738769531, -63.676803588867)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-54.052886962891, -125.71531677246)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(81.278747558594, -108.65384674072)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(82.041564941406, -63.984375)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(73.729675292969, -5.1553115844727)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(161.84625244141, -40.44898223877)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(70.967224121094, -167.30486297607)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(146.6044921875, -193.23983001709)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(197.64855957031, -123.2008895874)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(160.25939941406, -133.71194458008)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(198.86846923828, -51.672546386719)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(150.22741699219, 19.321243286133)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(261.16693115234, -0.83596801757812)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(258.19641113281, -175.21424102783)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(291.64031982422, -88.331359863281)) ]
+
+_editor.add_node(node10, -153.38425897123, -158.51457635109)
+
+var node11 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node11, -14.84607884424, -166.02769404888)
+
 Blueprint.connect(node6, "v", node7, "v")
 Blueprint.connect(node0, "shape", node8, "var")
 Blueprint.connect(node8, "var", node9, "shape")
@@ -65,7 +75,10 @@ Blueprint.connect(node2, "this", node9, "camera")
 Blueprint.connect(node8, "var", node5, "shape")
 Blueprint.connect(node9, "objs", node5, "face")
 Blueprint.connect(node6, "v", node5, "offset")
+Blueprint.connect(node5, "shape", node10, "shape")
+Blueprint.connect(node10, "selected", node11, "shape")
 Blueprint.connect(node5, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")
 Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node11, "va", node4, "selected")

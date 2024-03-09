@@ -49,11 +49,30 @@ node8.set_prop_value("no_bg", false)
 
 _editor.add_node(node8, 358, 1.6999999999999)
 
+var node9 = ::breptopo::nodes::graph::Graph()
+
+node9.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(135.18566894531, 10.679901123047)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-0.77145385742188, 71.748321533203)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-2.96533203125, 11.282684326172)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(133.72344970703, 71.179183959961)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(66.117065429688, 11.605087280273)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(66.506286621094, 74.195663452148)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(130.78778076172, -240.90799713135)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-5.18115234375, -179.84907531738)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-3.7071533203125, -240.34875869751)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(132.96997070312, -180.44274902344)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(67.510314941406, -262.36032867432)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(67.887329101562, -158.76963806152)) ]
+
+_editor.add_node(node9, 28.85574102877, -205.24657635109)
+
+var node10 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node10, 167.39392115576, -212.75969404888)
+
+var node11 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node11, -120.7279510498, -187.54162597656)
+
 Blueprint.connect(node0, "shape", node5, "shape")
 Blueprint.connect(node0, "shape", node4, "shape")
+Blueprint.connect(node4, "shape", node11, "in0")
+Blueprint.connect(node0, "shape", node11, "in1")
+Blueprint.connect(node11, "list", node9, "shape")
+Blueprint.connect(node9, "selected", node10, "shape")
 Blueprint.connect(node4, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node6, "in0")
 Blueprint.connect(node5, "va", node6, "in1")
 Blueprint.connect(node6, "list", node3, "var")
 Blueprint.connect(node3, "var", node8, "geos")
 Blueprint.connect(node2, "this", node8, "view_cam")
+Blueprint.connect(node10, "va", node8, "selected")

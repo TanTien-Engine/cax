@@ -42,17 +42,31 @@ node6.query_param("disable").value = false
 _editor.add_node(node6, -503.93081942472, 141.70633766868)
 
 var node7 = ::partgraph::nodes::selector::Selector()
+node7.query_param("type").value = "edge"
 
 node7.selected_indices = [ 8 ]
 
 _editor.add_node(node7, -244.4485, 37.947414800901)
+
+var node8 = ::breptopo::nodes::graph::Graph()
+
+node8.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-1.5044555664062, -49.288513183594)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(83.165100097656, -99.127052307129)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(88.525024414062, 0.33219909667969)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(31.754821777344, -129.54144287109)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(95.519348144531, -60.387283325195)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(180.82403564453, -50.716529846191)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(146.1865234375, -129.46092224121)) ]
+
+_editor.add_node(node8, -100.14425897123, -121.24657635109)
+
+var node9 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node9, 38.39392115576, -128.75969404888)
 
 Blueprint.connect(node0, "shape", node6, "var")
 Blueprint.connect(node6, "var", node7, "shape")
 Blueprint.connect(node2, "this", node7, "camera")
 Blueprint.connect(node6, "var", node4, "shape")
 Blueprint.connect(node7, "objs", node4, "edges")
+Blueprint.connect(node4, "shape", node8, "shape")
+Blueprint.connect(node8, "selected", node9, "shape")
 Blueprint.connect(node4, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node5, "geos")
 Blueprint.connect(node2, "this", node5, "view_cam")
+Blueprint.connect(node9, "va", node5, "selected")
