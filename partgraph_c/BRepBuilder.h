@@ -13,6 +13,7 @@ namespace partgraph
 class TopoEdge;
 class TopoWire;
 class TopoFace;
+class TopoShell;
 class TopoShape;
 
 class TrimmedCurve;
@@ -26,6 +27,7 @@ public:
 	static std::shared_ptr<TopoEdge> MakeEdge(const TrimmedCurve& c, const CylindricalSurface& s);
 	static std::shared_ptr<TopoWire> MakeWire(const std::vector<std::shared_ptr<TopoEdge>>& edges);
 	static std::shared_ptr<TopoFace> MakeFace(const TopoWire& wire);
+	static std::shared_ptr<TopoShell> MakeShell(const std::vector<std::shared_ptr<TopoFace>>& faces);
 	static std::shared_ptr<TopoShape> MakeCompound(const std::vector<std::shared_ptr<TopoShape>>& shapes);
 
 }; // BRepBuilder

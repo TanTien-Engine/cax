@@ -23,4 +23,9 @@ void return_topo_face(const std::shared_ptr<TopoFace>& face)
     return return_topo_obj<TopoFace>(face, "TopoFace");
 }
 
+void return_topo_shell(const std::shared_ptr<TopoShell>& shell)
+{
+    return return_topo_obj<TopoShell>(shell, "TopoShell");
+}
+
 }

@@ -1,0 +1,70 @@
+var node0 = ::partgraph::nodes::box::Box()
+node0.query_param("length").value = 1
+node0.query_param("width").value = 1
+node0.query_param("height").value = 1
+
+_editor.add_node(node0, -378.4693, 145.7154)
+
+var node1 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node1, 205.76374303873, 290.54027199769)
+
+var node2 = ::blueprint::nodes::camera3d::Camera3d()
+
+node2.cam.position.set(-0.42454294861347, 1.9906413663896, 2.2659857698824)
+node2.cam.yaw = -62.1
+node2.cam.pitch = -41.1
+node2.cam.zoom = 45
+node2.cam.update_vectors()
+node2.speed = 0.30111083388329
+
+_editor.add_node(node2, 378.06018040418, 79.590164963855)
+
+var node3 = ::blueprint::nodes::cache::Cache()
+node3.query_param("disable").value = false
+
+_editor.add_node(node3, 377.51693912464, 217.18666117721)
+
+var node4 = ::blueprint::nodes::subgraph::Subgraph()
+node4.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node4.set_prop_value("no_bg", false)
+
+_editor.add_node(node4, 572.70470257457, 164.89360151256)
+
+var node5 = ::breptopo::nodes::graph::Graph()
+
+node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(129.09057617188, -57.423889160156)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(1.5872802734375, -7.803108215332)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(4.8145141601562, -61.616203308105)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(125.86334228516, -3.6107711791992)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(68.566162109375, -86.426605224609)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(62.111694335938, 21.199630737305)) ]
+
+_editor.add_node(node5, -19.426903599325, 130.63276249188)
+
+var node6 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node6, 119.11127652767, 123.11964479409)
+
+var node7 = ::partgraph::nodes::selector::Selector()
+node7.query_param("type").value = "face"
+
+node7.selected_indices = [ 1, 2, 3 ]
+
+_editor.add_node(node7, -228, 267)
+
+var node8 = ::partgraph::nodes::shell::Shell()
+
+_editor.add_node(node8, -74, 289)
+
+var node9 = ::partgraph::nodes::fillet::Fillet()
+node9.query_param("radius").value = 0.05
+
+_editor.add_node(node9, 64.879461785397, 260.80537283221)
+
+Blueprint.connect(node0, "shape", node7, "shape")
+Blueprint.connect(node2, "this", node7, "camera")
+Blueprint.connect(node7, "objs", node8, "faces")
+Blueprint.connect(node8, "shell", node9, "shape")
+Blueprint.connect(node9, "shape", node1, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node0, "shape", node5, "shape")
+Blueprint.connect(node5, "selected", node6, "shape")
+Blueprint.connect(node3, "var", node4, "geos")
+Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node6, "va", node4, "selected")

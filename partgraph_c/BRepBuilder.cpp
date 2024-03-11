@@ -72,6 +72,17 @@ std::shared_ptr<TopoFace> BRepBuilder::MakeFace(const TopoWire& wire)
 	return std::make_shared<TopoFace>(face);
 }
 
+std::shared_ptr<TopoShell> BRepBuilder::MakeShell(const std::vector<std::shared_ptr<TopoFace>>& faces)
+{
+	TopoDS_Shell shell;
+	BRep_Builder builder;
+	builder.MakeShell(shell);
+	for (auto& face : faces) {
+	    builder.Add(shell, face->GetFace());
+	}
+	return std::make_shared<TopoShell>(shell);
+}
+
 std::shared_ptr<TopoShape> BRepBuilder::MakeCompound(const std::vector<std::shared_ptr<TopoShape>>& shapes)
 {
 	TopoDS_Compound res;

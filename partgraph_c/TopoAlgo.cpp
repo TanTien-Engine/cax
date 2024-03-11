@@ -44,8 +44,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
     }
 
-    //BRepHistory hist(fillet, TopAbs_FACE, fillet.Shape(), shape->GetShape());
-    BRepHistory hist(fillet, TopAbs_EDGE, fillet.Shape(), shape->GetShape());
+    BRepHistory hist(fillet, TopAbs_FACE, fillet.Shape(), shape->GetShape());
+    //BRepHistory hist(fillet, TopAbs_EDGE, fillet.Shape(), shape->GetShape());
 
     return std::make_shared<partgraph::TopoShape>(fillet.Shape());
 }

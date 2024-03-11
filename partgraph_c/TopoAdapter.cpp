@@ -84,10 +84,75 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
 namespace partgraph
 {
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoShape& topo_shape)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoShape& shape)
 {
-    auto& shape = topo_shape.GetShape();
+    return BuildMesh(shape.GetShape());
+}
 
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoShell& shell)
+{
+    return BuildMesh(shell.GetShell());
+}
+
+std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeo(const TopoEdge& shape)
+{
+    std::vector<sm::vec3> pts;
+
+    auto& edge = shape.GetEdge();
+    TopoDS_Iterator it;
+    int itr = 0;
+    for (it.Initialize(edge); it.More(); it.Next(), ++itr)
+    {
+        auto& v = TopoDS::Vertex(it.Value());
+        gp_Pnt p = BRep_Tool::Pnt(v);
+        pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
+    }
+
+    if (pts.size() < 2) {
+        return nullptr;
+    }
+
+    auto geo = std::make_shared<gs::Line3D>();
+    geo->SetStart(pts[0]);
+    geo->SetEnd(pts[1]);
+
+    return geo;
+}
+
+std::shared_ptr<gs::Polyline3D> TopoAdapter::BuildGeo(const TopoWire& wire)
+{
+    std::vector<sm::vec3> pts;
+
+    auto& w = wire.GetWire();
+    TopoDS_Iterator it;
+    int itr = 0;
+    for (it.Initialize(w); it.More(); it.Next(), ++itr)
+    {
+        auto& e = TopoDS::Edge(it.Value());
+
+        int itr2 = 0;
+        TopoDS_Iterator it2;
+        for (it2.Initialize(e); it2.More(); it2.Next(), ++itr2)
+        {
+            auto& v = TopoDS::Vertex(it2.Value());
+            gp_Pnt p = BRep_Tool::Pnt(v);
+            pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
+        }
+    }
+
+    auto geo = std::make_shared<gs::Polyline3D>();
+    geo->SetVertices(pts);
+
+    return geo;
+}
+
+std::shared_ptr<TopoWire> TopoAdapter::ToWire(const TopoShape& shape)
+{
+    return std::make_shared<TopoWire>(TopoDS::Wire(shape.GetShape()));
+}
+
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoDS_Shape& shape)
+{
     auto algo = std::make_unique<BRepMesh_IncrementalMesh>();
     algo->SetShape(shape);
     algo->Perform();
@@ -166,63 +231,6 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoShape& topo_sh
 	va->SetVertexBufferAttrs(vbuf_attrs);
 
     return va;
-}
-
-std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeo(const TopoEdge& shape)
-{
-    std::vector<sm::vec3> pts;
-
-    auto& edge = shape.GetEdge();
-    TopoDS_Iterator it;
-    int itr = 0;
-    for (it.Initialize(edge); it.More(); it.Next(), ++itr)
-    {
-        auto& v = TopoDS::Vertex(it.Value());
-        gp_Pnt p = BRep_Tool::Pnt(v);
-        pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
-    }
-
-    if (pts.size() < 2) {
-        return nullptr;
-    }
-
-    auto geo = std::make_shared<gs::Line3D>();
-    geo->SetStart(pts[0]);
-    geo->SetEnd(pts[1]);
-
-    return geo;
-}
-
-std::shared_ptr<gs::Polyline3D> TopoAdapter::BuildGeo(const TopoWire& wire)
-{
-    std::vector<sm::vec3> pts;
-
-    auto& w = wire.GetWire();
-    TopoDS_Iterator it;
-    int itr = 0;
-    for (it.Initialize(w); it.More(); it.Next(), ++itr)
-    {
-        auto& e = TopoDS::Edge(it.Value());
-
-        int itr2 = 0;
-        TopoDS_Iterator it2;
-        for (it2.Initialize(e); it2.More(); it2.Next(), ++itr2)
-        {
-            auto& v = TopoDS::Vertex(it2.Value());
-            gp_Pnt p = BRep_Tool::Pnt(v);
-            pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
-        }
-    }
-
-    auto geo = std::make_shared<gs::Polyline3D>();
-    geo->SetVertices(pts);
-
-    return geo;
-}
-
-std::shared_ptr<TopoWire> TopoAdapter::ToWire(const TopoShape& shape)
-{
-    return std::make_shared<TopoWire>(TopoDS::Wire(shape.GetShape()));
 }
 
 }

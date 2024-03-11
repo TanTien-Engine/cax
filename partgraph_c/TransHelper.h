@@ -13,6 +13,7 @@ class TopoShape;
 class TopoEdge;
 class TopoWire;
 class TopoFace;
+class TopoShell;
 
 template<typename T>
 void return_topo_obj(const std::shared_ptr<T>& obj, const char* class_name)
@@ -35,5 +36,6 @@ void return_topo_shape(const std::shared_ptr<TopoShape>& shape);
 void return_topo_edge(const std::shared_ptr<TopoEdge>& edge);
 void return_topo_wire(const std::shared_ptr<TopoWire>& wire);
 void return_topo_face(const std::shared_ptr<TopoFace>& face);
+void return_topo_shell(const std::shared_ptr<TopoShell>& shell);
 
 }

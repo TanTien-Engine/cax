@@ -36,6 +36,11 @@ foreign class TopoFace
 	init() {}
 }
 
+foreign class TopoShell
+{
+	init() {}
+}
+
 foreign class WireBuilder
 {
 	init() {}
@@ -54,6 +59,7 @@ foreign class BRepBuilder
 
 	foreign static make_wire(edges)
 	foreign static make_face(wire)
+	foreign static make_shell(faces)
 
 	foreign static make_compound(shapes)
 }
@@ -112,6 +118,7 @@ foreign class TopoAlgo
 foreign class TopoAdapter
 {
 	foreign static build_mesh(shape)
+
 	foreign static build_edge_geo(edge)
 	foreign static build_wire_geo(wire)
 

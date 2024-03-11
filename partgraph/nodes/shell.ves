@@ -1,0 +1,43 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "blueprint.blueprint" for Blueprint
+import "partgraph.variant" for VAR_TOPO_SHELL
+import "partgraph" for BRepBuilder
+
+class Shell is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "faces", VAR_TYPE_ARRAY),
+		]
+		this.exports = [
+			Pin(this, "shell", VAR_TOPO_SHELL),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_faces = Blueprint.calc_input_value(this, 0)
+		if (!v_faces) {
+			return nil
+		}
+
+		var faces = []
+		for (var v_face in v_faces.value) {
+			faces.add(v_face.value)
+		}
+
+		var shell = BRepBuilder.make_shell(faces)
+		if (shell) {
+			return Variant(VAR_TOPO_SHELL, shell)
+		} else {
+			return nil
+		}
+	}
+}

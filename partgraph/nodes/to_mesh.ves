@@ -3,7 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "rendergraph.variant" for VAR_TYPE_VERTEX_ARRAY
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_SHELL
 import "partgraph" for TopoAdapter
 
 class ToMesh is Node
@@ -13,7 +13,7 @@ class ToMesh is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "shape", [ VAR_TOPO_SHAPE, VAR_TYPE_ARRAY ]),
+			Pin(this, "shape", [ VAR_TOPO_SHAPE, VAR_TOPO_SHELL, VAR_TYPE_ARRAY ]),
 		]
 		this.exports = [
 			Pin(this, "va", [ VAR_TYPE_VERTEX_ARRAY, VAR_TYPE_ARRAY ]),
@@ -29,30 +29,38 @@ class ToMesh is Node
 			return nil
 		}
 
-		if (v_shape.type == VAR_TOPO_SHAPE)
+		var meshes = []
+		this.build_meshes(v_shape, meshes)
+
+		if (meshes.count == 0)
+		{
+			return nil
+		}
+		else if (meshes.count == 1)
+		{
+			return Variant(VAR_TYPE_VERTEX_ARRAY, meshes[0])
+		}
+		else
+		{
+			return Variant(VAR_TYPE_ARRAY, meshes)
+		}
+	}
+
+	build_meshes(v_shape, meshes)
+	{
+		if (v_shape.type == VAR_TOPO_SHAPE or v_shape.type == VAR_TOPO_SHELL)
 		{
 			var va = TopoAdapter.build_mesh(v_shape.value)
 			if (va) {
-				return Variant(VAR_TYPE_VERTEX_ARRAY, va)
-			} else {
-				return nil
+				meshes.add(va)
 			}
 		}
 		else if (v_shape.type == VAR_TYPE_ARRAY)
 		{
-			var vas = []
 			for (var shape in v_shape.value)
 			{
-				var va = TopoAdapter.build_mesh(shape.value)
-				if (va) {
-					vas.add(va)
-				}
+				this.build_meshes(shape, meshes)
 			}
-			return Variant(VAR_TYPE_ARRAY, vas)
 		}
-		else
-		{
-			return nil
-		}
-	}	
+	}
 }

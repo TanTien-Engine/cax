@@ -4,6 +4,7 @@
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Wire.hxx>
 #include <TopoDS_Face.hxx>
+#include <TopoDS_Shell.hxx>
 
 namespace partgraph
 {
@@ -71,5 +72,21 @@ private:
 	TopoDS_Face m_face;
 
 }; // TopoFace
+
+class TopoShell
+{
+public:
+	TopoShell() {}
+	TopoShell(const TopoDS_Shell& shell)
+		: m_shell(shell)
+	{
+	}
+
+	auto& GetShell() const { return m_shell; }
+
+private:
+	TopoDS_Shell m_shell;
+
+}; // TopoShell
 
 }

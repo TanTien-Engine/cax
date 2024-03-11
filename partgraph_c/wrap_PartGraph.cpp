@@ -59,6 +59,14 @@ void w_BRepBuilder_make_face()
     partgraph::return_topo_face(face);
 }
 
+void w_BRepBuilder_make_shell()
+{
+    std::vector<std::shared_ptr<partgraph::TopoFace>> faces;
+    tt::list_to_foreigns(1, faces);
+    auto shell = partgraph::BRepBuilder::MakeShell(faces);
+    partgraph::return_topo_shell(shell);
+}
+
 void w_BRepBuilder_make_compound()
 {
     std::vector<std::shared_ptr<partgraph::TopoShape>> shapes;
@@ -568,6 +576,19 @@ int w_TopoFace_finalize(void* data)
     return sizeof(tt::Proxy<partgraph::TopoFace>);
 }
 
+void w_TopoShell_allocate()
+{
+    auto proxy = (tt::Proxy<partgraph::TopoShell>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoShell>));
+    proxy->obj = std::make_shared<partgraph::TopoShell>();
+}
+
+int w_TopoShell_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<partgraph::TopoShell>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<partgraph::TopoShell>);
+}
+
 void w_WireBuilder_allocate()
 {
     auto proxy = (tt::Proxy<BRepBuilderAPI_MakeWire>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<BRepBuilderAPI_MakeWire>));
@@ -623,6 +644,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static BRepBuilder.make_edge_from_curve_surf(_,_)") == 0) return w_BRepBuilder_make_edge_from_curve_surf;
     if (strcmp(signature, "static BRepBuilder.make_wire(_)") == 0) return w_BRepBuilder_make_wire;
     if (strcmp(signature, "static BRepBuilder.make_face(_)") == 0) return w_BRepBuilder_make_face;
+    if (strcmp(signature, "static BRepBuilder.make_shell(_)") == 0) return w_BRepBuilder_make_shell;
     if (strcmp(signature, "static BRepBuilder.make_compound(_)") == 0) return w_BRepBuilder_make_compound;
 
     if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
@@ -711,6 +733,13 @@ void PartGraphBindClass(const char* class_name, VesselForeignClassMethods* metho
     {
         methods->allocate = w_TopoFace_allocate;
         methods->finalize = w_TopoFace_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "TopoShell") == 0)
+    {
+        methods->allocate = w_TopoShell_allocate;
+        methods->finalize = w_TopoShell_finalize;
         return;
     }
 
