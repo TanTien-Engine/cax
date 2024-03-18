@@ -1,8 +1,10 @@
 #include "TopoAdapter.h"
-#include "Graph.h"
-#include "Node.h"
+#include "TopoNodeShape.h"
+#include "TopoGraphShape.h"
 #include "../partgraph_c/TopoDataset.h"
 
+#include <graph/Graph.h>
+#include <graph/Node.h>
 #include <graph/GraphLayout.h>
 
 // OCCT
@@ -17,10 +19,12 @@
 namespace breptopo
 {
 
-std::shared_ptr<Graph> 
+std::shared_ptr<graph::Graph>
 TopoAdapter::BuildGraph(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes)
 {
-    auto graph = std::make_shared<Graph>(shapes);
+    auto graph = std::make_shared<graph::Graph>();
+    graph->SetDirected(false);
+    graph->AddComponent<TopoGraphShape>(shapes);
 
     for (auto shape : shapes) {
         AddShapeToGraph(shape, graph);
@@ -32,7 +36,7 @@ TopoAdapter::BuildGraph(const std::vector<std::shared_ptr<partgraph::TopoShape>>
 }
 
 void TopoAdapter::AddShapeToGraph(const std::shared_ptr<partgraph::TopoShape>& topo_shape,
-                                  const std::shared_ptr<Graph>& graph)
+                                  const std::shared_ptr<graph::Graph>& graph)
 {
 	auto& shape = topo_shape->GetShape();
 
@@ -67,9 +71,14 @@ void TopoAdapter::AddShapeToGraph(const std::shared_ptr<partgraph::TopoShape>& t
 
     for (size_t i = 0, n = adjacency.size(); i < n; ++i) 
     {
-        auto face = TopoDS::Face(all_faces.FindKey(int(i) + 1));
+        int key = static_cast<int>(i) + 1;
+        auto node = std::make_shared<graph::Node>(key);
+
+        auto face = TopoDS::Face(all_faces.FindKey(key));
         auto pg_face = std::make_shared<partgraph::TopoFace>(face);
-        graph->AddNode(std::make_shared<breptopo::Node>(pg_face));
+        node->AddComponent<TopoNodeShape>(pg_face);
+
+        graph->AddNode(node);
     }
     for (size_t i = 0, n = adjacency.size(); i < n; ++i) {
         for (auto itr : adjacency[i]) {

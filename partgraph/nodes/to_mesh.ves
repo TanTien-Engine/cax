@@ -48,18 +48,18 @@ class ToMesh is Node
 
 	build_meshes(v_shape, meshes)
 	{
-		if (v_shape.type == VAR_TOPO_SHAPE or v_shape.type == VAR_TOPO_SHELL)
-		{
-			var va = TopoAdapter.build_mesh(v_shape.value)
-			if (va) {
-				meshes.add(va)
-			}
-		}
-		else if (v_shape.type == VAR_TYPE_ARRAY)
+		if (v_shape.type == VAR_TYPE_ARRAY)
 		{
 			for (var shape in v_shape.value)
 			{
 				this.build_meshes(shape, meshes)
+			}
+		}
+		else
+		{
+			var va = TopoAdapter.build_mesh(v_shape.value)
+			if (va) {
+				meshes.add(va)
 			}
 		}
 	}

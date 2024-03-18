@@ -28,6 +28,11 @@ class Parteditor is Editor
 			super.add_popup_node(node)
 		}
 		
+		import "breptoponodes" for BREP_TOPO_NODES
+		for (var node in BREP_TOPO_NODES) {
+			super.add_popup_node(node)
+		}
+				
 		import "partnodes" for PART_NODES
 		for (var node in PART_NODES) {
 			super.add_popup_node(node)

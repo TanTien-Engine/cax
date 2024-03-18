@@ -1,0 +1,128 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "blueprint.variant_proxy" for VariantProxy
+import "graph.nodes.draw" for Draw
+import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
+import "breptopo.variant" for VAR_TOPO_GRAPH
+import "graph.variant" for VAR_TYPE_GRAPH
+import "breptopo" for TopoAdapter
+
+class TopoGraph is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", [ VAR_TOPO_SHAPE, VAR_TYPE_ARRAY ]),
+		]
+		this.exports = [
+			Pin(this, "graph", VAR_TOPO_GRAPH),
+			Pin(this, "selected", VAR_TYPE_ARRAY),
+		]
+
+		this.layout()
+
+		this.graph = nil
+
+		this.selected_faces = []
+
+		this.n_draw = Draw()
+	}
+
+	calc_value(idx)
+	{
+		if (!this.graph) {
+			this.graph = this.build_graph()
+		}
+
+		if (idx == 0) {
+			return Variant(VAR_TOPO_GRAPH, this.graph)
+		} else if (idx == 1) {
+			return Variant(this.selected_faces)
+		}
+	}
+
+	build_graph()
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
+			return nil
+		}
+
+		var shapes = []
+		if (v_shape.type == VAR_TOPO_SHAPE)
+		{
+			shapes.add(v_shape.value)
+		}
+		else
+		{
+			for (var shape in v_shape.value) {
+				shapes.add(shape.value)
+			}
+		}
+
+		var graph = TopoAdapter.build_graph(shapes)
+
+		Blueprint.connect(VariantProxy(Variant(VAR_TOPO_GRAPH, graph)), "out", this.n_draw, "graph")
+
+		return graph
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		this.n_draw.draw_preview()
+	}
+
+	bind_editor()
+	{
+		return this.n_draw.bind_editor()
+	}
+
+	draw_editor() 
+	{
+		this.n_draw.draw_editor()
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		this.n_draw.on_mouse_pressed(x, y, btn)
+
+		this.update_selected()
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		this.n_draw.on_mouse_dragged(x, y, btn)
+	}
+
+	on_mouse_scrolled(x, y, dx, dy) 
+	{
+		this.n_draw.on_mouse_scrolled(x, y, dx, dy)
+	}
+
+	on_key_pressed(key)
+	{
+		this.n_draw.on_key_pressed(key)
+	}
+
+	update_selected()
+	{
+		this.selected_faces.clear()
+
+		var v_selecteds = Blueprint.calc_output_value(this.n_draw, "selected")
+		if (!v_selecteds) {
+			return
+		}
+
+		for (var v_sel in v_selecteds.value)
+		{
+			var face = v_sel.value.get_component("topo_shape")
+			this.selected_faces.add(Variant(VAR_TOPO_FACE, face))
+		}
+	}	
+}

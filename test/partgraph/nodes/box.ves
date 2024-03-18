@@ -33,16 +33,21 @@ _editor.add_node(node4, 278.40470257457, 146.89360151256)
 
 var node5 = ::breptopo::nodes::graph::Graph()
 
-node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(242.04483032227, -75.443625211716)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(2.9761505126953, -10.251739829779)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(9.027214050293, -80.951496273279)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(235.99376678467, -4.7438386976719)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(128.56155395508, -113.54745399952)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(116.45942687988, 28.852119028568)) ]
+node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(129.09057617188, -57.423889160156)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(1.5872802734375, -7.803108215332)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(4.8145141601562, -61.616203308105)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(125.86334228516, -3.6107711791992)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(68.566162109375, -86.426605224609)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(62.111694335938, 21.199630737305)) ]
 
-_editor.add_node(node5, -61.226903599325, -71.767237508119)
+_editor.add_node(node5, -253.7888870704, -67.63500610316)
 
 var node6 = ::partgraph::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node6, 77.311276527665, -79.280355205909)
 
+var node7 = ::breptopo::nodes::topo_graph::TopoGraph()
+
+_editor.add_node(node7, -70.911429752066, -84.372)
+
+Blueprint.connect(node0, "shape", node7, "shape")
+Blueprint.connect(node7, "selected", node6, "shape")
 Blueprint.connect(node0, "shape", node5, "shape")
-Blueprint.connect(node5, "selected", node6, "shape")
 Blueprint.connect(node0, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")

@@ -1,25 +1,23 @@
 #pragma once
 
-#include "Graph.h"
-
 #include <memory>
+#include <vector>
 
 namespace partgraph { class TopoShape; }
+namespace graph { class Graph; }
 
 namespace breptopo
 {
 
-class Graph;
-
 class TopoAdapter
 {
 public:
-	static std::shared_ptr<Graph> 
+	static std::shared_ptr<graph::Graph>
 		BuildGraph(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes);
 
 private:
 	static void AddShapeToGraph(const std::shared_ptr<partgraph::TopoShape>& shape, 
-		const std::shared_ptr<Graph>& graph);
+		const std::shared_ptr<graph::Graph>& graph);
 
 }; // TopoAdapter
 
