@@ -1,9 +1,16 @@
 #define QUOTE(...) #__VA_ARGS__
 static const char* breptopoModuleSource = QUOTE(
 
-foreign class TopoAdapter
+foreign class TopoGraph
 {
-	foreign static build_graph(shape_list)
+	init(shapes) {}
+
+	foreign get_graph()
+}
+
+foreign class HistGraph
+{
+	foreign static get_hist_graph()
 }
 
 );

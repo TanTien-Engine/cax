@@ -1,1 +1,2 @@
 var VAR_TOPO_GRAPH = "topo_graph"
+var VAR_HIST_GRAPH = "hist_graph"

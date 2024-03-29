@@ -7,11 +7,13 @@ import "blueprint.nodes.array" for Array
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "breptopo.variant" for VAR_TOPO_GRAPH
 import "geograph.variant" for VAR_TYPE_GEO, VarGeo
+import "geograph.config" for POINT_RADIUS
 import "maths.vector" for Vector2
-import "breptopo" for TopoAdapter
+import "maths.calc" for Calc
 import "graphics" for Graphics
 import "geometry" for Line
 import "graph" for Graph as tt_Graph
+import "breptopo" for TopoGraph as tt_TopoGraph
 
 var EDITOR = nil
 
@@ -41,30 +43,8 @@ class Graph is Node
 
 	calc_value(idx)
 	{
-		if (!this.graph)
-		{
-			var v_shape = Blueprint.calc_input_value(this, 0)
-			if (!v_shape) {
-				return nil
-			}
-
-			var shapes = []
-			if (v_shape.type == VAR_TOPO_SHAPE)
-			{
-				shapes.add(v_shape.value)
-			}
-			else
-			{
-				for (var shape in v_shape.value) {
-					shapes.add(shape.value)
-				}
-			}
-
-			this.graph = TopoAdapter.build_graph(shapes)
-
-			//this.init_nodes_pos(this.graph, this.nodes)
-
-			this.rebuild_graph_drawable(this.graph)
+		if (!this.graph) {
+			this.graph = this.build_graph()
 		}
 
 		if (idx == 0) {
@@ -72,6 +52,35 @@ class Graph is Node
 		} else if (idx == 1) {
 			return Variant(this.selected_faces)
 		}
+	}
+
+	build_graph()
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
+			return nil
+		}
+
+		var shapes = []
+		if (v_shape.type == VAR_TOPO_SHAPE)
+		{
+			shapes.add(v_shape.value)
+		}
+		else
+		{
+			for (var shape in v_shape.value) {
+				shapes.add(shape.value)
+			}
+		}
+
+		var topo_graph = tt_TopoGraph.init(shapes)
+		var graph = topo_graph.get_graph()
+
+		//this.init_nodes_pos(graph, this.nodes)
+
+		this.rebuild_graph_drawable(graph)
+
+		return topo_graph
 	}
 
 	to_string(name) 
@@ -121,9 +130,9 @@ class Graph is Node
 	{
 		EDITOR.on_mouse_dragged(x, y, btn)
 
-		this.update_nodes_pos(this.graph)
+		this.update_nodes_pos(this.graph.get_graph())
 
-		this.rebuild_edge_drawable(this.graph)
+		this.rebuild_edge_drawable(this.graph.get_graph())
 	}
 
 	on_mouse_scrolled(x, y, dx, dy) 
@@ -211,22 +220,35 @@ class Graph is Node
 			return
 		}
 
-		var w = Graphics.get_width()
-		var h = Graphics.get_height()
-
 		for (var v_pos in v_selected.value)
 		{
-			var pos = v_pos.value
-
-			var x = pos.x / w + 0.5
-			var y = pos.y / h + 0.5
-
-			var node = this.graph.query_node(x, y)
+			var node = this.query_node(v_pos.value)
 			if (node)
 			{
-				var face = node.get_face()
+				var face = node.get_component("topo_shape")
 				this.selected_faces.add(Variant(VAR_TOPO_FACE, face))
 			}
 		}
+	}
+
+	query_node(pos)
+	{
+		var w = Graphics.get_width()
+		var h = Graphics.get_height()
+
+		var nodes = this.graph.get_graph().get_nodes()
+		for (var node in nodes)
+		{
+			var npos = node.get_pos()
+			var nx = (npos["x"] - 0.5) * w
+			var ny = (npos["y"] - 0.5) * h
+
+			var dist = Calc.dis_pos_to_pos(pos, Vector2(nx, ny))
+			if (dist < POINT_RADIUS) {
+				return node
+			}
+		}
+
+		return nil
 	}
 }

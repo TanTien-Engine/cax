@@ -9,7 +9,7 @@ namespace graph { class Graph; }
 namespace breptopo
 {
 
-class TopoAdapter
+class TopoGraphBuilder
 {
 public:
 	static std::shared_ptr<graph::Graph>
@@ -19,6 +19,6 @@ private:
 	static void AddShapeToGraph(const std::shared_ptr<partgraph::TopoShape>& shape, 
 		const std::shared_ptr<graph::Graph>& graph);
 
-}; // TopoAdapter
+}; // TopoGraphBuilder
 
 }

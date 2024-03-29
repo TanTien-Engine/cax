@@ -1,5 +1,5 @@
 import "breptopo.nodes.*"
 
 var BREP_TOPO_NODES = [
-Graph, TopoGraph,
+Graph, TopoGraph, HistGraph,
 ]

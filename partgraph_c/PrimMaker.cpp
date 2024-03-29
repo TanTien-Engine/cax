@@ -1,6 +1,12 @@
 #include "PrimMaker.h"
 #include "TopoDataset.h"
 
+#include "BRepBuilder.h"
+#include "BRepHistory.h"
+
+#include "../breptopo_c/BrepTopo.h"
+#include "../breptopo_c/HistGraph.h"
+
 #include <logger/logger.h>
 
 // OCCT
@@ -9,6 +15,7 @@
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepPrimAPI_MakeTorus.hxx>
+#include <TopExp.hxx>
 // fixme
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom2d_Ellipse.hxx>
@@ -27,13 +34,20 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz)
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeBox mk_box(dx, dy, dz);
+
+        auto old_shp = BRepBuilder::MakeCompound({});
+        BRepHistory hist(mk_box, TopAbs_FACE, mk_box.Shape(), old_shp->GetShape());
+
+        auto hist_group = breptopo::Context::Instance()->GetHist();
+        hist_group->Update(hist);
+
         shape = std::make_shared<partgraph::TopoShape>(mk_box.Shape());
     } catch (Standard_Failure& e) {
         LOGI("Build box fail: %s", e.GetMessageString());
     }
 
     return shape;
-}
+} 
 
 std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length)
 {
