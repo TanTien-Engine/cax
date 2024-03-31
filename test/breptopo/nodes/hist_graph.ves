@@ -74,7 +74,7 @@ var node13 = ::breptopo::nodes::graph::Graph()
 
 node13.nodes = [  ]
 
-_editor.add_node(node13, 207.63202928529, -240.03691605715)
+_editor.add_node(node13, 166.03030064033, -195.33058079689)
 
 var node14 = ::partgraph::nodes::to_mesh::ToMesh()
 
@@ -93,8 +93,14 @@ node17.query_param("disable").value = false
 
 _editor.add_node(node17, -55.434750643643, 37.559112548828)
 
+var node18 = ::partgraph::nodes::selector::Selector()
+node18.query_param("type").value = "face"
+
+node18.selected_indices = [ 9 ]
+
+_editor.add_node(node18, 166.41389408034, -276.53961620462)
+
 Blueprint.connect(node15, "graph", node16, "value")
-Blueprint.connect(node15, "selected", node14, "shape")
 Blueprint.connect(node6, "shape", node9, "shape")
 Blueprint.connect(node0, "shape", node10, "shape")
 Blueprint.connect(node10, "shape", node11, "a")
@@ -106,6 +112,9 @@ Blueprint.connect(node9, "shape", node7, "b")
 Blueprint.connect(node10, "shape", node4, "a")
 Blueprint.connect(node9, "shape", node4, "b")
 Blueprint.connect(node4, "shape", node17, "var")
+Blueprint.connect(node17, "var", node18, "shape")
+Blueprint.connect(node2, "this", node18, "camera")
+Blueprint.connect(node18, "objs", node14, "shape")
 Blueprint.connect(node17, "var", node13, "shape")
 Blueprint.connect(node17, "var", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")

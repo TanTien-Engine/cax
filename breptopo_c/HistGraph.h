@@ -33,6 +33,6 @@ private:
 	TopTools_IndexedMapOfShape m_curr_faces;
 	std::map<int, int> m_idx2gid;
 
-}; // TopoGraph
+}; // HistGraph
 
 }
