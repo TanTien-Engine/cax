@@ -30,61 +30,23 @@ void HistGraph::Update(const partgraph::BRepHistory& hist)
 {
 	++m_time;
 
-	std::vector<uint32_t> old_gid, new_gid;
+	std::vector<size_t> old_gid, new_gid;
 
-	// from ids
+	// init old_gid
 	auto& old_map = hist.GetOldMap();
-
-	//std::vector<uint32_t> old_ids, new_ids;
-	//for (int i = 1; i <= m_curr_faces.Extent(); i++)
-	//{
-	//	old_ids.push_back(m_curr_faces(i).HashCode(0xffff));
-	//}
-	//for (int i = 1; i <= old_map.Extent(); i++)
-	//{
-	//	new_ids.push_back(old_map(i).HashCode(0xffff));
-	//}
-
 	for (int i = 1; i <= old_map.Extent(); ++i)
 	{
-		int idx = m_curr_faces.FindIndex(old_map(i));
-		assert(idx != 0);
-		auto itr = m_idx2gid.find(idx);
-		assert(itr != m_idx2gid.end());
-		old_gid.push_back(itr->second);
+		size_t gid = m_curr_shapes.Find(old_map(i));
+		old_gid.push_back(gid);
 	}
 
-	// rm old
-	for (int i = 1; i <= old_map.Extent(); ++i)
-	{
-		int idx = m_curr_faces.FindIndex(old_map(i));
-		auto itr = m_idx2gid.find(idx);
-		assert(itr != m_idx2gid.end());
-		m_idx2gid.erase(itr);
-	}
-	for (int i = 1; i <= old_map.Extent(); ++i)
-	{
-		int idx = m_curr_faces.FindIndex(old_map(i));
-		m_curr_faces.RemoveKey(old_map(i));
-	}
-
-	//std::vector<uint32_t> end_ids;
-
-	// to ids, add new
+	// init new_gid, add new
 	auto& new_map = hist.GetNewMap();
 	for (int i = 1; i <= new_map.Extent(); ++i)
 	{
-		//end_ids.push_back(new_map(i).HashCode(0xffff));
-
-		int idx = m_curr_faces.FindIndex(new_map(i));
-		assert(idx == 0);
-
-		idx = m_curr_faces.Add(new_map(i));
 		uint32_t uid = (m_time << 16) | (i - 1);
 
-		int gid = m_graph->GetNodes().size();
-
-		m_idx2gid.insert({ idx, gid });
+		size_t gid = m_graph->GetNodes().size();
 		new_gid.push_back(gid);
 
 		auto node = std::make_shared<graph::Node>(i - 1);
@@ -96,16 +58,20 @@ void HistGraph::Update(const partgraph::BRepHistory& hist)
 		node->AddComponent<NodeId>(uid, gid);
 
 		m_graph->AddNode(node);
+
+		m_curr_shapes.Bind(new_map(i), gid);
 	}
 
 	auto& map = hist.GetIdxMap();
 	for (auto itr : map)
 	{
-		const int f_gid = old_gid[itr.first];
+		const size_t f_gid = old_gid[itr.first];
 		// add old, deleted
 		if (itr.second.empty())
 		{
-			int t_gid = m_graph->GetNodes().size();
+			m_curr_shapes.UnBind(old_map(itr.first));
+
+			size_t t_gid = m_graph->GetNodes().size();
 
 			auto node = std::make_shared<graph::Node>(-1);
 			m_graph->AddNode(node);
@@ -116,7 +82,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist)
 		{
 			for (auto itr_to : itr.second)
 			{
-				const int t_gid = new_gid[itr_to];
+				const size_t t_gid = new_gid[itr_to];
 				m_graph->AddEdge(f_gid, t_gid);
 			}
 		}

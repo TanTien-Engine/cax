@@ -2,6 +2,7 @@
 
 #include <TopoDS_Shape.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
+#include <NCollection_DataMap.hxx>
 
 #include <memory>
 #include <vector>
@@ -30,8 +31,8 @@ private:
 
 	int m_time = 0;
 
-	TopTools_IndexedMapOfShape m_curr_faces;
-	std::map<int, int> m_idx2gid;
+	// map shape to gid
+	NCollection_DataMap<TopoDS_Shape, size_t, TopTools_ShapeMapHasher> m_curr_shapes;
 
 }; // HistGraph
 
