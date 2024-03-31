@@ -8,7 +8,7 @@ Box, Cylinder, Threading,
 // Geom
 CylindricalSurface, EllipseCurve, TrimmedCurve,
 // DressUpFeatures
-Chamfer, Fillet, Draft, Shelling,
+Chamfer, Fillet, Draft, Shelling, Offset,
 // SketchBasedFeatures
 Extrude, Cut, Fuse, Common, Section, 
 // FeaturesTransformed

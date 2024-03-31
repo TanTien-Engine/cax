@@ -5,6 +5,7 @@
 #include <TopExp.hxx>
 #include <BRepBuilderAPI_MakeShape.hxx>
 #include <BRepTools_History.hxx>
+#include <BRepOffset_MakeSimpleOffset.hxx>
 
 namespace
 {
@@ -49,6 +50,34 @@ private:
 
 }; // ToolsHist
 
+class OffsetHist : public partgraph::BRepHistory::History
+{
+public:
+    OffsetHist(const BRepOffset_MakeSimpleOffset& builder) : m_builder(builder) {}
+
+    virtual const TopTools_ListOfShape& Generated(const TopoDS_Shape& S)
+    {
+        m_new_list.Clear();
+        m_new_list.Append(m_builder.Generated(S));
+        return m_new_list;
+    }
+    virtual const TopTools_ListOfShape& Modified(const TopoDS_Shape& S)
+    {
+        m_mod_list.Clear();
+        m_mod_list.Append(m_builder.Modified(S));
+        return m_mod_list;
+    }
+    virtual Standard_Boolean IsDeleted(const TopoDS_Shape& S) {
+        return false;
+    }
+
+private:
+    const BRepOffset_MakeSimpleOffset& m_builder;
+
+    TopTools_ListOfShape m_new_list, m_mod_list;
+
+}; // OffsetHist
+
 }
 
 namespace partgraph
@@ -66,6 +95,12 @@ BRepHistory::BRepHistory(opencascade::handle<BRepTools_History> hist, TopAbs_Sha
 {
     auto h = std::make_shared<ToolsHist>(hist);
     BuildHistory(h, type, new_shape, old_shape);
+}
+
+BRepHistory::BRepHistory(const BRepOffset_MakeSimpleOffset& builder, const TopoShape& old_shape)
+{
+    auto hist = std::make_shared<OffsetHist>(builder);
+    BuildHistory(hist, old_shape.GetShape().ShapeType(), builder.GetResultShape(), old_shape);
 }
 
 void BRepHistory::BuildHistory(const std::shared_ptr<History>& hist, TopAbs_ShapeEnum type,

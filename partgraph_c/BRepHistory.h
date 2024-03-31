@@ -12,6 +12,7 @@
 class BRepBuilderAPI_MakeShape;
 class BRepTools_History;
 class TopoDS_Shape;
+class BRepOffset_MakeSimpleOffset;
 
 namespace partgraph
 {
@@ -25,6 +26,7 @@ public:
 		const TopoShape& new_shape, const TopoShape& old_shape);
 	BRepHistory(opencascade::handle<BRepTools_History> hist, TopAbs_ShapeEnum type,
 		const TopoShape& new_shape, const TopoShape& old_shape);
+	BRepHistory(const BRepOffset_MakeSimpleOffset& builder, const TopoShape& old_shape);
 
 	auto& GetIdxMap() const { return m_shape_map; }
 

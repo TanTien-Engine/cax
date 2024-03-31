@@ -219,4 +219,18 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
     return std::make_shared<partgraph::TopoShape>(thru_sections.Shape());
 }
 
+std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid)
+{
+    BRepOffset_MakeSimpleOffset builder;
+    builder.Initialize(shape->GetShape(), offset);
+    builder.SetBuildSolidFlag(is_solid);
+    builder.Perform();
+
+    BRepHistory hist(builder, shape->GetShape());
+    auto hist_group = breptopo::Context::Instance()->GetHist();
+    hist_group->Update(hist);
+
+    return std::make_shared<partgraph::TopoShape>(builder.GetResultShape());
+}
+
 }
