@@ -22,7 +22,7 @@ public:
 	void Update(const std::shared_ptr<partgraph::TopoFace>& from, 
 		const std::vector<std::shared_ptr<partgraph::TopoFace>>& to);
 
-	void Update(const partgraph::BRepHistory& hist);
+	void Update(const partgraph::BRepHistory& hist, int& time);
 
 	std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
 	std::shared_ptr<graph::Node> QueryNode(uint32_t uid) const;

@@ -19,6 +19,8 @@ foreign class TrimmedCurve
 foreign class TopoShape
 {
 	init() {}
+
+	foreign get_time()
 }
 
 foreign class TopoEdge
@@ -66,7 +68,7 @@ foreign class BRepBuilder
 
 foreign class PrimMaker
 {
-	foreign static box(length, width, height)
+	foreign static box(length, width, height, time)
 	foreign static cylinder(radius, length)
 	foreign static cone(radius1, radius2, height)
 	foreign static sphere(radius)
@@ -113,7 +115,7 @@ foreign class TopoAlgo
 	foreign static draft(shape, dir, angle, len)
 	foreign static thick_solid(shape, face, offset)
 	foreign static thru_sections(wires)
-	foreign static offset_shape(shape, offset, is_solid)
+	foreign static offset_shape(shape, offset, is_solid, time)
 }
 
 foreign class TopoAdapter

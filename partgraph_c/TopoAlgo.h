@@ -34,7 +34,7 @@ public:
 	static std::shared_ptr<TopoShape> Draft(const std::shared_ptr<TopoShape>& shape, const sm::vec3& dir, float angle, float len_max);
 	static std::shared_ptr<TopoShape> ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoFace>>& faces, float offset);
 	static std::shared_ptr<TopoShape> ThruSections(const std::vector<std::shared_ptr<TopoWire>>& wires);
-	static std::shared_ptr<TopoShape> OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid);
+	static std::shared_ptr<TopoShape> OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid, int& time);
 
 }; // TopoAlgo
 

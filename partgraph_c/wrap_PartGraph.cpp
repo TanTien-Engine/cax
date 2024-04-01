@@ -80,6 +80,7 @@ void w_PrimMaker_box()
     double L = ves_tonumber(1);
     double W = ves_tonumber(2);
     double H = ves_tonumber(3);
+    int time = (int)ves_tonumber(4);
 
     bool skip = false;
     if (L < Precision::Confusion()) {
@@ -99,7 +100,9 @@ void w_PrimMaker_box()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Box(L, W, H);
+    auto shape = partgraph::PrimMaker::Box(L, W, H, time);
+    shape->SetTime(time);
+
     partgraph::return_topo_shape(shape);
 }
 
@@ -425,8 +428,11 @@ void w_TopoAlgo_offset_shape()
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto offset = (float)ves_tonumber(2);
     auto is_solid = ves_toboolean(3);
+    int time = (int)ves_tonumber(4);
 
-    auto dst = partgraph::TopoAlgo::OffsetShape(shape, offset, is_solid);
+    auto dst = partgraph::TopoAlgo::OffsetShape(shape, offset, is_solid, time);
+    dst->SetTime(time);
+
     partgraph::return_topo_shape(dst);
 }
 
@@ -612,6 +618,12 @@ int w_WireBuilder_finalize(void* data)
     return sizeof(tt::Proxy<BRepBuilderAPI_MakeWire>);
 }
 
+void w_TopoShape_get_time()
+{
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(0))->obj;
+    ves_set_number(0, shape->GetTime());
+}
+
 void w_WireBuilder_add_edge()
 {
     auto builder = ((tt::Proxy<BRepBuilderAPI_MakeWire>*)ves_toforeign(0))->obj;
@@ -645,6 +657,8 @@ namespace partgraph
 
 VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 {
+    if (strcmp(signature, "TopoShape.get_time()") == 0) return w_TopoShape_get_time;
+
     if (strcmp(signature, "WireBuilder.add_edge(_)") == 0) return w_WireBuilder_add_edge;
     if (strcmp(signature, "WireBuilder.add_wire(_)") == 0) return w_WireBuilder_add_wire;
     if (strcmp(signature, "WireBuilder.gen_wire()") == 0) return w_WireBuilder_gen_wire;
@@ -657,7 +671,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static BRepBuilder.make_shell(_)") == 0) return w_BRepBuilder_make_shell;
     if (strcmp(signature, "static BRepBuilder.make_compound(_)") == 0) return w_BRepBuilder_make_compound;
 
-    if (strcmp(signature, "static PrimMaker.box(_,_,_)") == 0) return w_PrimMaker_box;
+    if (strcmp(signature, "static PrimMaker.box(_,_,_,_)") == 0) return w_PrimMaker_box;
     if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
     if (strcmp(signature, "static PrimMaker.cone(_,_,_)") == 0) return w_PrimMaker_cone;
     if (strcmp(signature, "static PrimMaker.sphere(_)") == 0) return w_PrimMaker_sphere;
@@ -686,7 +700,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.draft(_,_,_,_)") == 0) return w_TopoAlgo_draft;
     if (strcmp(signature, "static TopoAlgo.thick_solid(_,_,_)") == 0) return w_TopoAlgo_thick_solid;
     if (strcmp(signature, "static TopoAlgo.thru_sections(_)") == 0) return w_TopoAlgo_thru_sections;
-    if (strcmp(signature, "static TopoAlgo.offset_shape(_,_,_)") == 0) return w_TopoAlgo_offset_shape;
+    if (strcmp(signature, "static TopoAlgo.offset_shape(_,_,_,_)") == 0) return w_TopoAlgo_offset_shape;
 
     if (strcmp(signature, "static TopoAdapter.build_mesh(_)") == 0) return w_TopoAdapter_build_mesh;
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;

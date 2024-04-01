@@ -26,6 +26,8 @@ class Offset is Node
 		this.params.add(NodeParam("is_solid", false))
 
 		this.layout()
+
+		this.time = -1
 	}
 
 	calc_value(idx)
@@ -38,10 +40,14 @@ class Offset is Node
 		var src_shp = v_shape.value[0].value
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
-		var dst_shp = TopoAlgo.offset_shape(src_shp, offset, is_solid)
-		if (dst_shp) {
+		var dst_shp = TopoAlgo.offset_shape(src_shp, offset, is_solid, this.time)
+		if (dst_shp) 
+		{
+			this.time = dst_shp.get_time()
 			return Variant(VAR_TOPO_SHAPE, dst_shp)
-		} else {
+		}
+		else 
+		{
 			return nil
 		}
 	}

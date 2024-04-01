@@ -27,6 +27,8 @@ class Box is Node
 		this.params.add(NodeParam("height", 1.0, { "region" : 2 }))
 
 		this.layout()
+
+		this.time = -1
 	}
 
 	calc_value(idx)
@@ -34,10 +36,14 @@ class Box is Node
 		var length = NodeHelper.calc_prop_value(this, "length")
 		var width  = NodeHelper.calc_prop_value(this, "width")
 		var height = NodeHelper.calc_prop_value(this, "height")
-		var shape = PrimMaker.box(length, height, width)
-		if (shape) {
+		var shape = PrimMaker.box(length, height, width, this.time)
+		if (shape) 
+		{
+			this.time = shape.get_time()
 			return Variant(VAR_TOPO_SHAPE, shape)
-		} else {
+		} 
+		else 
+		{
 			return nil
 		}
 	}

@@ -26,9 +26,11 @@ void HistGraph::Update(const std::shared_ptr<partgraph::TopoFace>& from,
 {
 }
 
-void HistGraph::Update(const partgraph::BRepHistory& hist)
+void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 {
-	++m_time;
+	if (time < 0) {
+		time = ++m_time;
+	}
 
 	std::vector<size_t> old_gid, new_gid;
 
@@ -44,22 +46,40 @@ void HistGraph::Update(const partgraph::BRepHistory& hist)
 	auto& new_map = hist.GetNewMap();
 	for (int i = 1; i <= new_map.Extent(); ++i)
 	{
-		uint32_t uid = (m_time << 16) | (i - 1);
+		uint32_t uid = (time << 16) | (i - 1);
+		auto itr = m_uid2gid.find(uid);
+		if (itr == m_uid2gid.end())
+		{
+			size_t gid = m_graph->GetNodes().size();
+			new_gid.push_back(gid);
 
-		size_t gid = m_graph->GetNodes().size();
-		new_gid.push_back(gid);
+			auto node = std::make_shared<graph::Node>(i - 1);
 
-		auto node = std::make_shared<graph::Node>(i - 1);
+			auto face = TopoDS::Face(new_map(i));
+			auto pg_face = std::make_shared<partgraph::TopoFace>(face);
+			node->AddComponent<NodeShape>(pg_face);
 
-		auto face = TopoDS::Face(new_map(i));
-		auto pg_face = std::make_shared<partgraph::TopoFace>(face);
-		node->AddComponent<NodeShape>(pg_face);
+			node->AddComponent<NodeId>(uid, gid);
 
-		node->AddComponent<NodeId>(uid, gid);
+			m_graph->AddNode(node);
 
-		m_graph->AddNode(node);
+			m_uid2gid.insert({ uid, gid });
 
-		m_curr_shapes.Bind(new_map(i), gid);
+			m_curr_shapes.Bind(new_map(i), gid);
+		}
+		else
+		{
+			size_t gid = itr->second;
+			new_gid.push_back(gid);
+
+			auto node = m_graph->GetNodes()[gid];
+
+			auto face = TopoDS::Face(new_map(i));
+			auto pg_face = std::make_shared<partgraph::TopoFace>(face);
+			node->GetComponent<NodeShape>().SetFace(pg_face);
+
+			m_curr_shapes.Bind(new_map(i), gid);
+		}
 	}
 
 	auto& map = hist.GetIdxMap();

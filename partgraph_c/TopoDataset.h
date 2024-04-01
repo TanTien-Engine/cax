@@ -20,8 +20,13 @@ public:
 
 	auto& GetShape() const { return m_shape; }
 
+	void SetTime(int time) { m_time = time; }
+	int GetTime() const { return m_time; }
+
 private:
 	TopoDS_Shape m_shape;
+
+	int m_time = -1;
 
 }; // TopoShape
 

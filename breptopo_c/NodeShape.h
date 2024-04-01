@@ -18,6 +18,7 @@ public:
 	virtual NodeShape* Clone() const override { return nullptr; }
 
 	auto GetFace() const { return m_face; }
+	void SetFace(const std::shared_ptr<partgraph::TopoFace>& face) { m_face = face; }
 
 private:
 	std::shared_ptr<partgraph::TopoFace> m_face;
