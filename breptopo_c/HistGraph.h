@@ -9,7 +9,7 @@
 #include <map>
 
 namespace partgraph { class TopoShape; class TopoFace; class BRepHistory; }
-namespace graph { class Graph; }
+namespace graph { class Graph; class Node; }
 
 namespace breptopo
 {
@@ -24,6 +24,9 @@ public:
 
 	void Update(const partgraph::BRepHistory& hist);
 
+	std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
+	std::shared_ptr<graph::Node> QueryNode(uint32_t uid) const;
+
 	auto GetGraph() { return m_graph; }
 
 private:
@@ -33,6 +36,8 @@ private:
 
 	// map shape to gid
 	NCollection_DataMap<TopoDS_Shape, size_t, TopTools_ShapeMapHasher> m_curr_shapes;
+
+	std::map<uint32_t, size_t> m_uid2gid;
 
 }; // HistGraph
 

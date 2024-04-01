@@ -19,6 +19,9 @@ public:
 	virtual objcomp::CompID TypeID() const override { return objcomp::GetCompTypeID<NodeId>(); }
 	virtual NodeId* Clone() const override { return nullptr; }
 
+	auto GetUID() const { return m_uid; }
+	auto GetGID() const { return m_graph_idx; }
+
 private:
 	uint32_t m_uid;
 	size_t m_graph_idx;

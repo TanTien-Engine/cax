@@ -1,9 +1,9 @@
 var node0 = ::partgraph::nodes::box::Box()
-node0.query_param("length").value = 1
-node0.query_param("width").value = 1
-node0.query_param("height").value = 1
+node0.query_param("length").value = 2
+node0.query_param("width").value = 0.99992406368256
+node0.query_param("height").value = 0.23157009482384
 
-_editor.add_node(node0, -588.99657272727, 181.26085454545)
+_editor.add_node(node0, -589.42067034564, 181.26085454545)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
@@ -48,7 +48,7 @@ _editor.add_node(node7, -303.63870247934, -69.826545454545)
 var node8 = ::partgraph::nodes::selector::Selector()
 node8.query_param("type").value = "face"
 
-node8.selected_indices = [ 4 ]
+node8.selected_indices = [ 0 ]
 
 _editor.add_node(node8, -261.54545454545, 196.72727272727)
 

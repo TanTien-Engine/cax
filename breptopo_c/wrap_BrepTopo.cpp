@@ -3,9 +3,15 @@
 #include "TopoGraph.h"
 #include "HistGraph.h"
 #include "BrepTopo.h"
+#include "NodeId.h"
+#include "NodeShape.h"
 #include "modules/script/TransHelper.h"
 
 #include "../partgraph_c/TopoDataset.h"
+#include "../partgraph_c/TransHelper.h"
+#include "../partgraph_c/TopoDataset.h"
+
+#include <graph/Node.h>
 
 #include <memory>
 #include <vector>
@@ -55,6 +61,27 @@ void w_HistGraph_get_hist_graph()
     ves_pop(1);
 }
 
+void w_HistGraph_get_node_uid()
+{
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    auto hist = breptopo::Context::Instance()->GetHist();
+    auto node = hist->QueryNode(shape);
+    auto& cid = node->GetComponent<breptopo::NodeId>();
+    ves_set_number(0, cid.GetUID());
+}
+
+void w_HistGraph_query_shape()
+{
+    uint32_t uid = (uint32_t)ves_tonumber(1);
+
+    auto hist = breptopo::Context::Instance()->GetHist();
+    auto node = hist->QueryNode(uid);
+    auto& cshp = node->GetComponent<breptopo::NodeShape>();
+
+    partgraph::return_topo_face(cshp.GetFace());
+}
+
 }
 
 namespace breptopo
@@ -65,6 +92,8 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "TopoGraph.get_graph()") == 0) return w_TopoGraph_get_graph;
 
     if (strcmp(signature, "static HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
+    if (strcmp(signature, "static HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
+    if (strcmp(signature, "static HistGraph.query_shape(_)") == 0) return w_HistGraph_query_shape;
 
     return nullptr;
 }

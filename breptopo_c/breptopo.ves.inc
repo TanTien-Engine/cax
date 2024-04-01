@@ -11,6 +11,8 @@ foreign class TopoGraph
 foreign class HistGraph
 {
 	foreign static get_hist_graph()
+	foreign static get_node_uid(shape)
+	foreign static query_shape(uid)
 }
 
 );

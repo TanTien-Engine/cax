@@ -9,6 +9,7 @@ import "partgraph" for BRepSelector, BRepTools
 import "maths.vector" for Vector2
 import "graphics" for Graphics
 import "keyboard" for Keyboard
+import "breptopo" for HistGraph
 
 class Selector is Node
 {
@@ -29,13 +30,23 @@ class Selector is Node
 		this.layout()
 
 		this.selected_objs = nil
-		this.selected_indices = nil
+		this.selected_uids = nil
+	}
+
+	on_pin_dirty(pin, type, msg)
+	{
+		super.on_pin_dirty(pin, type, msg)
+
+		this.selected_objs = nil
+		//this.selected_uids = nil
 	}
 
 	calc_value(idx)
 	{
-		if (!this.selected_objs and this.selected_indices) {
-			this.load_selected(this.selected_indices)
+		if (!this.selected_objs and this.selected_uids) 
+		{
+//			this.load_selected_by_idx(this.selected_uids)
+			this.load_selected_by_uid(this.selected_uids)
 		}
 
 		if (this.selected_objs) {
@@ -48,9 +59,10 @@ class Selector is Node
 	to_string(name) 
 	{
 		var ret = super.to_string(name)
-		var indices = this.store_selected()
+		//var indices = this.store_selected()
+		//var indices = this.selected_uids
 		return ret + "
-%(name).selected_indices = %(indices)
+%(name).selected_uids = %(indices)
 "
 	}
 
@@ -102,6 +114,13 @@ class Selector is Node
 		if (obj) 
 		{
 			this.selected_objs.add(Variant(obj_type, obj))
+
+			if (!this.selected_uids) {
+				this.selected_uids = []
+			}
+			var uid = HistGraph.get_node_uid(obj)
+			this.selected_uids.add(uid)
+
 			dirty = true
 		}
 
@@ -138,7 +157,7 @@ class Selector is Node
 		return indices
 	}
 
-	load_selected(indices)
+	load_selected_by_idx(indices)
 	{
 		var v_shape = Blueprint.calc_input_value(this, 0)
 		if (!v_shape) {
@@ -167,6 +186,17 @@ class Selector is Node
 			if (obj) {
 				this.selected_objs.add(Variant(obj_type, obj))
 			}
+		}
+	}
+
+	load_selected_by_uid(uids)
+	{
+		this.selected_objs = []
+
+		for (var uid in uids)
+		{
+			var shp = HistGraph.query_shape(uid)
+			this.selected_objs.add(Variant(VAR_TOPO_FACE, shp))
 		}
 	}
 }

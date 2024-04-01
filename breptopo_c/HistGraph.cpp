@@ -91,4 +91,20 @@ void HistGraph::Update(const partgraph::BRepHistory& hist)
 	graph::GraphLayout::OptimalHierarchy(*m_graph);
 }
 
+std::shared_ptr<graph::Node> HistGraph::
+QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
+{
+	size_t gid = m_curr_shapes.Find(shape->GetShape());
+	return m_graph->GetNodes()[gid];
+}
+
+std::shared_ptr<graph::Node> HistGraph::QueryNode(uint32_t uid) const
+{
+	auto itr = m_uid2gid.find(uid);
+	if (itr == m_uid2gid.end())
+		return nullptr;
+
+	return m_graph->GetNodes()[itr->second];
+}
+
 }
