@@ -89,14 +89,30 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 		// add old, deleted
 		if (itr.second.empty())
 		{
-			m_curr_shapes.UnBind(old_map(itr.first));
+			m_curr_shapes.UnBind(old_map(itr.first + 1));
 
-			size_t t_gid = m_graph->GetNodes().size();
+			bool exists = false;
+			auto& edges = m_graph->GetEdges();
+			for (auto e : edges)
+			{
+				if (e.first == f_gid)
+				{
+					auto t_node = m_graph->GetNodes()[e.second];
+					if (t_node->GetId() == -1) {
+						exists = true;
+					}
+				}
+			}
 
-			auto node = std::make_shared<graph::Node>(-1);
-			m_graph->AddNode(node);
+			if (!exists)
+			{
+				size_t t_gid = m_graph->GetNodes().size();
 
-			m_graph->AddEdge(f_gid, t_gid);
+				auto node = std::make_shared<graph::Node>(-1);
+				m_graph->AddNode(node);
+
+				m_graph->AddEdge(f_gid, t_gid);
+			}
 		}
 		else
 		{

@@ -20,6 +20,8 @@ class Cut is Node
 		]
 
 		this.layout()
+
+		this.time = -1
 	}
 
 	calc_value(idx)
@@ -33,10 +35,14 @@ class Cut is Node
 			return nil
 		}
 
-		var shape = TopoAlgo.cut(v_a.value, v_b.value)
-		if (shape) {
+		var shape = TopoAlgo.cut(v_a.value, v_b.value, this.time)
+		if (shape) 
+		{
+			this.time = shape.get_time()
 			return Variant(VAR_TOPO_SHAPE, shape)
-		} else {
+		} 
+		else 
+		{
 			return nil
 		}
 	}

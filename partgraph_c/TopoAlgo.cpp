@@ -85,7 +85,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoFace>& face
     return std::make_shared<partgraph::TopoShape>(prism.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2)
+std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, int& time)
 {
     BRepAlgoAPI_Cut algo(s1->GetShape(), s2->GetShape());
     algo.Build();
@@ -103,7 +103,6 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     BRepHistory hist(o_hist, TopAbs_FACE, algo.Shape(), *old_shp);
 
     auto hist_group = breptopo::Context::Instance()->GetHist();
-    int time = -1;
     hist_group->Update(hist, time);
 
     return std::make_shared<partgraph::TopoShape>(algo.Shape());
@@ -157,16 +156,14 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
     return std::make_shared<partgraph::TopoShape>(algo.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z)
+std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z, int& time)
 {
     gp_Trsf trsf; 
     trsf.SetTranslation(gp_Vec(x, y, z));
     auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
 
     BRepHistory hist(trans, TopAbs_FACE, trans.Shape(), shape->GetShape());
-
     auto hist_group = breptopo::Context::Instance()->GetHist();
-    int time = -1;
     hist_group->Update(hist, time);
 
     return std::make_shared<partgraph::TopoShape>(trans.Shape());

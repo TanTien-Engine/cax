@@ -103,12 +103,12 @@ foreign class TopoAlgo
 	foreign static extrude(shape, x, y, z)
 
 	// boolean
-	foreign static cut(s1, s2)
+	foreign static cut(s1, s2, time)
 	foreign static fuse(s1, s2)
 	foreign static common(s1, s2)
 	foreign static section(s1, s2)
 
-	foreign static translate(shape, x, y, z)
+	foreign static translate(shape, x, y, z, time)
 	foreign static mirror(shape, pos, dir)
 
 	// offset

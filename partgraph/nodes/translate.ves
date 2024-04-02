@@ -25,6 +25,8 @@ class Translate is Node
 		this.params.add(NodeParam("offset", Vector3(0, 0, 0), { "region" : 2 }))
 
 		this.layout()
+
+		this.time = -1
 	}
 
 	calc_value(idx)
@@ -35,10 +37,14 @@ class Translate is Node
 		}
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")
-		var shape = TopoAlgo.translate(v_shape.value, offset.x, offset.z, offset.y)
-		if (shape) {
+		var shape = TopoAlgo.translate(v_shape.value, offset.x, offset.z, offset.y, this.time)
+		if (shape) 
+		{
+			this.time = shape.get_time()
 			return Variant(VAR_TOPO_SHAPE, shape)
-		} else {
+		} 
+		else 
+		{
 			return nil
 		}
 	}

@@ -345,7 +345,11 @@ void w_TopoAlgo_cut()
 {
     auto s1 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto s2 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
-    auto shape = partgraph::TopoAlgo::Cut(s1, s2);
+    int time = (int)ves_tonumber(3);
+
+    auto shape = partgraph::TopoAlgo::Cut(s1, s2, time);
+    shape->SetTime(time);
+
     partgraph::return_topo_shape(shape);
 }
 
@@ -379,7 +383,11 @@ void w_TopoAlgo_translate()
     double x = ves_tonumber(2);
     double y = ves_tonumber(3);
     double z = ves_tonumber(4);
-    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z);
+    int time = (int)ves_tonumber(5);
+
+    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z, time);
+    dst->SetTime(time);
+
     partgraph::return_topo_shape(dst);
 }
 
@@ -691,11 +699,11 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.fillet(_,_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_)") == 0) return w_TopoAlgo_chamfer;
     if (strcmp(signature, "static TopoAlgo.extrude(_,_,_,_)") == 0) return w_TopoAlgo_extrude;
-    if (strcmp(signature, "static TopoAlgo.cut(_,_)") == 0) return w_TopoAlgo_cut;
+    if (strcmp(signature, "static TopoAlgo.cut(_,_,_)") == 0) return w_TopoAlgo_cut;
     if (strcmp(signature, "static TopoAlgo.fuse(_,_)") == 0) return w_TopoAlgo_fuse;
     if (strcmp(signature, "static TopoAlgo.common(_,_)") == 0) return w_TopoAlgo_common;
     if (strcmp(signature, "static TopoAlgo.section(_,_)") == 0) return w_TopoAlgo_section;
-    if (strcmp(signature, "static TopoAlgo.translate(_,_,_,_)") == 0) return w_TopoAlgo_translate;
+    if (strcmp(signature, "static TopoAlgo.translate(_,_,_,_,_)") == 0) return w_TopoAlgo_translate;
     if (strcmp(signature, "static TopoAlgo.mirror(_,_,_)") == 0) return w_TopoAlgo_mirror;
     if (strcmp(signature, "static TopoAlgo.draft(_,_,_,_)") == 0) return w_TopoAlgo_draft;
     if (strcmp(signature, "static TopoAlgo.thick_solid(_,_,_)") == 0) return w_TopoAlgo_thick_solid;

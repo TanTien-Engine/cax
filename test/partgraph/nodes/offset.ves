@@ -35,7 +35,7 @@ var node5 = ::breptopo::nodes::graph::Graph()
 
 node5.nodes = [  ]
 
-_editor.add_node(node5, -486.51615979767, -53.089551557705)
+_editor.add_node(node5, -936.41615979767, -18.989551557705)
 
 var node6 = ::partgraph::nodes::to_mesh::ToMesh()
 
@@ -43,12 +43,12 @@ _editor.add_node(node6, 142.11127652766, -188.28035520591)
 
 var node7 = ::breptopo::nodes::topo_graph::TopoGraph()
 
-_editor.add_node(node7, -303.63870247934, -69.826545454545)
+_editor.add_node(node7, -753.53870247934, -35.726545454545)
 
 var node8 = ::partgraph::nodes::selector::Selector()
 node8.query_param("type").value = "face"
 
-node8.selected_indices = [ 0 ]
+node8.selected_uids = []
 
 _editor.add_node(node8, -261.54545454545, 196.72727272727)
 
@@ -76,18 +76,37 @@ node13.query_param("disable").value = false
 
 _editor.add_node(node13, -423.76800537109, 241.96298828125)
 
+var node14 = ::partgraph::nodes::box::Box()
+node14.query_param("length").value = 0.45164793729782
+node14.query_param("width").value = 1.7627590894699
+node14.query_param("height").value = 0.87387019395828
+
+_editor.add_node(node14, -692.32417034564, -217.27132545455)
+
+var node15 = ::partgraph::nodes::cut::Cut()
+
+_editor.add_node(node15, -410.0622253418, 25.222778320312)
+
+var node16 = ::partgraph::nodes::translate::Translate()
+node16.query_param("offset").value.set(0.73471611738205, 0, 0)
+
+_editor.add_node(node16, -529.0622253418, -210.77722167969)
+
+Blueprint.connect(node14, "shape", node16, "shape")
 Blueprint.connect(node12, "selected", node6, "shape")
 Blueprint.connect(node6, "va", node10, "var")
+Blueprint.connect(node0, "shape", node15, "a")
+Blueprint.connect(node16, "shape", node15, "b")
+Blueprint.connect(node15, "shape", node1, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node3, "var", node4, "geos")
+Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node6, "va", node4, "selected")
 Blueprint.connect(node0, "shape", node13, "var")
 Blueprint.connect(node13, "var", node8, "shape")
 Blueprint.connect(node2, "this", node8, "camera")
 Blueprint.connect(node8, "objs", node9, "shape")
 Blueprint.connect(node13, "var", node11, "in0")
 Blueprint.connect(node9, "shape", node11, "in1")
-Blueprint.connect(node11, "list", node1, "shape")
-Blueprint.connect(node1, "va", node3, "var")
-Blueprint.connect(node3, "var", node4, "geos")
-Blueprint.connect(node2, "this", node4, "view_cam")
-Blueprint.connect(node6, "va", node4, "selected")
 Blueprint.connect(node0, "shape", node7, "shape")
 Blueprint.connect(node0, "shape", node5, "shape")
