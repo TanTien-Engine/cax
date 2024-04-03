@@ -44,6 +44,14 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 		old_gid.push_back(gid);
 	}
 
+	// disconnect old
+	auto& map = hist.GetIdxMap();
+	for (auto itr : map)
+	{
+		const size_t gid = old_gid[itr.first];
+		m_graph->ClearEdges(gid);
+	}
+
 	// init new_gid, add new
 	auto& new_map = hist.GetNewMap();
 	for (int i = 1; i <= new_map.Extent(); ++i)
