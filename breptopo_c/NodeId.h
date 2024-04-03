@@ -2,8 +2,6 @@
 
 #include <objcomp/Component.h>
 
-namespace partgraph { class TopoFace; }
-
 namespace breptopo
 {
 

@@ -1,6 +1,7 @@
 #include "HistGraph.h"
 #include "NodeShape.h"
 #include "NodeId.h"
+#include "NodeFlags.h"
 #include "../partgraph_c/BRepHistory.h"
 #include "../partgraph_c/TopoDataset.h"
 
@@ -55,13 +56,15 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 			new_gid.push_back(gid);
 
 			//auto node = std::make_shared<graph::Node>(i - 1);
-			auto node = std::make_shared<graph::Node>(gid);
+			auto node = std::make_shared<graph::Node>(static_cast<int>(gid));
 
 			auto face = TopoDS::Face(new_map(i));
 			auto pg_face = std::make_shared<partgraph::TopoFace>(face);
 			node->AddComponent<NodeShape>(pg_face);
 
 			node->AddComponent<NodeId>(uid, gid);
+
+			node->AddComponent<NodeFlags>();
 
 			m_graph->AddNode(node);
 
@@ -84,11 +87,10 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 		}
 	}
 
-	auto& map = hist.GetIdxMap();
+	// connect new
 	for (auto itr : map)
 	{
 		const size_t f_gid = old_gid[itr.first];
-		// add old, deleted
 		if (itr.second.empty())
 		{
 			m_curr_shapes.UnBind(old_map(itr.first + 1));
@@ -126,22 +128,22 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 		}
 	}
 
-	// update inactive
+	// update active
 	for (auto itr : map)
 	{
 		const size_t f_gid = old_gid[itr.first];
 
 		auto node = m_graph->GetNodes()[f_gid];
-		auto& cshp = node->GetComponent<NodeShape>();
-		cshp.GetFace()->SetInactive(true);
+		auto& cflags = node->GetComponent<NodeFlags>();
+		cflags.SetActive(false);
 
 		for (auto itr_to : itr.second)
 		{
 			const size_t t_gid = new_gid[itr_to];
 
 			auto node = m_graph->GetNodes()[t_gid];
-			auto& cshp = node->GetComponent<NodeShape>();
-			cshp.GetFace()->SetInactive(false);
+			auto& cflags = node->GetComponent<NodeFlags>();
+			cflags.SetActive(true);
 		}
 	}
 
@@ -164,8 +166,8 @@ std::shared_ptr<graph::Node> HistGraph::QueryNode(uint32_t uid) const
 	size_t gid = itr->second;
 
 	auto node = m_graph->GetNodes()[gid];
-	auto& cshp = node->GetComponent<NodeShape>();
-	if (!cshp.GetFace()->GetInactive())
+	auto& cflags = node->GetComponent<NodeFlags>();
+	if (cflags.IsActive())
 		return node;
 
 	std::queue<size_t> buf;
@@ -180,8 +182,8 @@ std::shared_ptr<graph::Node> HistGraph::QueryNode(uint32_t uid) const
 		{
 			auto cid = itr->second;
 			auto c_node = m_graph->GetNodes()[cid];
-			auto& cshp = c_node->GetComponent<NodeShape>();
-			if (cshp.GetFace()->GetInactive())
+			auto& cflags = c_node->GetComponent<NodeFlags>();
+			if (!cflags.IsActive())
 			{
 				buf.push(cid);
 			}
