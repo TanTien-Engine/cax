@@ -12,6 +12,7 @@
 #include <TopoDS_Face.hxx>
 
 #include <set>
+#include <queue>
 
 namespace breptopo
 {
@@ -53,7 +54,8 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 			size_t gid = m_graph->GetNodes().size();
 			new_gid.push_back(gid);
 
-			auto node = std::make_shared<graph::Node>(i - 1);
+			//auto node = std::make_shared<graph::Node>(i - 1);
+			auto node = std::make_shared<graph::Node>(gid);
 
 			auto face = TopoDS::Face(new_map(i));
 			auto pg_face = std::make_shared<partgraph::TopoFace>(face);
@@ -93,14 +95,14 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 
 			bool exists = false;
 			auto& edges = m_graph->GetEdges();
-			for (auto e : edges)
+			auto range = edges.equal_range(f_gid);
+			for (auto itr = range.first; itr != range.second; ++itr)
 			{
-				if (e.first == f_gid)
+				auto t_node = m_graph->GetNodes()[itr->second];
+				if (t_node->GetId() == -1) 
 				{
-					auto t_node = m_graph->GetNodes()[e.second];
-					if (t_node->GetId() == -1) {
-						exists = true;
-					}
+					exists = true;
+					break;
 				}
 			}
 
@@ -124,6 +126,25 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 		}
 	}
 
+	// update inactive
+	for (auto itr : map)
+	{
+		const size_t f_gid = old_gid[itr.first];
+
+		auto node = m_graph->GetNodes()[f_gid];
+		auto& cshp = node->GetComponent<NodeShape>();
+		cshp.GetFace()->SetInactive(true);
+
+		for (auto itr_to : itr.second)
+		{
+			const size_t t_gid = new_gid[itr_to];
+
+			auto node = m_graph->GetNodes()[t_gid];
+			auto& cshp = node->GetComponent<NodeShape>();
+			cshp.GetFace()->SetInactive(false);
+		}
+	}
+
 	graph::GraphLayout::OptimalHierarchy(*m_graph);
 }
 
@@ -140,7 +161,38 @@ std::shared_ptr<graph::Node> HistGraph::QueryNode(uint32_t uid) const
 	if (itr == m_uid2gid.end())
 		return nullptr;
 
-	return m_graph->GetNodes()[itr->second];
+	size_t gid = itr->second;
+
+	auto node = m_graph->GetNodes()[gid];
+	auto& cshp = node->GetComponent<NodeShape>();
+	if (!cshp.GetFace()->GetInactive())
+		return node;
+
+	std::queue<size_t> buf;
+	buf.push(gid);
+	while (!buf.empty())
+	{
+		auto pid = buf.front(); buf.pop();
+
+		auto& edges = m_graph->GetEdges();
+		auto range = edges.equal_range(pid);
+		for (auto itr = range.first; itr != range.second; ++itr)
+		{
+			auto cid = itr->second;
+			auto c_node = m_graph->GetNodes()[cid];
+			auto& cshp = c_node->GetComponent<NodeShape>();
+			if (cshp.GetFace()->GetInactive())
+			{
+				buf.push(cid);
+			}
+			else
+			{
+				return c_node;
+			}
+		}
+	}
+
+	return nullptr;
 }
 
 }

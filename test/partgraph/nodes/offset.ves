@@ -48,7 +48,7 @@ _editor.add_node(node7, -753.53870247934, -35.726545454545)
 var node8 = ::partgraph::nodes::selector::Selector()
 node8.query_param("type").value = "face"
 
-node8.selected_uids = []
+node8.selected_uids = [ 65539 ]
 
 _editor.add_node(node8, -261.54545454545, 196.72727272727)
 
@@ -97,16 +97,16 @@ Blueprint.connect(node12, "selected", node6, "shape")
 Blueprint.connect(node6, "va", node10, "var")
 Blueprint.connect(node0, "shape", node15, "a")
 Blueprint.connect(node16, "shape", node15, "b")
-Blueprint.connect(node15, "shape", node1, "shape")
-Blueprint.connect(node1, "va", node3, "var")
-Blueprint.connect(node3, "var", node4, "geos")
-Blueprint.connect(node2, "this", node4, "view_cam")
-Blueprint.connect(node6, "va", node4, "selected")
 Blueprint.connect(node0, "shape", node13, "var")
 Blueprint.connect(node13, "var", node8, "shape")
 Blueprint.connect(node2, "this", node8, "camera")
 Blueprint.connect(node8, "objs", node9, "shape")
 Blueprint.connect(node13, "var", node11, "in0")
 Blueprint.connect(node9, "shape", node11, "in1")
+Blueprint.connect(node11, "list", node1, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node3, "var", node4, "geos")
+Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node6, "va", node4, "selected")
 Blueprint.connect(node0, "shape", node7, "shape")
 Blueprint.connect(node0, "shape", node5, "shape")

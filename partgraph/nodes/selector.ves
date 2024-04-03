@@ -60,7 +60,7 @@ class Selector is Node
 	{
 		var ret = super.to_string(name)
 		//var indices = this.store_selected()
-		//var indices = this.selected_uids
+		var indices = this.selected_uids
 		return ret + "
 %(name).selected_uids = %(indices)
 "

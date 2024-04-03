@@ -73,8 +73,13 @@ public:
 
 	auto& GetFace() const { return m_face; }
 
+	void SetInactive(bool inactive) { m_inactive = inactive; }
+	bool GetInactive() const { return m_inactive; }
+
 private:
 	TopoDS_Face m_face;
+
+	bool m_inactive = false;
 
 }; // TopoFace
 
