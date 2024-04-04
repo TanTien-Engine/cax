@@ -61,6 +61,12 @@ void w_HistGraph_get_hist_graph()
     ves_pop(1);
 }
 
+void w_HistGraph_get_next_op_id()
+{
+    auto hist = breptopo::Context::Instance()->GetHist();
+    ves_set_number(0, hist->NextOpId());
+}
+
 void w_HistGraph_get_node_uid()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -112,6 +118,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "TopoGraph.get_graph()") == 0) return w_TopoGraph_get_graph;
 
     if (strcmp(signature, "static HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
+    if (strcmp(signature, "static HistGraph.get_next_op_id()") == 0) return w_HistGraph_get_next_op_id;
     if (strcmp(signature, "static HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
     if (strcmp(signature, "static HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 

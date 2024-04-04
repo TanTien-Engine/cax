@@ -29,7 +29,7 @@
 namespace partgraph
 {
 
-std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, int& time)
+std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint32_t op_id)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
@@ -39,7 +39,7 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, int& 
         BRepHistory hist(mk_box, TopAbs_FACE, mk_box.Shape(), old_shp->GetShape());
 
         auto hist_group = breptopo::Context::Instance()->GetHist();
-        hist_group->Update(hist, time);
+        hist_group->Update(hist, op_id);
 
         shape = std::make_shared<partgraph::TopoShape>(mk_box.Shape());
     } catch (Standard_Failure& e) {

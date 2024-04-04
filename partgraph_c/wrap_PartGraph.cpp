@@ -80,7 +80,7 @@ void w_PrimMaker_box()
     double L = ves_tonumber(1);
     double W = ves_tonumber(2);
     double H = ves_tonumber(3);
-    int time = (int)ves_tonumber(4);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
 
     bool skip = false;
     if (L < Precision::Confusion()) {
@@ -100,8 +100,7 @@ void w_PrimMaker_box()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Box(L, W, H, time);
-    shape->SetTime(time);
+    auto shape = partgraph::PrimMaker::Box(L, W, H, op_id);
 
     partgraph::return_topo_shape(shape);
 }
@@ -345,10 +344,9 @@ void w_TopoAlgo_cut()
 {
     auto s1 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto s2 = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
-    int time = (int)ves_tonumber(3);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
 
-    auto shape = partgraph::TopoAlgo::Cut(s1, s2, time);
-    shape->SetTime(time);
+    auto shape = partgraph::TopoAlgo::Cut(s1, s2, op_id);
 
     partgraph::return_topo_shape(shape);
 }
@@ -383,10 +381,9 @@ void w_TopoAlgo_translate()
     double x = ves_tonumber(2);
     double y = ves_tonumber(3);
     double z = ves_tonumber(4);
-    int time = (int)ves_tonumber(5);
+    uint32_t op_id = (uint32_t)ves_tonumber(5);
 
-    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z, time);
-    dst->SetTime(time);
+    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z, op_id);
 
     partgraph::return_topo_shape(dst);
 }
@@ -436,10 +433,9 @@ void w_TopoAlgo_offset_shape()
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto offset = (float)ves_tonumber(2);
     auto is_solid = ves_toboolean(3);
-    int time = (int)ves_tonumber(4);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
 
-    auto dst = partgraph::TopoAlgo::OffsetShape(shape, offset, is_solid, time);
-    dst->SetTime(time);
+    auto dst = partgraph::TopoAlgo::OffsetShape(shape, offset, is_solid, op_id);
 
     partgraph::return_topo_shape(dst);
 }
@@ -626,12 +622,6 @@ int w_WireBuilder_finalize(void* data)
     return sizeof(tt::Proxy<BRepBuilderAPI_MakeWire>);
 }
 
-void w_TopoShape_get_time()
-{
-    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(0))->obj;
-    ves_set_number(0, shape->GetTime());
-}
-
 void w_WireBuilder_add_edge()
 {
     auto builder = ((tt::Proxy<BRepBuilderAPI_MakeWire>*)ves_toforeign(0))->obj;
@@ -665,8 +655,6 @@ namespace partgraph
 
 VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 {
-    if (strcmp(signature, "TopoShape.get_time()") == 0) return w_TopoShape_get_time;
-
     if (strcmp(signature, "WireBuilder.add_edge(_)") == 0) return w_WireBuilder_add_edge;
     if (strcmp(signature, "WireBuilder.add_wire(_)") == 0) return w_WireBuilder_add_wire;
     if (strcmp(signature, "WireBuilder.gen_wire()") == 0) return w_WireBuilder_gen_wire;

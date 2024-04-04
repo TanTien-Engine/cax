@@ -102,8 +102,10 @@ class Selector is Node
 			return
 		}
 
-		if (!this.selected_objs) {
-			this.selected_objs = []
+		if (this.selected_objs) {
+			this.selected_objs.clear()
+		} else {
+			this.selected_objs = []		
 		}
 
 		var dirty = false

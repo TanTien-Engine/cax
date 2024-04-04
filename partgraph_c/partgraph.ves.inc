@@ -19,8 +19,6 @@ foreign class TrimmedCurve
 foreign class TopoShape
 {
 	init() {}
-
-	foreign get_time()
 }
 
 foreign class TopoEdge

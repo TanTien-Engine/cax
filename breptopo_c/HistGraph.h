@@ -8,7 +8,7 @@
 #include <vector>
 #include <map>
 
-namespace partgraph { class TopoShape; class TopoFace; class BRepHistory; }
+namespace partgraph { class TopoShape; class BRepHistory; }
 namespace graph { class Graph; class Node; }
 
 namespace breptopo
@@ -19,10 +19,8 @@ class HistGraph
 public:
 	HistGraph();
 
-	void Update(const std::shared_ptr<partgraph::TopoFace>& from, 
-		const std::vector<std::shared_ptr<partgraph::TopoFace>>& to);
-
-	void Update(const partgraph::BRepHistory& hist, int& time);
+	uint32_t NextOpId();
+	void Update(const partgraph::BRepHistory& hist, uint32_t op_id);
 
 	std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
 	bool QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const;
@@ -30,14 +28,20 @@ public:
 	auto GetGraph() { return m_graph; }
 
 private:
+	void InitDelNode();
+
+private:
 	std::shared_ptr<graph::Graph> m_graph;
 
-	int m_time = 0;
+	uint32_t m_next_op = 0;
 
 	// map shape to gid
 	NCollection_DataMap<TopoDS_Shape, size_t, TopTools_ShapeMapHasher> m_curr_shapes;
 
 	std::map<uint32_t, size_t> m_uid2gid;
+
+	size_t m_del_node_idx;
+	std::shared_ptr<graph::Node> m_del_node;
 
 }; // HistGraph
 

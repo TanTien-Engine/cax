@@ -21,19 +21,17 @@ namespace breptopo
 HistGraph::HistGraph()
 {
 	m_graph = std::make_shared<graph::Graph>();
+
+	InitDelNode();
 }
 
-void HistGraph::Update(const std::shared_ptr<partgraph::TopoFace>& from, 
-	                   const std::vector<std::shared_ptr<partgraph::TopoFace>>& to)
+uint32_t HistGraph::NextOpId()
 {
+	return m_next_op++;
 }
 
-void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
+void HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t op_id)
 {
-	if (time < 0) {
-		time = ++m_time;
-	}
-
 	std::vector<size_t> old_gid, new_gid;
 
 	// init old_gid
@@ -56,7 +54,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 	auto& new_map = hist.GetNewMap();
 	for (int i = 1; i <= new_map.Extent(); ++i)
 	{
-		uint32_t uid = (time << 16) | (i - 1);
+		uint32_t uid = (op_id << 16) | (i - 1);
 		auto itr = m_uid2gid.find(uid);
 		if (itr == m_uid2gid.end())
 		{
@@ -118,12 +116,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, int& time)
 
 			if (!exists)
 			{
-				size_t t_gid = m_graph->GetNodes().size();
-
-				auto node = std::make_shared<graph::Node>(-1);
-				m_graph->AddNode(node);
-
-				m_graph->AddEdge(f_gid, t_gid);
+				m_graph->AddEdge(f_gid, m_del_node_idx);
 			}
 		}
 		else
@@ -196,15 +189,10 @@ bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node
 			auto cid = itr->second;
 			auto c_node = m_graph->GetNodes()[cid];
 			auto& cflags = c_node->GetComponent<NodeFlags>();
-			if (!cflags.IsActive())
-			{
+			if (!cflags.IsActive()) {
 				cids.push_back(cid);
-				//buf.push(cid);
-			}
-			else
-			{
+			} else {
 				cnodes.push_back(c_node);
-				//return c_node;
 			}
 		}
 
@@ -224,6 +212,14 @@ bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node
 	}
 
 	return false;
+}
+
+void HistGraph::InitDelNode()
+{
+	m_del_node_idx = m_graph->GetNodes().size();
+
+	m_del_node = std::make_shared<graph::Node>(-1);
+	m_graph->AddNode(m_del_node);
 }
 
 }

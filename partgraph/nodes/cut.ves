@@ -4,6 +4,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for TopoAlgo
+import "breptopo" for HistGraph
 
 class Cut is Node
 {
@@ -21,7 +22,7 @@ class Cut is Node
 
 		this.layout()
 
-		this.time = -1
+		this.op_id = -1
 	}
 
 	calc_value(idx)
@@ -35,14 +36,14 @@ class Cut is Node
 			return nil
 		}
 
-		var shape = TopoAlgo.cut(v_a.value, v_b.value, this.time)
-		if (shape) 
-		{
-			this.time = shape.get_time()
+		if (this.op_id < 0) {
+			this.op_id = HistGraph.get_next_op_id()
+		}
+
+		var shape = TopoAlgo.cut(v_a.value, v_b.value, this.op_id)
+		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
-		} 
-		else 
-		{
+		} else {
 			return nil
 		}
 	}

@@ -48,7 +48,7 @@ _editor.add_node(node7, -753.53870247934, -35.726545454545)
 var node8 = ::partgraph::nodes::selector::Selector()
 node8.query_param("type").value = "face"
 
-node8.selected_uids = [ 65539 ]
+node8.selected_uids = [ 3 ]
 
 _editor.add_node(node8, -261.54545454545, 196.72727272727)
 
