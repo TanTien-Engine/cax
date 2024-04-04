@@ -165,18 +165,21 @@ QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
 	return m_graph->GetNodes()[gid];
 }
 
-std::shared_ptr<graph::Node> HistGraph::QueryNode(uint32_t uid) const
+bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const
 {
 	auto itr = m_uid2gid.find(uid);
 	if (itr == m_uid2gid.end())
-		return nullptr;
+		return false;
 
 	size_t gid = itr->second;
 
 	auto node = m_graph->GetNodes()[gid];
 	auto& cflags = node->GetComponent<NodeFlags>();
 	if (cflags.IsActive())
-		return node;
+	{
+		results.push_back(node);
+		return true;
+	}
 
 	std::queue<size_t> buf;
 	buf.push(gid);
@@ -186,6 +189,8 @@ std::shared_ptr<graph::Node> HistGraph::QueryNode(uint32_t uid) const
 
 		auto& edges = m_graph->GetEdges();
 		auto range = edges.equal_range(pid);
+		std::vector<size_t> cids;
+		std::vector<std::shared_ptr<graph::Node>> cnodes;
 		for (auto itr = range.first; itr != range.second; ++itr)
 		{
 			auto cid = itr->second;
@@ -193,16 +198,32 @@ std::shared_ptr<graph::Node> HistGraph::QueryNode(uint32_t uid) const
 			auto& cflags = c_node->GetComponent<NodeFlags>();
 			if (!cflags.IsActive())
 			{
-				buf.push(cid);
+				cids.push_back(cid);
+				//buf.push(cid);
 			}
 			else
 			{
-				return c_node;
+				cnodes.push_back(c_node);
+				//return c_node;
 			}
+		}
+
+		if (cnodes.empty())
+		{
+			for (auto cid : cids) {
+				buf.push(cid);
+			}
+		}
+		else
+		{
+			for (auto cnode : cnodes) {
+				results.push_back(cnode);
+			}
+			return true;
 		}
 	}
 
-	return nullptr;
+	return false;
 }
 
 }

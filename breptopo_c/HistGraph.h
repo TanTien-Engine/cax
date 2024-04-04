@@ -25,7 +25,7 @@ public:
 	void Update(const partgraph::BRepHistory& hist, int& time);
 
 	std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
-	std::shared_ptr<graph::Node> QueryNode(uint32_t uid) const;
+	bool QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const;
 
 	auto GetGraph() { return m_graph; }
 

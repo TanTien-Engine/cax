@@ -195,8 +195,10 @@ class Selector is Node
 
 		for (var uid in uids)
 		{
-			var shp = HistGraph.query_shape(uid)
-			this.selected_objs.add(Variant(VAR_TOPO_FACE, shp))
+			var shapes = HistGraph.query_shapes(uid)
+			for (var shp in shapes) {
+				this.selected_objs.add(Variant(VAR_TOPO_FACE, shp))
+			}
 		}
 	}
 }

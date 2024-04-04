@@ -71,15 +71,35 @@ void w_HistGraph_get_node_uid()
     ves_set_number(0, cid.GetUID());
 }
 
-void w_HistGraph_query_shape()
+void w_HistGraph_query_shapes()
 {
     uint32_t uid = (uint32_t)ves_tonumber(1);
 
     auto hist = breptopo::Context::Instance()->GetHist();
-    auto node = hist->QueryNode(uid);
-    auto& cshp = node->GetComponent<breptopo::NodeShape>();
+    std::vector<std::shared_ptr<graph::Node>> nodes;
+    if (hist->QueryNodes(uid, nodes))
+    {
+        assert(!nodes.empty());
 
-    partgraph::return_topo_face(cshp.GetFace());
+        ves_pop(ves_argnum());
+
+        const int num = (int)nodes.size();
+        ves_newlist(num);
+        for (int i = 0; i < num; ++i)
+        {
+            ves_pushnil();
+            ves_import_class("partgraph", "TopoFace");
+            auto proxy = (tt::Proxy<partgraph::TopoFace>*)ves_set_newforeign(1, 2, sizeof(tt::Proxy<partgraph::TopoFace>));
+            proxy->obj = nodes[i]->GetComponent<breptopo::NodeShape>().GetFace();
+            ves_pop(1);
+            ves_seti(-2, i);
+            ves_pop(1);
+        }
+    }
+    else
+    {
+        ves_set_nil(0);
+    }
 }
 
 }
@@ -93,7 +113,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 
     if (strcmp(signature, "static HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
     if (strcmp(signature, "static HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
-    if (strcmp(signature, "static HistGraph.query_shape(_)") == 0) return w_HistGraph_query_shape;
+    if (strcmp(signature, "static HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 
     return nullptr;
 }
