@@ -1,0 +1,29 @@
+import "blueprint.blueprint" for Blueprint
+
+class NodeHelper
+{
+	static compile_graph(curr_node, input_slot, G)
+	{
+		var pin = Blueprint.query_pin(curr_node.imports, input_slot)
+		if (!pin or pin.conns.isEmpty) {
+			return nil
+		}
+
+		var f_pin = pin.conns.front().from
+		var f_node = f_pin.node
+
+		if (f_node.has_method("compile_graph(_,_)")) 
+		{
+			var ret = f_node.compile_graph(G, f_pin.slot_idx)
+			return ret
+		} 
+		else 
+		{
+			import "logger.logger" for Logger
+			Logger.error("No compile_graph in %(f_node) !")
+		}
+
+		return nil
+	}
+
+}

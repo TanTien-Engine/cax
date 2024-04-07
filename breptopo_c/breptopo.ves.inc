@@ -16,4 +16,21 @@ foreign class HistGraph
 	foreign static query_shapes(uid)
 }
 
+foreign class CompGraph
+{
+	init() {}
+
+	foreign get_graph()
+
+	foreign eval(node_idx)
+
+	foreign add_number_node(num)
+	foreign add_boolean_node(bool)
+	foreign add_shape_node(shp)
+
+	foreign add_box_node(length, width, height)
+	foreign add_offset_node(shape, offset, is_solid)
+	foreign add_merge_node(array)
+}
+
 );

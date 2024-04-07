@@ -33,20 +33,9 @@ class Offset is Node
 
 	calc_value(idx)
 	{
-		var src_shps = []
-
 		var v_shape = Blueprint.calc_input_value(this, 0)
-		if (v_shape.type == VAR_TOPO_SHAPE)
-		{
-			src_shps.add(v_shape.value)
-		}
-		else
-		{
-			for (var v_shp in v_shape.value) {
-				src_shps.add(v_shp.value)
-			}
-		}
-
+		var src_shps = []
+		this.get_input_shapes(v_shape, src_shps)
 		if (src_shps.isEmpty) {
 			return nil
 		}
@@ -92,6 +81,53 @@ class Offset is Node
 			}
 
 			return Variant(dst_shps)
+		}
+	}
+
+	compile_graph(G, idx)
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		var src_shps = []
+		this.get_input_shapes(v_shape, src_shps)
+		if (src_shps.isEmpty) {
+			return nil
+		}
+
+		var offset = NodeHelper.calc_prop_value(this, "offset")
+		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
+
+		var i_offset = G.add_number_node(offset)
+		var i_is_solid = G.add_boolean_node(is_solid)
+
+		if (src_shps.count == 1)
+		{
+			var i_shape = G.add_shape_node(src_shps[0])
+			return G.add_offset_node(i_shape, i_offset, i_is_solid)
+		}
+		else
+		{
+			var i_nodes = []
+			for (var i in 0..src_shps.count)
+			{
+				var i_shape = G.add_shape_node(src_shps[i])
+				var i_ret = G.add_offset_node(i_shape, i_offset, i_is_solid)
+				i_nodes.add(i_ret)
+			}
+			return G.add_merge_node(i_nodes)
+		}
+	}
+
+	get_input_shapes(val, shapes)
+	{
+		if (val.type == VAR_TOPO_SHAPE)
+		{
+			shapes.add(val.value)
+		}
+		else if (val.type == VAR_TYPE_ARRAY)
+		{
+			for (var v in val.value) {
+				shapes.add(v.value)
+			}
 		}
 	}
 }

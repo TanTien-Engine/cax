@@ -1,0 +1,124 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for VAR_TYPE_ANY, Variant
+import "blueprint.variant_proxy" for VariantProxy
+import "graph.nodes.draw" for Draw
+import "partgraph.node_helper" for NodeHelper
+import "logger.logger" for Logger
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "breptopo.variant" for VAR_COMP_GRAPH
+import "breptopo" for CompGraph as tt_CompGraph
+import "graph" for GraphTools
+import "partgraph" for TopoShape
+
+class CompGraph is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "val", VAR_TYPE_ANY),
+		]
+		this.exports = [
+			Pin(this, "val", VAR_TYPE_ANY),
+		]
+
+		this.layout()
+
+		this.graph = nil
+		this.node_idx = -1
+
+		this.n_draw = Draw()
+	}
+
+	on_pin_dirty(pin, type, msg)
+	{
+		super.on_pin_dirty(pin, type, msg)
+
+		this.graph = nil
+		this.node_idx = -1
+	}
+
+	calc_value(idx)
+	{
+		if (!this.graph) {
+			this.build_graph()
+		}
+
+		var val = this.graph.eval(this.node_idx)
+		return this.return_value(val)
+	}
+
+	return_value(val)
+	{
+		if (val is List)
+		{
+			var array = []
+			for (var v in val) {
+				array.add(this.return_value(v))
+			}
+			return Variant(array)
+		}
+		else if (val is TopoShape)
+		{
+			return Variant(VAR_TOPO_SHAPE, val)
+		}
+		else
+		{
+			return Variant(val)
+		}
+	}
+
+	build_graph()
+	{
+		Logger.info("computational graph compile")
+
+		this.graph = tt_CompGraph.init()
+		this.node_idx = NodeHelper.compile_graph(this, 0, this.graph)
+
+		var graph = this.graph.get_graph()
+		GraphTools.layout(graph, "hierarchy")
+
+		Blueprint.connect(VariantProxy (Variant(VAR_COMP_GRAPH, graph)), "out", this.n_draw, "graph")
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		this.n_draw.draw_preview()
+	}
+
+	bind_editor()
+	{
+		return this.n_draw.bind_editor()
+	}
+
+	draw_editor() 
+	{
+		this.n_draw.draw_editor()
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		this.n_draw.on_mouse_pressed(x, y, btn)
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		this.n_draw.on_mouse_dragged(x, y, btn)
+	}
+
+	on_mouse_scrolled(x, y, dx, dy) 
+	{
+		this.n_draw.on_mouse_scrolled(x, y, dx, dy)
+	}
+
+	on_key_pressed(key)
+	{
+		this.n_draw.on_key_pressed(key)
+	}
+
+}
