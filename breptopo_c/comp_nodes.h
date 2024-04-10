@@ -6,6 +6,21 @@
 namespace breptopo
 {
 
+class NodeInteger : public CompNode
+{
+public:
+	NodeInteger(int val) : m_val(val) {}
+
+	virtual std::shared_ptr<CompVariant> Eval(const graph::Graph& G) const
+	{
+		return std::make_shared<VarInteger>(m_val);
+	}
+
+private:
+	int m_val = 0;
+
+}; // NodeInteger
+
 class NodeNumber : public CompNode
 {
 public:
@@ -20,6 +35,21 @@ private:
 	float m_val = 0;
 
 }; // NodeNumber
+
+class NodeNumber3 : public CompNode
+{
+public:
+	NodeNumber3(const sm::vec3& val) : m_val(val) {}
+
+	virtual std::shared_ptr<CompVariant> Eval(const graph::Graph& G) const
+	{
+		return std::make_shared<VarNumber3>(m_val);
+	}
+
+private:
+	sm::vec3 m_val;
+
+}; // NodeNumber3
 
 class NodeBoolean : public CompNode
 {
@@ -64,6 +94,19 @@ private:
 
 }; // NodeBox
 
+class NodeTranslate : public CompNode
+{
+public:
+	NodeTranslate(int shape, int offset)
+		: m_shape(shape), m_offset(offset) {}
+
+	virtual std::shared_ptr<CompVariant> Eval(const graph::Graph& G) const;
+
+private:
+	int m_shape = -1, m_offset = -1;
+
+}; // NodeTranslate
+
 class NodeOffset : public CompNode
 {
 public:
@@ -76,6 +119,31 @@ private:
 	int m_shape = -1, m_offset = -1, m_is_solid = -1;
 
 }; // NodeOffset
+
+class NodeCut : public CompNode
+{
+public:
+	NodeCut(int shp1, int shp2)
+		: m_shp1(shp1), m_shp2(shp2) {}
+
+	virtual std::shared_ptr<CompVariant> Eval(const graph::Graph& G) const;
+
+private:
+	int m_shp1 = -1, m_shp2 = -1;
+
+}; // NodeCut
+
+class NodeSelector : public CompNode
+{
+public:
+	NodeSelector(int uid) : m_uid(uid) {}
+
+	virtual std::shared_ptr<CompVariant> Eval(const graph::Graph& G) const;
+
+private:
+	int m_uid;
+
+}; // NodeSelector
 
 class NodeMerge : public CompNode
 {

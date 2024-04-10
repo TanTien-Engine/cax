@@ -5,6 +5,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER3
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo
 import "breptopo" for HistGraph
@@ -48,5 +49,15 @@ class Translate is Node
 		} else {
 			return nil
 		}
+	}
+
+	compile_graph(G, idx)
+	{
+		var i_shp = pg_NodeHelper.compile_graph(this, 0, G)
+
+		var offset = NodeHelper.calc_prop_value(this, "offset")
+		var i_offset = G.add_number3_node(offset.x, offset.z, offset.y)
+
+		return G.add_translate_node(i_shp, i_offset)
 	}
 }

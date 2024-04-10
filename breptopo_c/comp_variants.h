@@ -2,6 +2,8 @@
 
 #include "CompVariant.h"
 
+#include <SM_Vector.h>
+
 #include <memory>
 #include <vector>
 
@@ -12,12 +14,25 @@ namespace breptopo
 
 enum VarType
 {
+	VAR_INTEGER,
 	VAR_NUMBER,
+	VAR_NUMBER3,
 	VAR_BOOLEAN,
 	VAR_SHAPE,
-
 	VAR_ARRAY,
 };
+
+class VarInteger : public CompVariant
+{
+public:
+	VarInteger(int _val) : val(_val) {}
+
+	virtual int Type() const { return VAR_INTEGER; }
+
+public:
+	int val = 0;
+
+}; // VarInteger
 
 class VarNumber : public CompVariant
 {
@@ -31,6 +46,18 @@ public:
 
 }; // VarNumber
 
+class VarNumber3 : public CompVariant
+{
+public:
+	VarNumber3(const sm::vec3& _val) : val(_val) {}
+
+	virtual int Type() const { return VAR_NUMBER3; }
+
+public:
+	sm::vec3 val;
+
+}; // VarNumber3
+
 class VarBoolean : public CompVariant
 {
 public:
@@ -41,7 +68,7 @@ public:
 public:
 	bool val = 0;
 
-}; // VarNumber
+}; // VarBoolean
 
 class VarShape : public CompVariant
 {

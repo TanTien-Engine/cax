@@ -56,6 +56,16 @@ class Selector is Node
 		}
 	}
 
+	compile_graph(G, idx)
+	{
+		if (this.selected_uids.isEmpty) {
+			return -1
+		} else {
+			var i_uid = G.add_integer_node(this.selected_uids[0])
+			return G.add_selector_node(i_uid)
+		}
+	}
+
 	to_string(name) 
 	{
 		var ret = super.to_string(name)
@@ -199,7 +209,7 @@ class Selector is Node
 		{
 			var shapes = HistGraph.query_shapes(uid)
 			for (var shp in shapes) {
-				this.selected_objs.add(Variant(VAR_TOPO_FACE, shp))
+				this.selected_objs.add(Variant(VAR_TOPO_SHAPE, shp))
 			}
 		}
 	}

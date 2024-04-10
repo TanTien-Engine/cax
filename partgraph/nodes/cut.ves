@@ -3,6 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph.node_helper" for NodeHelper
 import "partgraph" for TopoAlgo
 import "breptopo" for HistGraph
 
@@ -46,5 +47,12 @@ class Cut is Node
 		} else {
 			return nil
 		}
+	}
+
+	compile_graph(G, idx)
+	{
+		var i_a = NodeHelper.compile_graph(this, 0, G)
+		var i_b = NodeHelper.compile_graph(this, 1, G)
+		return G.add_cut_node(i_a, i_b)
 	}
 }

@@ -6,6 +6,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "blueprint.variant_helper" for VariantHelper, VAR_TYPE_ARRAY
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
+import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
 import "partgraph" for TopoAlgo
 import "breptopo" for HistGraph
 
@@ -85,6 +86,19 @@ class Offset is Node
 	}
 
 	compile_graph(G, idx)
+	{
+		var i_shape = pg_NodeHelper.compile_graph(this, 0, G)
+
+		var offset = NodeHelper.calc_prop_value(this, "offset")
+		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
+
+		var i_offset = G.add_number_node(offset)
+		var i_is_solid = G.add_boolean_node(is_solid)
+
+		return G.add_offset_node(i_shape, i_offset, i_is_solid)
+	}
+
+	compile_graph_old(G, idx)
 	{
 		var v_shape = Blueprint.calc_input_value(this, 0)
 		var src_shps = []

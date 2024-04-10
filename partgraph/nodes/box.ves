@@ -60,6 +60,6 @@ class Box is Node
 		var i_width  = G.add_number_node(width)
 		var i_height = G.add_number_node(height)
 
-		return G.add_box_node(i_length, i_width, i_height)
+		return G.add_box_node(i_length, i_height, i_width)
 	}
 }

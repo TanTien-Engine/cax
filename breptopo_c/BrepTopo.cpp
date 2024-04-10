@@ -17,7 +17,7 @@ void init_cb()
 		if (node.HasComponent<NodeShape>())
 		{
 			auto& shape = node.GetComponent<NodeShape>();
-			partgraph::return_topo_face(shape.GetFace());
+			partgraph::return_topo_shape(shape.GetShape());
 		}
 		else
 		{

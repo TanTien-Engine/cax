@@ -75,8 +75,8 @@ void TopoGraphBuilder::AddShapeToGraph(const std::shared_ptr<partgraph::TopoShap
         auto node = std::make_shared<graph::Node>(key);
 
         auto face = TopoDS::Face(all_faces.FindKey(key));
-        auto pg_face = std::make_shared<partgraph::TopoFace>(face);
-        node->AddComponent<NodeShape>(pg_face);
+        auto shape = std::make_shared<partgraph::TopoShape>(face);
+        node->AddComponent<NodeShape>(shape);
 
         graph->AddNode(node);
     }

@@ -65,8 +65,8 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t op_id)
 			auto node = std::make_shared<graph::Node>(static_cast<int>(gid));
 
 			auto face = TopoDS::Face(new_map(i));
-			auto pg_face = std::make_shared<partgraph::TopoFace>(face);
-			node->AddComponent<NodeShape>(pg_face);
+			auto shape = std::make_shared<partgraph::TopoShape>(face);
+			node->AddComponent<NodeShape>(shape);
 
 			node->AddComponent<NodeId>(uid, gid);
 
@@ -86,8 +86,8 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t op_id)
 			auto node = m_graph->GetNodes()[gid];
 
 			auto face = TopoDS::Face(new_map(i));
-			auto pg_face = std::make_shared<partgraph::TopoFace>(face);
-			node->GetComponent<NodeShape>().SetFace(pg_face);
+			auto shape = std::make_shared<partgraph::TopoShape>(face);
+			node->GetComponent<NodeShape>().SetShape(shape);
 
 			m_curr_shapes.Bind(new_map(i), gid);
 		}
@@ -188,6 +188,12 @@ bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node
 		{
 			auto cid = itr->second;
 			auto c_node = m_graph->GetNodes()[cid];
+
+			// w_CompGraph_add_*_node
+			if (!c_node->HasComponent<NodeFlags>()) {
+				continue;
+			}
+
 			auto& cflags = c_node->GetComponent<NodeFlags>();
 			if (!cflags.IsActive()) {
 				cids.push_back(cid);
