@@ -61,7 +61,7 @@ class Selector is Node
 		if (this.selected_uids.isEmpty) {
 			return -1
 		} else {
-			var i_uid = G.add_integer_node(this.selected_uids[0])
+			var i_uid = G.add_integer_node(this.selected_uids[0], "uid")
 			return G.add_selector_node(i_uid)
 		}
 	}

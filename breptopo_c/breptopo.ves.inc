@@ -24,11 +24,11 @@ foreign class CompGraph
 
 	foreign eval(node_idx)
 
-	foreign add_integer_node(int)
-	foreign add_number_node(num)
-	foreign add_number3_node(x, y, z)
-	foreign add_boolean_node(bool)
-	foreign add_shape_node(shp)
+	foreign add_integer_node(int, desc)
+	foreign add_number_node(num, desc)
+	foreign add_number3_node(x, y, z, desc)
+	foreign add_boolean_node(bool, desc)
+	foreign add_shape_node(shp, desc)
 
 	foreign add_box_node(length, width, height)
 	foreign add_translate_node(shape, offset)

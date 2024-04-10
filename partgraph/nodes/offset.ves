@@ -92,8 +92,8 @@ class Offset is Node
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
 
-		var i_offset = G.add_number_node(offset)
-		var i_is_solid = G.add_boolean_node(is_solid)
+		var i_offset = G.add_number_node(offset, "offset")
+		var i_is_solid = G.add_boolean_node(is_solid, "is_solid")
 
 		return G.add_offset_node(i_shape, i_offset, i_is_solid)
 	}
@@ -110,12 +110,12 @@ class Offset is Node
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
 
-		var i_offset = G.add_number_node(offset)
-		var i_is_solid = G.add_boolean_node(is_solid)
+		var i_offset = G.add_number_node(offset, "offset")
+		var i_is_solid = G.add_boolean_node(is_solid, "is_solid")
 
 		if (src_shps.count == 1)
 		{
-			var i_shape = G.add_shape_node(src_shps[0])
+			var i_shape = G.add_shape_node(src_shps[0], "inp_shape")
 			return G.add_offset_node(i_shape, i_offset, i_is_solid)
 		}
 		else
@@ -123,7 +123,7 @@ class Offset is Node
 			var i_nodes = []
 			for (var i in 0..src_shps.count)
 			{
-				var i_shape = G.add_shape_node(src_shps[i])
+				var i_shape = G.add_shape_node(src_shps[i], "inp_shape")
 				var i_ret = G.add_offset_node(i_shape, i_offset, i_is_solid)
 				i_nodes.add(i_ret)
 			}

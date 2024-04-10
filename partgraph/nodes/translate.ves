@@ -56,7 +56,7 @@ class Translate is Node
 		var i_shp = pg_NodeHelper.compile_graph(this, 0, G)
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")
-		var i_offset = G.add_number3_node(offset.x, offset.z, offset.y)
+		var i_offset = G.add_number3_node(offset.x, offset.z, offset.y, "offset")
 
 		return G.add_translate_node(i_shp, i_offset)
 	}

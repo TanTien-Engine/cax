@@ -102,7 +102,7 @@ class HistGraph is Node
 		{
 			var face = v_sel.value.get_component("topo_shape")
 			if (face) {
-				this.selected_faces.add(Variant(VAR_TOPO_FACE, face))			
+				this.selected_faces.add(Variant(VAR_TOPO_FACE, face))
 			}
 		}
 	}	

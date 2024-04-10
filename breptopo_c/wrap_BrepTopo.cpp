@@ -204,9 +204,10 @@ void w_CompGraph_add_integer_node()
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     float val = (float)ves_tonumber(1);
+    const char* desc = ves_tostring(2);
 
     auto node = std::make_shared<breptopo::NodeInteger>(val);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, desc);
 
     ves_set_number(0, id);
 }
@@ -216,9 +217,10 @@ void w_CompGraph_add_number_node()
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     float num = (float)ves_tonumber(1);
+    const char* desc = ves_tostring(2);
 
     auto node = std::make_shared<breptopo::NodeNumber>(num);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, desc);
 
     ves_set_number(0, id);
 }
@@ -230,9 +232,10 @@ void w_CompGraph_add_number3_node()
     float x = (float)ves_tonumber(1);
     float y = (float)ves_tonumber(2);
     float z = (float)ves_tonumber(3);
+    const char* desc = ves_tostring(4);
 
     auto node = std::make_shared<breptopo::NodeNumber3>(sm::vec3(x, y, z));
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, desc);
 
     ves_set_number(0, id);
 }
@@ -242,9 +245,10 @@ void w_CompGraph_add_boolean_node()
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     bool b = ves_toboolean(1);
+    const char* desc = ves_tostring(2);
 
     auto node = std::make_shared<breptopo::NodeBoolean>(b);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, desc);
 
     ves_set_number(0, id);
 }
@@ -254,9 +258,10 @@ void w_CompGraph_add_shape_node()
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    const char* desc = ves_tostring(2);
 
     auto node = std::make_shared<breptopo::NodeTopoShape>(shape);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, desc);
 
     ves_set_number(0, id);
 }
@@ -270,7 +275,7 @@ void w_CompGraph_add_box_node()
     int height = (int)ves_tonumber(3);
 
     auto node = std::make_shared<breptopo::NodeBox>(length, width, height);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, "box op");
 
     cg->AddEdge(length, id);
     cg->AddEdge(width, id);
@@ -287,7 +292,7 @@ void w_CompGraph_add_translate_node()
     int offset = (int)ves_tonumber(2);
 
     auto node = std::make_shared<breptopo::NodeTranslate>(shape, offset);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, "translate op");
 
     cg->AddEdge(shape, id);
     cg->AddEdge(offset, id);
@@ -304,7 +309,7 @@ void w_CompGraph_add_offset_node()
     int is_solid = (int)ves_tonumber(3);
 
     auto node = std::make_shared<breptopo::NodeOffset>(shape, offset, is_solid);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, "offset op");
 
     cg->AddEdge(shape, id);
     cg->AddEdge(offset, id);
@@ -321,7 +326,7 @@ void w_CompGraph_add_cut_node()
     int shp2 = (int)ves_tonumber(2);
 
     auto node = std::make_shared<breptopo::NodeCut>(shp1, shp2);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, "cut op");
 
     cg->AddEdge(shp1, id);
     cg->AddEdge(shp2, id);
@@ -336,7 +341,7 @@ void w_CompGraph_add_selector_node()
     int uid = (int)ves_tonumber(1);
 
     auto node = std::make_shared<breptopo::NodeSelector>(uid);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, "selector");
 
     cg->AddEdge(uid, id);
 
@@ -350,7 +355,7 @@ void w_CompGraph_add_merge_node()
     auto nodes = tt::list_to_array<int>(1);
 
     auto node = std::make_shared<breptopo::NodeMerge>(nodes);
-    int id = cg->AddNode(node);
+    int id = cg->AddNode(node, "merge");
 
     for (auto i : nodes) {
         cg->AddEdge(i, id);
@@ -375,11 +380,11 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
     if (strcmp(signature, "CompGraph.eval(_)") == 0) return w_CompGraph_eval;
-    if (strcmp(signature, "CompGraph.add_integer_node(_)") == 0) return w_CompGraph_add_integer_node;
-    if (strcmp(signature, "CompGraph.add_number_node(_)") == 0) return w_CompGraph_add_number_node;
-    if (strcmp(signature, "CompGraph.add_number3_node(_,_,_)") == 0) return w_CompGraph_add_number3_node;
-    if (strcmp(signature, "CompGraph.add_boolean_node(_)") == 0) return w_CompGraph_add_boolean_node;
-    if (strcmp(signature, "CompGraph.add_shape_node(_)") == 0) return w_CompGraph_add_shape_node;
+    if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
+    if (strcmp(signature, "CompGraph.add_number_node(_,_)") == 0) return w_CompGraph_add_number_node;
+    if (strcmp(signature, "CompGraph.add_number3_node(_,_,_,_)") == 0) return w_CompGraph_add_number3_node;
+    if (strcmp(signature, "CompGraph.add_boolean_node(_,_)") == 0) return w_CompGraph_add_boolean_node;
+    if (strcmp(signature, "CompGraph.add_shape_node(_,_)") == 0) return w_CompGraph_add_shape_node;
     if (strcmp(signature, "CompGraph.add_box_node(_,_,_)") == 0) return w_CompGraph_add_box_node;
     if (strcmp(signature, "CompGraph.add_translate_node(_,_)") == 0) return w_CompGraph_add_translate_node;
     if (strcmp(signature, "CompGraph.add_offset_node(_,_,_)") == 0) return w_CompGraph_add_offset_node;

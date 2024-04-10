@@ -8,6 +8,7 @@ import "partgraph.node_helper" for NodeHelper
 import "logger.logger" for Logger
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "breptopo.variant" for VAR_COMP_GRAPH
+import "logger.logger" for Logger
 import "breptopo" for CompGraph as tt_CompGraph
 import "graph" for GraphTools
 import "partgraph" for TopoShape
@@ -104,6 +105,8 @@ class CompGraph is Node
 	on_mouse_pressed(x, y, btn) 
 	{
 		this.n_draw.on_mouse_pressed(x, y, btn)
+
+		this.update_selected()
 	}
 
 	on_mouse_dragged(x, y, btn) 
@@ -121,4 +124,19 @@ class CompGraph is Node
 		this.n_draw.on_key_pressed(key)
 	}
 
+	update_selected()
+	{
+		var v_selecteds = Blueprint.calc_output_value(this.n_draw, "selected")
+		if (!v_selecteds) {
+			return
+		}
+
+		for (var v_sel in v_selecteds.value)
+		{
+			var desc = v_sel.value.get_component("node_desc")
+			if (desc) {
+				Logger.info(desc)
+			}
+		}
+	}
 }

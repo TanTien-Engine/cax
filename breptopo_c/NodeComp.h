@@ -24,6 +24,6 @@ public:
 private:
 	std::shared_ptr<CompNode> m_cnode;
 
-}; // NodeId
+}; // NodeComp
 
 }
