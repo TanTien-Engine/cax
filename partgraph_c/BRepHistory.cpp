@@ -1,5 +1,5 @@
 #include "BRepHistory.h"
-#include "TopoDataset.h"
+#include "TopoShape.h"
 
 // OCCT
 #include <TopExp.hxx>

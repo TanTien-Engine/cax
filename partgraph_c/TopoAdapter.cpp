@@ -1,5 +1,5 @@
 #include "TopoAdapter.h"
-#include "TopoDataset.h"
+#include "TopoShape.h"
 
 #include "modules/render/Render.h"
 
@@ -23,6 +23,8 @@
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Wire.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 
 #include <set>
@@ -84,28 +86,32 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
 namespace partgraph
 {
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoShape& shape)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShape(const TopoShape& shape)
 {
     return BuildMesh(shape.GetShape());
 }
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoShell& shell)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShell(const TopoShape& shell)
 {
-    return BuildMesh(shell.GetShell());
+    return BuildMesh(shell.GetShape());
 }
 
-std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeo(const TopoEdge& shape)
+std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeoFromEdge(const TopoShape& shape)
 {
     std::vector<sm::vec3> pts;
 
-    auto& edge = shape.GetEdge();
+    auto& edge = shape.GetShape();
     TopoDS_Iterator it;
     int itr = 0;
     for (it.Initialize(edge); it.More(); it.Next(), ++itr)
     {
         auto& v = TopoDS::Vertex(it.Value());
         gp_Pnt p = BRep_Tool::Pnt(v);
-        pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
+        pts.push_back(sm::vec3(
+            static_cast<float>(p.X()), 
+            static_cast<float>(p.Y()),
+            static_cast<float>(p.Z()))
+        );
     }
 
     if (pts.size() < 2) {
@@ -119,16 +125,16 @@ std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeo(const TopoEdge& shape)
     return geo;
 }
 
-std::shared_ptr<gs::Polyline3D> TopoAdapter::BuildGeo(const TopoWire& wire)
+std::shared_ptr<gs::Polyline3D> TopoAdapter::BuildGeoFromWire(const TopoShape& wire)
 {
     std::vector<sm::vec3> pts;
 
-    auto& w = wire.GetWire();
+    auto& w = wire.GetShape();
     TopoDS_Iterator it;
     int itr = 0;
     for (it.Initialize(w); it.More(); it.Next(), ++itr)
     {
-        auto& e = TopoDS::Edge(it.Value());
+        const TopoDS_Edge& e = TopoDS::Edge(it.Value());
 
         int itr2 = 0;
         TopoDS_Iterator it2;
@@ -136,7 +142,11 @@ std::shared_ptr<gs::Polyline3D> TopoAdapter::BuildGeo(const TopoWire& wire)
         {
             auto& v = TopoDS::Vertex(it2.Value());
             gp_Pnt p = BRep_Tool::Pnt(v);
-            pts.push_back(sm::vec3(p.X(), p.Y(), p.Z()));
+            pts.push_back(sm::vec3(
+                static_cast<float>(p.X()),
+                static_cast<float>(p.Y()),
+                static_cast<float>(p.Z()))
+            );
         }
     }
 
@@ -146,9 +156,9 @@ std::shared_ptr<gs::Polyline3D> TopoAdapter::BuildGeo(const TopoWire& wire)
     return geo;
 }
 
-std::shared_ptr<TopoWire> TopoAdapter::ToWire(const TopoShape& shape)
+std::shared_ptr<TopoShape> TopoAdapter::ToWire(const TopoShape& shape)
 {
-    return std::make_shared<TopoWire>(TopoDS::Wire(shape.GetShape()));
+    return std::make_shared<TopoShape>(TopoDS::Wire(shape.GetShape()));
 }
 
 std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoDS_Shape& shape)
@@ -199,10 +209,26 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoDS_Shape& shap
             //gp_Vec NV2 = normal;
             //gp_Vec NV3 = normal;
 
-            sm::vec3 norm(normal.X(), normal.Y(), normal.Z());
-            vertices.push_back(Vertex({ sm::vec3(V1.X(), V1.Y(), V1.Z()), norm }));
-            vertices.push_back(Vertex({ sm::vec3(V2.X(), V2.Y(), V2.Z()), norm }));
-            vertices.push_back(Vertex({ sm::vec3(V3.X(), V3.Y(), V3.Z()), norm }));
+            sm::vec3 norm(sm::vec3(
+                static_cast<float>(normal.X()),
+                static_cast<float>(normal.Y()),
+                static_cast<float>(normal.Z())
+            ));
+            vertices.push_back(Vertex({ sm::vec3(
+                static_cast<float>(V1.X()),
+                static_cast<float>(V1.Y()),
+                static_cast<float>(V1.Z())
+            ), norm }));
+            vertices.push_back(Vertex({ sm::vec3(
+                static_cast<float>(V2.X()),
+                static_cast<float>(V2.Y()),
+                static_cast<float>(V2.Z())
+            ), norm }));
+            vertices.push_back(Vertex({ sm::vec3(
+                static_cast<float>(V3.X()),
+                static_cast<float>(V3.Y()),
+                static_cast<float>(V3.Z())
+            ), norm }));
         }
     }
 
@@ -214,7 +240,7 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoDS_Shape& shap
 
     auto va = dev->CreateVertexArray();
 
-	auto vbuf_sz = sizeof(Vertex) * vertices.size();
+	int vbuf_sz = static_cast<int>(sizeof(Vertex) * vertices.size());
 	auto vbuf = dev->CreateVertexBuffer(ur::BufferUsageHint::StaticDraw, vbuf_sz);
 	vbuf->ReadFromMemory(vertices.data(), vbuf_sz, 0);
 	va->SetVertexBuffer(vbuf);

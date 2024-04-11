@@ -10,9 +10,9 @@
 #include "NodeComp.h"
 #include "modules/script/TransHelper.h"
 
-#include "../partgraph_c/TopoDataset.h"
+#include "../partgraph_c/TopoShape.h"
 #include "../partgraph_c/TransHelper.h"
-#include "../partgraph_c/TopoDataset.h"
+#include "../partgraph_c/TopoShape.h"
 
 #include <graph/Node.h>
 #include <graph/Graph.h>
@@ -203,7 +203,7 @@ void w_CompGraph_add_integer_node()
 {
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
-    float val = (float)ves_tonumber(1);
+    int val = (int)ves_tonumber(1);
     const char* desc = ves_tostring(2);
 
     auto node = std::make_shared<breptopo::NodeInteger>(val);

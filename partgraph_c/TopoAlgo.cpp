@@ -1,5 +1,5 @@
 #include "TopoAlgo.h"
-#include "TopoDataset.h"
+#include "TopoShape.h"
 #include "occt_adapter.h"
 
 #include "BRepHistory.h"
@@ -26,7 +26,7 @@ namespace partgraph
 {
 
 std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius, 
-                                            const std::vector<std::shared_ptr<TopoEdge>>& edges)
+                                            const std::vector<std::shared_ptr<TopoShape>>& edges)
 {
     BRepFilletAPI_MakeFillet fillet(shape->GetShape());
 
@@ -43,7 +43,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     else
     {
         for (auto& edge : edges) {
-            fillet.Add(radius, edge->GetEdge());
+            fillet.Add(radius, edge->ToEdge());
         }
     }
 
@@ -54,7 +54,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& shape, double dist,
-                                             const std::vector<std::shared_ptr<TopoEdge>>& edges)
+                                             const std::vector<std::shared_ptr<TopoShape>>& edges)
 {
     BRepFilletAPI_MakeChamfer chamfer(shape->GetShape());
 
@@ -71,17 +71,17 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
     else
     {
         for (auto& edge : edges) {
-            chamfer.Add(dist, edge->GetEdge());
+            chamfer.Add(dist, edge->ToEdge());
         }
     }
 
     return std::make_shared<partgraph::TopoShape>(chamfer.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoFace>& face, double x, double y, double z)
+std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& face, double x, double y, double z)
 {
     gp_Vec vec;
-    auto prism = BRepPrimAPI_MakePrism(face->GetFace(), gp_Vec(x, y, z));
+    auto prism = BRepPrimAPI_MakePrism(face->GetShape(), gp_Vec(x, y, z));
     return std::make_shared<partgraph::TopoShape>(prism.Shape());
 }
 
@@ -195,11 +195,11 @@ std::shared_ptr<TopoShape> TopoAlgo::Draft(const std::shared_ptr<TopoShape>& sha
     return std::make_shared<partgraph::TopoShape>(draft.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoFace>>& faces, float offset)
+std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoShape>>& faces, float offset)
 {
     TopTools_ListOfShape faces_to_rm;
     for (auto& face : faces) {
-        faces_to_rm.Append(face->GetFace());
+        faces_to_rm.Append(face->GetShape());
     }
 
     BRepOffsetAPI_MakeThickSolid thick_solid;
@@ -208,11 +208,11 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
     return std::make_shared<partgraph::TopoShape>(thick_solid.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_ptr<TopoWire>>& wires)
+std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_ptr<TopoShape>>& wires)
 {
     BRepOffsetAPI_ThruSections thru_sections(Standard_False);
     for (auto& wire : wires) {
-        thru_sections.AddWire(wire->GetWire());
+        thru_sections.AddWire(wire->ToWire());
     }
 
     return std::make_shared<partgraph::TopoShape>(thru_sections.Shape());

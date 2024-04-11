@@ -1,10 +1,12 @@
 #include "BRepSelector.h"
-#include "TopoDataset.h"
+#include "TopoShape.h"
 #include "occt_adapter.h"
 
 // OCCT
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Edge.hxx>
 #include <TopExp.hxx>
 #include <BRep_Tool.hxx>
 #include <Geom_Plane.hxx>
@@ -16,14 +18,14 @@
 namespace partgraph
 {
 
-std::shared_ptr<TopoFace> BRepSelector::SelectFace(const std::shared_ptr<TopoShape>& shape, int index)
+std::shared_ptr<TopoShape> BRepSelector::SelectFace(const std::shared_ptr<TopoShape>& shape, int index)
 {
     TopTools_IndexedMapOfShape faces;
     TopExp::MapShapes(shape->GetShape(), TopAbs_FACE, faces);
     if (index >= 1 && index < faces.Extent())
     {
         TopoDS_Face selected = TopoDS::Face(faces.FindKey(index));
-        return std::make_shared<TopoFace>(selected);
+        return std::make_shared<TopoShape>(selected);
     }
     else
     {
@@ -31,7 +33,7 @@ std::shared_ptr<TopoFace> BRepSelector::SelectFace(const std::shared_ptr<TopoSha
     }
 }
   
-std::shared_ptr<TopoFace> BRepSelector::SelectFace(const std::shared_ptr<TopoShape>& shape, FacePos pos)
+std::shared_ptr<TopoShape> BRepSelector::SelectFace(const std::shared_ptr<TopoShape>& shape, FacePos pos)
 {
     TopoDS_Face selected;
 
@@ -95,11 +97,11 @@ std::shared_ptr<TopoFace> BRepSelector::SelectFace(const std::shared_ptr<TopoSha
     if (v_min == DBL_MAX && v_max == -DBL_MAX) {
         return nullptr;
     } else {
-        return std::make_shared<TopoFace>(selected);
+        return std::make_shared<TopoShape>(selected);
     }
 }
 
-std::shared_ptr<TopoFace> BRepSelector::SelectFace(const std::shared_ptr<TopoShape>& shape, const sm::Ray& ray)
+std::shared_ptr<TopoShape> BRepSelector::SelectFace(const std::shared_ptr<TopoShape>& shape, const sm::Ray& ray)
 {
     gp_Pnt pos = trans_pnt(ray.origin);
     gp_Dir dir = trans_dir(ray.dir);
@@ -126,10 +128,10 @@ std::shared_ptr<TopoFace> BRepSelector::SelectFace(const std::shared_ptr<TopoSha
         }
     }
 
-    return min_dist == DBL_MAX ? nullptr : std::make_shared<TopoFace>(selected);
+    return min_dist == DBL_MAX ? nullptr : std::make_shared<TopoShape>(selected);
 }
 
-std::shared_ptr<TopoEdge> BRepSelector::SelectEdge(const std::shared_ptr<TopoShape>& shape, const sm::Ray& ray)
+std::shared_ptr<TopoShape> BRepSelector::SelectEdge(const std::shared_ptr<TopoShape>& shape, const sm::Ray& ray)
 {
     gp_Pnt pos = trans_pnt(ray.origin);
     gp_Dir dir = trans_dir(ray.dir);
@@ -163,7 +165,7 @@ std::shared_ptr<TopoEdge> BRepSelector::SelectEdge(const std::shared_ptr<TopoSha
         }
     }
 
-    return min_dist == DBL_MAX ? nullptr : std::make_shared<TopoEdge>(selected);
+    return min_dist == DBL_MAX ? nullptr : std::make_shared<TopoShape>(selected);
 }
 
 }

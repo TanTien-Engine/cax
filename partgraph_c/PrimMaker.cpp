@@ -1,5 +1,5 @@
 #include "PrimMaker.h"
-#include "TopoDataset.h"
+#include "TopoShape.h"
 
 #include "BRepBuilder.h"
 #include "BRepHistory.h"

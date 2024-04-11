@@ -1,5 +1,5 @@
 #include "wrap_PartGraph.h"
-#include "TopoDataset.h"
+#include "TopoShape.h"
 #include "TopoAdapter.h"
 #include "PrimMaker.h"
 #include "BRepBuilder.h"
@@ -16,6 +16,7 @@
 // OCCT
 #include <Precision.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
 #include <TopoDS_Wire.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 
@@ -26,14 +27,14 @@ void w_BRepBuilder_make_edge_from_line()
 {
     auto line = ((tt::Proxy<gs::Line3D>*)ves_toforeign(1))->obj;
     auto edge = partgraph::BRepBuilder::MakeEdge(*line);
-    partgraph::return_topo_edge(edge);
+    partgraph::return_topo_shape(edge);
 }
 
 void w_BRepBuilder_make_edge_from_arc()
 {
     auto arc = ((tt::Proxy<gs::Arc3D>*)ves_toforeign(1))->obj;
     auto edge = partgraph::BRepBuilder::MakeEdge(*arc);
-    partgraph::return_topo_edge(edge);
+    partgraph::return_topo_shape(edge);
 }
 
 void w_BRepBuilder_make_edge_from_curve_surf()
@@ -41,30 +42,30 @@ void w_BRepBuilder_make_edge_from_curve_surf()
     auto c = ((tt::Proxy<partgraph::TrimmedCurve>*)ves_toforeign(1))->obj;
     auto s = ((tt::Proxy<partgraph::CylindricalSurface>*)ves_toforeign(2))->obj;
     auto edge = partgraph::BRepBuilder::MakeEdge(*c, *s);
-    partgraph::return_topo_edge(edge);
+    partgraph::return_topo_shape(edge);
 }
 
 void w_BRepBuilder_make_wire()
 {
-    std::vector<std::shared_ptr<partgraph::TopoEdge>> edges;
+    std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
     tt::list_to_foreigns(1, edges);
     auto wire = partgraph::BRepBuilder::MakeWire(edges);
-    partgraph::return_topo_wire(wire);
+    partgraph::return_topo_shape(wire);
 }
 
 void w_BRepBuilder_make_face()
 {
-    auto wire = ((tt::Proxy<partgraph::TopoWire>*)ves_toforeign(1))->obj;
+    auto wire = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto face = partgraph::BRepBuilder::MakeFace(*wire);
-    partgraph::return_topo_face(face);
+    partgraph::return_topo_shape(face);
 }
 
 void w_BRepBuilder_make_shell()
 {
-    std::vector<std::shared_ptr<partgraph::TopoFace>> faces;
+    std::vector<std::shared_ptr<partgraph::TopoShape>> faces;
     tt::list_to_foreigns(1, faces);
     auto shell = partgraph::BRepBuilder::MakeShell(faces);
-    partgraph::return_topo_shell(shell);
+    partgraph::return_topo_shape(shell);
 }
 
 void w_BRepBuilder_make_compound()
@@ -263,7 +264,7 @@ void w_BRepSelector_select_face()
     auto dir = tt::list_to_vec3(3);
 
     auto face = partgraph::BRepSelector::SelectFace(shape, sm::Ray(pos, dir));
-    partgraph::return_topo_face(face);
+    partgraph::return_topo_shape(face);
 }
 
 void w_BRepSelector_select_edge()
@@ -273,13 +274,13 @@ void w_BRepSelector_select_edge()
     auto dir = tt::list_to_vec3(3);
 
     auto edge = partgraph::BRepSelector::SelectEdge(shape, sm::Ray(pos, dir));
-    partgraph::return_topo_edge(edge);
+    partgraph::return_topo_shape(edge);
 }
 
 void w_BRepTools_find_edge_idx()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
-    auto edge = ((tt::Proxy<partgraph::TopoEdge>*)ves_toforeign(2))->obj;
+    auto edge = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
     int idx = partgraph::BRepTools::FindEdgeIdx(shape, edge);
     ves_set_number(0, idx);
 }
@@ -289,13 +290,13 @@ void w_BRepTools_find_edge_key()
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     int idx = (int)ves_tonumber(2);
     auto edge = partgraph::BRepTools::FindEdgeKey(shape, idx);
-    partgraph::return_topo_edge(edge);
+    partgraph::return_topo_shape(edge);
 }
 
 void w_BRepTools_find_face_idx()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
-    auto face = ((tt::Proxy<partgraph::TopoFace>*)ves_toforeign(2))->obj;
+    auto face = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
     int idx = partgraph::BRepTools::FindFaceIdx(shape, face);
     ves_set_number(0, idx);
 }
@@ -305,14 +306,14 @@ void w_BRepTools_find_face_key()
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     int idx = (int)ves_tonumber(2);
     auto face = partgraph::BRepTools::FindFaceKey(shape, idx);
-    partgraph::return_topo_face(face);
+    partgraph::return_topo_shape(face);
 }
 
 void w_TopoAlgo_fillet()
 {
     auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double thickness = ves_tonumber(2);
-    std::vector<std::shared_ptr<partgraph::TopoEdge>> edges;
+    std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
     tt::list_to_foreigns(3, edges);
 
     auto dst = partgraph::TopoAlgo::Fillet(src, thickness, edges);
@@ -323,7 +324,7 @@ void w_TopoAlgo_chamfer()
 {
     auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double dist = ves_tonumber(2);
-    std::vector<std::shared_ptr<partgraph::TopoEdge>> edges;
+    std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
     tt::list_to_foreigns(3, edges);
 
     auto dst = partgraph::TopoAlgo::Chamfer(src, dist, edges);
@@ -332,7 +333,7 @@ void w_TopoAlgo_chamfer()
 
 void w_TopoAlgo_extrude()
 {
-    auto src = ((tt::Proxy<partgraph::TopoFace>*)ves_toforeign(1))->obj;
+    auto src = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     double x = ves_tonumber(2);
     double y = ves_tonumber(3);
     double z = ves_tonumber(4);
@@ -411,7 +412,7 @@ void w_TopoAlgo_thick_solid()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
 
-    std::vector<std::shared_ptr<partgraph::TopoFace>> faces;
+    std::vector<std::shared_ptr<partgraph::TopoShape>> faces;
     tt::list_to_foreigns(2, faces);
 
     auto offset = (float)ves_tonumber(3);
@@ -422,7 +423,7 @@ void w_TopoAlgo_thick_solid()
 
 void w_TopoAlgo_thru_sections()
 {
-    std::vector<std::shared_ptr<partgraph::TopoWire>> wires;
+    std::vector<std::shared_ptr<partgraph::TopoShape>> wires;
     tt::list_to_foreigns(1, wires);
     auto shape = partgraph::TopoAlgo::ThruSections(wires);
     partgraph::return_topo_shape(shape);
@@ -444,7 +445,7 @@ void w_TopoAdapter_build_mesh()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
 
-    auto va = partgraph::TopoAdapter::BuildMesh(*shape);
+    auto va = partgraph::TopoAdapter::BuildMeshFromShape(*shape);
 
     ves_pop(ves_argnum());
 
@@ -457,9 +458,9 @@ void w_TopoAdapter_build_mesh()
 
 void w_TopoAdapter_build_edge_geo()
 {
-    auto edge = ((tt::Proxy<partgraph::TopoEdge>*)ves_toforeign(1))->obj;
+    auto edge = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
 
-    auto geo = partgraph::TopoAdapter::BuildGeo(*edge);
+    auto geo = partgraph::TopoAdapter::BuildGeoFromEdge(*edge);
 
     ves_pop(ves_argnum());
 
@@ -472,9 +473,9 @@ void w_TopoAdapter_build_edge_geo()
 
 void w_TopoAdapter_build_wire_geo()
 {
-    auto wire = ((tt::Proxy<partgraph::TopoWire>*)ves_toforeign(1))->obj;
+    auto wire = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
 
-    auto geo = partgraph::TopoAdapter::BuildGeo(*wire);
+    auto geo = partgraph::TopoAdapter::BuildGeoFromWire(*wire);
 
     ves_pop(ves_argnum());
 
@@ -489,7 +490,7 @@ void w_TopoAdapter_shape2wire()
 {
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto wire = partgraph::TopoAdapter::ToWire(*shape);
-    partgraph::return_topo_wire(wire);
+    partgraph::return_topo_shape(wire);
 }
 
 void w_CylindricalSurface_allocate()
@@ -557,58 +558,6 @@ int w_TopoShape_finalize(void* data)
     return sizeof(tt::Proxy<partgraph::TopoShape>);
 }
 
-void w_TopoEdge_allocate()
-{
-    auto proxy = (tt::Proxy<partgraph::TopoEdge>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoEdge>));
-    proxy->obj = std::make_shared<partgraph::TopoEdge>();
-}
-
-int w_TopoEdge_finalize(void* data)
-{
-    auto proxy = (tt::Proxy<partgraph::TopoEdge>*)(data);
-    proxy->~Proxy();
-    return sizeof(tt::Proxy<partgraph::TopoEdge>);
-}
-
-void w_TopoWire_allocate()
-{
-    auto proxy = (tt::Proxy<partgraph::TopoWire>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoWire>));
-    proxy->obj = std::make_shared<partgraph::TopoWire>();
-}
-
-int w_TopoWire_finalize(void* data)
-{
-    auto proxy = (tt::Proxy<partgraph::TopoWire>*)(data);
-    proxy->~Proxy();
-    return sizeof(tt::Proxy<partgraph::TopoWire>);
-}
-
-void w_TopoFace_allocate()
-{
-    auto proxy = (tt::Proxy<partgraph::TopoFace>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoFace>));
-    proxy->obj = std::make_shared<partgraph::TopoFace>();
-}
-
-int w_TopoFace_finalize(void* data)
-{
-    auto proxy = (tt::Proxy<partgraph::TopoFace>*)(data);
-    proxy->~Proxy();
-    return sizeof(tt::Proxy<partgraph::TopoFace>);
-}
-
-void w_TopoShell_allocate()
-{
-    auto proxy = (tt::Proxy<partgraph::TopoShell>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<partgraph::TopoShell>));
-    proxy->obj = std::make_shared<partgraph::TopoShell>();
-}
-
-int w_TopoShell_finalize(void* data)
-{
-    auto proxy = (tt::Proxy<partgraph::TopoShell>*)(data);
-    proxy->~Proxy();
-    return sizeof(tt::Proxy<partgraph::TopoShell>);
-}
-
 void w_WireBuilder_allocate()
 {
     auto proxy = (tt::Proxy<BRepBuilderAPI_MakeWire>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<BRepBuilderAPI_MakeWire>));
@@ -625,15 +574,15 @@ int w_WireBuilder_finalize(void* data)
 void w_WireBuilder_add_edge()
 {
     auto builder = ((tt::Proxy<BRepBuilderAPI_MakeWire>*)ves_toforeign(0))->obj;
-    auto edge = ((tt::Proxy<partgraph::TopoEdge>*)ves_toforeign(1))->obj;
-    builder->Add(edge->GetEdge());
+    auto edge = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    builder->Add(edge->ToEdge());
 }
 
 void w_WireBuilder_add_wire()
 {
     auto builder = ((tt::Proxy<BRepBuilderAPI_MakeWire>*)ves_toforeign(0))->obj;
-    auto wire = ((tt::Proxy<partgraph::TopoWire>*)ves_toforeign(1))->obj;
-    builder->Add(wire->GetWire());
+    auto wire = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    builder->Add(wire->ToWire());
 }
 
 void w_WireBuilder_gen_wire()
@@ -644,8 +593,8 @@ void w_WireBuilder_gen_wire()
         return;
     }
 
-    auto wire = std::make_shared<partgraph::TopoWire>(builder->Wire());
-    partgraph::return_topo_wire(wire);
+    auto wire = std::make_shared<partgraph::TopoShape>(builder->Wire());
+    partgraph::return_topo_shape(wire);
 }
 
 }
@@ -733,34 +682,6 @@ void PartGraphBindClass(const char* class_name, VesselForeignClassMethods* metho
     {
         methods->allocate = w_TopoShape_allocate;
         methods->finalize = w_TopoShape_finalize;
-        return;
-    }
-
-    if (strcmp(class_name, "TopoEdge") == 0)
-    {
-        methods->allocate = w_TopoEdge_allocate;
-        methods->finalize = w_TopoEdge_finalize;
-        return;
-    }
-
-    if (strcmp(class_name, "TopoWire") == 0)
-    {
-        methods->allocate = w_TopoWire_allocate;
-        methods->finalize = w_TopoWire_finalize;
-        return;
-    }
-
-    if (strcmp(class_name, "TopoFace") == 0)
-    {
-        methods->allocate = w_TopoFace_allocate;
-        methods->finalize = w_TopoFace_finalize;
-        return;
-    }
-
-    if (strcmp(class_name, "TopoShell") == 0)
-    {
-        methods->allocate = w_TopoShell_allocate;
-        methods->finalize = w_TopoShell_finalize;
         return;
     }
 

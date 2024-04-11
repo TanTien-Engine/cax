@@ -1,7 +1,7 @@
 #include "TopoGraphBuilder.h"
 #include "NodeShape.h"
 #include "GraphShape.h"
-#include "../partgraph_c/TopoDataset.h"
+#include "../partgraph_c/TopoShape.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
@@ -12,6 +12,8 @@
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Face.hxx>
 #include <TopOpeBRepBuild_Tools.hxx>
 
 #include <set>

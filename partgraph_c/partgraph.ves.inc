@@ -21,26 +21,6 @@ foreign class TopoShape
 	init() {}
 }
 
-foreign class TopoEdge
-{
-	init() {}
-}
-
-foreign class TopoWire
-{
-	init() {}
-}
-
-foreign class TopoFace
-{
-	init() {}
-}
-
-foreign class TopoShell
-{
-	init() {}
-}
-
 foreign class WireBuilder
 {
 	init() {}
