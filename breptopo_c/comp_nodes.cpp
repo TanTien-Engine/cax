@@ -89,15 +89,16 @@ std::shared_ptr<CompVariant> NodeTranslate::Eval(const graph::Graph& G) const
 std::shared_ptr<CompVariant> NodeOffset::Eval(const graph::Graph& G) const
 {
 	auto v_shape = calc_output_val(m_shape, G);
+	if (!v_shape) {
+		return nullptr;
+	}
+
 	auto v_offset = calc_output_val(m_offset, G);
 	auto v_is_solid = calc_output_val(m_is_solid, G);
 
 	std::shared_ptr<partgraph::TopoShape> src;
-	if (v_shape)
-	{
-		assert(v_shape->Type() == VAR_SHAPE);
-		src = std::static_pointer_cast<VarShape>(v_shape)->val;
-	}
+	assert(v_shape->Type() == VAR_SHAPE);
+	src = std::static_pointer_cast<VarShape>(v_shape)->val;
 
 	float offset = 0;
 	if (v_offset)
@@ -180,8 +181,12 @@ std::shared_ptr<CompVariant> NodeSelector::Eval(const graph::Graph& G) const
 std::shared_ptr<CompVariant> NodeMerge::Eval(const graph::Graph& G) const
 {
 	std::vector<std::shared_ptr<breptopo::CompVariant>> vals;
-	for (auto node : m_nodes) {
-		vals.push_back(calc_output_val(node, G));
+	for (auto node : m_nodes) 
+	{
+		auto val = calc_output_val(node, G);
+		if (val) {
+			vals.push_back(val);
+		}
 	}
 	return std::make_shared<VarArray>(vals);
 }
