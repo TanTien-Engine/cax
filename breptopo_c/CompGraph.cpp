@@ -1,6 +1,7 @@
 #include "CompGraph.h"
 #include "NodeComp.h"
 #include "NodeInfo.h"
+#include "CompNode.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
@@ -18,6 +19,7 @@ int CompGraph::AddNode(const std::shared_ptr<CompNode>& cnode, const std::string
 	int id = static_cast<int>(m_graph->GetNodes().size());
 	auto node = std::make_shared<graph::Node>(id);
 
+	cnode->SetOpId(id);
 	node->AddComponent<NodeComp>(cnode);
 
 	node->AddComponent<NodeInfo>(desc);

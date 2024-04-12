@@ -59,7 +59,7 @@ std::shared_ptr<CompVariant> NodeBox::Eval(const graph::Graph& G) const
 		z = std::static_pointer_cast<VarNumber>(v_height)->val;
 	}
 
-	auto shape = partgraph::PrimMaker::Box(x, y, z, 0);
+	auto shape = partgraph::PrimMaker::Box(x, y, z, m_op_id);
 	return std::make_shared<VarShape>(shape);
 }
 
@@ -82,7 +82,7 @@ std::shared_ptr<CompVariant> NodeTranslate::Eval(const graph::Graph& G) const
 		offset = std::static_pointer_cast<VarNumber3>(v_offset)->val;
 	}
 
-	auto dst = partgraph::TopoAlgo::Translate(src, offset.x, offset.y, offset.z, 0);
+	auto dst = partgraph::TopoAlgo::Translate(src, offset.x, offset.y, offset.z, m_op_id);
 	return std::make_shared<VarShape>(dst);
 }
 
@@ -113,7 +113,7 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(const graph::Graph& G) const
 		is_solid = std::static_pointer_cast<VarBoolean>(v_is_solid)->val;
 	}
 
-	auto dst = partgraph::TopoAlgo::OffsetShape(src, offset, is_solid, 0);
+	auto dst = partgraph::TopoAlgo::OffsetShape(src, offset, is_solid, m_op_id);
 	return std::make_shared<VarShape>(dst);
 }
 
@@ -134,7 +134,7 @@ std::shared_ptr<CompVariant> NodeCut::Eval(const graph::Graph& G) const
 		shp2 = std::static_pointer_cast<VarShape>(v_shp2)->val;
 	}
 
-	auto dst = partgraph::TopoAlgo::Cut(shp1, shp2, 0);
+	auto dst = partgraph::TopoAlgo::Cut(shp1, shp2, m_op_id);
 	return std::make_shared<VarShape>(dst);
 }
 
