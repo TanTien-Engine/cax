@@ -8,7 +8,6 @@ import "blueprint.variant_helper" for VariantHelper, VAR_TYPE_ARRAY
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
 import "partgraph" for TopoAlgo
-import "breptopo" for HistGraph
 
 class Offset is Node
 {
@@ -49,8 +48,8 @@ class Offset is Node
 			var op_id
 			if (this.op_id.isEmpty) 
 			{
-				op_id = HistGraph.get_next_op_id()
-				this.op_id.add(op_id)
+				//op_id = HistGraph.get_next_op_id()
+				//this.op_id.add(op_id)
 			}
 			else
 			{
@@ -69,8 +68,8 @@ class Offset is Node
 				var op_id
 				if (this.op_id.count <= i) 
 				{
-					op_id = HistGraph.get_next_op_id()
-					this.op_id.add(op_id)
+					//op_id = HistGraph.get_next_op_id()
+					//this.op_id.add(op_id)
 				}
 				else
 				{

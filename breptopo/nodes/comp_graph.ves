@@ -7,7 +7,7 @@ import "graph.nodes.draw" for Draw
 import "partgraph.node_helper" for NodeHelper
 import "logger.logger" for Logger
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "breptopo.variant" for VAR_COMP_GRAPH
+import "breptopo.variant" for VAR_COMP_GRAPH, VAR_HIST_GRAPH
 import "logger.logger" for Logger
 import "breptopo" for CompGraph as tt_CompGraph
 import "graph" for GraphTools
@@ -21,6 +21,7 @@ class CompGraph is Node
 
 		this.imports = [
 			Pin(this, "val", VAR_TYPE_ANY),
+			Pin(this, "hist", VAR_HIST_GRAPH),
 		]
 		this.exports = [
 			Pin(this, "val", VAR_TYPE_ANY),
@@ -48,7 +49,9 @@ class CompGraph is Node
 			this.build_graph()
 		}
 
-		var val = this.graph.eval(this.node_idx)
+		var v_hist = Blueprint.calc_input_value(this, 1)
+
+		var val = this.graph.eval(this.node_idx, v_hist.value)
 		return this.return_value(val)
 	}
 

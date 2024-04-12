@@ -9,7 +9,6 @@ import "partgraph" for BRepSelector, BRepTools
 import "maths.vector" for Vector2
 import "graphics" for Graphics
 import "keyboard" for Keyboard
-import "breptopo" for HistGraph
 
 class Selector is Node
 {
@@ -130,8 +129,8 @@ class Selector is Node
 			if (!this.selected_uids) {
 				this.selected_uids = []
 			}
-			var uid = HistGraph.get_node_uid(obj)
-			this.selected_uids.add(uid)
+			//var uid = HistGraph.get_node_uid(obj)
+			//this.selected_uids.add(uid)
 
 			dirty = true
 		}
@@ -207,10 +206,10 @@ class Selector is Node
 
 		for (var uid in uids)
 		{
-			var shapes = HistGraph.query_shapes(uid)
-			for (var shp in shapes) {
-				this.selected_objs.add(Variant(VAR_TOPO_SHAPE, shp))
-			}
+			//var shapes = HistGraph.query_shapes(uid)
+			//for (var shp in shapes) {
+			//	this.selected_objs.add(Variant(VAR_TOPO_SHAPE, shp))
+			//}
 		}
 	}
 }

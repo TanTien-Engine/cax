@@ -48,7 +48,7 @@ _editor.add_node(node7, -753.53870247934, -35.726545454545)
 var node8 = ::partgraph::nodes::selector::Selector()
 node8.query_param("type").value = "face"
 
-node8.selected_uids = [ 3 ]
+node8.selected_uids = [ 196611 ]
 
 _editor.add_node(node8, -261.54545454545, 196.72727272727)
 
@@ -94,24 +94,25 @@ _editor.add_node(node16, -529.0622253418, -210.77722167969)
 
 var node17 = ::breptopo::nodes::comp_graph::CompGraph()
 
-_editor.add_node(node17, 143.32632922969, 231.11358071571)
+_editor.add_node(node17, 150.32632922969, 239.11358071571)
 
 Blueprint.connect(node14, "shape", node16, "shape")
 Blueprint.connect(node12, "selected", node6, "shape")
 Blueprint.connect(node6, "va", node10, "var")
 Blueprint.connect(node0, "shape", node15, "a")
 Blueprint.connect(node16, "shape", node15, "b")
-Blueprint.connect(node15, "shape", node17, "val")
-Blueprint.connect(node17, "val", node1, "shape")
-Blueprint.connect(node1, "va", node3, "var")
-Blueprint.connect(node3, "var", node4, "geos")
-Blueprint.connect(node2, "this", node4, "view_cam")
-Blueprint.connect(node10, "var", node4, "selected")
-Blueprint.connect(node15, "shape", node13, "var")
+Blueprint.connect(node0, "shape", node13, "var")
 Blueprint.connect(node13, "var", node8, "shape")
 Blueprint.connect(node2, "this", node8, "camera")
 Blueprint.connect(node8, "objs", node9, "shape")
 Blueprint.connect(node13, "var", node11, "in0")
 Blueprint.connect(node9, "shape", node11, "in1")
+Blueprint.connect(node11, "list", node17, "val")
+Blueprint.connect(node12, "graph", node17, "hist")
+Blueprint.connect(node17, "val", node1, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node3, "var", node4, "geos")
+Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node10, "var", node4, "selected")
 Blueprint.connect(node0, "shape", node7, "shape")
 Blueprint.connect(node0, "shape", node5, "shape")

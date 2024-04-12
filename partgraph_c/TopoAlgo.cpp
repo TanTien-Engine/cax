@@ -4,7 +4,6 @@
 
 #include "BRepHistory.h"
 #include "BRepBuilder.h"
-#include "../breptopo_c/BrepTopo.h"
 #include "../breptopo_c/HistGraph.h"
 
 // OCCT
@@ -85,7 +84,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& fac
     return std::make_shared<partgraph::TopoShape>(prism.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, uint32_t op_id)
+std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, 
+                                         uint32_t op_id, std::shared_ptr<breptopo::HistGraph> hg)
 {
     BRepAlgoAPI_Cut algo(s1->GetShape(), s2->GetShape());
     algo.Build();
@@ -102,8 +102,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     opencascade::handle<BRepTools_History> o_hist = algo.History();
     BRepHistory hist(o_hist, TopAbs_FACE, algo.Shape(), *old_shp);
 
-    auto hist_group = breptopo::Context::Instance()->GetHist();
-    hist_group->Update(hist, op_id);
+    if (hg) {
+        hg->Update(hist, op_id);
+    }
 
     return std::make_shared<partgraph::TopoShape>(algo.Shape());
 }
@@ -156,15 +157,17 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
     return std::make_shared<partgraph::TopoShape>(algo.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z, uint32_t op_id)
+std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z, 
+                                               uint32_t op_id, std::shared_ptr<breptopo::HistGraph> hg)
 {
     gp_Trsf trsf; 
     trsf.SetTranslation(gp_Vec(x, y, z));
     auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
 
     BRepHistory hist(trans, TopAbs_FACE, trans.Shape(), shape->GetShape());
-    auto hist_group = breptopo::Context::Instance()->GetHist();
-    hist_group->Update(hist, op_id);
+    if (hg) {
+        hg->Update(hist, op_id);
+    }
 
     return std::make_shared<partgraph::TopoShape>(trans.Shape());
 }
@@ -218,7 +221,8 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
     return std::make_shared<partgraph::TopoShape>(thru_sections.Shape());
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid, uint32_t op_id)
+std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid, 
+                                                 uint32_t op_id, std::shared_ptr<breptopo::HistGraph> hg)
 {
     BRepOffset_MakeSimpleOffset builder;
     builder.Initialize(shape->GetShape(), offset);
@@ -226,8 +230,9 @@ std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape
     builder.Perform();
 
     BRepHistory hist(builder, shape->GetShape());
-    auto hist_group = breptopo::Context::Instance()->GetHist();
-    hist_group->Update(hist, op_id);
+    if (hg) {
+        hg->Update(hist, op_id);
+    }
 
     return std::make_shared<partgraph::TopoShape>(builder.GetResultShape());
 }

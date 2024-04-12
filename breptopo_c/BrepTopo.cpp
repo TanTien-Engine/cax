@@ -1,7 +1,7 @@
 #include "BrepTopo.h"
 #include "NodeShape.h"
-#include "HistGraph.h"
 #include "NodeInfo.h"
+#include "NodeShape.h"
 #include "modules/graph/Graph.h"
 
 #include "../partgraph_c/TransHelper.h"
@@ -38,17 +38,6 @@ void init_cb()
 			ves_set_nil(0);
 		}
 	});
-}
-
-TT_SINGLETON_DEFINITION(Context)
-
-Context::Context()
-{
-	m_hist = std::make_shared<HistGraph>();
-}
-
-Context::~Context()
-{
 }
 
 } 

@@ -3,7 +3,6 @@
 #include "TopoGraph.h"
 #include "HistGraph.h"
 #include "CompGraph.h"
-#include "BrepTopo.h"
 #include "NodeId.h"
 #include "NodeShape.h"
 #include "comp_nodes.h"
@@ -52,42 +51,57 @@ void w_TopoGraph_get_graph()
     ves_pop(1);
 }
 
+void w_HistGraph_allocate()
+{
+    auto proxy = (tt::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<breptopo::HistGraph>));
+    proxy->obj = std::make_shared<breptopo::HistGraph>();
+}
+
+int w_HistGraph_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<breptopo::HistGraph>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<breptopo::HistGraph>);
+}
+
 void w_HistGraph_get_hist_graph()
 {
-    auto hist = breptopo::Context::Instance()->GetHist();
+    auto tg = ((tt::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
 
     ves_pop(ves_argnum());
 
     ves_pushnil();
     ves_import_class("graph", "Graph");
     auto proxy = (tt::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<graph::Graph>));
-    proxy->obj = hist->GetGraph();
+    proxy->obj = tg->GetGraph();
     ves_pop(1);
 }
 
 void w_HistGraph_get_next_op_id()
 {
-    auto hist = breptopo::Context::Instance()->GetHist();
-    ves_set_number(0, hist->NextOpId());
+    auto tg = ((tt::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
+    ves_set_number(0, tg->NextOpId());
 }
 
 void w_HistGraph_get_node_uid()
 {
+    auto tg = ((tt::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
+
     auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
 
-    auto hist = breptopo::Context::Instance()->GetHist();
-    auto node = hist->QueryNode(shape);
+    auto node = tg->QueryNode(shape);
     auto& cid = node->GetComponent<breptopo::NodeId>();
     ves_set_number(0, cid.GetUID());
 }
 
 void w_HistGraph_query_shapes()
 {
+    auto tg = ((tt::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
+
     uint32_t uid = (uint32_t)ves_tonumber(1);
 
-    auto hist = breptopo::Context::Instance()->GetHist();
     std::vector<std::shared_ptr<graph::Node>> nodes;
-    if (hist->QueryNodes(uid, nodes))
+    if (tg->QueryNodes(uid, nodes))
     {
         assert(!nodes.empty());
 
@@ -138,6 +152,22 @@ void w_CompGraph_get_graph()
     ves_pop(1);
 }
 
+static void flatten_vars(const std::shared_ptr<breptopo::CompVariant>& src, std::vector<std::shared_ptr<breptopo::CompVariant>>& dst)
+{
+    if (src->Type() == breptopo::VAR_ARRAY)
+    {
+        auto& items = std::static_pointer_cast<breptopo::VarArray>(src)->val;
+        for (auto item : items)
+        {
+            flatten_vars(item, dst);
+        }
+    }
+    else
+    {
+        dst.push_back(src);
+    }
+}
+
 void w_CompGraph_eval()
 {
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
@@ -147,55 +177,62 @@ void w_CompGraph_eval()
     auto node = g->GetNodes()[node_idx];
     auto& cnode = node->GetComponent<breptopo::NodeComp>();
 
-    auto cvar = cnode.GetCompNode()->Eval(*g);
-    switch (cvar->Type())
-    {
-    case breptopo::VAR_NUMBER:
-        ves_set_number(0, std::static_pointer_cast<breptopo::VarNumber>(cvar)->val);
-        break;
-    case breptopo::VAR_BOOLEAN:
-        ves_set_boolean(0, std::static_pointer_cast<breptopo::VarBoolean>(cvar)->val);
-        break;
-    case breptopo::VAR_SHAPE:
-        partgraph::return_topo_shape(std::static_pointer_cast<breptopo::VarShape>(cvar)->val);
-        break;
-    case breptopo::VAR_ARRAY:
-    {
-        auto& array = std::static_pointer_cast<breptopo::VarArray>(cvar)->val;
+    std::shared_ptr<breptopo::HistGraph> hist = nullptr;
+    auto v_hist = ves_toforeign(2);
+    if (v_hist) {
+        hist = ((tt::Proxy<breptopo::HistGraph>*)v_hist)->obj;
+    }
 
+    auto cvar = cnode.GetCompNode()->Eval(*g, hist);
+
+    std::vector<std::shared_ptr<breptopo::CompVariant>> vars;
+    flatten_vars(cvar, vars);
+    if (vars.size() == 1)
+    {
+        switch (vars[0]->Type())
+        {
+        case breptopo::VAR_NUMBER:
+            ves_set_number(0, std::static_pointer_cast<breptopo::VarNumber>(cvar)->val);
+            break;
+        case breptopo::VAR_BOOLEAN:
+            ves_set_boolean(0, std::static_pointer_cast<breptopo::VarBoolean>(cvar)->val);
+            break;
+        case breptopo::VAR_SHAPE:
+            partgraph::return_topo_shape(std::static_pointer_cast<breptopo::VarShape>(cvar)->val);
+            break;
+        }
+    }
+    else if (vars.size() > 1)
+    {
         ves_pop(ves_argnum());
 
-        const int num = (int)array.size();
+        const int num = (int)vars.size();
         ves_newlist(num);
         for (int i = 0; i < num; ++i)
         {
-            switch (array[i]->Type())
+            switch (vars[i]->Type())
             {
             case breptopo::VAR_NUMBER:
-                ves_pushnumber(std::static_pointer_cast<breptopo::VarNumber>(array[i])->val);
+                ves_pushnumber(std::static_pointer_cast<breptopo::VarNumber>(vars[i])->val);
                 break;
             case breptopo::VAR_BOOLEAN:
-                ves_pushboolean(std::static_pointer_cast<breptopo::VarBoolean>(array[i])->val);
+                ves_pushboolean(std::static_pointer_cast<breptopo::VarBoolean>(vars[i])->val);
                 break;
             case breptopo::VAR_SHAPE:
             {
                 ves_pushnil();
                 ves_import_class("partgraph", "TopoShape");
                 auto proxy = (tt::Proxy<partgraph::TopoShape>*)ves_set_newforeign(1, 2, sizeof(tt::Proxy<partgraph::TopoShape>));
-                proxy->obj = std::static_pointer_cast<breptopo::VarShape>(array[i])->val;
+                proxy->obj = std::static_pointer_cast<breptopo::VarShape>(vars[i])->val;
                 ves_pop(1);
             }
-                break;
+            break;
             default:
                 assert(0);
             }
             ves_seti(-2, i);
             ves_pop(1);
         }
-    }
-        break;
-    default:
-        assert(0);
     }
 }
 
@@ -373,13 +410,13 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 {
     if (strcmp(signature, "TopoGraph.get_graph()") == 0) return w_TopoGraph_get_graph;
 
-    if (strcmp(signature, "static HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
-    if (strcmp(signature, "static HistGraph.get_next_op_id()") == 0) return w_HistGraph_get_next_op_id;
-    if (strcmp(signature, "static HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
-    if (strcmp(signature, "static HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
+    if (strcmp(signature, "HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
+    if (strcmp(signature, "HistGraph.get_next_op_id()") == 0) return w_HistGraph_get_next_op_id;
+    if (strcmp(signature, "HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
+    if (strcmp(signature, "HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
-    if (strcmp(signature, "CompGraph.eval(_)") == 0) return w_CompGraph_eval;
+    if (strcmp(signature, "CompGraph.eval(_,_)") == 0) return w_CompGraph_eval;
     if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
     if (strcmp(signature, "CompGraph.add_number_node(_,_)") == 0) return w_CompGraph_add_number_node;
     if (strcmp(signature, "CompGraph.add_number3_node(_,_,_,_)") == 0) return w_CompGraph_add_number3_node;
@@ -401,6 +438,13 @@ void BrepTopoBindClass(const char* class_name, VesselForeignClassMethods* method
     {
         methods->allocate = w_TopoGraph_allocate;
         methods->finalize = w_TopoGraph_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "HistGraph") == 0)
+    {
+        methods->allocate = w_HistGraph_allocate;
+        methods->finalize = w_HistGraph_finalize;
         return;
     }
 

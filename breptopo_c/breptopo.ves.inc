@@ -10,10 +10,12 @@ foreign class TopoGraph
 
 foreign class HistGraph
 {
-	foreign static get_hist_graph()
-	foreign static get_next_op_id()
-	foreign static get_node_uid(shape)
-	foreign static query_shapes(uid)
+	init() {}
+
+	foreign get_hist_graph()
+	foreign get_next_op_id()
+	foreign get_node_uid(shape)
+	foreign query_shapes(uid)
 }
 
 foreign class CompGraph
@@ -22,7 +24,7 @@ foreign class CompGraph
 
 	foreign get_graph()
 
-	foreign eval(node_idx)
+	foreign eval(node_idx, hist)
 
 	foreign add_integer_node(int, desc)
 	foreign add_number_node(num, desc)
