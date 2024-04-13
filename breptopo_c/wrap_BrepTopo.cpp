@@ -189,16 +189,17 @@ void w_CompGraph_eval()
     flatten_vars(cvar, vars);
     if (vars.size() == 1)
     {
-        switch (vars[0]->Type())
+        auto var = vars[0];
+        switch (var->Type())
         {
         case breptopo::VAR_NUMBER:
-            ves_set_number(0, std::static_pointer_cast<breptopo::VarNumber>(cvar)->val);
+            ves_set_number(0, std::static_pointer_cast<breptopo::VarNumber>(var)->val);
             break;
         case breptopo::VAR_BOOLEAN:
-            ves_set_boolean(0, std::static_pointer_cast<breptopo::VarBoolean>(cvar)->val);
+            ves_set_boolean(0, std::static_pointer_cast<breptopo::VarBoolean>(var)->val);
             break;
         case breptopo::VAR_SHAPE:
-            partgraph::return_topo_shape(std::static_pointer_cast<breptopo::VarShape>(cvar)->val);
+            partgraph::return_topo_shape(std::static_pointer_cast<breptopo::VarShape>(var)->val);
             break;
         }
     }
