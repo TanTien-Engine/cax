@@ -4,23 +4,22 @@
 
 #include <memory>
 
-namespace graph { class Graph; }
-
 namespace breptopo
 {
 
+class CompGraph;
 class HistGraph;
 
 class CompNode
 {
 public:
-	virtual std::shared_ptr<CompVariant> Eval(const graph::Graph& G,
-		const std::shared_ptr<HistGraph>& hist) const = 0;
+	virtual std::shared_ptr<CompVariant> Eval(const CompGraph& cg, HistGraph& hg) const = 0;
 
-	void SetOpId(uint32_t op_id) { m_op_id = op_id; }
+	void SetOpId(int op_id) { m_op_id = op_id; }
+	int GetOpId() const { return m_op_id; }
 
-protected:
-	uint32_t m_op_id = 0;
+private:
+	int m_op_id = -1;
 
 }; // CompNode
 

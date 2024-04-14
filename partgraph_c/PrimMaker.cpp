@@ -28,17 +28,17 @@
 namespace partgraph
 {
 
-std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint32_t op_id, 
-                                          std::shared_ptr<breptopo::HistGraph> hg)
+std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint16_t op_id, 
+                                          breptopo::HistGraph* hg)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeBox mk_box(dx, dy, dz);
 
-        auto old_shp = BRepBuilder::MakeCompound({});
-        BRepHistory hist(mk_box, TopAbs_FACE, mk_box.Shape(), old_shp->GetShape());
-
-        if (hg) {
+        if (hg)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            BRepHistory hist(mk_box, TopAbs_FACE, mk_box.Shape(), old_shp->GetShape());
             hg->Update(hist, op_id);
         }
 

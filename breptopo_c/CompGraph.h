@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <map>
 
 namespace graph { class Graph; class Node; }
 
@@ -20,8 +21,13 @@ public:
 
 	auto GetGraph() const { return m_graph; }
 
+	uint16_t CalcOpId(int op_id, int sub_op_id) const;
+
 private:
 	std::shared_ptr<graph::Graph> m_graph;
+
+	// op_id + sub_op_id -> unique_op_id
+	mutable std::map<std::pair<int, int>, uint16_t> m_id_map;
 
 }; // CompGraph
 

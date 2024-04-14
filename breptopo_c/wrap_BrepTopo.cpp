@@ -173,17 +173,16 @@ void w_CompGraph_eval()
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
-    auto g = cg->GetGraph();
-    auto node = g->GetNodes()[node_idx];
+    auto node = cg->GetGraph()->GetNodes()[node_idx];
     auto& cnode = node->GetComponent<breptopo::NodeComp>();
 
-    std::shared_ptr<breptopo::HistGraph> hist = nullptr;
+    std::shared_ptr<breptopo::HistGraph> hg = nullptr;
     auto v_hist = ves_toforeign(2);
     if (v_hist) {
-        hist = ((tt::Proxy<breptopo::HistGraph>*)v_hist)->obj;
+        hg = ((tt::Proxy<breptopo::HistGraph>*)v_hist)->obj;
     }
 
-    auto cvar = cnode.GetCompNode()->Eval(*g, hist);
+    auto cvar = cnode.GetCompNode()->Eval(*cg, *hg);
 
     std::vector<std::shared_ptr<breptopo::CompVariant>> vars;
     flatten_vars(cvar, vars);

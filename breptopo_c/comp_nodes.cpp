@@ -1,6 +1,7 @@
 #include "comp_nodes.h"
 #include "NodeComp.h"
 #include "HistGraph.h"
+#include "CompGraph.h"
 #include "NodeShape.h"
 
 #include "../partgraph_c/PrimMaker.h"
@@ -12,23 +13,41 @@
 namespace
 {
 
-bool is_pin_valid(int pin, const graph::Graph& G)
+bool is_pin_valid(int pin, const graph::Graph& cg)
 {
-	if (pin < 0 || pin >= G.GetNodes().size())
+	if (pin < 0 || pin >= cg.GetNodes().size())
 		return false;
 	else
 		return true;
 }
 
 std::shared_ptr<breptopo::CompVariant> 
-calc_output_val(int pin, const graph::Graph& G, const std::shared_ptr<breptopo::HistGraph>& hist)
+calc_output_val(int pin, const breptopo::CompGraph& cg, breptopo::HistGraph& hg)
 {
-	if (!is_pin_valid(pin, G)) {
+	auto g = cg.GetGraph();
+	if (!is_pin_valid(pin, *g)) {
 		return nullptr;
 	}
 
-	auto& c_comp = G.GetNodes()[pin]->GetComponent<breptopo::NodeComp>();
-	return c_comp.GetCompNode()->Eval(G, hist);
+	auto& c_comp = g->GetNodes()[pin]->GetComponent<breptopo::NodeComp>();
+	return c_comp.GetCompNode()->Eval(cg, hg);
+}
+
+void flatten_shapes(const std::shared_ptr<breptopo::CompVariant>& src, std::vector<std::shared_ptr<partgraph::TopoShape>>& dst)
+{
+	if (src->Type() == breptopo::VAR_ARRAY)
+	{
+		auto& items = std::static_pointer_cast<breptopo::VarArray>(src)->val;
+		for (auto item : items)
+		{
+			flatten_shapes(item, dst);
+		}
+	}
+	else if (src->Type() == breptopo::VAR_SHAPE)
+	{
+		auto shp = std::static_pointer_cast<breptopo::VarShape>(src)->val;
+		dst.push_back(shp);
+	}
 }
 
 }
@@ -36,11 +55,11 @@ calc_output_val(int pin, const graph::Graph& G, const std::shared_ptr<breptopo::
 namespace breptopo
 {
 
-std::shared_ptr<CompVariant> NodeBox::Eval(const graph::Graph& G, const std::shared_ptr<breptopo::HistGraph>& hist) const
+std::shared_ptr<CompVariant> NodeBox::Eval(const CompGraph& cg, HistGraph& hg) const
 {
-	auto v_length = calc_output_val(m_length, G, hist);
-	auto v_width  = calc_output_val(m_width, G, hist);
-	auto v_height = calc_output_val(m_height, G, hist);
+	auto v_length = calc_output_val(m_length, cg, hg);
+	auto v_width  = calc_output_val(m_width, cg, hg);
+	auto v_height = calc_output_val(m_height, cg, hg);
 
 	double x = 0, y = 0, z = 0;
 	if (v_length)
@@ -59,14 +78,15 @@ std::shared_ptr<CompVariant> NodeBox::Eval(const graph::Graph& G, const std::sha
 		z = std::static_pointer_cast<VarNumber>(v_height)->val;
 	}
 
-	auto shape = partgraph::PrimMaker::Box(x, y, z, m_op_id, hist);
+	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+	auto shape = partgraph::PrimMaker::Box(x, y, z, op_id, &hg);
 	return std::make_shared<VarShape>(shape);
 }
 
-std::shared_ptr<CompVariant> NodeTranslate::Eval(const graph::Graph& G, const std::shared_ptr<breptopo::HistGraph>& hist) const
+std::shared_ptr<CompVariant> NodeTranslate::Eval(const CompGraph& cg, HistGraph& hg) const
 {
-	auto v_shape = calc_output_val(m_shape, G, hist);
-	auto v_offset = calc_output_val(m_offset, G, hist);
+	auto v_shape = calc_output_val(m_shape, cg, hg);
+	auto v_offset = calc_output_val(m_offset, cg, hg);
 
 	std::shared_ptr<partgraph::TopoShape> src;
 	if (v_shape)
@@ -82,19 +102,20 @@ std::shared_ptr<CompVariant> NodeTranslate::Eval(const graph::Graph& G, const st
 		offset = std::static_pointer_cast<VarNumber3>(v_offset)->val;
 	}
 
-	auto dst = partgraph::TopoAlgo::Translate(src, offset.x, offset.y, offset.z, m_op_id, hist);
+	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+	auto dst = partgraph::TopoAlgo::Translate(src, offset.x, offset.y, offset.z, op_id, &hg);
 	return std::make_shared<VarShape>(dst);
 }
 
-std::shared_ptr<CompVariant> NodeOffset::Eval(const graph::Graph& G, const std::shared_ptr<breptopo::HistGraph>& hist) const
+std::shared_ptr<CompVariant> NodeOffset::Eval(const CompGraph& cg, HistGraph& hg) const
 {
-	auto v_shape = calc_output_val(m_shape, G, hist);
+	auto v_shape = calc_output_val(m_shape, cg, hg);
 	if (!v_shape) {
 		return nullptr;
 	}
 
-	auto v_offset = calc_output_val(m_offset, G, hist);
-	auto v_is_solid = calc_output_val(m_is_solid, G, hist);
+	auto v_offset = calc_output_val(m_offset, cg, hg);
+	auto v_is_solid = calc_output_val(m_is_solid, cg, hg);
 
 	float offset = 0;
 	if (v_offset)
@@ -112,12 +133,14 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(const graph::Graph& G, const std::
 
 	if (v_shape->Type() == VAR_ARRAY)
 	{
-		auto& src = std::static_pointer_cast<breptopo::VarArray>(v_shape)->val;
+		std::vector<std::shared_ptr<partgraph::TopoShape>> src_shapes;
+		flatten_shapes(v_shape, src_shapes);
+
 		std::vector<std::shared_ptr<CompVariant>> dst;
-		for (auto src_shape : src)
+		for (int i = 0; i < src_shapes.size(); ++i)
 		{
-			auto shp = std::static_pointer_cast<breptopo::VarShape>(src_shape)->val;
-			auto dst_shape = partgraph::TopoAlgo::OffsetShape(shp, offset, is_solid, m_op_id, hist);
+			const uint16_t op_id = cg.CalcOpId(GetOpId(), i);
+			auto dst_shape = partgraph::TopoAlgo::OffsetShape(src_shapes[i], offset, is_solid, op_id, &hg);
 			dst.push_back(std::make_shared<VarShape>(dst_shape));
 		}
 		return std::make_shared<VarArray>(dst);
@@ -125,7 +148,8 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(const graph::Graph& G, const std::
 	else if (v_shape->Type() == VAR_SHAPE)
 	{
 		auto src = std::static_pointer_cast<VarShape>(v_shape)->val;
-		auto dst = partgraph::TopoAlgo::OffsetShape(src, offset, is_solid, m_op_id, hist);
+		const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+		auto dst = partgraph::TopoAlgo::OffsetShape(src, offset, is_solid, op_id, &hg);
 		return std::make_shared<VarShape>(dst);
 	}
 	else
@@ -134,10 +158,10 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(const graph::Graph& G, const std::
 	}
 }
 
-std::shared_ptr<CompVariant> NodeCut::Eval(const graph::Graph& G, const std::shared_ptr<breptopo::HistGraph>& hist) const
+std::shared_ptr<CompVariant> NodeCut::Eval(const CompGraph& cg, HistGraph& hg) const
 {
-	auto v_shp1 = calc_output_val(m_shp1, G, hist);
-	auto v_shp2 = calc_output_val(m_shp2, G, hist);
+	auto v_shp1 = calc_output_val(m_shp1, cg, hg);
+	auto v_shp2 = calc_output_val(m_shp2, cg, hg);
 
 	std::shared_ptr<partgraph::TopoShape> shp1, shp2;
 	if (v_shp1)
@@ -151,17 +175,14 @@ std::shared_ptr<CompVariant> NodeCut::Eval(const graph::Graph& G, const std::sha
 		shp2 = std::static_pointer_cast<VarShape>(v_shp2)->val;
 	}
 
-	auto dst = partgraph::TopoAlgo::Cut(shp1, shp2, m_op_id, hist);
+	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+	auto dst = partgraph::TopoAlgo::Cut(shp1, shp2, op_id, &hg);
 	return std::make_shared<VarShape>(dst);
 }
 
-std::shared_ptr<CompVariant> NodeSelector::Eval(const graph::Graph& G, const std::shared_ptr<breptopo::HistGraph>& hist) const
+std::shared_ptr<CompVariant> NodeSelector::Eval(const CompGraph& cg, HistGraph& hg) const
 {
-	if (!hist) {
-		return nullptr;
-	}
-
-	auto v_uid = calc_output_val(m_uid, G, hist);
+	auto v_uid = calc_output_val(m_uid, cg, hg);
 
 	uint32_t uid = 0;
 	if (v_uid)
@@ -175,7 +196,7 @@ std::shared_ptr<CompVariant> NodeSelector::Eval(const graph::Graph& G, const std
 	}
 
 	std::vector<std::shared_ptr<graph::Node>> nodes;
-	if (!hist->QueryNodes(uid, nodes)) {
+	if (!hg.QueryNodes(uid, nodes)) {
 		return nullptr;
 	}
 
@@ -197,17 +218,28 @@ std::shared_ptr<CompVariant> NodeSelector::Eval(const graph::Graph& G, const std
 	}
 }
 
-std::shared_ptr<CompVariant> NodeMerge::Eval(const graph::Graph& G, const std::shared_ptr<breptopo::HistGraph>& hist) const
+std::shared_ptr<CompVariant> NodeMerge::Eval(const CompGraph& cg, HistGraph& hg) const
 {
 	std::vector<std::shared_ptr<breptopo::CompVariant>> vals;
 	for (auto node : m_nodes) 
 	{
-		auto val = calc_output_val(node, G, hist);
+		auto val = calc_output_val(node, cg, hg);
 		if (val) {
 			vals.push_back(val);
 		}
 	}
-	return std::make_shared<VarArray>(vals);
+	if (vals.size() == 0)
+	{
+		return nullptr;
+	}
+	else if (vals.size() == 1)
+	{
+		return vals[0];
+	}
+	else
+	{
+		return std::make_shared<VarArray>(vals);
+	}
 }
 
 }

@@ -25,12 +25,12 @@ HistGraph::HistGraph()
 	InitDelNode();
 }
 
-uint32_t HistGraph::NextOpId()
+uint16_t HistGraph::NextOpId()
 {
 	return m_next_op++;
 }
 
-void HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t op_id)
+void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 {
 	std::vector<size_t> old_gid, new_gid;
 
