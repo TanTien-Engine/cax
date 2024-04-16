@@ -173,7 +173,7 @@ void w_CompGraph_eval()
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
-    auto node = cg->GetGraph()->GetNodes()[node_idx];
+    auto node = cg->GetNode(node_idx);
     auto& cnode = node->GetComponent<breptopo::NodeComp>();
 
     std::shared_ptr<breptopo::HistGraph> hg = nullptr;
@@ -389,7 +389,7 @@ void w_CompGraph_add_merge_node()
 {
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
-    auto nodes = tt::list_to_array<int>(1);
+    auto nodes = tt::list_to_array<size_t>(1);
 
     auto node = std::make_shared<breptopo::NodeMerge>(nodes);
     int id = cg->AddNode(node, "merge");

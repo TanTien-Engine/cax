@@ -5,6 +5,7 @@
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
+#include <graph/GraphLayout.h>
 
 namespace breptopo
 {
@@ -35,6 +36,26 @@ void CompGraph::AddEdge(size_t f_node, size_t t_node)
 	m_graph->AddEdge(f_node, t_node);
 }
 
+void CompGraph::RemoveEdge(size_t f_node, size_t t_node)
+{
+	m_graph->RemoveEdge(f_node, t_node);
+}
+
+size_t CompGraph::GetNodesNum() const
+{
+	return m_graph->GetNodes().size();
+}
+
+std::shared_ptr<graph::Node> CompGraph::GetNode(size_t idx) const
+{
+	auto& nodes = m_graph->GetNodes();
+	if (idx >= nodes.size()) {
+		return nullptr;
+	} else {
+		return nodes[idx];
+	}
+}
+
 uint16_t CompGraph::CalcOpId(int op_id, int sub_op_id) const
 {
 	auto key = std::make_pair(op_id, sub_op_id);
@@ -49,6 +70,11 @@ uint16_t CompGraph::CalcOpId(int op_id, int sub_op_id) const
 	{
 		return itr->second;
 	}
+}
+
+void CompGraph::Layout()
+{
+	graph::GraphLayout::OptimalHierarchy(*m_graph);
 }
 
 }
