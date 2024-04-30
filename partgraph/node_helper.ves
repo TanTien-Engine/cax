@@ -2,7 +2,7 @@ import "blueprint.blueprint" for Blueprint
 
 class NodeHelper
 {
-	static compile_graph(curr_node, input_slot, G)
+	static compile_graph(curr_node, input_slot, compiler)
 	{
 		var pin = Blueprint.query_pin(curr_node.imports, input_slot)
 		if (!pin or pin.conns.isEmpty) {
@@ -14,8 +14,18 @@ class NodeHelper
 
 		if (f_node.has_method("compile_graph(_,_)")) 
 		{
-			var ret = f_node.compile_graph(G, f_pin.slot_idx)
-			return ret
+			var key = "%(f_node.to_pointer())_%(f_pin.slot_idx)"
+			var id = compiler.evaluated[key]
+			if (id) 
+			{
+				return id
+			}
+			else
+			{
+				var id = f_node.compile_graph(compiler, f_pin.slot_idx)
+				compiler.evaluated[key] = id
+				return id
+			}
 		} 
 		else 
 		{

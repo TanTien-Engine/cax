@@ -84,9 +84,11 @@ class Offset is Node
 		}
 	}
 
-	compile_graph(G, idx)
+	compile_graph(compiler, idx)
 	{
-		var i_shape = pg_NodeHelper.compile_graph(this, 0, G)
+		var G = compiler.graph
+
+		var i_shape = pg_NodeHelper.compile_graph(this, 0, compiler)
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
@@ -97,8 +99,10 @@ class Offset is Node
 		return G.add_offset_node(i_shape, i_offset, i_is_solid)
 	}
 
-	compile_graph_old(G, idx)
+	compile_graph_old(compiler, idx)
 	{
+		var G = compiler.graph
+		
 		var v_shape = Blueprint.calc_input_value(this, 0)
 		var src_shps = []
 		this.get_input_shapes(v_shape, src_shps)

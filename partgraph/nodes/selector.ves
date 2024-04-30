@@ -6,6 +6,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.dirty_types" for DIRTY_EDITOR
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_EDGE, VAR_TOPO_FACE
 import "partgraph" for BRepSelector, BRepTools
+import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
 import "maths.vector" for Vector2
 import "graphics" for Graphics
 import "keyboard" for Keyboard
@@ -55,14 +56,19 @@ class Selector is Node
 		}
 	}
 
-	compile_graph(G, idx)
+	compile_graph(compiler, idx)
 	{
+		var G = compiler.graph
+
 		if (this.selected_uids.isEmpty) {
 			return -1
-		} else {
-			var i_uid = G.add_integer_node(this.selected_uids[0], "uid")
-			return G.add_selector_node(i_uid)
 		}
+
+		var i_shp = pg_NodeHelper.compile_graph(this, 0, compiler)
+
+		var i_uid = G.add_integer_node(this.selected_uids[0], "uid")
+
+		return G.add_selector_node(i_shp, i_uid)
 	}
 
 	to_string(name) 

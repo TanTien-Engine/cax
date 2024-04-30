@@ -50,9 +50,11 @@ class Translate is Node
 		}
 	}
 
-	compile_graph(G, idx)
+	compile_graph(compiler, idx)
 	{
-		var i_shp = pg_NodeHelper.compile_graph(this, 0, G)
+		var G = compiler.graph
+		
+		var i_shp = pg_NodeHelper.compile_graph(this, 0, compiler)
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var i_offset = G.add_number3_node(offset.x, offset.z, offset.y, "offset")

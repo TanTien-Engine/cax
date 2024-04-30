@@ -131,55 +131,55 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, HistGraph& hg) cons
 
 	if (v_shape->Type() == VAR_ARRAY)
   	{
-		// update graph
-#if 1
+//		// update graph
+//#if 1
+//		std::vector<std::shared_ptr<breptopo::CompVariant>> v_shape_array;
+//		flatten_vars(v_shape, v_shape_array, VAR_SHAPE);
+//
+//		std::vector<size_t> output;
+//
+//		for (auto v_shape : v_shape_array)
+//		{
+//			auto shape = std::static_pointer_cast<breptopo::VarShape>(v_shape)->val;
+//			auto shp_node = std::make_shared<NodeTopoShape>(shape);
+//			size_t idx = cg.GetNodesNum();
+//			cg.AddNode(shp_node, "shape");
+//			cg.AddEdge(m_shape, idx);
+//			output.push_back(idx);
+//		}
+//
+//		size_t merge_idx = cg.GetNodesNum();
+//		auto merge_node = std::make_shared<NodeMerge>(output);
+//		cg.AddNode(merge_node, "merge");
+//		for (auto i : output) 
+//		{
+//			cg.AddEdge(i, merge_idx);
+//		}
+//
+//		int old_output_idx = -1;
+//		auto conns = cg.GetNode(GetOpId())->GetConnects();
+//		for (auto itr = conns.begin(); itr != conns.end(); )
+//		{
+//			if ((*itr)->GetId() == m_shape ||
+//				(*itr)->GetId() == m_offset ||
+//				(*itr)->GetId() == m_is_solid)
+//			{
+//				itr = conns.erase(itr);
+//			}
+//			else
+//			{
+//				++itr;
+//			}
+//		}
+//		assert(conns.size() == 1);
+//		cg.RemoveEdge(m_shape, GetOpId());
+//		cg.AddEdge(merge_idx, GetOpId());
+//
+//		cg.Layout();
+//#endif
+
 		std::vector<std::shared_ptr<breptopo::CompVariant>> v_shape_array;
 		flatten_vars(v_shape, v_shape_array, VAR_SHAPE);
-
-		std::vector<size_t> output;
-
-		for (auto v_shape : v_shape_array)
-		{
-			auto shape = std::static_pointer_cast<breptopo::VarShape>(v_shape)->val;
-			auto shp_node = std::make_shared<NodeTopoShape>(shape);
-			size_t idx = cg.GetNodesNum();
-			cg.AddNode(shp_node, "shape");
-			cg.AddEdge(m_shape, idx);
-			output.push_back(idx);
-		}
-
-		size_t merge_idx = cg.GetNodesNum();
-		auto merge_node = std::make_shared<NodeMerge>(output);
-		cg.AddNode(merge_node, "merge");
-		for (auto i : output) 
-		{
-			cg.AddEdge(i, merge_idx);
-		}
-
-		int old_output_idx = -1;
-		auto conns = cg.GetNode(GetOpId())->GetConnects();
-		for (auto itr = conns.begin(); itr != conns.end(); )
-		{
-			if ((*itr)->GetId() == m_shape ||
-				(*itr)->GetId() == m_offset ||
-				(*itr)->GetId() == m_is_solid)
-			{
-				itr = conns.erase(itr);
-			}
-			else
-			{
-				++itr;
-			}
-		}
-		assert(conns.size() == 1);
-		cg.RemoveEdge(m_shape, GetOpId());
-		cg.AddEdge(merge_idx, GetOpId());
-
-		cg.Layout();
-#endif
-
-		//std::vector<std::shared_ptr<breptopo::CompVariant>> v_shape_array;
-		//flatten_vars(v_shape, v_shape_array, VAR_SHAPE);
 
 		std::vector<std::shared_ptr<CompVariant>> dst;
 		for (int i = 0; i < v_shape_array.size(); ++i)

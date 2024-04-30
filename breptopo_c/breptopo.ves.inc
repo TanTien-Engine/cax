@@ -37,7 +37,7 @@ foreign class CompGraph
 	foreign add_offset_node(shape, offset, is_solid)
 	foreign add_cut_node(shp1, shp2)
 
-	foreign add_selector_node(uid)
+	foreign add_selector_node(shape, uid)
 	foreign add_merge_node(array)
 }
 

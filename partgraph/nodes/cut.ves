@@ -48,10 +48,14 @@ class Cut is Node
 		}
 	}
 
-	compile_graph(G, idx)
+	compile_graph(compiler, idx)
 	{
-		var i_a = NodeHelper.compile_graph(this, 0, G)
-		var i_b = NodeHelper.compile_graph(this, 1, G)
-		return G.add_cut_node(i_a, i_b)
+		var G = compiler.graph
+
+		var i_a = NodeHelper.compile_graph(this, 0, compiler)
+		var i_b = NodeHelper.compile_graph(this, 1, compiler)
+		var comp_id = G.add_cut_node(i_a, i_b)
+
+		return comp_id
 	}
 }

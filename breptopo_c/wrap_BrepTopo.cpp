@@ -183,9 +183,16 @@ void w_CompGraph_eval()
     }
 
     auto cvar = cnode.GetCompNode()->Eval(*cg, *hg);
+    if (!cvar) {
+        return;
+    }
 
     std::vector<std::shared_ptr<breptopo::CompVariant>> vars;
     flatten_vars(cvar, vars);
+    if (vars.empty()) {
+        return;
+    }
+
     if (vars.size() == 1)
     {
         auto var = vars[0];
@@ -375,11 +382,13 @@ void w_CompGraph_add_selector_node()
 {
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
-    int uid = (int)ves_tonumber(1);
+    int shp = (int)ves_tonumber(1);
+    int uid = (int)ves_tonumber(2);
 
     auto node = std::make_shared<breptopo::NodeSelector>(uid);
     int id = cg->AddNode(node, "selector");
 
+    cg->AddEdge(shp, id);
     cg->AddEdge(uid, id);
 
     ves_set_number(0, id);
@@ -426,7 +435,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "CompGraph.add_translate_node(_,_)") == 0) return w_CompGraph_add_translate_node;
     if (strcmp(signature, "CompGraph.add_offset_node(_,_,_)") == 0) return w_CompGraph_add_offset_node;
     if (strcmp(signature, "CompGraph.add_cut_node(_,_)") == 0) return w_CompGraph_add_cut_node;
-    if (strcmp(signature, "CompGraph.add_selector_node(_)") == 0) return w_CompGraph_add_selector_node;
+    if (strcmp(signature, "CompGraph.add_selector_node(_,_)") == 0) return w_CompGraph_add_selector_node;
     if (strcmp(signature, "CompGraph.add_merge_node(_)") == 0) return w_CompGraph_add_merge_node;
 
     return nullptr;

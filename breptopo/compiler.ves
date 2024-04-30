@@ -1,0 +1,9 @@
+class Compiler
+{
+	init(graph)
+	{
+		this.graph = graph
+
+		this.evaluated = {}
+	}
+}

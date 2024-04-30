@@ -49,8 +49,10 @@ class Box is Node
 		}
 	}
 
-	compile_graph(G, idx)
+	compile_graph(compiler, idx)
 	{
+		var G = compiler.graph
+
 		var length = NodeHelper.calc_prop_value(this, "length")
 		var width  = NodeHelper.calc_prop_value(this, "width")
 		var height = NodeHelper.calc_prop_value(this, "height")

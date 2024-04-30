@@ -8,6 +8,7 @@ import "partgraph.node_helper" for NodeHelper
 import "logger.logger" for Logger
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "breptopo.variant" for VAR_COMP_GRAPH, VAR_HIST_GRAPH
+import "breptopo.compiler" for Compiler
 import "logger.logger" for Logger
 import "breptopo" for CompGraph as tt_CompGraph
 import "graph" for GraphTools
@@ -80,7 +81,8 @@ class CompGraph is Node
 		Logger.info("computational graph compile")
 
 		this.graph = tt_CompGraph.init()
-		this.node_idx = NodeHelper.compile_graph(this, 0, this.graph)
+		var compiler = Compiler(this.graph)
+		this.node_idx = NodeHelper.compile_graph(this, 0, compiler)
 
 		var graph = this.graph.get_graph()
 		GraphTools.layout(graph, "hierarchy")
