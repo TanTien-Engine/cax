@@ -81,13 +81,39 @@ class CompGraph is Node
 		Logger.info("computational graph compile")
 
 		this.graph = tt_CompGraph.init()
-		var compiler = Compiler(this.graph)
-		this.node_idx = NodeHelper.compile_graph(this, 0, compiler)
+		this.compile_graph_no_recursion()
 
 		var graph = this.graph.get_graph()
 		GraphTools.layout(graph, "hierarchy")
 
 		Blueprint.connect(VariantProxy (Variant(VAR_COMP_GRAPH, graph)), "out", this.n_draw, "graph")
+	}
+
+	compile_graph_recursion()
+	{
+		var compiler = Compiler(this.graph)
+		compiler.recursion = true
+		this.node_idx = NodeHelper.compile_graph(this, 0, compiler)
+	}
+
+	compile_graph_no_recursion()
+	{
+		var compiler = Compiler(this.graph)
+		compiler.recursion = false
+
+		var t_node = Blueprint.get_input_node(this, 0)
+		var prev_nodes = Blueprint.get_precursor_nodes(t_node)
+		var sorted_nodes = Blueprint.topo_sort(prev_nodes)
+		for (var node in sorted_nodes)
+		{
+			if (node.has_method("compile_graph(_,_)")) 
+			{
+				var id = node.compile_graph(compiler, 0)
+				var key = "%(node.to_pointer())_0"
+				compiler.evaluated[key] = id
+				this.node_idx = id
+			}
+		}
 	}
 
 	draw(mt, cam_mt)

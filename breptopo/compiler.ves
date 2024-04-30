@@ -5,5 +5,7 @@ class Compiler
 		this.graph = graph
 
 		this.evaluated = {}
+
+		this.recursion = true
 	}
 }

@@ -22,9 +22,16 @@ class NodeHelper
 			}
 			else
 			{
-				var id = f_node.compile_graph(compiler, f_pin.slot_idx)
-				compiler.evaluated[key] = id
-				return id
+				if (compiler.recursion)
+				{
+					var id = f_node.compile_graph(compiler, f_pin.slot_idx)
+					compiler.evaluated[key] = id
+					return id
+				}
+				else
+				{
+					return nil
+				}
 			}
 		} 
 		else 
@@ -35,5 +42,4 @@ class NodeHelper
 
 		return nil
 	}
-
 }
