@@ -3,12 +3,18 @@
 #include "HistGraph.h"
 #include "CompGraph.h"
 #include "NodeShape.h"
+#include "NodeInfo.h"
 
 #include "../partgraph_c/PrimMaker.h"
 #include "../partgraph_c/TopoAlgo.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
+
+#include <set>
+
+#define DYNAMIC_UPDATE
+#define COPY_OUTPUT
 
 namespace
 {
@@ -28,8 +34,9 @@ calc_output_val(int pin, breptopo::CompGraph& cg, breptopo::HistGraph& hg)
 		return nullptr;
 	}
 
-	auto& c_comp = cg.GetNode(pin)->GetComponent<breptopo::NodeComp>();
-	return c_comp.GetCompNode()->Eval(cg, hg);
+	auto node = cg.GetNode(pin);
+	auto& c_comp = node->GetComponent<breptopo::NodeComp>();
+	return c_comp.GetCompNode()->Eval(cg, hg, node->GetId());
 }
 
 void flatten_vars(const std::shared_ptr<breptopo::CompVariant>& src, std::vector<std::shared_ptr<breptopo::CompVariant>>& dst, int type)
@@ -53,7 +60,7 @@ void flatten_vars(const std::shared_ptr<breptopo::CompVariant>& src, std::vector
 namespace breptopo
 {
 
-std::shared_ptr<CompVariant> NodeBox::Eval(CompGraph& cg, HistGraph& hg) const
+std::shared_ptr<CompVariant> NodeBox::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
 {
 	auto v_length = calc_output_val(m_length, cg, hg);
 	auto v_width  = calc_output_val(m_width, cg, hg);
@@ -81,7 +88,7 @@ std::shared_ptr<CompVariant> NodeBox::Eval(CompGraph& cg, HistGraph& hg) const
 	return std::make_shared<VarShape>(shape);
 }
 
-std::shared_ptr<CompVariant> NodeTranslate::Eval(CompGraph& cg, HistGraph& hg) const
+std::shared_ptr<CompVariant> NodeTranslate::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
 {
 	auto v_shape = calc_output_val(m_shape, cg, hg);
 	auto v_offset = calc_output_val(m_offset, cg, hg);
@@ -105,7 +112,7 @@ std::shared_ptr<CompVariant> NodeTranslate::Eval(CompGraph& cg, HistGraph& hg) c
 	return std::make_shared<VarShape>(dst);
 }
 
-std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, HistGraph& hg) const
+std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
 {
 	auto v_shape = calc_output_val(m_shape, cg, hg);
 	if (!v_shape) {
@@ -204,7 +211,7 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, HistGraph& hg) cons
 	}
 }
 
-std::shared_ptr<CompVariant> NodeCut::Eval(CompGraph& cg, HistGraph& hg) const
+std::shared_ptr<CompVariant> NodeCut::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
 {
 	auto v_shp1 = calc_output_val(m_shp1, cg, hg);
 	auto v_shp2 = calc_output_val(m_shp2, cg, hg);
@@ -226,7 +233,7 @@ std::shared_ptr<CompVariant> NodeCut::Eval(CompGraph& cg, HistGraph& hg) const
 	return std::make_shared<VarShape>(dst);
 }
 
-std::shared_ptr<CompVariant> NodeSelector::Eval(CompGraph& cg, HistGraph& hg) const
+std::shared_ptr<CompVariant> NodeSelector::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
 {
 	auto v_uid = calc_output_val(m_uid, cg, hg);
 
@@ -254,6 +261,10 @@ std::shared_ptr<CompVariant> NodeSelector::Eval(CompGraph& cg, HistGraph& hg) co
 	}
 	else
 	{
+#ifdef DYNAMIC_UPDATE
+		UpdateGraph(cg, node_id, nodes);
+#endif // DYNAMIC_UPDATE
+
 		std::vector<std::shared_ptr<CompVariant>> array;
 		for (auto node : nodes)
 		{
@@ -264,7 +275,115 @@ std::shared_ptr<CompVariant> NodeSelector::Eval(CompGraph& cg, HistGraph& hg) co
 	}
 }
 
-std::shared_ptr<CompVariant> NodeMerge::Eval(CompGraph& cg, HistGraph& hg) const
+void NodeSelector::UpdateGraph(CompGraph& cg, int node_id, const std::vector<std::shared_ptr<graph::Node>>& nodes) const
+{
+	auto G = cg.GetGraph();
+	auto& edges = G->GetEdges();
+	auto range = edges.equal_range(node_id);
+
+	// already connected shapes
+	std::set<std::shared_ptr<partgraph::TopoShape>> exists;
+	auto& all_nodes = G->GetNodes();
+	for (auto itr = range.first; itr != range.second; ++itr) 
+	{
+		assert(itr->second < all_nodes.size());
+		auto node = all_nodes[itr->second];
+		auto& cncomp = node->GetComponent<NodeComp>();
+		auto shp_val = std::dynamic_pointer_cast<NodeShapeValue>(cncomp.GetCompNode());
+		if (shp_val)
+		{
+			exists.insert(shp_val->GetShape());
+		}
+	}
+
+	// if need update
+	if (nodes.size() == exists.size())
+	{
+		bool need_update = false;
+		for (auto node : nodes)
+		{
+			auto shp = node->GetComponent<NodeShape>().GetShape();
+			if (exists.find(shp) == exists.end())
+			{
+				need_update = true;
+				break;
+			}
+		}
+		if (!need_update)
+		{
+			return;
+		}
+	}
+
+	std::vector<int> out_nodes;
+	for (auto itr = range.first; itr != range.second; ++itr) 
+	{
+		out_nodes.push_back(static_cast<int>(itr->second));
+	}
+
+	for (auto node : nodes)
+	{
+		auto shp = node->GetComponent<NodeShape>().GetShape();
+		auto node_shp = std::make_shared<NodeShapeValue>(shp);
+		int shp_node_id = cg.AddNode(node_shp, "shp_val");
+		cg.AddEdge(node_id, shp_node_id);
+
+#ifdef COPY_OUTPUT
+		for (auto src_node_idx : out_nodes)
+		{
+			auto& src_node = all_nodes[src_node_idx];
+
+			auto& src_c_comp = src_node->GetComponent<breptopo::NodeComp>();
+			auto& src_c_info = src_node->GetComponent<breptopo::NodeInfo>();
+	
+			auto dst_c_comp = src_c_comp.GetCompNode()->Clone();
+			auto dst_node = cg.AddNode(dst_c_comp, src_c_info.GetDesc());
+
+			// copy conns
+			std::set<int> out_conns;
+			auto range = cg.GetGraph()->GetEdges().equal_range(src_node_idx);
+			for (auto itr = range.first; itr != range.second; ++itr)
+			{
+				out_conns.insert(itr->second);
+			}
+			auto& conns = src_node->GetConnects();
+			for (auto conn : conns)
+			{
+				int id = conn->GetId();
+				if (id == node_id) {
+					continue;
+				}
+
+				if (out_conns.find(id) != out_conns.end())
+				{
+					cg.AddEdge(dst_node, id);
+				}
+				else
+				{
+					cg.AddEdge(id, dst_node);
+				}
+			}
+
+			cg.AddEdge(shp_node_id, /*ori_out_node*/dst_node);
+		} 
+#else
+		for (auto src_node_idx : out_nodes)
+		{
+			cg.AddEdge(shp_node_id, src_node_idx);
+		}
+#endif // COPY_OUTPUT
+	}
+
+	for (auto out_node : out_nodes)
+	{
+		cg.RemoveEdge(node_id, out_node);
+#ifdef COPY_OUTPUT
+		cg.RemoveNode(out_node);
+#endif // COPY_OUTPUT
+	}
+}
+
+std::shared_ptr<CompVariant> NodeMerge::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
 {
 	std::vector<std::shared_ptr<breptopo::CompVariant>> vals;
 	for (auto node : m_nodes) 
@@ -288,7 +407,7 @@ std::shared_ptr<CompVariant> NodeMerge::Eval(CompGraph& cg, HistGraph& hg) const
 	}
 }
 
-//std::shared_ptr<CompVariant> NodeSplit::Eval(CompGraph& cg, HistGraph& hg) const
+//std::shared_ptr<CompVariant> NodeSplit::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
 //{
 //	auto v_src = calc_output_val(m_src, cg, hg);
 //	if (!v_src) {
@@ -315,5 +434,10 @@ std::shared_ptr<CompVariant> NodeMerge::Eval(CompGraph& cg, HistGraph& hg) const
 //
 //	}
 //}
+
+std::shared_ptr<CompVariant> NodeShapeValue::Eval(CompGraph& cg, HistGraph& hg, int node_id) const
+{
+	return std::make_shared<VarShape>(m_shp);
+}
 
 }

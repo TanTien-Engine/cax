@@ -18,6 +18,7 @@ public:
 
 	int AddNode(const std::shared_ptr<CompNode>& node, const std::string& desc);
 	void AddEdge(size_t f_node, size_t t_node);
+	void RemoveNode(size_t node);
 	void RemoveEdge(size_t f_node, size_t t_node);
 
 	size_t GetNodesNum() const;

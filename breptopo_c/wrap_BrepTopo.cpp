@@ -182,9 +182,14 @@ void w_CompGraph_eval()
         hg = ((tt::Proxy<breptopo::HistGraph>*)v_hist)->obj;
     }
 
-    auto cvar = cnode.GetCompNode()->Eval(*cg, *hg);
+    int node_num = cg->GetGraph()->GetNodes().size();
+    auto cvar = cnode.GetCompNode()->Eval(*cg, *hg, node_idx);
     if (!cvar) {
         return;
+    }
+
+    if (cg->GetGraph()->GetNodes().size() != node_num) {
+        cg->Layout();
     }
 
     std::vector<std::shared_ptr<breptopo::CompVariant>> vars;

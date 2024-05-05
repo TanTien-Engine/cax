@@ -13,7 +13,9 @@ class HistGraph;
 class CompNode
 {
 public:
-	virtual std::shared_ptr<CompVariant> Eval(CompGraph& cg, HistGraph& hg) const = 0;
+	virtual std::shared_ptr<CompVariant> Eval(CompGraph& cg, HistGraph& hg, int node_id) const = 0;
+
+	virtual std::shared_ptr<CompNode> Clone() const = 0;
 
 	void SetOpId(int op_id) { m_op_id = op_id; }
 	int GetOpId() const { return m_op_id; }

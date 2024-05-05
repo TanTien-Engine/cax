@@ -36,6 +36,11 @@ void CompGraph::AddEdge(size_t f_node, size_t t_node)
 	m_graph->AddEdge(f_node, t_node);
 }
 
+void CompGraph::RemoveNode(size_t node)
+{
+	m_graph->RemoveNode(node);
+}
+
 void CompGraph::RemoveEdge(size_t f_node, size_t t_node)
 {
 	m_graph->RemoveEdge(f_node, t_node);
