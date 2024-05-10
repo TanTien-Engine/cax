@@ -17,6 +17,8 @@ public:
 
 	virtual std::shared_ptr<CompNode> Clone() const = 0;
 
+	virtual void Update(const CompGraph& cg, int node_id) {}
+
 	void SetOpId(int op_id) { m_op_id = op_id; }
 	int GetOpId() const { return m_op_id; }
 

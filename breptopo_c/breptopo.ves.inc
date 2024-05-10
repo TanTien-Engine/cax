@@ -25,6 +25,7 @@ foreign class CompGraph
 	foreign get_graph()
 
 	foreign eval(node_idx, hist)
+	foreign update(node_idx, val)
 
 	foreign add_integer_node(int, desc)
 	foreign add_number_node(num, desc)

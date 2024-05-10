@@ -40,8 +40,15 @@ class CompGraph is Node
 	{
 		super.on_pin_dirty(pin, type, msg)
 
-		this.graph = nil
-		this.node_idx = -1
+		if (type == "dirty_graph")
+		{
+			this.graph.update(msg[0], msg[1])
+		}
+		else
+		{
+			this.graph = nil
+			this.node_idx = -1
+		}
 	}
 
 	calc_value(idx)

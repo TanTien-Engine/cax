@@ -248,6 +248,18 @@ void w_CompGraph_eval()
     }
 }
 
+void w_CompGraph_update()
+{
+    auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+    double val = ves_tonumber(2);
+
+    auto node = cg->GetNode(node_idx);
+    auto& cnode = node->GetComponent<breptopo::NodeComp>();
+    std::static_pointer_cast<breptopo::NodeNumber>(cnode.GetCompNode())->SetValue(val);
+}
+
 void w_CompGraph_add_integer_node()
 {
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
@@ -431,6 +443,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
     if (strcmp(signature, "CompGraph.eval(_,_)") == 0) return w_CompGraph_eval;
+    if (strcmp(signature, "CompGraph.update(_,_)") == 0) return w_CompGraph_update;
     if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
     if (strcmp(signature, "CompGraph.add_number_node(_,_)") == 0) return w_CompGraph_add_number_node;
     if (strcmp(signature, "CompGraph.add_number3_node(_,_,_,_)") == 0) return w_CompGraph_add_number3_node;

@@ -43,6 +43,8 @@ public:
 		return std::make_shared<NodeNumber>(m_val);
 	}
 
+	void SetValue(float val) { m_val = val; }
+
 private:
 	float m_val = 0;
 
@@ -157,6 +159,8 @@ public:
 		return std::make_shared<NodeOffset>(m_shape, m_offset, m_is_solid);
 	}
 
+	virtual void Update(const CompGraph& cg, int node_id);
+
 private:
 	int m_shape = -1, m_offset = -1, m_is_solid = -1;
 
@@ -213,6 +217,8 @@ public:
 	{
 		return std::make_shared<NodeMerge>(m_nodes);
 	}
+
+	virtual void Update(const CompGraph& cg, int node_id);
 
 private:
 	std::vector<size_t> m_nodes;
