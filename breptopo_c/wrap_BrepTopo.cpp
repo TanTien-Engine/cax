@@ -54,7 +54,7 @@ void w_TopoGraph_get_graph()
 void w_HistGraph_allocate()
 {
     auto proxy = (tt::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<breptopo::HistGraph>));
-    proxy->obj = std::make_shared<breptopo::HistGraph>();
+    proxy->obj = std::make_shared<breptopo::HistGraph>(breptopo::HistGraph::Type::Face);
 }
 
 int w_HistGraph_finalize(void* data)

@@ -1,7 +1,7 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
-import "blueprint.variant" for Variant
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "partgraph.variant" for VAR_TOPO_EDGE, VAR_TOPO_WIRE
 import "partgraph" for TopoAdapter
 import "geograph.variant" for VAR_TYPE_GEO, VarGeo
@@ -13,10 +13,10 @@ class ToGeometry is Node
 		super.init()
 
 		this.imports = [
-			Pin(this, "topo", [ VAR_TOPO_EDGE, VAR_TOPO_WIRE ]),
+			Pin(this, "topo", [ VAR_TOPO_EDGE, VAR_TOPO_WIRE, VAR_TYPE_ARRAY ]),
 		]
 		this.exports = [
-			Pin(this, "geo", VAR_TYPE_GEO),
+			Pin(this, "geo", [ VAR_TYPE_GEO, VAR_TYPE_ARRAY ]),
 		]
 
 		this.layout()
@@ -29,19 +29,45 @@ class ToGeometry is Node
 			return nil
 		}
 
-		var geo = nil
-		if (v_topo.type == VAR_TOPO_EDGE) {
-			geo = TopoAdapter.build_edge_geo(v_topo.value)
-		} else if (v_topo.type == VAR_TOPO_WIRE) {
-			geo = TopoAdapter.build_wire_geo(v_topo.value)
-		}
+		var geos = []
+		this.build_geos(v_topo, geos)
 
-		if (geo) {
-			var v_geo = VarGeo()
-			v_geo.shape = geo
-			return Variant(VAR_TYPE_GEO, v_geo)
-		} else {
+		if (geos.count == 0)
+		{
 			return nil
 		}
+		else if (geos.count == 1)
+		{
+			var v_geo = VarGeo()
+			v_geo.shape = geos[0]
+			return Variant(VAR_TYPE_GEO, v_geo)
+		}
+		else
+		{
+			return Variant(VAR_TYPE_ARRAY, geos)
+		}
+	}
+
+	build_geos(v_shape, geos)
+	{
+		if (v_shape.type == VAR_TYPE_ARRAY)
+		{
+			for (var shape in v_shape.value)
+			{
+				this.build_geos(shape, geos)
+			}
+		}
+		else
+		{
+			var geo = nil
+			if (v_shape.type == VAR_TOPO_EDGE) {
+				geo = TopoAdapter.build_edge_geo(v_shape.value)
+			} else if (v_shape.type == VAR_TOPO_WIRE) {
+				geo = TopoAdapter.build_wire_geo(v_shape.value)
+			}
+			if (geo) {
+				geos.add(geo)
+			}
+		}		
 	}
 }

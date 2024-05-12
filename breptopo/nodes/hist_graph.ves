@@ -5,7 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.dirty_types" for DIRTY_EDITOR
 import "graph.nodes.draw" for Draw
-import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
+import "partgraph.variant" for VAR_TOPO_SHAPE
 import "breptopo.variant" for VAR_HIST_GRAPH
 import "breptopo" for HistGraph as tt_HistGraph
 
@@ -24,7 +24,7 @@ class HistGraph is Node
 
 		this.graph = nil
 
-		this.selected_faces = []
+		this.selected_shapes = []
 
 		this.n_draw = Draw()
 	}
@@ -38,7 +38,7 @@ class HistGraph is Node
 		if (idx == 0) {
 			return Variant(VAR_HIST_GRAPH, this.graph)
 		} else if (idx == 1) {
-			return Variant(this.selected_faces)
+			return Variant(this.selected_shapes)
 		}
 	}
 
@@ -93,7 +93,7 @@ class HistGraph is Node
 	{
 		Blueprint.send_pin_dirty_root(this.exports[1], DIRTY_EDITOR)
 
-		this.selected_faces.clear()
+		this.selected_shapes.clear()
 
 		var v_selecteds = Blueprint.calc_output_value(this.n_draw, "selected")
 		if (!v_selecteds) {
@@ -102,9 +102,9 @@ class HistGraph is Node
 
 		for (var v_sel in v_selecteds.value)
 		{
-			var face = v_sel.value.get_component("topo_shape")
-			if (face) {
-				this.selected_faces.add(Variant(VAR_TOPO_FACE, face))
+			var shp = v_sel.value.get_component("topo_shape")
+			if (shp) {
+				this.selected_shapes.add(Variant(VAR_TOPO_SHAPE, shp))
 			}
 		}
 	}	

@@ -1,5 +1,6 @@
 #include "PrimMaker.h"
 #include "TopoShape.h"
+#include "occt_adapter.h"
 
 #include "BRepBuilder.h"
 #include "BRepHistory.h"
@@ -37,8 +38,9 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint1
 
         if (hg)
         {
+            auto type = trans_type(hg->GetType());
             auto old_shp = BRepBuilder::MakeCompound({});
-            BRepHistory hist(mk_box, TopAbs_FACE, mk_box.Shape(), old_shp->GetShape());
+            BRepHistory hist(mk_box, type, mk_box.Shape(), old_shp->GetShape());
             hg->Update(hist, op_id);
         }
 

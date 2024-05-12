@@ -99,9 +99,10 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
 
     if (hg)
     {
+        auto type = trans_type(hg->GetType());
         auto old_shp = BRepBuilder::MakeCompound({ s1, s2 });
         opencascade::handle<BRepTools_History> o_hist = algo.History();
-        BRepHistory hist(o_hist, TopAbs_FACE, algo.Shape(), *old_shp);
+        BRepHistory hist(o_hist, type, algo.Shape(), *old_shp);
         hg->Update(hist, op_id);
     }
 
@@ -165,7 +166,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>&
 
     if (hg)
     {
-        BRepHistory hist(trans, TopAbs_FACE, trans.Shape(), shape->GetShape());
+        auto type = trans_type(hg->GetType());
+        BRepHistory hist(trans, type, trans.Shape(), shape->GetShape());
         hg->Update(hist, op_id);
     }
 

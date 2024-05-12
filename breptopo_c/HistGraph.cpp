@@ -11,6 +11,8 @@
 
 #include <TopoDS.hxx>
 #include <TopoDS_Face.hxx>
+#include <TopoDS_Solid.hxx>
+#include <TopoDS_Edge.hxx>
 
 #include <set>
 #include <queue>
@@ -18,7 +20,8 @@
 namespace breptopo
 {
 
-HistGraph::HistGraph()
+HistGraph::HistGraph(Type type)
+	: m_type(type)
 {
 	m_graph = std::make_shared<graph::Graph>();
 
@@ -64,8 +67,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			//auto node = std::make_shared<graph::Node>(i - 1);
 			auto node = std::make_shared<graph::Node>(static_cast<int>(gid));
 
-			auto face = TopoDS::Face(new_map(i));
-			auto shape = std::make_shared<partgraph::TopoShape>(face);
+			auto shape = TransShape(new_map(i));
 			node->AddComponent<NodeShape>(shape);
 
 			node->AddComponent<NodeId>(uid, gid);
@@ -77,7 +79,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			m_uid2gid.insert({ uid, gid });
 
 			m_curr_shapes.Bind(new_map(i), gid);
-		}
+		} 
 		else
 		{
 			size_t gid = itr->second;
@@ -85,8 +87,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 
 			auto node = m_graph->GetNodes()[gid];
 
-			auto face = TopoDS::Face(new_map(i));
-			auto shape = std::make_shared<partgraph::TopoShape>(face);
+			auto shape = TransShape(new_map(i));
 			node->GetComponent<NodeShape>().SetShape(shape);
 
 			m_curr_shapes.Bind(new_map(i), gid);
@@ -226,6 +227,27 @@ void HistGraph::InitDelNode()
 
 	m_del_node = std::make_shared<graph::Node>(-1);
 	m_graph->AddNode(m_del_node);
+}
+
+std::shared_ptr<partgraph::TopoShape> 
+HistGraph::TransShape(const TopoDS_Shape& shape) const
+{
+	std::shared_ptr<partgraph::TopoShape> t_shape = nullptr;
+
+	switch (m_type)
+	{
+	case Type::Edge:
+		t_shape = std::make_shared<partgraph::TopoShape>(TopoDS::Edge(shape));
+		break;
+	case Type::Face:
+		t_shape = std::make_shared<partgraph::TopoShape>(TopoDS::Face(shape));
+		break;
+	case Type::Solid:
+		t_shape = std::make_shared<partgraph::TopoShape>(TopoDS::Solid(shape));
+		break;
+	}
+
+	return t_shape;
 }
 
 }
