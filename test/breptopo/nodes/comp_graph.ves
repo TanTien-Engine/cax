@@ -69,7 +69,7 @@ _editor.add_node(node11, 11.725215565075, 302.68375466087)
 
 var node12 = ::breptopo::nodes::hist_graph::HistGraph()
 
-_editor.add_node(node12, -18.94578514414, -182.12704240783)
+_editor.add_node(node12, -18.94578514414, -183.12704240783)
 
 var node13 = ::blueprint::nodes::cache::Cache()
 node13.query_param("disable").value = false
@@ -108,7 +108,7 @@ Blueprint.connect(node8, "objs", node9, "shape")
 Blueprint.connect(node13, "var", node11, "in0")
 Blueprint.connect(node9, "shape", node11, "in1")
 Blueprint.connect(node11, "list", node17, "val")
-Blueprint.connect(node12, "graph", node17, "hist")
+Blueprint.connect(node12, "hist_mgr", node17, "hist")
 Blueprint.connect(node17, "val", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")

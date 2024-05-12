@@ -8,6 +8,15 @@ foreign class TopoGraph
 	foreign get_graph()
 }
 
+foreign class HistMgr
+{
+	init() {}
+
+	foreign get_edge_graph()
+	foreign get_face_graph()
+	foreign get_solid_graph()
+}
+
 foreign class HistGraph
 {
 	init() {}

@@ -5,7 +5,7 @@
 #include "BRepBuilder.h"
 #include "BRepHistory.h"
 
-#include "../breptopo_c/HistGraph.h"
+#include "../breptopo_c/HistMgr.h"
 
 #include <logger/logger.h>
 
@@ -30,18 +30,24 @@ namespace partgraph
 {
 
 std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint16_t op_id, 
-                                          breptopo::HistGraph* hg)
+                                          const std::shared_ptr<breptopo::HistMgr>& hm)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeBox mk_box(dx, dy, dz);
 
-        if (hg)
+        if (hm)
         {
-            auto type = trans_type(hg->GetType());
             auto old_shp = BRepBuilder::MakeCompound({});
-            BRepHistory hist(mk_box, type, mk_box.Shape(), old_shp->GetShape());
-            hg->Update(hist, op_id);
+            auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
+            {
+                auto type = trans_type(hg->GetType());
+                BRepHistory hist(mk_box, type, mk_box.Shape(), old_shp->GetShape());
+                hg->Update(hist, op_id);
+            };
+            upd_hist_graph(hm->GetEdgeGraph());
+            upd_hist_graph(hm->GetFaceGraph());
+            upd_hist_graph(hm->GetSolidGraph());
         }
 
         shape = std::make_shared<partgraph::TopoShape>(mk_box.Shape());

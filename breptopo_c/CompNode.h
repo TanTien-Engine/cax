@@ -8,12 +8,12 @@ namespace breptopo
 {
 
 class CompGraph;
-class HistGraph;
+class HistMgr;
 
 class CompNode
 {
 public:
-	virtual std::shared_ptr<CompVariant> Eval(CompGraph& cg, HistGraph& hg, int node_id) const = 0;
+	virtual std::shared_ptr<CompVariant> Eval(CompGraph& cg, const std::shared_ptr<HistMgr>& hm, int node_id) const = 0;
 
 	virtual std::shared_ptr<CompNode> Clone() const = 0;
 

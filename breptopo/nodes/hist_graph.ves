@@ -6,8 +6,8 @@ import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.dirty_types" for DIRTY_EDITOR
 import "graph.nodes.draw" for Draw
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "breptopo.variant" for VAR_HIST_GRAPH
-import "breptopo" for HistGraph as tt_HistGraph
+import "breptopo.variant" for VAR_HIST_GRAPH, VAR_HIST_MGR
+import "breptopo" for HistMgr
 
 class HistGraph is Node
 {
@@ -16,13 +16,13 @@ class HistGraph is Node
 		super.init()
 
 		this.exports = [
-			Pin(this, "graph", VAR_HIST_GRAPH),
+			Pin(this, "hist_mgr", VAR_HIST_MGR),
 			Pin(this, "selected", VAR_TYPE_ARRAY),
 		]
 
 		this.layout()
 
-		this.graph = nil
+		this.hist_mgr = nil
 
 		this.selected_shapes = []
 
@@ -31,12 +31,12 @@ class HistGraph is Node
 
 	calc_value(idx)
 	{
-		if (!this.graph) {
+		if (!this.hist_mgr) {
 			this.build_graph()
 		}
 
 		if (idx == 0) {
-			return Variant(VAR_HIST_GRAPH, this.graph)
+			return Variant(VAR_HIST_MGR, this.hist_mgr)
 		} else if (idx == 1) {
 			return Variant(this.selected_shapes)
 		}
@@ -44,9 +44,10 @@ class HistGraph is Node
 
 	build_graph()
 	{
-		this.graph = tt_HistGraph.init()
+		this.hist_mgr = HistMgr.init()
 
-		var graph = this.graph.get_hist_graph()
+		var face_graph = this.hist_mgr.get_face_graph()
+		var graph = face_graph.get_hist_graph()
 		Blueprint.connect(VariantProxy(Variant(VAR_HIST_GRAPH, graph)), "out", this.n_draw, "graph")
 	}
 

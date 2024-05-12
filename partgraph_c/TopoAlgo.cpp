@@ -4,7 +4,7 @@
 
 #include "BRepHistory.h"
 #include "BRepBuilder.h"
-#include "../breptopo_c/HistGraph.h"
+#include "../breptopo_c/HistMgr.h"
 
 // OCCT
 #include <BRepFilletAPI_MakeFillet.hxx>
@@ -85,7 +85,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& fac
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, 
-                                         uint16_t op_id, breptopo::HistGraph* hg)
+                                         uint16_t op_id, const std::shared_ptr<breptopo::HistMgr>& hm)
 {
     BRepAlgoAPI_Cut algo(s1->GetShape(), s2->GetShape());
     algo.Build();
@@ -97,13 +97,19 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         algo.DumpErrors(std::cout);
     }
 
-    if (hg)
+    if (hm)
     {
-        auto type = trans_type(hg->GetType());
         auto old_shp = BRepBuilder::MakeCompound({ s1, s2 });
         opencascade::handle<BRepTools_History> o_hist = algo.History();
-        BRepHistory hist(o_hist, type, algo.Shape(), *old_shp);
-        hg->Update(hist, op_id);
+        auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
+        {
+            auto type = trans_type(hg->GetType());
+            BRepHistory hist(o_hist, type, algo.Shape(), *old_shp);
+            hg->Update(hist, op_id);
+        };
+        upd_hist_graph(hm->GetEdgeGraph());
+        upd_hist_graph(hm->GetFaceGraph());
+        upd_hist_graph(hm->GetSolidGraph());
     }
 
     return std::make_shared<partgraph::TopoShape>(algo.Shape());
@@ -158,17 +164,23 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z, 
-                                               uint16_t op_id, breptopo::HistGraph* hg)
+                                               uint16_t op_id, const std::shared_ptr<breptopo::HistMgr>& hm)
 {
     gp_Trsf trsf; 
     trsf.SetTranslation(gp_Vec(x, y, z));
     auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
 
-    if (hg)
+    if (hm)
     {
-        auto type = trans_type(hg->GetType());
-        BRepHistory hist(trans, type, trans.Shape(), shape->GetShape());
-        hg->Update(hist, op_id);
+        auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
+        {
+            auto type = trans_type(hg->GetType());
+            BRepHistory hist(trans, type, trans.Shape(), shape->GetShape());
+            hg->Update(hist, op_id);
+        };
+        upd_hist_graph(hm->GetEdgeGraph());
+        upd_hist_graph(hm->GetFaceGraph());
+        upd_hist_graph(hm->GetSolidGraph());
     }
 
     return std::make_shared<partgraph::TopoShape>(trans.Shape());
@@ -224,20 +236,22 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid, 
-                                                 uint16_t op_id, breptopo::HistGraph* hg)
+                                                 uint16_t op_id, const std::shared_ptr<breptopo::HistMgr>& hm)
 {
     BRepOffset_MakeSimpleOffset builder;
     builder.Initialize(shape->GetShape(), offset);
     builder.SetBuildSolidFlag(is_solid);
     builder.Perform();
 
-    if (hg)
+    if (hm)
     {
         BRepHistory hist(builder, shape->GetShape());
-        hg->Update(hist, op_id);
+        //hm->GetEdgeGraph()->Update(hist, op_id);
+        hm->GetFaceGraph()->Update(hist, op_id);
+        //hm->GetSolidGraph()->Update(hist, op_id);
     }
 
     return std::make_shared<partgraph::TopoShape>(builder.GetResultShape());
 }
 
-}
+} 

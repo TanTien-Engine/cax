@@ -2,6 +2,7 @@
 #include "TopoGraphBuilder.h"
 #include "TopoGraph.h"
 #include "HistGraph.h"
+#include "HistMgr.h"
 #include "CompGraph.h"
 #include "NodeId.h"
 #include "NodeShape.h"
@@ -48,6 +49,58 @@ void w_TopoGraph_get_graph()
     ves_import_class("graph", "Graph");
     auto proxy = (tt::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<graph::Graph>));
     proxy->obj = tg->GetGraph();
+    ves_pop(1);
+}
+
+void w_HistMgr_allocate()
+{
+    auto proxy = (tt::Proxy<breptopo::HistMgr>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<breptopo::HistMgr>));
+    proxy->obj = std::make_shared<breptopo::HistMgr>();
+}
+
+int w_HistMgr_finalize(void* data)
+{
+    auto proxy = (tt::Proxy<breptopo::HistMgr>*)(data);
+    proxy->~Proxy();
+    return sizeof(tt::Proxy<breptopo::HistMgr>);
+}
+
+void w_HistMgr_get_edge_graph()
+{
+    auto hm = ((tt::Proxy<breptopo::HistMgr>*)ves_toforeign(0))->obj;
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("breptopo", "HistGraph");
+    auto proxy = (tt::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<breptopo::HistGraph>));
+    proxy->obj = hm->GetEdgeGraph();
+    ves_pop(1);
+}
+
+void w_HistMgr_get_face_graph()
+{
+    auto hm = ((tt::Proxy<breptopo::HistMgr>*)ves_toforeign(0))->obj;
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("breptopo", "HistGraph");
+    auto proxy = (tt::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<breptopo::HistGraph>));
+    proxy->obj = hm->GetFaceGraph();
+    ves_pop(1);
+}
+
+void w_HistMgr_get_solid_graph()
+{
+    auto hm = ((tt::Proxy<breptopo::HistMgr>*)ves_toforeign(0))->obj;
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("breptopo", "HistGraph");
+    auto proxy = (tt::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<breptopo::HistGraph>));
+    proxy->obj = hm->GetSolidGraph();
     ves_pop(1);
 }
 
@@ -176,14 +229,14 @@ void w_CompGraph_eval()
     auto node = cg->GetNode(node_idx);
     auto& cnode = node->GetComponent<breptopo::NodeComp>();
 
-    std::shared_ptr<breptopo::HistGraph> hg = nullptr;
+    std::shared_ptr<breptopo::HistMgr> hm = nullptr;
     auto v_hist = ves_toforeign(2);
     if (v_hist) {
-        hg = ((tt::Proxy<breptopo::HistGraph>*)v_hist)->obj;
+        hm = ((tt::Proxy<breptopo::HistMgr>*)v_hist)->obj;
     }
 
     int node_num = cg->GetGraph()->GetNodes().size();
-    auto cvar = cnode.GetCompNode()->Eval(*cg, *hg, node_idx);
+    auto cvar = cnode.GetCompNode()->Eval(*cg, hm, node_idx);
     if (!cvar) {
         return;
     }
@@ -436,6 +489,10 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 {
     if (strcmp(signature, "TopoGraph.get_graph()") == 0) return w_TopoGraph_get_graph;
 
+    if (strcmp(signature, "HistMgr.get_edge_graph()") == 0) return w_HistMgr_get_edge_graph;
+    if (strcmp(signature, "HistMgr.get_face_graph()") == 0) return w_HistMgr_get_face_graph;
+    if (strcmp(signature, "HistMgr.get_solid_graph()") == 0) return w_HistMgr_get_solid_graph;
+
     if (strcmp(signature, "HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
     if (strcmp(signature, "HistGraph.get_next_op_id()") == 0) return w_HistGraph_get_next_op_id;
     if (strcmp(signature, "HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
@@ -465,6 +522,13 @@ void BrepTopoBindClass(const char* class_name, VesselForeignClassMethods* method
     {
         methods->allocate = w_TopoGraph_allocate;
         methods->finalize = w_TopoGraph_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "HistMgr") == 0)
+    {
+        methods->allocate = w_HistMgr_allocate;
+        methods->finalize = w_HistMgr_finalize;
         return;
     }
 
