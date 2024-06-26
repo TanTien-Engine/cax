@@ -28,7 +28,25 @@ class Box is Node
 
 		this.layout()
 
+		// compute graph
+		this.graph = nil
+		this.i_length = -1
+		this.i_width = -1
+		this.i_height = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+
+		var length = NodeHelper.calc_prop_value(this, "length")
+		var width  = NodeHelper.calc_prop_value(this, "width")
+		var height = NodeHelper.calc_prop_value(this, "height")
+		this.graph.update_number_node(this.i_length, length)
+		this.graph.update_number_node(this.i_width, width)
+		this.graph.update_number_node(this.i_height, height)
 	}
 
 	calc_value(idx)
@@ -60,6 +78,11 @@ class Box is Node
 		var i_length = G.add_number_node(length, "length")
 		var i_width  = G.add_number_node(width, "width")
 		var i_height = G.add_number_node(height, "height")
+
+		this.graph = G
+		this.i_length = i_length
+		this.i_width = i_width
+		this.i_height = i_height
 
 		return G.add_box_node(i_length, i_height, i_width)
 	}

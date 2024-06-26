@@ -301,18 +301,6 @@ void w_CompGraph_eval()
     }
 }
 
-void w_CompGraph_update()
-{
-    auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
-
-    int node_idx = (int)ves_tonumber(1);
-    double val = ves_tonumber(2);
-
-    auto node = cg->GetNode(node_idx);
-    auto& cnode = node->GetComponent<breptopo::NodeComp>();
-    std::static_pointer_cast<breptopo::NodeNumber>(cnode.GetCompNode())->SetValue(val);
-}
-
 void w_CompGraph_add_integer_node()
 {
     auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
@@ -480,6 +468,68 @@ void w_CompGraph_add_merge_node()
     ves_set_number(0, id);
 }
 
+void w_CompGraph_update_integer_node()
+{
+    auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+    int val = (int)ves_tonumber(2);
+
+    auto node = cg->GetNode(node_idx);
+    auto& cnode = node->GetComponent<breptopo::NodeComp>();
+    std::static_pointer_cast<breptopo::NodeInteger>(cnode.GetCompNode())->SetValue(val);
+}
+
+void w_CompGraph_update_number_node()
+{
+    auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+    float val = (float)ves_tonumber(2);
+
+    auto node = cg->GetNode(node_idx);
+    auto& cnode = node->GetComponent<breptopo::NodeComp>();
+    std::static_pointer_cast<breptopo::NodeNumber>(cnode.GetCompNode())->SetValue(val);
+}
+
+void w_CompGraph_update_number3_node()
+{
+    auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+    double x = ves_tonumber(2);
+    double y = ves_tonumber(3);
+    double z = ves_tonumber(4);
+
+    auto node = cg->GetNode(node_idx);
+    auto& cnode = node->GetComponent<breptopo::NodeComp>();
+    std::static_pointer_cast<breptopo::NodeNumber3>(cnode.GetCompNode())->SetValue(sm::vec3(x, y, z));
+}
+
+void w_CompGraph_update_boolean_node()
+{
+    auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+    bool val = ves_toboolean(2);
+
+    auto node = cg->GetNode(node_idx);
+    auto& cnode = node->GetComponent<breptopo::NodeComp>();
+    std::static_pointer_cast<breptopo::NodeBoolean>(cnode.GetCompNode())->SetValue(val);
+}
+
+void w_CompGraph_update_shape_node()
+{
+    auto cg = ((tt::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+    auto shape = ((tt::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+
+    auto node = cg->GetNode(node_idx);
+    auto& cnode = node->GetComponent<breptopo::NodeComp>();
+    std::static_pointer_cast<breptopo::NodeTopoShape>(cnode.GetCompNode())->SetValue(shape);
+}
+
 }
 
 namespace breptopo
@@ -500,7 +550,6 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
     if (strcmp(signature, "CompGraph.eval(_,_)") == 0) return w_CompGraph_eval;
-    if (strcmp(signature, "CompGraph.update(_,_)") == 0) return w_CompGraph_update;
     if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
     if (strcmp(signature, "CompGraph.add_number_node(_,_)") == 0) return w_CompGraph_add_number_node;
     if (strcmp(signature, "CompGraph.add_number3_node(_,_,_,_)") == 0) return w_CompGraph_add_number3_node;
@@ -512,6 +561,11 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "CompGraph.add_cut_node(_,_)") == 0) return w_CompGraph_add_cut_node;
     if (strcmp(signature, "CompGraph.add_selector_node(_,_)") == 0) return w_CompGraph_add_selector_node;
     if (strcmp(signature, "CompGraph.add_merge_node(_)") == 0) return w_CompGraph_add_merge_node;
+    if (strcmp(signature, "CompGraph.update_integer_node(_,_)") == 0) return w_CompGraph_update_integer_node;
+    if (strcmp(signature, "CompGraph.update_number_node(_,_)") == 0) return w_CompGraph_update_number_node;
+    if (strcmp(signature, "CompGraph.update_number3_node(_,_,_,_)") == 0) return w_CompGraph_update_number3_node;
+    if (strcmp(signature, "CompGraph.update_boolean_node(_,_)") == 0) return w_CompGraph_update_boolean_node;
+    if (strcmp(signature, "CompGraph.update_shape_node(_,_)") == 0) return w_CompGraph_update_shape_node;
 
     return nullptr;
 }

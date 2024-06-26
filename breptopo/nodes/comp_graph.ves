@@ -3,6 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for VAR_TYPE_ANY, Variant
 import "blueprint.variant_proxy" for VariantProxy
+import "blueprint.dirty_types" for DIRTY_CONNECTION, DIRTY_GUI
 import "graph.nodes.draw" for Draw
 import "partgraph.node_helper" for NodeHelper
 import "logger.logger" for Logger
@@ -33,6 +34,8 @@ class CompGraph is Node
 		this.graph = nil
 		this.node_idx = -1
 
+		this.compiler = nil
+
 		this.n_draw = Draw()
 	}
 
@@ -40,9 +43,17 @@ class CompGraph is Node
 	{
 		super.on_pin_dirty(pin, type, msg)
 
-		if (type == "dirty_graph")
+		if (type == DIRTY_CONNECTION)
 		{
-			this.graph.update(msg[0], msg[1])
+			// msg is conn
+			if (this.compiler)
+			{
+				this.compile_graph_partial(msg.from.node)
+			}
+		}
+		else if (type == DIRTY_GUI)
+		{
+			// reuse graph
 		}
 		else
 		{
@@ -98,15 +109,15 @@ class CompGraph is Node
 
 	compile_graph_recursion()
 	{
-		var compiler = Compiler(this.graph)
-		compiler.recursion = true
-		this.node_idx = NodeHelper.compile_graph(this, 0, compiler)
+		this.compiler = Compiler(this.graph)
+		this.compiler.recursion = true
+		this.node_idx = NodeHelper.compile_graph(this, 0, this.compiler)
 	}
 
 	compile_graph_no_recursion()
 	{
-		var compiler = Compiler(this.graph)
-		compiler.recursion = false
+		this.compiler = Compiler(this.graph)
+		this.compiler.recursion = false
 
 		var t_node = Blueprint.get_input_node(this, 0)
 		var prev_nodes = Blueprint.get_precursor_nodes(t_node)
@@ -115,12 +126,42 @@ class CompGraph is Node
 		{
 			if (node.has_method("compile_graph(_,_)")) 
 			{
-				var id = node.compile_graph(compiler, 0)
+				var id = node.compile_graph(this.compiler, 0)
 				var key = "%(node.to_pointer())_0"
-				compiler.evaluated[key] = id
+				this.compiler.evaluated[key] = id
 				this.node_idx = id
 			}
 		}
+	}
+
+	compile_graph_partial(start_node)
+	{
+		var t_node = Blueprint.get_input_node(this, 0)
+		var prev_nodes = Blueprint.get_precursor_nodes(t_node)
+		var sorted_nodes = Blueprint.topo_sort(prev_nodes)
+		var start = false
+
+		for (var node in sorted_nodes)
+		{
+			if (node == start_node)
+			{
+				start = true
+
+				var graph = this.graph.get_graph()
+				var key = "%(node.to_pointer())_0"
+				graph.clear_edges(this.compiler.evaluated[key])
+			}
+			else if (start and node.has_method("compile_graph(_,_)")) 
+			{
+				var id = node.compile_graph(this.compiler, 0)
+				var key = "%(node.to_pointer())_0"
+				this.compiler.evaluated[key] = id
+				this.node_idx = id
+			}
+		}
+
+		var graph = this.graph.get_graph()
+		GraphTools.layout(graph, "hierarchy")
 	}
 
 	draw(mt, cam_mt)

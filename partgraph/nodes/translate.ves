@@ -27,7 +27,19 @@ class Translate is Node
 
 		this.layout()
 
+		// compute graph
+		this.graph = nil
+		this.i_offset = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+
+		var offset = NodeHelper.calc_prop_value(this, "offset")
+		this.graph.update_number3_node(this.i_offset, offset.x, offset.z, offset.y)
 	}
 
 	calc_value(idx)
@@ -58,6 +70,9 @@ class Translate is Node
 
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var i_offset = G.add_number3_node(offset.x, offset.z, offset.y, "offset")
+
+		this.graph = G
+		this.i_offset = i_offset
 
 		return G.add_translate_node(i_shp, i_offset)
 	}

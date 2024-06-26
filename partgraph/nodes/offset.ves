@@ -28,28 +28,23 @@ class Offset is Node
 
 		this.layout()
 
-		this.op_id = []
+		// compute graph
+		this.graph = nil
+		this.i_offset = -1
+		this.i_is_solid = -1
 
-		this.offset_idx = nil
+		this.op_id = []
 	}
 
 	on_param_dirty()
 	{
-		//super.on_param_dirty()
+		super.on_param_dirty()
 
-		var update_graph = true
-		if (update_graph)
-		{
-			var msg = []
-			msg.add(this.offset_idx)
-			var offset = NodeHelper.calc_prop_value(this, "offset")
-			msg.add(offset)
-			Blueprint.send_pin_dirty_root(this.exports[0], "dirty_graph", msg)
-		}
-		else
-		{
-			super.on_param_dirty()
-		}
+		var offset = NodeHelper.calc_prop_value(this, "offset")
+		this.graph.update_number_node(this.i_offset, offset)
+
+		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
+		this.graph.update_boolean_node(this.i_is_solid, is_solid)
 	}
 
 	calc_value(idx)
@@ -117,7 +112,9 @@ class Offset is Node
 		var i_offset = G.add_number_node(offset, "offset")
 		var i_is_solid = G.add_boolean_node(is_solid, "is_solid")
 
-		this.offset_idx = i_offset
+		this.graph = G
+		this.i_offset = i_offset
+		this.i_is_solid = i_is_solid
 
 		return G.add_offset_node(i_shape, i_offset, i_is_solid)
 	}

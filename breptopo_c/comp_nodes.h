@@ -23,6 +23,8 @@ public:
 		return std::make_shared<NodeInteger>(m_val);
 	}
 
+	void SetValue(int val) { m_val = val; }
+
 private:
 	int m_val = 0;
 
@@ -65,6 +67,8 @@ public:
 		return std::make_shared<NodeNumber3>(m_val);
 	}
 
+	void SetValue(const sm::vec3& val) { m_val = val; }
+
 private:
 	sm::vec3 m_val;
 
@@ -85,6 +89,8 @@ public:
 		return std::make_shared<NodeBoolean>(m_val);
 	}
 
+	void SetValue(bool val) { m_val = val; }
+
 private:
 	bool m_val = false;
 
@@ -104,6 +110,8 @@ public:
 	{
 		return std::make_shared<NodeTopoShape>(m_val);
 	}
+
+	void SetValue(const std::shared_ptr<partgraph::TopoShape>& val) { m_val = val; }
 
 private:
 	std::shared_ptr<partgraph::TopoShape> m_val = nullptr;
