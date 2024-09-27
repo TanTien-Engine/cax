@@ -65,7 +65,8 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			new_gid.push_back(gid);
 
 			//auto node = std::make_shared<graph::Node>(i - 1);
-			auto node = std::make_shared<graph::Node>(static_cast<int>(gid));
+			auto node = std::make_shared<graph::Node>();
+			node->SetValue(static_cast<int>(gid));
 
 			auto shape = TransShape(new_map(i));
 			node->AddComponent<NodeShape>(shape);
@@ -108,7 +109,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			for (auto itr = range.first; itr != range.second; ++itr)
 			{
 				auto t_node = m_graph->GetNodes()[itr->second];
-				if (t_node->GetId() == -1) 
+				if (t_node->GetValue() == -1)
 				{
 					exists = true;
 					break;
@@ -225,7 +226,9 @@ void HistGraph::InitDelNode()
 {
 	m_del_node_idx = m_graph->GetNodes().size();
 
-	m_del_node = std::make_shared<graph::Node>(-1);
+	m_del_node = std::make_shared<graph::Node>();
+	m_del_node->SetValue(-1);
+
 	m_graph->AddNode(m_del_node);
 }
 

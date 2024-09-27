@@ -18,7 +18,8 @@ CompGraph::CompGraph()
 int CompGraph::AddNode(const std::shared_ptr<CompNode>& cnode, const std::string& desc)
 {
 	int idx = static_cast<int>(m_graph->GetNodes().size());
-	auto node = std::make_shared<graph::Node>(idx);
+	auto node = std::make_shared<graph::Node>();
+	node->SetValue(idx);
 
 	uint16_t op_id = CalcOpId(idx, 0);
 	cnode->SetOpId(op_id);

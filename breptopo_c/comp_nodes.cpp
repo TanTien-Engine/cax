@@ -37,7 +37,7 @@ calc_output_val(int pin, breptopo::CompGraph& cg, const std::shared_ptr<breptopo
 
 	auto node = cg.GetNode(pin);
 	auto& c_comp = node->GetComponent<breptopo::NodeComp>();
-	return c_comp.GetCompNode()->Eval(cg, hm, node->GetId());
+	return c_comp.GetCompNode()->Eval(cg, hm, node->GetValue());
 }
 
 void flatten_vars(const std::shared_ptr<breptopo::CompVariant>& src, std::vector<std::shared_ptr<breptopo::CompVariant>>& dst, int type)
@@ -374,7 +374,7 @@ void NodeSelector::UpdateGraph(CompGraph& cg, int node_id, const std::vector<std
 			auto& conns = src_node->GetConnects();
 			for (auto conn : conns)
 			{
-				int id = conn->GetId();
+				int id = conn->GetValue();
 				if (id == node_id) {
 					continue;
 				}
