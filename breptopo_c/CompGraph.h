@@ -23,7 +23,7 @@ public:
 
 	size_t GetNodesNum() const;
 
-	std::shared_ptr<graph::Node> GetNode(size_t idx) const;
+	const std::shared_ptr<graph::Node> GetNode(size_t idx) const;
 
 	uint16_t CalcOpId(int op_id, int sub_op_id) const;
 

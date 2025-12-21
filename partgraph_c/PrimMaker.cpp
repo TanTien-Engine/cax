@@ -41,6 +41,9 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint1
             auto old_shp = BRepBuilder::MakeCompound({});
             auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
             {
+                if (!hg) {
+                    return;
+                }
                 auto type = trans_type(hg->GetType());
                 BRepHistory hist(mk_box, type, mk_box.Shape(), old_shp->GetShape());
                 hg->Update(hist, op_id);

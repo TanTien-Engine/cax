@@ -7,6 +7,7 @@
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
+#include <graph/Edge.h>
 #include <graph/GraphLayout.h>
 
 #include <TopoDS.hxx>
@@ -61,7 +62,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 		auto itr = m_uid2gid.find(uid);
 		if (itr == m_uid2gid.end())
 		{
-			size_t gid = m_graph->GetNodes().size();
+			size_t gid = m_graph->GetNodesNum();
 			new_gid.push_back(gid);
 
 			//auto node = std::make_shared<graph::Node>(i - 1);
@@ -86,7 +87,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			size_t gid = itr->second;
 			new_gid.push_back(gid);
 
-			auto node = m_graph->GetNodes()[gid];
+			auto node = m_graph->GetNode(gid);
 
 			auto shape = TransShape(new_map(i));
 			node->GetComponent<NodeShape>().SetShape(shape);
@@ -104,12 +105,11 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			m_curr_shapes.UnBind(old_map(itr.first + 1));
 
 			bool exists = false;
-			auto& edges = m_graph->GetEdges();
-			auto range = edges.equal_range(f_gid);
-			for (auto itr = range.first; itr != range.second; ++itr)
+			auto node = m_graph->GetNode(f_gid);
+			for (auto edge : node->GetEdges())
 			{
-				auto t_node = m_graph->GetNodes()[itr->second];
-				if (t_node->GetValue() == -1)
+				auto other = edge->GetFromNode() == node.get() ? edge->GetToNode() : edge->GetFromNode();
+				if (other->GetValue() == -1)
 				{
 					exists = true;
 					break;
@@ -136,7 +136,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 	{
 		const size_t f_gid = old_gid[itr.first];
 
-		auto node = m_graph->GetNodes()[f_gid];
+		auto node = m_graph->GetNode(f_gid);
 		auto& cflags = node->GetComponent<NodeFlags>();
 		cflags.SetActive(false);
 
@@ -144,7 +144,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 		{
 			const size_t t_gid = new_gid[itr_to];
 
-			auto node = m_graph->GetNodes()[t_gid];
+			auto node = m_graph->GetNode(t_gid);
 			auto& cflags = node->GetComponent<NodeFlags>();
 			cflags.SetActive(true);
 		}
@@ -153,11 +153,11 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 	graph::GraphLayout::OptimalHierarchy(*m_graph);
 }
 
-std::shared_ptr<graph::Node> HistGraph::
-QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
+const std::shared_ptr<graph::Node> 
+HistGraph::QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
 {
 	size_t gid = m_curr_shapes.Find(shape->GetShape());
-	return m_graph->GetNodes()[gid];
+	return m_graph->GetNode(gid);
 }
 
 bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const
@@ -168,7 +168,7 @@ bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node
 
 	size_t gid = itr->second;
 
-	auto node = m_graph->GetNodes()[gid];
+	auto node = m_graph->GetNode(gid);
 	auto& cflags = node->GetComponent<NodeFlags>();
 	if (cflags.IsActive())
 	{
@@ -182,25 +182,34 @@ bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node
 	{
 		auto pid = buf.front(); buf.pop();
 
-		auto& edges = m_graph->GetEdges();
-		auto range = edges.equal_range(pid);
+		auto node = m_graph->GetNode(pid);
 		std::vector<size_t> cids;
 		std::vector<std::shared_ptr<graph::Node>> cnodes;
-		for (auto itr = range.first; itr != range.second; ++itr)
+		for (auto edge : node->GetEdges())
 		{
-			auto cid = itr->second;
-			auto c_node = m_graph->GetNodes()[cid];
+			auto other = edge->GetFromNode() == node.get() ? edge->GetToNode() : edge->GetFromNode();
+			auto c_node = other;
 
 			// w_CompGraph_add_*_node
 			if (!c_node->HasComponent<NodeFlags>()) {
 				continue;
 			}
 
+			int cid = -1;
+			for (int i = 0; i < m_graph->GetNodesNum(); ++i)
+			{
+				if (m_graph->GetNode(i).get() == c_node)
+				{
+					cid = i;
+					break;
+				}
+			}
+
 			auto& cflags = c_node->GetComponent<NodeFlags>();
 			if (!cflags.IsActive()) {
 				cids.push_back(cid);
 			} else {
-				cnodes.push_back(c_node);
+				cnodes.push_back(m_graph->GetNode(cid));
 			}
 		}
 
@@ -224,12 +233,13 @@ bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node
 
 void HistGraph::InitDelNode()
 {
-	m_del_node_idx = m_graph->GetNodes().size();
+	m_del_node_idx = m_graph->GetNodesNum();
 
-	m_del_node = std::make_shared<graph::Node>();
-	m_del_node->SetValue(-1);
+	auto del_node = std::make_shared<graph::Node>();
+	del_node->SetValue(-1);
 
-	m_graph->AddNode(m_del_node);
+	m_del_node = del_node.get();
+	m_graph->AddNode(del_node);
 }
 
 std::shared_ptr<partgraph::TopoShape> 

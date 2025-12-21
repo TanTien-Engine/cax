@@ -22,6 +22,9 @@ public:
 	void SetOpId(int op_id) { m_op_id = op_id; }
 	int GetOpId() const { return m_op_id; }
 
+protected:
+	//mutable std::shared_ptr<CompVariant> m_cached = nullptr;
+
 private:
 	int m_op_id = -1;
 

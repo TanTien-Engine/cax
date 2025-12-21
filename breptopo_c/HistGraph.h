@@ -30,7 +30,7 @@ public:
 	uint16_t NextOpId();
 	void Update(const partgraph::BRepHistory& hist, uint16_t op_id);
 
-	std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
+	const std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
 	bool QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const;
 
 	auto GetGraph() { return m_graph; }
@@ -55,7 +55,7 @@ private:
 	std::map<uint32_t, size_t> m_uid2gid;
 
 	size_t m_del_node_idx;
-	std::shared_ptr<graph::Node> m_del_node;
+	const graph::Node* m_del_node;
 
 }; // HistGraph
 

@@ -194,9 +194,9 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoDS_Shape& shap
     }
     else
     {
-        //auto algo = std::make_unique<BRepMesh_IncrementalMesh>();
-        //algo->SetShape(shape);
-        //algo->Perform();
+        auto algo = std::make_unique<BRepMesh_IncrementalMesh>();
+        algo->SetShape(shape);
+        algo->Perform();
 
         TriangulationFaces(shape, vertices);
     }

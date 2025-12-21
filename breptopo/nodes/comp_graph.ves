@@ -76,6 +76,11 @@ class CompGraph is Node
 
 	return_value(val)
 	{
+		if (!val)
+		{
+			return nil
+		}
+
 		if (val is List)
 		{
 			var array = []

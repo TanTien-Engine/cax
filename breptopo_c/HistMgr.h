@@ -17,6 +17,8 @@ public:
 	auto GetSolidGraph() const { return m_solid_hg; }
 
 private:
+	//std::shared_ptr<graph::Graph> m_graph;
+
 	std::shared_ptr<HistGraph> m_edge_hg;
 	std::shared_ptr<HistGraph> m_face_hg;
 	std::shared_ptr<HistGraph> m_solid_hg;

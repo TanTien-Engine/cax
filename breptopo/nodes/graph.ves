@@ -161,7 +161,7 @@ class Graph is Node
 			this.edit_nodes.list.add(Variant(VAR_TYPE_NUMBER2, Vector2(x, y)))
 		}
 
-		this.rebuild_edge_drawable(graph)
+		//this.rebuild_edge_drawable(graph)
 	}
 
 	rebuild_edge_drawable(graph)
@@ -169,14 +169,14 @@ class Graph is Node
 		this.edit_edges.list.clear()
 
 		var edges = graph.get_edges()
-		for (var i in 0 .. edges.count / 2)
+		for (var edge in edges)
 		{
-			var n0 = this.edit_nodes.list[edges[i* 2]].value
-			var n1 = this.edit_nodes.list[edges[i* 2 + 1]].value
+			var fpos = edge.get_fpos()			
+			var tpos = edge.get_tpos()
 
 			var geo = VarGeo()
 			geo.shape = Line.init()
-			geo.shape.set(n0.x, n0.y, n1.x, n1.y)
+			geo.shape.set(fpos["x"], fpos["y"], tpos["x"], tpos["y"])
 			this.edit_edges.list.add(Variant(VAR_TYPE_GEO, geo))
 		}
 	}

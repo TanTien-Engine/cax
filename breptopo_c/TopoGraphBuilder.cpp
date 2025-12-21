@@ -69,7 +69,7 @@ void TopoGraphBuilder::AddShapeToGraph(const std::shared_ptr<partgraph::TopoShap
         }
     }
 
-    const size_t offset_idx = graph->GetNodes().size();
+    const size_t offset_idx = graph->GetNodesNum();
 
     for (size_t i = 0, n = adjacency.size(); i < n; ++i) 
     {

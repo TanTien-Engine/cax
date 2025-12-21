@@ -91,6 +91,10 @@ std::shared_ptr<CompVariant> NodeBox::Eval(CompGraph& cg, const std::shared_ptr<
 
 std::shared_ptr<CompVariant> NodeTranslate::Eval(CompGraph& cg, const std::shared_ptr<HistMgr>& hm, int node_id) const
 {
+	//if (m_cached) {
+	//	return m_cached;
+	//}
+
 	auto v_shape = calc_output_val(m_shape, cg, hm);
 	auto v_offset = calc_output_val(m_offset, cg, hm);
 
@@ -109,8 +113,10 @@ std::shared_ptr<CompVariant> NodeTranslate::Eval(CompGraph& cg, const std::share
 	}
 
 	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
-	auto dst = partgraph::TopoAlgo::Translate(src, offset.x, offset.y, offset.z, op_id, hm);
-	return std::make_shared<VarShape>(dst);
+	auto shp = partgraph::TopoAlgo::Translate(src, offset.x, offset.y, offset.z, op_id, hm);
+	auto var = std::make_shared<VarShape>(shp);
+	//m_cached = var;
+	return var;
 }
 
 std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, const std::shared_ptr<HistMgr>& hm, int node_id) const
@@ -216,18 +222,19 @@ void NodeOffset::Update(const CompGraph& cg, int node_id)
 {
 	std::vector<size_t> nodes;
 
-	auto& all_nodes = cg.GetGraph()->GetNodes();
+	//auto& all_nodes = cg.GetGraph()->GetNodes();
 
 	auto& edges = cg.GetGraph()->GetEdges();
 	for (auto edge : edges)
 	{
-		if (edge.second == node_id && all_nodes[edge.first])
+		auto node = cg.GetGraph()->GetNode(edge.first.first);
+		if (edge.first.second == node_id && node)
 		{
-			auto& cncomp = all_nodes[edge.first]->GetComponent<NodeComp>();
+			auto& cncomp = node->GetComponent<NodeComp>();
 			auto shp_val = std::dynamic_pointer_cast<NodeShapeValue>(cncomp.GetCompNode());
 			if (shp_val)
 			{
-				m_shape = static_cast<int>(edge.first);
+				m_shape = static_cast<int>(edge.first.first);
 				break;
 			}
 		}
@@ -236,9 +243,13 @@ void NodeOffset::Update(const CompGraph& cg, int node_id)
 
 std::shared_ptr<CompVariant> NodeCut::Eval(CompGraph& cg, const std::shared_ptr<HistMgr>& hm, int node_id) const
 {
+	//if (m_cached) {
+	//	return m_cached;
+	//}
+
 	auto v_shp1 = calc_output_val(m_shp1, cg, hm);
 	auto v_shp2 = calc_output_val(m_shp2, cg, hm);
-
+	
 	std::shared_ptr<partgraph::TopoShape> shp1, shp2;
 	if (v_shp1)
 	{
@@ -252,8 +263,10 @@ std::shared_ptr<CompVariant> NodeCut::Eval(CompGraph& cg, const std::shared_ptr<
 	}
 
 	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
-	auto dst = partgraph::TopoAlgo::Cut(shp1, shp2, op_id, hm);
-	return std::make_shared<VarShape>(dst);
+	auto shp = partgraph::TopoAlgo::Cut(shp1, shp2, op_id, hm);
+	auto var = std::make_shared<VarShape>(shp);
+	//m_cached = var;
+	return var;
 }
 
 std::shared_ptr<CompVariant> NodeSelector::Eval(CompGraph& cg, const std::shared_ptr<HistMgr>& hm, int node_id) const
@@ -300,170 +313,169 @@ std::shared_ptr<CompVariant> NodeSelector::Eval(CompGraph& cg, const std::shared
 
 void NodeSelector::UpdateGraph(CompGraph& cg, int node_id, const std::vector<std::shared_ptr<graph::Node>>& nodes) const
 {
-	auto G = cg.GetGraph();
-	auto& edges = G->GetEdges();
-	auto range = edges.equal_range(node_id);
-
-	// already connected shapes
-	std::set<std::shared_ptr<partgraph::TopoShape>> exists;
-	auto& all_nodes = G->GetNodes();
-	for (auto itr = range.first; itr != range.second; ++itr) 
-	{
-		assert(itr->second < all_nodes.size());
-		auto node = all_nodes[itr->second];
-		auto& cncomp = node->GetComponent<NodeComp>();
-		auto shp_val = std::dynamic_pointer_cast<NodeShapeValue>(cncomp.GetCompNode());
-		if (shp_val)
-		{
-			exists.insert(shp_val->GetShape());
-		}
-	}
-
-	// if need update
-	if (nodes.size() == exists.size())
-	{
-		bool need_update = false;
-		for (auto node : nodes)
-		{
-			auto shp = node->GetComponent<NodeShape>().GetShape();
-			if (exists.find(shp) == exists.end())
-			{
-				need_update = true;
-				break;
-			}
-		}
-		if (!need_update)
-		{
-			return;
-		}
-	}
-
-	std::vector<int> out_nodes;
-	for (auto itr = range.first; itr != range.second; ++itr) 
-	{
-		out_nodes.push_back(static_cast<int>(itr->second));
-	}
-
-	std::set<int> update_nodes;
-
-	for (auto node : nodes)
-	{
-		auto shp = node->GetComponent<NodeShape>().GetShape();
-		auto node_shp = std::make_shared<NodeShapeValue>(shp);
-		int shp_node_id = cg.AddNode(node_shp, "shp_val");
-		cg.AddEdge(node_id, shp_node_id);
-
-#ifdef COPY_OUTPUT
-		for (auto src_node_idx : out_nodes)
-		{
-			auto& src_node = all_nodes[src_node_idx];
-
-			auto& src_c_comp = src_node->GetComponent<breptopo::NodeComp>();
-			auto& src_c_info = src_node->GetComponent<breptopo::NodeInfo>();
-	
-			auto dst_c_comp = src_c_comp.GetCompNode()->Clone();
-			auto dst_node = cg.AddNode(dst_c_comp, src_c_info.GetDesc());
-
-			// copy conns
-			std::set<int> out_conns;
-			auto range = cg.GetGraph()->GetEdges().equal_range(src_node_idx);
-			for (auto itr = range.first; itr != range.second; ++itr)
-			{
-				out_conns.insert(static_cast<int>(itr->second));
-			}
-			auto& conns = src_node->GetConnects();
-			for (auto conn : conns)
-			{
-				int id = conn->GetValue();
-				if (id == node_id) {
-					continue;
-				}
-
-				if (out_conns.find(id) != out_conns.end())
-				{
-					cg.AddEdge(dst_node, id);
-					update_nodes.insert(id);
-				}
-				else
-				{
-					cg.AddEdge(id, dst_node);
-				}
-			}
-
-			cg.AddEdge(shp_node_id, /*ori_out_node*/dst_node);
-
-			dst_c_comp->Update(cg, dst_node);
-		} 
-#else
-		for (auto src_node_idx : out_nodes)
-		{
-			cg.AddEdge(shp_node_id, src_node_idx);
-		}
-#endif // COPY_OUTPUT
-	}
-
-	for (auto out_node : out_nodes)
-	{
-		cg.RemoveEdge(node_id, out_node);
-#ifdef COPY_OUTPUT
-		cg.RemoveNode(out_node);
-#endif // COPY_OUTPUT
-	}
-
-	for (auto node : update_nodes)
-	{
-		auto& src_node = all_nodes[node];
-		auto& src_c_comp = src_node->GetComponent<breptopo::NodeComp>();
-		src_c_comp.GetCompNode()->Update(cg, node);
-	}
+//	auto G = cg.GetGraph();
+//	auto& edges = G->GetEdges();
+//	auto range = edges.equal_range(node_id);
+//
+//	// already connected shapes
+//	std::set<std::shared_ptr<partgraph::TopoShape>> exists;
+//	for (auto itr = range.first; itr != range.second; ++itr) 
+//	{
+//		assert(itr->second < G->GetNodesNum());
+//		auto node = G->GetNode(itr->second);
+//		auto& cncomp = node->GetComponent<NodeComp>();
+//		auto shp_val = std::dynamic_pointer_cast<NodeShapeValue>(cncomp.GetCompNode());
+//		if (shp_val)
+//		{
+//			exists.insert(shp_val->GetShape());
+//		}
+//	}
+//
+//	// if need update
+//	if (nodes.size() == exists.size())
+//	{
+//		bool need_update = false;
+//		for (auto node : nodes)
+//		{
+//			auto shp = node->GetComponent<NodeShape>().GetShape();
+//			if (exists.find(shp) == exists.end())
+//			{
+//				need_update = true;
+//				break;
+//			}
+//		}
+//		if (!need_update)
+//		{
+//			return;
+//		}
+//	}
+//
+//	std::vector<int> out_nodes;
+//	for (auto itr = range.first; itr != range.second; ++itr) 
+//	{
+//		out_nodes.push_back(static_cast<int>(itr->second));
+//	}
+//
+//	std::set<int> update_nodes;
+//
+//	for (auto node : nodes)
+//	{
+//		auto shp = node->GetComponent<NodeShape>().GetShape();
+//		auto node_shp = std::make_shared<NodeShapeValue>(shp);
+//		int shp_node_id = cg.AddNode(node_shp, "shp_val");
+//		cg.AddEdge(node_id, shp_node_id);
+//
+//#ifdef COPY_OUTPUT
+//		for (auto src_node_idx : out_nodes)
+//		{
+//			auto src_node = G->GetNode(src_node_idx);
+//
+//			auto& src_c_comp = src_node->GetComponent<breptopo::NodeComp>();
+//			auto& src_c_info = src_node->GetComponent<breptopo::NodeInfo>();
+//	
+//			auto dst_c_comp = src_c_comp.GetCompNode()->Clone();
+//			auto dst_node = cg.AddNode(dst_c_comp, src_c_info.GetDesc());
+//
+//			// copy conns
+//			std::set<int> out_conns;
+//			auto range = cg.GetGraph()->GetEdges().equal_range(src_node_idx);
+//			for (auto itr = range.first; itr != range.second; ++itr)
+//			{
+//				out_conns.insert(static_cast<int>(itr->second));
+//			}
+//			auto& conns = src_node->GetConnects();
+//			for (auto conn : conns)
+//			{
+//				int id = conn->GetValue();
+//				if (id == node_id) {
+//					continue;
+//				}
+//
+//				if (out_conns.find(id) != out_conns.end())
+//				{
+//					cg.AddEdge(dst_node, id);
+//					update_nodes.insert(id);
+//				}
+//				else
+//				{
+//					cg.AddEdge(id, dst_node);
+//				}
+//			}
+//
+//			cg.AddEdge(shp_node_id, /*ori_out_node*/dst_node);
+//
+//			dst_c_comp->Update(cg, dst_node);
+//		} 
+//#else
+//		for (auto src_node_idx : out_nodes)
+//		{
+//			cg.AddEdge(shp_node_id, src_node_idx);
+//		}
+//#endif // COPY_OUTPUT
+//	}
+//
+//	for (auto out_node : out_nodes)
+//	{
+//		cg.RemoveEdge(node_id, out_node);
+//#ifdef COPY_OUTPUT
+//		cg.RemoveNode(out_node);
+//#endif // COPY_OUTPUT
+//	}
+//
+//	for (auto node : update_nodes)
+//	{
+//		auto src_node = G->GetNode(node);
+//		auto& src_c_comp = src_node->GetComponent<breptopo::NodeComp>();
+//		src_c_comp.GetCompNode()->Update(cg, node);
+//	}
 }
 
 std::shared_ptr<CompVariant> NodeMerge::Eval(CompGraph& cg, const std::shared_ptr<HistMgr>& hm, int node_id) const
 {
-	auto& edges = cg.GetGraph()->GetEdges();
-	auto range = edges.equal_range(node_id);
+	//auto& edges = cg.GetGraph()->GetEdges();
+	//auto range = edges.equal_range(node_id);
 
-	std::vector<std::shared_ptr<breptopo::CompVariant>> vals;
-	for (auto node : m_nodes) 
-	{
-		auto val = calc_output_val(static_cast<int>(node), cg, hm);
-		if (val) {
-			vals.push_back(val);
-		}
-	}
-	if (vals.size() == 0)
-	{
-		return nullptr;
-	}
-	else if (vals.size() == 1)
-	{
-		return vals[0];
-	}
-	else
-	{
-		return std::make_shared<VarArray>(vals);
-	}
+	//std::vector<std::shared_ptr<breptopo::CompVariant>> vals;
+	//for (auto node : m_nodes) 
+	//{
+	//	auto val = calc_output_val(static_cast<int>(node), cg, hm);
+	//	if (val) {
+	//		vals.push_back(val);
+	//	}
+	//}
+	//if (vals.size() == 0)
+	//{
+	//	return nullptr;
+	//}
+	//else if (vals.size() == 1)
+	//{
+	//	return vals[0];
+	//}
+	//else
+	//{
+	//	return std::make_shared<VarArray>(vals);
+	//}
+
+	return nullptr;
 }
 
 void NodeMerge::Update(const CompGraph& cg, int node_id)
 {
-	std::vector<size_t> nodes;
+	//std::vector<size_t> nodes;
 
-	auto& all_nodes = cg.GetGraph()->GetNodes();
+	//auto& edges = cg.GetGraph()->GetEdges();
+	//for (auto edge : edges)
+	//{
+	//	if (edge.second == node_id)
+	//	{
+	//		if (cg.GetGraph()->GetNode(edge.first))
+	//		{
+	//			nodes.push_back(edge.first);
+	//		}
+	//	}
+	//}
 
-	auto& edges = cg.GetGraph()->GetEdges();
-	for (auto edge : edges)
-	{
-		if (edge.second == node_id)
-		{
-			if (all_nodes[edge.first])
-			{
-				nodes.push_back(edge.first);
-			}
-		}
-	}
-
-	m_nodes = nodes;
+	//m_nodes = nodes;
 }
 
 //std::shared_ptr<CompVariant> NodeSplit::Eval(CompGraph& cg, const std::shared_ptr<HistMgr>& hm, int node_id) const

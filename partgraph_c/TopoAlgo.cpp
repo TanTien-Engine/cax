@@ -46,7 +46,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
     }
 
-    //BRepHistory hist(fillet, TopAbs_FACE, fillet.Shape(), shape->GetShape());
+    BRepHistory hist(fillet, TopAbs_FACE, fillet.Shape(), shape->GetShape());
     //BRepHistory hist(fillet, TopAbs_EDGE, fillet.Shape(), shape->GetShape());
 
     return std::make_shared<partgraph::TopoShape>(fillet.Shape());
@@ -103,6 +103,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         opencascade::handle<BRepTools_History> o_hist = algo.History();
         auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
         {
+            if (!hg) {
+                return;
+            }
             auto type = trans_type(hg->GetType());
             BRepHistory hist(o_hist, type, algo.Shape(), *old_shp);
             hg->Update(hist, op_id);
@@ -133,7 +136,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
 std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2)
 {
     BRepAlgoAPI_Common algo(s1->GetShape(), s2->GetShape());
-    algo.Build();
+    //algo.Build();
 
     if (!algo.IsDone()) {
         algo.DumpErrors(std::cout);
@@ -174,6 +177,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>&
     {
         auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
         {
+            if (!hg) {
+                return;
+            }
             auto type = trans_type(hg->GetType());
             BRepHistory hist(trans, type, trans.Shape(), shape->GetShape());
             hg->Update(hist, op_id);

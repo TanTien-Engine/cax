@@ -17,7 +17,7 @@ CompGraph::CompGraph()
 
 int CompGraph::AddNode(const std::shared_ptr<CompNode>& cnode, const std::string& desc)
 {
-	int idx = static_cast<int>(m_graph->GetNodes().size());
+	int idx = static_cast<int>(m_graph->GetNodesNum());
 	auto node = std::make_shared<graph::Node>();
 	node->SetValue(idx);
 
@@ -49,17 +49,13 @@ void CompGraph::RemoveEdge(size_t f_node, size_t t_node)
 
 size_t CompGraph::GetNodesNum() const
 {
-	return m_graph->GetNodes().size();
+	return m_graph->GetNodesNum();
 }
 
-std::shared_ptr<graph::Node> CompGraph::GetNode(size_t idx) const
+const std::shared_ptr<graph::Node> 
+CompGraph::GetNode(size_t idx) const
 {
-	auto& nodes = m_graph->GetNodes();
-	if (idx >= nodes.size()) {
-		return nullptr;
-	} else {
-		return nodes[idx];
-	}
+	return m_graph->GetNode(idx);
 }
 
 uint16_t CompGraph::CalcOpId(int op_id, int sub_op_id) const

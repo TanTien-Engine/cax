@@ -234,20 +234,22 @@ void w_CompGraph_eval()
     if (v_hist) {
         hm = ((tt::Proxy<breptopo::HistMgr>*)v_hist)->obj;
     }
-
-    int node_num = cg->GetGraph()->GetNodes().size();
+    
+    int node_num = cg->GetGraph()->GetNodesNum();
     auto cvar = cnode.GetCompNode()->Eval(*cg, hm, node_idx);
     if (!cvar) {
+        ves_set_nil(0);
         return;
     }
 
-    if (cg->GetGraph()->GetNodes().size() != node_num) {
+    if (cg->GetGraph()->GetNodesNum() != node_num) {
         cg->Layout();
     }
-
+    
     std::vector<std::shared_ptr<breptopo::CompVariant>> vars;
     flatten_vars(cvar, vars);
     if (vars.empty()) {
+        ves_set_nil(0);
         return;
     }
 
@@ -543,9 +545,11 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "HistMgr.get_face_graph()") == 0) return w_HistMgr_get_face_graph;
     if (strcmp(signature, "HistMgr.get_solid_graph()") == 0) return w_HistMgr_get_solid_graph;
 
-    if (strcmp(signature, "HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
+    if (strcmp(signature, "HistGraph.get_hist_graph()") == 0) 
+        return w_HistGraph_get_hist_graph;
     if (strcmp(signature, "HistGraph.get_next_op_id()") == 0) return w_HistGraph_get_next_op_id;
-    if (strcmp(signature, "HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
+    if (strcmp(signature, "HistGraph.get_node_uid(_)") == 0) 
+        return w_HistGraph_get_node_uid;
     if (strcmp(signature, "HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
