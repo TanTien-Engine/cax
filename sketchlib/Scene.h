@@ -2,7 +2,8 @@
 
 #include "Geometry.h"
 #include "Constraint.h"
-#include "../thirdparty/PlaneGCS/GCS.h"
+
+#include <PlaneGCS/GCS.h>
 
 #include <memory>
 

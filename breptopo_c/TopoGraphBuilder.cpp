@@ -1,7 +1,7 @@
 #include "TopoGraphBuilder.h"
 #include "NodeShape.h"
 #include "GraphShape.h"
-#include "../partgraph_c/TopoShape.h"
+#include "partgraph_c/TopoShape.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>

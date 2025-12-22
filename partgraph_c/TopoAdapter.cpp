@@ -1,8 +1,6 @@
 #include "TopoAdapter.h"
 #include "TopoShape.h"
 
-#include "modules/render/Render.h"
-
 #include <unirender/Device.h>
 #include <unirender/VertexBuffer.h>
 #include <unirender/IndexBuffer.h>
@@ -108,14 +106,14 @@ Handle(Poly_Polygon3D) PolygonOfEdge(const TopoDS_Edge& edge, TopLoc_Location& l
 namespace partgraph
 {
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShape(const TopoShape& shape)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape)
 {
-    return BuildMesh(shape.GetShape());
+    return BuildMesh(dev, shape.GetShape());
 }
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShell(const TopoShape& shell)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShell(const std::shared_ptr<ur::Device>& dev, const TopoShape& shell)
 {
-    return BuildMesh(shell.GetShape());
+    return BuildMesh(dev, shell.GetShape());
 }
 
 std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeoFromEdge(const TopoShape& shape)
@@ -183,7 +181,7 @@ std::shared_ptr<TopoShape> TopoAdapter::ToWire(const TopoShape& shape)
     return std::make_shared<TopoShape>(TopoDS::Wire(shape.GetShape()));
 }
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoDS_Shape& shape)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur::Device>& dev, const TopoDS_Shape& shape)
 {
     std::vector<Vertex> vertices;
 
@@ -204,8 +202,6 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const TopoDS_Shape& shap
     if (vertices.empty()) {
         return nullptr;
     }
-
-    auto dev = tt::Render::Instance()->Device();
 
     auto va = dev->CreateVertexArray();
 

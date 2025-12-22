@@ -6,8 +6,8 @@
 #include "NodeShape.h"
 #include "NodeInfo.h"
 
-#include "../partgraph_c/PrimMaker.h"
-#include "../partgraph_c/TopoAlgo.h"
+#include "partgraph_c/PrimMaker.h"
+#include "partgraph_c/TopoAlgo.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
@@ -220,10 +220,6 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, const std::shared_p
 
 void NodeOffset::Update(const CompGraph& cg, int node_id)
 {
-	std::vector<size_t> nodes;
-
-	//auto& all_nodes = cg.GetGraph()->GetNodes();
-
 	auto& edges = cg.GetGraph()->GetEdges();
 	for (auto edge : edges)
 	{

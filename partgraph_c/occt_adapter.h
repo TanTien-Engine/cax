@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../breptopo_c/HistGraph.h"
+#include "breptopo_c/HistGraph.h"
 
 #include <SM_Vector.h>
 

@@ -4,7 +4,7 @@
 
 #include "BRepHistory.h"
 #include "BRepBuilder.h"
-#include "../breptopo_c/HistMgr.h"
+#include "breptopo_c/HistMgr.h"
 
 // OCCT
 #include <BRepFilletAPI_MakeFillet.hxx>

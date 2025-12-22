@@ -1,0 +1,33 @@
+[submodule "thirdparty/objcomp"]
+	path = thirdparty/objcomp
+	url = git@github.com:xzrunner/objcomp.git
+[submodule "thirdparty/sm"]
+	path = thirdparty/sm
+	url = git@github.com:xzrunner/sm.git
+[submodule "thirdparty/vessel"]
+	path = thirdparty/vessel
+	url = git@github.com:xzrunner/vessel.git
+[submodule "thirdparty/wrapper"]
+	path = thirdparty/wrapper
+	url = git@github.com:TanTien-Engine/wrapper.git
+[submodule "thirdparty/eigen"]
+	path = thirdparty/eigen
+	url = git@gitlab.com:libeigen/eigen.git
+[submodule "thirdparty/graph"]
+	path = thirdparty/graph
+	url = git@github.com:xzrunner/graph.git
+[submodule "thirdparty/guard"]
+	path = thirdparty/guard
+	url = git@github.com:xzrunner/guard.git
+[submodule "thirdparty/geoshape"]
+	path = thirdparty/geoshape
+	url = git@github.com:xzrunner/geoshape.git
+[submodule "thirdparty/nurbs"]
+	path = thirdparty/nurbs
+	url = git@github.com:xzrunner/nurbs.git
+[submodule "thirdparty/logger"]
+	path = thirdparty/logger
+	url = git@github.com:xzrunner/logger.git
+[submodule "thirdparty/unirender"]
+	path = thirdparty/unirender
+	url = git@github.com:xzrunner/unirender.git

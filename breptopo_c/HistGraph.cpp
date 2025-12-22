@@ -2,8 +2,8 @@
 #include "NodeShape.h"
 #include "NodeId.h"
 #include "NodeFlags.h"
-#include "../partgraph_c/BRepHistory.h"
-#include "../partgraph_c/TopoShape.h"
+#include "partgraph_c/BRepHistory.h"
+#include "partgraph_c/TopoShape.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>

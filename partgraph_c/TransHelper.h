@@ -1,8 +1,7 @@
 #pragma once
 
-#include "modules/script/Proxy.h"
-
 #include <vessel.h>
+#include <wrapper/Proxy.h>
 
 #include <memory>
 
@@ -23,7 +22,7 @@ void return_topo_obj(const std::shared_ptr<T>& obj, const char* class_name)
 
     ves_pushnil();
     ves_import_class("partgraph", class_name);
-    auto proxy = (tt::Proxy<T>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<T>));
+    auto proxy = (wrapper::Proxy<T>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<T>));
     proxy->obj = obj;
     ves_pop(1);
 }

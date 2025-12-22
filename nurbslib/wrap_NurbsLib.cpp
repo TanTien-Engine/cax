@@ -1,17 +1,17 @@
 #include "wrap_NurbsLib.h"
-#include "modules/script/TransHelper.h"
 
 #include <nurbs/nurbs.h>
 #include <geoshape/Polyline2D.h>
 #include <geoshape/Polyline3D.h>
 #include <SM_Calc.h>
+#include <wrapper/Proxy.h>
 
 namespace
 {
 
 void w_NurbsLib_bezier()
 {
-    auto polyline = ((tt::Proxy<gs::Polyline2D>*)ves_toforeign(1))->obj;
+    auto polyline = ((wrapper::Proxy<gs::Polyline2D>*)ves_toforeign(1))->obj;
 
     auto& verts = polyline->GetVertices();
 
@@ -26,14 +26,14 @@ void w_NurbsLib_bezier()
 
     ves_pushnil();
     ves_import_class("geometry", "Polyline");
-    auto proxy = (tt::Proxy<gs::Polyline2D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline2D>));
+    auto proxy = (wrapper::Proxy<gs::Polyline2D>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<gs::Polyline2D>));
     proxy->obj = poly;
     ves_pop(1);
 }
 
 void w_NurbsLib_bspline()
 {
-    auto polyline = ((tt::Proxy<gs::Polyline2D>*)ves_toforeign(1))->obj;
+    auto polyline = ((wrapper::Proxy<gs::Polyline2D>*)ves_toforeign(1))->obj;
     auto& verts = polyline->GetVertices();
 
     auto order = (int)ves_tonumber(2);
@@ -49,14 +49,14 @@ void w_NurbsLib_bspline()
 
     ves_pushnil();
     ves_import_class("geometry", "Polyline");
-    auto proxy = (tt::Proxy<gs::Polyline2D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline2D>));
+    auto proxy = (wrapper::Proxy<gs::Polyline2D>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<gs::Polyline2D>));
     proxy->obj = poly;
     ves_pop(1);
 }
 
 void w_NurbsLib_rbspline()
 {
-    auto polyline = ((tt::Proxy<gs::Polyline2D>*)ves_toforeign(1))->obj;
+    auto polyline = ((wrapper::Proxy<gs::Polyline2D>*)ves_toforeign(1))->obj;
     auto& verts = polyline->GetVertices();
 
     auto order = (int)ves_tonumber(2);
@@ -72,14 +72,14 @@ void w_NurbsLib_rbspline()
 
     ves_pushnil();
     ves_import_class("geometry", "Polyline");
-    auto proxy = (tt::Proxy<gs::Polyline2D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline2D>));
+    auto proxy = (wrapper::Proxy<gs::Polyline2D>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<gs::Polyline2D>));
     proxy->obj = poly;
     ves_pop(1);
 }
 
 void w_NurbsLib_bezsurf()
 {
-    auto polyline = ((tt::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
+    auto polyline = ((wrapper::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
 //    auto& verts = polyline->GetVertices();
 
     auto npts = (int)ves_tonumber(2);
@@ -98,14 +98,14 @@ void w_NurbsLib_bezsurf()
 
     ves_pushnil();
     ves_import_class("geometry", "Polyline3D");
-    auto proxy = (tt::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline3D>));
+    auto proxy = (wrapper::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<gs::Polyline3D>));
     proxy->obj = poly;
     ves_pop(1);
 }
 
 void w_NurbsLib_bspsurf()
 {
-    auto polyline = ((tt::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
+    auto polyline = ((wrapper::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
 //    auto& verts = polyline->GetVertices();
 
     auto order_u = (int)ves_tonumber(2);
@@ -126,14 +126,14 @@ void w_NurbsLib_bspsurf()
 
     ves_pushnil();
     ves_import_class("geometry", "Polyline3D");
-    auto proxy = (tt::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline3D>));
+    auto proxy = (wrapper::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<gs::Polyline3D>));
     proxy->obj = poly;
     ves_pop(1);
 }
 
 void w_NurbsLib_rbspsurf()
 {
-    auto polyline = ((tt::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
+    auto polyline = ((wrapper::Proxy<gs::Polyline3D>*)ves_toforeign(1))->obj;
 //    auto& verts = polyline->GetVertices();
 
     auto order_u = (int)ves_tonumber(2);
@@ -154,7 +154,7 @@ void w_NurbsLib_rbspsurf()
 
     ves_pushnil();
     ves_import_class("geometry", "Polyline3D");
-    auto proxy = (tt::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(tt::Proxy<gs::Polyline3D>));
+    auto proxy = (wrapper::Proxy<gs::Polyline3D>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<gs::Polyline3D>));
     proxy->obj = poly;
     ves_pop(1);
 }

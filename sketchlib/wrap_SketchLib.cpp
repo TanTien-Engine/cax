@@ -1,11 +1,10 @@
 #include "wrap_SketchLib.h"
 #include "Constraint.h"
 #include "Scene.h"
-#include "modules/script/Proxy.h"
-#include "modules/script/TransHelper.h"
 
 #include <geoshape/Point2D.h>
 #include <geoshape/Line2D.h>
+#include <wrapper/TransHelper.h>
 
 #include <string>
 
@@ -36,15 +35,15 @@ sketchlib::GeoType to_geo_type(const std::shared_ptr<gs::Shape2D>& shape)
 
 void w_Scene_allocate()
 {
-    auto proxy = (tt::Proxy<sketchlib::Scene>*)ves_set_newforeign(0, 0, sizeof(tt::Proxy<sketchlib::Scene>));
+    auto proxy = (wrapper::Proxy<sketchlib::Scene>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<sketchlib::Scene>));
     proxy->obj = std::make_shared<sketchlib::Scene>();
 }
 
 int w_Scene_finalize(void* data)
 {
-    auto proxy = (tt::Proxy<sketchlib::Scene>*)(data);
+    auto proxy = (wrapper::Proxy<sketchlib::Scene>*)(data);
     proxy->~Proxy();
-    return sizeof(tt::Proxy<sketchlib::Scene>);
+    return sizeof(wrapper::Proxy<sketchlib::Scene>);
 }
 
 sketchlib::ConsType to_cons_type(int idx)
@@ -124,7 +123,7 @@ std::pair<sketchlib::GeoID, sketchlib::GeoType> to_geo_info(int idx, const std::
 
     std::shared_ptr<gs::Shape2D> shape = nullptr;
     if (ves_getfield(idx, "shape") == VES_TYPE_FOREIGN) {
-        shape = ((tt::Proxy<gs::Shape2D>*)ves_toforeign(-1))->obj;
+        shape = ((wrapper::Proxy<gs::Shape2D>*)ves_toforeign(-1))->obj;
     }
     ves_pop(1);
 
@@ -157,7 +156,7 @@ std::pair<sketchlib::GeoID, sketchlib::GeoType> to_geo_info(int idx, const std::
 
 void w_Scene_add_cons_2()
 {
-    auto scene = ((tt::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
+    auto scene = ((wrapper::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
 
     int cons_id = (int)ves_tonumber(1);
     auto cons_type = to_cons_type(2);
@@ -171,7 +170,7 @@ void w_Scene_add_cons_2()
 
 void w_Scene_add_cons_4()
 {
-    auto scene = ((tt::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
+    auto scene = ((wrapper::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
 
     int cons_id = (int)ves_tonumber(1);
     auto cons_type = to_cons_type(2);
@@ -187,18 +186,18 @@ void w_Scene_add_cons_4()
 
 void w_Scene_clear()
 {
-    auto scene = ((tt::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
+    auto scene = ((wrapper::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
     scene->Clear();
 }
 
 void w_Scene_solve()
 {
-    auto scene = ((tt::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
+    auto scene = ((wrapper::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
 
-    auto ids = tt::list_to_array<int>(1);
+    auto ids = wrapper::list_to_array<int>(1);
 
     std::vector<std::shared_ptr<gs::Shape2D>> shapes;
-    tt::list_to_foreigns(2, shapes);
+    wrapper::list_to_foreigns(2, shapes);
 
     std::vector<std::pair<sketchlib::GeoID, std::shared_ptr<gs::Shape2D>>> geos;
     for (size_t i = 0, n = ids.size(); i < n; ++i) {
@@ -211,7 +210,7 @@ void w_Scene_solve()
 
 void w_Scene_get_dof()
 {
-    auto scene = ((tt::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
+    auto scene = ((wrapper::Proxy<sketchlib::Scene>*)ves_toforeign(0))->obj;
 
     int dofs = scene->GetDOF();
     ves_set_number(0, dofs);

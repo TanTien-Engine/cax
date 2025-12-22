@@ -5,7 +5,7 @@
 #include "BRepBuilder.h"
 #include "BRepHistory.h"
 
-#include "../breptopo_c/HistMgr.h"
+#include "breptopo_c/HistMgr.h"
 
 #include <logger/logger.h>
 
