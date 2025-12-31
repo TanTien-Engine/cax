@@ -34,6 +34,8 @@ source_group("breptopo\\computation\\comp" FILES ${breptopo__computation__comp})
 set(breptopo__history
     "breptopo_c/HistGraph.cpp"
     "breptopo_c/HistGraph.h"
+    "breptopo_c/HistMgr.cpp"
+    "breptopo_c/HistMgr.h"
 )
 source_group("breptopo\\history" FILES ${breptopo__history})
 
@@ -87,6 +89,8 @@ set(partgraph__brep
     "partgraph_c/GeomDataset.h"
     "partgraph_c/PrimMaker.cpp"
     "partgraph_c/PrimMaker.h"
+    "partgraph_c/TopoShape.cpp"
+    "partgraph_c/TopoShape.h"
 )
 source_group("partgraph\\brep" FILES ${partgraph__brep})
 
@@ -162,8 +166,22 @@ set(ALL_FILES
 # Target
 ################################################################################
 
+set(BOOST_ROOT "Y:/tools/vcpkg/installed/arm64-windows")
+set(Boost_INCLUDE_DIR "${BOOST_ROOT}/include")
+set(Boost_LIBRARY_DIRS "${BOOST_ROOT}/lib")
+
+find_package(Boost REQUIRED COMPONENTS graph)
+
+if(Boost_FOUND)
+    message(STATUS "Boost include dirs: ${Boost_INCLUDE_DIRS}")
+endif()
+
+set(OCCT_DIR "Y:/OCCT/install")
+list(APPEND CMAKE_PREFIX_PATH "${OCCT_DIR}")
+find_package(OpenCASCADE REQUIRED)
+
 set(CMAKE_CXX_STANDARD 17)
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE . thirdparty thirdparty/sm thirdparty/objcomp/include thirdparty/vessel/src/include thirdparty/OCCT/include thirdparty/wrapper/include thirdparty/graph/include thirdparty/guard/include thirdparty/geoshape/include thirdparty/nurbs/include thirdparty/unirender/include thirdparty/eigen)
+target_include_directories(${PROJECT_NAME} PRIVATE . thirdparty thirdparty/sm thirdparty/objcomp/include thirdparty/vessel/src/include thirdparty/wrapper/include thirdparty/graph/include thirdparty/guard/include thirdparty/geoshape/include thirdparty/nurbs/include thirdparty/unirender/include thirdparty/eigen ${OpenCASCADE_INCLUDE_DIR})
