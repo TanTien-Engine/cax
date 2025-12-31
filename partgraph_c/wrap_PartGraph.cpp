@@ -444,7 +444,7 @@ void w_TopoAlgo_offset_shape()
 void w_TopoAdapter_build_mesh()
 {
     auto dev = ((wrapper::Proxy<ur::Device>*)ves_toforeign(1))->obj;
-    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
 
     auto va = partgraph::TopoAdapter::BuildMeshFromShape(dev, *shape);
 
@@ -648,7 +648,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.thru_sections(_)") == 0) return w_TopoAlgo_thru_sections;
     if (strcmp(signature, "static TopoAlgo.offset_shape(_,_,_,_)") == 0) return w_TopoAlgo_offset_shape;
 
-    if (strcmp(signature, "static TopoAdapter.build_mesh(_)") == 0) return w_TopoAdapter_build_mesh;
+    if (strcmp(signature, "static TopoAdapter.build_mesh(_,_)") == 0) return w_TopoAdapter_build_mesh;
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
     if (strcmp(signature, "static TopoAdapter.build_wire_geo(_)") == 0) return w_TopoAdapter_build_wire_geo;
     if (strcmp(signature, "static TopoAdapter.shape2wire(_)") == 0) return w_TopoAdapter_shape2wire;

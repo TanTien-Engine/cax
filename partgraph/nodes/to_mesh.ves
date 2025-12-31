@@ -5,6 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "rendergraph.variant" for VAR_TYPE_VERTEX_ARRAY
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_SHELL
 import "partgraph" for TopoAdapter
+import "render" for Device
 
 class ToMesh is Node
 {
@@ -57,8 +58,7 @@ class ToMesh is Node
 		}
 		else// if (v_shape.type == VAR_TOPO_SHAPE)
 		{
-			System.print("++ %(v_shape), %(v_shape.value)")
-			var va = TopoAdapter.build_mesh(v_shape.value)
+			var va = TopoAdapter.build_mesh(Device.init(), v_shape.value)
 			if (va) {
 				meshes.add(va)
 			}

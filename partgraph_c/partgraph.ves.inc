@@ -98,7 +98,7 @@ foreign class TopoAlgo
 
 foreign class TopoAdapter
 {
-	foreign static build_mesh(shape)
+	foreign static build_mesh(dev, shape)
 
 	foreign static build_edge_geo(edge)
 	foreign static build_wire_geo(wire)
