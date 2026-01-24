@@ -56,7 +56,7 @@ class ToMesh is Node
 				this.build_meshes(shape, meshes)
 			}
 		}
-		else// if (v_shape.type == VAR_TOPO_SHAPE)
+		else if (v_shape.type == VAR_TOPO_SHAPE)
 		{
 			var va = TopoAdapter.build_mesh(Device.init(), v_shape.value)
 			if (va) {
