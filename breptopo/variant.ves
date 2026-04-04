@@ -1,4 +1,4 @@
 var VAR_TOPO_GRAPH = "topo_graph"
 var VAR_HIST_GRAPH = "hist_graph"
-var VAR_HIST_MGR   = "hist_mgr"
+var VAR_TOPO_NAMING = "topo_naming"
 var VAR_COMP_GRAPH = "comp_graph"

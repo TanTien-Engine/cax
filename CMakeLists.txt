@@ -34,8 +34,8 @@ source_group("breptopo\\computation\\comp" FILES ${breptopo__computation__comp})
 set(breptopo__history
     "breptopo_c/HistGraph.cpp"
     "breptopo_c/HistGraph.h"
-    "breptopo_c/HistMgr.cpp"
-    "breptopo_c/HistMgr.h"
+    "breptopo_c/TopoNaming.cpp"
+    "breptopo_c/TopoNaming.h"
 )
 source_group("breptopo\\history" FILES ${breptopo__history})
 
@@ -109,6 +109,8 @@ set(partgraph__tools
     "partgraph_c/TopoAdapter.h"
     "partgraph_c/TopoAlgo.cpp"
     "partgraph_c/TopoAlgo.h"
+    "partgraph_c/GlobalConfig.cpp"
+    "partgraph_c/GlobalConfig.h"
 )
 source_group("partgraph\\tools" FILES ${partgraph__tools})
 

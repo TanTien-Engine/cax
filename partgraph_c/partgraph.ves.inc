@@ -106,4 +106,9 @@ foreign class TopoAdapter
 	foreign static shape2wire(shape)
 }
 
+foreign class GlobalConfig
+{
+	foreign static get_topo_naming()
+}
+
 );

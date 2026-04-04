@@ -2,7 +2,7 @@
 
 #include <memory>
 
-namespace breptopo { class HistMgr; }
+namespace breptopo { class TopoNaming; }
 
 namespace partgraph
 {
@@ -13,7 +13,7 @@ class PrimMaker
 {
 public:
 	static std::shared_ptr<TopoShape> Box(double dx, double dy, double dz, 
-		uint16_t op_id = 0, const std::shared_ptr<breptopo::HistMgr>& hm = nullptr);
+		uint16_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 	static std::shared_ptr<TopoShape> Cylinder(double radius, double length);
 	static std::shared_ptr<TopoShape> Cone(double r1, double r2, double height);
 	static std::shared_ptr<TopoShape> Sphere(double radius);

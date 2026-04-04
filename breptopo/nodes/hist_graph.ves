@@ -6,8 +6,12 @@ import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.dirty_types" for DIRTY_EDITOR
 import "graph.nodes.draw" for Draw
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "breptopo.variant" for VAR_HIST_GRAPH, VAR_HIST_MGR
-import "breptopo" for HistMgr
+import "breptopo.variant" for VAR_HIST_GRAPH
+import "partgraph" for GlobalConfig
+import "graphics" for Graphics
+import "maths.calc" for Calc
+import "maths.vector" for Vector2
+import "geograph.config" for POINT_RADIUS
 
 class HistGraph is Node
 {
@@ -16,38 +20,33 @@ class HistGraph is Node
 		super.init()
 
 		this.exports = [
-			Pin(this, "hist_mgr", VAR_HIST_MGR),
 			Pin(this, "selected", VAR_TYPE_ARRAY),
 		]
 
 		this.layout()
 
-		this.hist_mgr = nil
+		this.hist_graph = nil
 
-		this.selected_shapes = []
+		this.selected_faces = []
 
 		this.n_draw = Draw()
 	}
 
 	calc_value(idx)
 	{
-		if (!this.hist_mgr) {
+		if (!this.hist_graph) {
 			this.build_graph()
 		}
 
 		if (idx == 0) {
-			return Variant(VAR_HIST_MGR, this.hist_mgr)
-		} else if (idx == 1) {
-			return Variant(this.selected_shapes)
+			return Variant(this.selected_faces)
 		}
 	}
 
 	build_graph()
 	{
-		this.hist_mgr = HistMgr.init()
-
-		var face_graph = this.hist_mgr.get_face_graph()
-		var graph = face_graph.get_hist_graph()
+		this.hist_graph = GlobalConfig.get_topo_naming().get_face_graph()
+		var graph = this.hist_graph.get_hist_graph()
 		Blueprint.connect(VariantProxy(Variant(VAR_HIST_GRAPH, graph)), "out", this.n_draw, "graph")
 	}
 
@@ -92,9 +91,7 @@ class HistGraph is Node
 
 	update_selected()
 	{
-		Blueprint.send_pin_dirty_root(this.exports[1], DIRTY_EDITOR)
-
-		this.selected_shapes.clear()
+		this.selected_faces.clear()
 
 		var v_selecteds = Blueprint.calc_output_value(this.n_draw, "selected")
 		if (!v_selecteds) {
@@ -103,10 +100,9 @@ class HistGraph is Node
 
 		for (var v_sel in v_selecteds.value)
 		{
-			var shp = v_sel.value.get_component("topo_shape")
-			if (shp) {
-				this.selected_shapes.add(Variant(VAR_TOPO_SHAPE, shp))
-			}
+			var face = v_sel.value.get_component("topo_shape")
+			if (face)
+				this.selected_faces.add(Variant(VAR_TOPO_SHAPE, face))
 		}
-	}	
+	}
 }

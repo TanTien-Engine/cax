@@ -8,6 +8,7 @@
 #include "BRepTools.h"
 #include "GeomDataset.h"
 #include "TransHelper.h"
+#include "GlobalConfig.h"
 
 #include <logger/logger.h>
 #include <geoshape/Line3D.h>
@@ -101,7 +102,8 @@ void w_PrimMaker_box()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Box(L, W, H, op_id);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto shape = partgraph::PrimMaker::Box(L, W, H, op_id, naming);
 
     partgraph::return_topo_shape(shape);
 }
@@ -347,7 +349,8 @@ void w_TopoAlgo_cut()
     auto s2 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
     uint32_t op_id = (uint32_t)ves_tonumber(3);
 
-    auto shape = partgraph::TopoAlgo::Cut(s1, s2, op_id);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto shape = partgraph::TopoAlgo::Cut(s1, s2, op_id, naming);
 
     partgraph::return_topo_shape(shape);
 }
@@ -384,7 +387,8 @@ void w_TopoAlgo_translate()
     double z = ves_tonumber(4);
     uint32_t op_id = (uint32_t)ves_tonumber(5);
 
-    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z, op_id);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z, op_id, naming);
 
     partgraph::return_topo_shape(dst);
 }
@@ -598,6 +602,17 @@ void w_WireBuilder_gen_wire()
     partgraph::return_topo_shape(wire);
 }
 
+void w_GlobalConfig_get_topo_naming()
+{
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("breptopo", "TopoNaming");
+    auto proxy = (wrapper::Proxy<breptopo::TopoNaming>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<breptopo::TopoNaming>));
+    proxy->obj = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    ves_pop(1);
+}
+
 }
 
 namespace partgraph
@@ -652,6 +667,8 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
     if (strcmp(signature, "static TopoAdapter.build_wire_geo(_)") == 0) return w_TopoAdapter_build_wire_geo;
     if (strcmp(signature, "static TopoAdapter.shape2wire(_)") == 0) return w_TopoAdapter_shape2wire;
+
+    if (strcmp(signature, "static GlobalConfig.get_topo_naming()") == 0) return w_GlobalConfig_get_topo_naming;
 
     return nullptr;
 }

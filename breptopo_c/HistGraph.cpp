@@ -18,6 +18,10 @@
 #include <set>
 #include <queue>
 
+#include <Windows.h>
+
+#define DEBUG_PRINT
+
 namespace breptopo
 {
 
@@ -42,16 +46,15 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 	auto& old_map = hist.GetOldMap();
 	for (int i = 1; i <= old_map.Extent(); ++i)
 	{
+#ifdef DEBUG_PRINT
+		std::stringstream ss;
+		ss << old_map(i).TShape().get();
+		std::string s = "++ find " + ss.str() + "\n";
+		OutputDebugStringA(s.c_str());
+#endif // DEBUG_PRINT
+
 		size_t gid = m_curr_shapes.Find(old_map(i));
 		old_gid.push_back(gid);
-	}
-
-	// disconnect old
-	auto& map = hist.GetIdxMap();
-	for (auto itr : map)
-	{
-		const size_t gid = old_gid[itr.first];
-		m_graph->ClearEdges(gid);
 	}
 
 	// init new_gid, add new
@@ -65,7 +68,6 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			size_t gid = m_graph->GetNodesNum();
 			new_gid.push_back(gid);
 
-			//auto node = std::make_shared<graph::Node>(i - 1);
 			auto node = std::make_shared<graph::Node>();
 			node->SetValue(static_cast<int>(gid));
 
@@ -80,6 +82,13 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 
 			m_uid2gid.insert({ uid, gid });
 
+#ifdef DEBUG_PRINT
+			std::stringstream ss;
+			ss << new_map(i).TShape().get();
+			std::string s = "++ bind " + ss.str() + "\n";
+			OutputDebugStringA(s.c_str());
+#endif // DEBUG_PRINT
+
 			m_curr_shapes.Bind(new_map(i), gid);
 		} 
 		else
@@ -92,16 +101,26 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 			auto shape = TransShape(new_map(i));
 			node->GetComponent<NodeShape>().SetShape(shape);
 
+#ifdef DEBUG_PRINT
+			std::stringstream ss;
+			ss << new_map(i).TShape().get();
+			std::string s = "++ bind " + ss.str() + "\n";
+			OutputDebugStringA(s.c_str());
+#endif // DEBUG_PRINT
+
 			m_curr_shapes.Bind(new_map(i), gid);
 		}
 	}
 
 	// connect new
-	for (auto itr : map)
+	for (auto itr : hist.GetIdxMap())
 	{
 		const size_t f_gid = old_gid[itr.first];
 		if (itr.second.empty())
 		{
+			auto uid = opencascade::hash(old_map(itr.first + 1).TShape().get());
+			std::string s = "++ unbind " + std::to_string(uid) + "\n";
+			OutputDebugStringA(s.c_str());
 			m_curr_shapes.UnBind(old_map(itr.first + 1));
 
 			bool exists = false;
@@ -132,7 +151,7 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 	}
 
 	// update active
-	for (auto itr : map)
+	for (auto itr : hist.GetIdxMap())
 	{
 		const size_t f_gid = old_gid[itr.first];
 

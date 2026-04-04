@@ -8,7 +8,7 @@ foreign class TopoGraph
 	foreign get_graph()
 }
 
-foreign class HistMgr
+foreign class TopoNaming
 {
 	init() {}
 
