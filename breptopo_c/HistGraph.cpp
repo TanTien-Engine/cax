@@ -18,9 +18,13 @@
 #include <set>
 #include <queue>
 
-#include <Windows.h>
+//#define DEBUG_PRINT
 
-#define DEBUG_PRINT
+#ifdef DEBUG_PRINT
+#include <Windows.h>
+#endif // DEBUG_PRINT
+
+#include <assert.h>
 
 namespace breptopo
 {
@@ -40,136 +44,11 @@ uint16_t HistGraph::NextOpId()
 
 void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 {
-	std::vector<size_t> old_gid, new_gid;
-
-	// init old_gid
-	auto& old_map = hist.GetOldMap();
-	for (int i = 1; i <= old_map.Extent(); ++i)
-	{
-#ifdef DEBUG_PRINT
-		std::stringstream ss;
-		ss << old_map(i).TShape().get();
-		std::string s = "++ find " + ss.str() + "\n";
-		OutputDebugStringA(s.c_str());
-#endif // DEBUG_PRINT
-
-		size_t gid = m_curr_shapes.Find(old_map(i));
-		old_gid.push_back(gid);
-	}
-
-	// init new_gid, add new
-	auto& new_map = hist.GetNewMap();
-	for (int i = 1; i <= new_map.Extent(); ++i)
-	{
-		uint32_t uid = (op_id << 16) | (i - 1);
-		auto itr = m_uid2gid.find(uid);
-		if (itr == m_uid2gid.end())
-		{
-			size_t gid = m_graph->GetNodesNum();
-			new_gid.push_back(gid);
-
-			auto node = std::make_shared<graph::Node>();
-			node->SetValue(static_cast<int>(gid));
-
-			auto shape = TransShape(new_map(i));
-			node->AddComponent<NodeShape>(shape);
-
-			node->AddComponent<NodeId>(uid, gid);
-
-			node->AddComponent<NodeFlags>();
-
-			m_graph->AddNode(node);
-
-			m_uid2gid.insert({ uid, gid });
-
-#ifdef DEBUG_PRINT
-			std::stringstream ss;
-			ss << new_map(i).TShape().get();
-			std::string s = "++ bind " + ss.str() + "\n";
-			OutputDebugStringA(s.c_str());
-#endif // DEBUG_PRINT
-
-			m_curr_shapes.Bind(new_map(i), gid);
-		} 
-		else
-		{
-			size_t gid = itr->second;
-			new_gid.push_back(gid);
-
-			auto node = m_graph->GetNode(gid);
-
-			auto shape = TransShape(new_map(i));
-			node->GetComponent<NodeShape>().SetShape(shape);
-
-#ifdef DEBUG_PRINT
-			std::stringstream ss;
-			ss << new_map(i).TShape().get();
-			std::string s = "++ bind " + ss.str() + "\n";
-			OutputDebugStringA(s.c_str());
-#endif // DEBUG_PRINT
-
-			m_curr_shapes.Bind(new_map(i), gid);
-		}
-	}
-
-	// connect new
-	for (auto itr : hist.GetIdxMap())
-	{
-		const size_t f_gid = old_gid[itr.first];
-		if (itr.second.empty())
-		{
-			auto uid = opencascade::hash(old_map(itr.first + 1).TShape().get());
-			std::string s = "++ unbind " + std::to_string(uid) + "\n";
-			OutputDebugStringA(s.c_str());
-			m_curr_shapes.UnBind(old_map(itr.first + 1));
-
-			bool exists = false;
-			auto node = m_graph->GetNode(f_gid);
-			for (auto edge : node->GetEdges())
-			{
-				auto other = edge->GetFromNode() == node.get() ? edge->GetToNode() : edge->GetFromNode();
-				if (other->GetValue() == -1)
-				{
-					exists = true;
-					break;
-				}
-			}
-
-			if (!exists)
-			{
-				m_graph->AddEdge(f_gid, m_del_node_idx);
-			}
-		}
-		else
-		{
-			for (auto itr_to : itr.second)
-			{
-				const size_t t_gid = new_gid[itr_to];
-				m_graph->AddEdge(f_gid, t_gid);
-			}
-		}
-	}
-
-	// update active
-	for (auto itr : hist.GetIdxMap())
-	{
-		const size_t f_gid = old_gid[itr.first];
-
-		auto node = m_graph->GetNode(f_gid);
-		auto& cflags = node->GetComponent<NodeFlags>();
-		cflags.SetActive(false);
-
-		for (auto itr_to : itr.second)
-		{
-			const size_t t_gid = new_gid[itr_to];
-
-			auto node = m_graph->GetNode(t_gid);
-			auto& cflags = node->GetComponent<NodeFlags>();
-			cflags.SetActive(true);
-		}
-	}
-
-	graph::GraphLayout::OptimalHierarchy(*m_graph);
+	auto itr = m_op2nodes.find(op_id);
+	if (itr == m_op2nodes.end())
+		CreateGraph(hist, op_id);
+	else
+		UpdateGraph(hist, op_id, itr->second);
 }
 
 const std::shared_ptr<graph::Node> 
@@ -280,6 +159,184 @@ HistGraph::TransShape(const TopoDS_Shape& shape) const
 	}
 
 	return t_shape;
+}
+
+void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id)
+{
+	std::vector<size_t> old_gid, new_gid;
+
+	// init old_gid
+	auto& old_map = hist.GetOldMap();
+	for (int i = 1; i <= old_map.Extent(); ++i)
+	{
+#ifdef DEBUG_PRINT
+		std::stringstream ss;
+		ss << old_map(i).TShape().get();
+		std::string s = "++ find " + ss.str() + "\n";
+		OutputDebugStringA(s.c_str());
+#endif // DEBUG_PRINT
+
+		size_t gid = m_curr_shapes.Find(old_map(i));
+		old_gid.push_back(gid);
+	}
+
+	// init new_gid, add new
+	auto& new_map = hist.GetNewMap();
+	for (int i = 1; i <= new_map.Extent(); ++i)
+	{
+		uint32_t uid = (op_id << 16) | (i - 1);
+		auto itr = m_uid2gid.find(uid);
+		if (itr == m_uid2gid.end())
+		{
+			size_t gid = m_graph->GetNodesNum();
+			new_gid.push_back(gid);
+
+			auto node = std::make_shared<graph::Node>();
+			node->SetValue(static_cast<int>(gid));
+
+			auto shape = TransShape(new_map(i));
+			node->AddComponent<NodeShape>(shape);
+
+			node->AddComponent<NodeId>(uid, gid);
+
+			node->AddComponent<NodeFlags>();
+
+			m_graph->AddNode(node);
+
+			m_uid2gid.insert({ uid, gid });
+
+			auto itr = m_op2nodes.find(op_id);
+			if (itr != m_op2nodes.end())
+				itr->second.push_back(gid);
+			else
+				m_op2nodes.insert({ op_id, {gid} });
+
+#ifdef DEBUG_PRINT
+			std::stringstream ss;
+			ss << new_map(i).TShape().get();
+			std::string s = "++ bind " + ss.str() + "\n";
+			OutputDebugStringA(s.c_str());
+#endif // DEBUG_PRINT
+
+			m_curr_shapes.Bind(new_map(i), gid);
+		}
+		else
+		{
+			size_t gid = itr->second;
+			new_gid.push_back(gid);
+
+			auto node = m_graph->GetNode(gid);
+
+			auto shape = TransShape(new_map(i));
+			node->GetComponent<NodeShape>().SetShape(shape);
+
+#ifdef DEBUG_PRINT
+			std::stringstream ss;
+			ss << new_map(i).TShape().get();
+			std::string s = "++ bind " + ss.str() + "\n";
+			OutputDebugStringA(s.c_str());
+#endif // DEBUG_PRINT
+
+			m_curr_shapes.Bind(new_map(i), gid);
+		}
+	}
+
+	// connect new
+	for (auto itr : hist.GetIdxMap())
+	{
+		const size_t f_gid = old_gid[itr.first];
+		if (itr.second.empty())
+		{
+#ifdef DEBUG_PRINT
+			auto uid = opencascade::hash(old_map(itr.first + 1).TShape().get());
+			std::string s = "++ unbind " + std::to_string(uid) + "\n";
+			OutputDebugStringA(s.c_str());
+#endif // DEBUG_PRINT
+
+			m_curr_shapes.UnBind(old_map(itr.first + 1));
+
+			bool exists = false;
+			auto node = m_graph->GetNode(f_gid);
+			for (auto edge : node->GetEdges())
+			{
+				auto other = edge->GetFromNode() == node.get() ? edge->GetToNode() : edge->GetFromNode();
+				if (other->GetValue() == -1)
+				{
+					exists = true;
+					break;
+				}
+			}
+
+			if (!exists)
+			{
+				m_graph->AddEdge(f_gid, m_del_node_idx);
+			}
+		}
+		else
+		{
+			for (auto itr_to : itr.second)
+			{
+				const size_t t_gid = new_gid[itr_to];
+				m_graph->AddEdge(f_gid, t_gid);
+			}
+		}
+	}
+
+	// update active
+	for (auto itr : hist.GetIdxMap())
+	{
+		const size_t f_gid = old_gid[itr.first];
+
+		auto node = m_graph->GetNode(f_gid);
+		auto& cflags = node->GetComponent<NodeFlags>();
+		cflags.SetActive(false);
+
+		for (auto itr_to : itr.second)
+		{
+			const size_t t_gid = new_gid[itr_to];
+
+			auto node = m_graph->GetNode(t_gid);
+			auto& cflags = node->GetComponent<NodeFlags>();
+			cflags.SetActive(true);
+		}
+	}
+
+	graph::GraphLayout::OptimalHierarchy(*m_graph);
+}
+
+void HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint16_t op_id,
+	                        const std::vector<size_t>& old_nodes)
+{
+	std::vector<size_t> new_nodes;
+	auto& new_map = hist.GetNewMap();
+	for (int i = 1; i <= new_map.Extent(); ++i)
+	{
+		uint32_t uid = (op_id << 16) | (i - 1);
+		auto itr = m_uid2gid.find(uid);
+		if (itr != m_uid2gid.end())
+			new_nodes.push_back(itr->second);
+	}
+
+	if (new_nodes == old_nodes)
+	{
+		assert(new_nodes.size() == new_map.Extent());
+		for (int i = 1; i <= new_map.Extent(); ++i)
+		{
+			size_t gid = new_nodes[i - 1];
+			auto node = m_graph->GetNode(gid);
+			auto& cshape = node->GetComponent<NodeShape>();
+			if (cshape.GetShape()->GetShape() != new_map(i))
+			{
+				m_curr_shapes.UnBind(cshape.GetShape()->GetShape());
+				m_curr_shapes.Bind(new_map(i), gid);
+				cshape.SetShape(TransShape(new_map(i)));
+			}
+		}
+	}
+	else
+	{
+		int zz = 0;
+	}
 }
 
 }

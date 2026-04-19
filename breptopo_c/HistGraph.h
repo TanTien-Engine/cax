@@ -42,6 +42,10 @@ private:
 
 	std::shared_ptr<partgraph::TopoShape> TransShape(const TopoDS_Shape& shape) const;
 
+	void CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id);
+	void UpdateGraph(const partgraph::BRepHistory& hist, uint16_t op_id,
+		const std::vector<size_t>& old_nodes);
+
 private:
 	Type m_type;
 
@@ -56,6 +60,9 @@ private:
 
 	size_t m_del_node_idx;
 	const graph::Node* m_del_node;
+
+	// map op id to graph node gid
+	std::map<int, std::vector<size_t>> m_op2nodes;
 
 }; // HistGraph
 

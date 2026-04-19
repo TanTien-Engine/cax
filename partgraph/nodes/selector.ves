@@ -4,12 +4,13 @@ import "blueprint.variant" for Variant, VAR_TYPE_NODE, VAR_TYPE_ARRAY
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
 import "blueprint.dirty_types" for DIRTY_EDITOR
-import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_EDGE, VAR_TOPO_FACE
+import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for BRepSelector, BRepTools
 import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
 import "maths.vector" for Vector2
 import "graphics" for Graphics
 import "keyboard" for Keyboard
+import "partgraph" for GlobalConfig
 
 class Selector is Node
 {
@@ -29,30 +30,31 @@ class Selector is Node
 
 		this.layout()
 
-		this.selected_objs = nil
-		this.selected_uids = nil
+		this.selected_objs = []
+		this.selected_uids = []
 	}
 
 	on_pin_dirty(pin, type, msg)
 	{
 		super.on_pin_dirty(pin, type, msg)
 
-		this.selected_objs = nil
-		//this.selected_uids = nil
+		this.selected_objs.clear()
+		//this.selected_uids.clear()
 	}
 
 	calc_value(idx)
 	{
-		if (!this.selected_objs and this.selected_uids) 
+		if (this.selected_objs.isEmpty and !this.selected_uids.isEmpty) 
 		{
+			Blueprint.calc_input_value(this, 0)
 //			this.load_selected_by_idx(this.selected_uids)
 			this.load_selected_by_uid(this.selected_uids)
 		}
 
-		if (this.selected_objs) {
-			return Variant(this.selected_objs)
+		if (this.selected_objs.isEmpty) {
+			return nil			
 		} else {
-			return nil
+			return Variant(this.selected_objs)
 		}
 	}
 
@@ -99,26 +101,15 @@ class Selector is Node
 		var dir = cam.screen2dir(Vector2(x - Graphics.get_width() * 0.5, Graphics.get_height() * 0.5 - y))
 
 		var obj = nil
-		var obj_type = nil
+		var obj_type = VAR_TOPO_SHAPE
 
 		var type = this.query_param("type").value		
-		if (type == "edge")
-		{
+		if (type == "edge") {
 			obj = BRepSelector.select_edge(v_shape.value, [ pos.x, pos.y, pos.z ], [ dir.x, dir.y, dir.z ])
-			obj_type = VAR_TOPO_EDGE
-		}
-		else if (type == "face")
-		{
+		} else if (type == "face") {
 			obj = BRepSelector.select_face(v_shape.value, [ pos.x, pos.y, pos.z ], [ dir.x, dir.y, dir.z ])
-			obj_type = VAR_TOPO_FACE
-		}
-		else
-		{
+		} else {
 			return
-		}
-
-		if (!this.selected_objs) {
-			this.selected_objs = []
 		}
 
 		var dirty = false
@@ -130,9 +121,10 @@ class Selector is Node
 		{
 			this.selected_objs.add(Variant(obj_type, obj))
 
-			if (!this.selected_uids) {
-				this.selected_uids = []
-			}
+			var hg = GlobalConfig.get_topo_naming().get_face_graph()
+			var uid = hg.get_node_uid(obj)
+			this.selected_uids.add(uid)
+
 			dirty = true
 		}
 
@@ -176,23 +168,18 @@ class Selector is Node
 			return
 		}
 
-		this.selected_objs = []
+		this.selected_objs.clear()
 
 		var type = this.query_param("type").value
 		for (var idx in indices)
 		{
 			var obj = nil
-			var obj_type = nil
+			var obj_type = VAR_TOPO_SHAPE
 
-			if (type == "edge") 
-			{
+			if (type == "edge") {
 				obj = BRepTools.find_edge_key(v_shape.value, idx)
-				obj_type = VAR_TOPO_EDGE
-			} 
-			else if (type == "face") 
-			{
+			} else if (type == "face") {
 				obj = BRepTools.find_face_key(v_shape.value, idx)
-				obj_type = VAR_TOPO_FACE
 			}
 			
 			if (obj) {
@@ -203,11 +190,12 @@ class Selector is Node
 
 	load_selected_by_uid(uids)
 	{
-		this.selected_objs = []
+		this.selected_objs.clear()
 
 		for (var uid in uids)
 		{
-			var shapes = HistGraph.query_shapes(uid)
+			var hg = GlobalConfig.get_topo_naming().get_face_graph()
+			var shapes = hg.query_shapes(uid)
 			for (var shp in shapes) {
 				this.selected_objs.add(Variant(VAR_TOPO_SHAPE, shp))
 			}
