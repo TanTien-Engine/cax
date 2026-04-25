@@ -77,6 +77,21 @@ void w_BRepBuilder_make_compound()
     partgraph::return_topo_shape(shape);
 }
 
+void w_PrimMaker_plane()
+{
+    double x = ves_tonumber(1);
+    double y = ves_tonumber(2);
+    double z = ves_tonumber(3);
+    double nx = ves_tonumber(4);
+    double ny = ves_tonumber(5);
+    double nz = ves_tonumber(6);
+    uint32_t op_id = (uint32_t)ves_tonumber(7);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto shape = partgraph::PrimMaker::Plane(x, y, z, nx, ny, nz, op_id, naming);
+    partgraph::return_topo_shape(shape);
+}
+
 void w_PrimMaker_box()
 {
     double L = ves_tonumber(1);
@@ -341,6 +356,18 @@ void w_TopoAlgo_extrude()
     double z = ves_tonumber(4);
     auto dst = partgraph::TopoAlgo::Prism(src, x, y, z);
     partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_split()
+{
+    auto base = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto tool = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto shape = partgraph::TopoAlgo::Split(base, tool, op_id, naming);
+
+    partgraph::return_topo_shape(shape);
 }
 
 void w_TopoAlgo_cut()
@@ -632,6 +659,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static BRepBuilder.make_shell(_)") == 0) return w_BRepBuilder_make_shell;
     if (strcmp(signature, "static BRepBuilder.make_compound(_)") == 0) return w_BRepBuilder_make_compound;
 
+    if (strcmp(signature, "static PrimMaker.plane(_,_,_,_,_,_,_)") == 0) return w_PrimMaker_plane;
     if (strcmp(signature, "static PrimMaker.box(_,_,_,_)") == 0) return w_PrimMaker_box;
     if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
     if (strcmp(signature, "static PrimMaker.cone(_,_,_)") == 0) return w_PrimMaker_cone;
@@ -652,6 +680,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.fillet(_,_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_)") == 0) return w_TopoAlgo_chamfer;
     if (strcmp(signature, "static TopoAlgo.extrude(_,_,_,_)") == 0) return w_TopoAlgo_extrude;
+    if (strcmp(signature, "static TopoAlgo.split(_,_,_)") == 0) return w_TopoAlgo_split;
     if (strcmp(signature, "static TopoAlgo.cut(_,_,_)") == 0) return w_TopoAlgo_cut;
     if (strcmp(signature, "static TopoAlgo.fuse(_,_)") == 0) return w_TopoAlgo_fuse;
     if (strcmp(signature, "static TopoAlgo.common(_,_)") == 0) return w_TopoAlgo_common;

@@ -83,6 +83,11 @@ private:
 namespace partgraph
 {
 
+BRepHistory::BRepHistory(const TopoShape& new_shape)
+{
+    TopExp::MapShapes(new_shape.GetShape(), new_shape.GetShape().ShapeType(), m_new_map);
+}
+
 BRepHistory::BRepHistory(BRepBuilderAPI_MakeShape& builder, TopAbs_ShapeEnum type, 
 	                     const TopoShape& new_shape, const TopoShape& old_shape)
 {

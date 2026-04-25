@@ -10,6 +10,8 @@
 #include <logger/logger.h>
 
 // OCCT
+#include <gp_Pln.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakeCone.hxx>
@@ -28,6 +30,39 @@
 
 namespace partgraph
 {
+
+std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double nx, double ny, double nz,
+                                            uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+{
+    std::shared_ptr<TopoShape> shape = nullptr;
+    try {
+        gp_Pln pln(gp_Pnt(x, y, z), gp_Dir(nx, ny, nz));
+        TopoDS_Face face = BRepBuilderAPI_MakeFace(pln, -20.0, 20.0, -20.0, 20.0).Face();
+
+        if (tn)
+        {
+            auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
+            {
+                if (!hg) {
+                    return;
+                }
+                auto type = trans_type(hg->GetType());
+                BRepHistory hist(face);
+                hg->Update(hist, op_id);
+            };
+            upd_hist_graph(tn->GetEdgeGraph());
+            upd_hist_graph(tn->GetFaceGraph());
+            upd_hist_graph(tn->GetSolidGraph());
+        }
+
+        shape = std::make_shared<partgraph::TopoShape>(face);
+    }
+    catch (Standard_Failure& e) {
+        LOGI("Build plane fail: %s", e.GetMessageString());
+    }
+
+    return shape;
+}
 
 std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint16_t op_id, 
                                           const std::shared_ptr<breptopo::TopoNaming>& tn)

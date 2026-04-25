@@ -22,6 +22,7 @@ class TopoShape;
 class BRepHistory
 {
 public:
+	BRepHistory(const TopoShape& new_shape);
 	BRepHistory(BRepBuilderAPI_MakeShape& builder, TopAbs_ShapeEnum type,
 		const TopoShape& new_shape, const TopoShape& old_shape);
 	BRepHistory(opencascade::handle<BRepTools_History> hist, TopAbs_ShapeEnum type,

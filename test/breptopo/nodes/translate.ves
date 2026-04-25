@@ -1,0 +1,68 @@
+var node0 = ::partgraph::nodes::box::Box()
+node0.query_param("length").value = 1
+node0.query_param("width").value = 1
+node0.query_param("height").value = 0.16212904453278
+
+_editor.add_node(node0, -275.68358457024, -23.71868333058)
+
+var node1 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node1, 202.66160989256, 60.76214394214)
+
+var node2 = ::blueprint::nodes::camera3d::Camera3d()
+
+node2.cam.position.set(-1.0457545047841, 2.5839048749824, 2.0886187269315)
+node2.cam.yaw = -51.6
+node2.cam.pitch = -41.7
+node2.cam.zoom = 45
+node2.cam.update_vectors()
+node2.speed = 0.30111083388329
+
+_editor.add_node(node2, 353.40150740418, -96.046703490691)
+
+var node3 = ::blueprint::nodes::cache::Cache()
+node3.query_param("disable").value = false
+
+_editor.add_node(node3, 354.76735703374, 40.45888363175)
+
+var node4 = ::partgraph::nodes::translate::Translate()
+node4.query_param("offset").value.set(0, 0, 0.53479611873627)
+
+_editor.add_node(node4, -125.42780294697, 16.96644958502)
+
+var node5 = ::blueprint::nodes::subgraph::Subgraph()
+node5.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node5.set_prop_value("no_bg", false)
+
+_editor.add_node(node5, 545.61171796676, -13.581336888135)
+
+var node6 = ::breptopo::nodes::hist_graph::HistGraph()
+
+_editor.add_node(node6, -33.34, -231.16)
+
+var node7 = ::blueprint::nodes::cache::Cache()
+node7.query_param("disable").value = false
+
+_editor.add_node(node7, 32.411249356357, 46.876112548828)
+
+var node8 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node8, 112.99719384766, -231.79510888672)
+
+var node9 = ::partgraph::nodes::selector::Selector()
+node9.query_param("type").value = "face"
+
+node9.selected_uids = [ 65539 ]
+
+_editor.add_node(node9, -153, 459)
+
+Blueprint.connect(node0, "shape", node4, "shape")
+Blueprint.connect(node4, "shape", node9, "shape")
+Blueprint.connect(node2, "this", node9, "camera")
+Blueprint.connect(node9, "objs", node8, "shape")
+Blueprint.connect(node4, "shape", node7, "var")
+Blueprint.connect(node7, "var", node1, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node3, "var", node5, "geos")
+Blueprint.connect(node2, "this", node5, "view_cam")
+Blueprint.connect(node8, "va", node5, "selected")

@@ -46,7 +46,9 @@ foreign class BRepBuilder
 
 foreign class PrimMaker
 {
-	foreign static box(length, width, height, time)
+	foreign static plane(x, y, z, nx, ny, nz, op_id)
+
+	foreign static box(length, width, height, op_id)
 	foreign static cylinder(radius, length)
 	foreign static cone(radius1, radius2, height)
 	foreign static sphere(radius)
@@ -81,19 +83,20 @@ foreign class TopoAlgo
 	foreign static extrude(shape, x, y, z)
 
 	// boolean
-	foreign static cut(s1, s2, time)
+	foreign static split(base, tool, op_id)
+	foreign static cut(s1, s2, op_id)
 	foreign static fuse(s1, s2)
 	foreign static common(s1, s2)
 	foreign static section(s1, s2)
 
-	foreign static translate(shape, x, y, z, time)
+	foreign static translate(shape, x, y, z, op_id)
 	foreign static mirror(shape, pos, dir)
 
 	// offset
 	foreign static draft(shape, dir, angle, len)
 	foreign static thick_solid(shape, face, offset)
 	foreign static thru_sections(wires)
-	foreign static offset_shape(shape, offset, is_solid, time)
+	foreign static offset_shape(shape, offset, is_solid, op_id)
 }
 
 foreign class TopoAdapter

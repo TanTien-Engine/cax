@@ -12,6 +12,9 @@ class TopoShape;
 class PrimMaker
 {
 public:
+	staic std::shared_ptr<TopoShape> Plane(double x, double y, double z, double nx, double ny, double nz,
+		uint16_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
+
 	static std::shared_ptr<TopoShape> Box(double dx, double dy, double dz, 
 		uint16_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 	static std::shared_ptr<TopoShape> Cylinder(double radius, double length);

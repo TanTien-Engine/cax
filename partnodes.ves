@@ -4,13 +4,13 @@ var PART_NODES = [
 // BRep
 Edge, Wire, Face, Shell, Compound,
 // Prim
-Box, Cylinder, Threading,
+Plane, Box, Cylinder, Threading,
 // Geom
 CylindricalSurface, EllipseCurve, TrimmedCurve,
 // DressUpFeatures
 Chamfer, Fillet, Draft, Shelling, Offset,
 // SketchBasedFeatures
-Extrude, Cut, Fuse, Common, Section, 
+Extrude, Split, Cut, Fuse, Common, Section, 
 // FeaturesTransformed
 Translate, Mirror,
 // SketchBasedFeatures

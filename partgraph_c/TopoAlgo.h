@@ -22,6 +22,8 @@ public:
 
 	static std::shared_ptr<TopoShape> Prism(const std::shared_ptr<TopoShape>& face, double x, double y, double z);
 
+	static std::shared_ptr<TopoShape> Split(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
+		uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 	static std::shared_ptr<TopoShape> Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, 
 		uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 	static std::shared_ptr<TopoShape> Fuse(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2);

@@ -14,6 +14,7 @@
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
+#include <BRepAlgoAPI_Splitter.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAlgoAPI_Section.hxx>
@@ -82,6 +83,46 @@ std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& fac
     gp_Vec vec;
     auto prism = BRepPrimAPI_MakePrism(face->GetShape(), gp_Vec(x, y, z));
     return std::make_shared<partgraph::TopoShape>(prism.Shape());
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
+                                           uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+{
+    TopTools_ListOfShape bases, tools;
+    bases.Append(base->GetShape());
+    tools.Append(tool->GetShape());
+
+    BRepAlgoAPI_Splitter algo;
+    algo.SetArguments(bases);
+    algo.SetTools(tools);
+    algo.Build();
+
+    if (!algo.IsDone()) {
+        algo.DumpErrors(std::cout);
+    }
+    if (algo.HasWarnings()) {
+        algo.DumpErrors(std::cout);
+    }
+
+    if (tn)
+    {
+        auto old_shp = BRepBuilder::MakeCompound({ base, tool });
+        opencascade::handle<BRepTools_History> o_hist = algo.History();
+        auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
+        {
+            if (!hg) {
+                return;
+            }
+            auto type = trans_type(hg->GetType());
+            BRepHistory hist(o_hist, type, algo.Shape(), base->GetShape());
+            hg->Update(hist, op_id);
+        };
+        upd_hist_graph(tn->GetEdgeGraph());
+        upd_hist_graph(tn->GetFaceGraph());
+        upd_hist_graph(tn->GetSolidGraph());
+    }
+
+    return std::make_shared<partgraph::TopoShape>(algo.Shape());
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, 
