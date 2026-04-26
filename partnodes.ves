@@ -16,5 +16,5 @@ Translate, Mirror,
 // SketchBasedFeatures
 Loft,
 // Tools
-ToMesh, ToGeometry, Defeature, Selector,
+ToMesh, ToGeometry, Defeature, Selector, MapShapes,
 ]

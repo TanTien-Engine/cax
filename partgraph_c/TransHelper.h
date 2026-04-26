@@ -4,6 +4,7 @@
 #include <wrapper/Proxy.h>
 
 #include <memory>
+#include <vector>
 
 namespace partgraph
 {
@@ -28,5 +29,6 @@ void return_topo_obj(const std::shared_ptr<T>& obj, const char* class_name)
 }
 
 void return_topo_shape(const std::shared_ptr<TopoShape>& shape);
+void return_topo_shape_list(const std::vector<std::shared_ptr<TopoShape>>& list);
 
 }

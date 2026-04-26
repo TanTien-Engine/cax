@@ -326,6 +326,27 @@ void w_BRepTools_find_face_key()
     partgraph::return_topo_shape(face);
 }
 
+void w_BRepTools_map_shells()
+{
+    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shells = partgraph::BRepTools::MapShells(shape);
+    partgraph::return_topo_shape_list(shells);
+}
+
+void w_BRepTools_map_faces()
+{
+    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto faces = partgraph::BRepTools::MapFaces(shape);
+    partgraph::return_topo_shape_list(faces);
+}
+
+void w_BRepTools_map_edges()
+{
+    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto edges = partgraph::BRepTools::MapEdges(shape);
+    partgraph::return_topo_shape_list(edges);
+}
+
 void w_TopoAlgo_fillet()
 {
     auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -676,6 +697,9 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static BRepTools.find_edge_key(_,_)") == 0) return w_BRepTools_find_edge_key;
     if (strcmp(signature, "static BRepTools.find_face_idx(_,_)") == 0) return w_BRepTools_find_face_idx;
     if (strcmp(signature, "static BRepTools.find_face_key(_,_)") == 0) return w_BRepTools_find_face_key;
+    if (strcmp(signature, "static BRepTools.map_shells(_)") == 0) return w_BRepTools_map_shells;
+    if (strcmp(signature, "static BRepTools.map_faces(_)") == 0) return w_BRepTools_map_faces;
+    if (strcmp(signature, "static BRepTools.map_edges(_)") == 0) return w_BRepTools_map_edges;
 
     if (strcmp(signature, "static TopoAlgo.fillet(_,_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_)") == 0) return w_TopoAlgo_chamfer;

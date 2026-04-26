@@ -1,0 +1,110 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "blueprint.node_param" for NodeParam
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph" for BRepTools
+
+class MapShapes is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("type", "face", { "combo" : [ "edge", "face", "shell" ] }))
+
+		this.layout()
+
+		this.v_shapes = []
+
+		this.data_dirty = false
+	}
+
+	on_pin_dirty(pin, type, msg)
+	{
+		super.on_pin_dirty(pin, type, msg)
+
+		this.data_dirty = true
+	}
+
+	calc_value(idx)
+	{
+		if (this.data_dirty) {
+			this.update_data()
+			this.data_dirty = false
+		}
+		return this.v_shapes[idx]
+	}
+
+	on_connected(pin)
+	{
+		if (pin.is_input) {
+			this.setup_data()
+		}
+	}
+
+	on_disconnected(pin)
+	{
+		if (pin.is_input) {
+			this.setup_data()
+		}
+	}
+
+	setup_data()
+	{
+		for (var p in this.exports) {
+			while (!p.conns.isEmpty) {
+				Blueprint.disconnect(p.conns.front())
+			}
+		}
+		this.exports.clear()
+		this.v_shapes.clear()
+
+		var v_src = Blueprint.calc_input_value(this, 0)
+		if (!v_src) {
+			return
+		}
+
+		var faces = this.map_shapes(v_src.value)
+		for (var i in 0..faces.count)
+		{
+			this.exports.add(Pin(this, "%(i)", VAR_TOPO_SHAPE))
+			this.v_shapes.add(Variant(VAR_TOPO_SHAPE, faces[i]))
+		}
+
+		this.layout()
+	}
+
+	update_data()
+	{
+		var v_src = Blueprint.calc_input_value(this, 0)
+		if (!v_src) {
+			return
+		}
+
+		var faces = this.map_shapes(v_src.value)
+		for (var i in 0..faces.count) {
+			this.v_shapes[i] = Variant(VAR_TOPO_SHAPE, faces[i])
+		}	
+	}
+
+	map_shapes(shape)
+	{
+		var shapes = []
+
+		var type = this.query_param("type").value
+		if (type == "edge")
+			shapes = BRepTools.map_edges(shape)
+		else if (type == "face")
+			shapes = BRepTools.map_faces(shape)
+		else if (type == "shell")
+			shapes = BRepTools.map_shells(shape)
+
+		return shapes
+	}
+}
