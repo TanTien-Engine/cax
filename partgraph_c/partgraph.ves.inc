@@ -93,6 +93,9 @@ foreign class TopoAlgo
 	foreign static common(s1, s2)
 	foreign static section(s1, s2)
 
+	foreign static sew(s1, s2, op_id)
+	foreign static unify_same_domain(shape, op_id)
+
 	foreign static translate(shape, x, y, z, op_id)
 	foreign static mirror(shape, pos, dir)
 

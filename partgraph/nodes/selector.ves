@@ -54,7 +54,10 @@ class Selector is Node
 		if (this.selected_objs.isEmpty) {
 			return nil			
 		} else {
-			return Variant(this.selected_objs)
+			if (this.selected_objs.count == 1)
+				return this.selected_objs[0]
+			else
+				return Variant(this.selected_objs)
 		}
 	}
 

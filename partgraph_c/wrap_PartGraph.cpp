@@ -391,6 +391,29 @@ void w_TopoAlgo_split()
     partgraph::return_topo_shape(shape);
 }
 
+void w_TopoAlgo_sew()
+{
+    auto s1 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto s2 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto shape = partgraph::TopoAlgo::Sew(s1, s2, op_id, naming);
+
+    partgraph::return_topo_shape(shape);
+}
+
+void w_TopoAlgo_unify_same_domain()
+{
+    auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    uint32_t op_id = (uint32_t)ves_tonumber(2);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo::UnifySameDomain(src, op_id, naming);
+
+    partgraph::return_topo_shape(dst);
+}
+
 void w_TopoAlgo_cut()
 {
     auto s1 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -709,6 +732,8 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.fuse(_,_)") == 0) return w_TopoAlgo_fuse;
     if (strcmp(signature, "static TopoAlgo.common(_,_)") == 0) return w_TopoAlgo_common;
     if (strcmp(signature, "static TopoAlgo.section(_,_)") == 0) return w_TopoAlgo_section;
+    if (strcmp(signature, "static TopoAlgo.sew(_,_,_)") == 0) return w_TopoAlgo_sew;
+    if (strcmp(signature, "static TopoAlgo.unify_same_domain(_,_)") == 0) return w_TopoAlgo_unify_same_domain;
     if (strcmp(signature, "static TopoAlgo.translate(_,_,_,_,_)") == 0) return w_TopoAlgo_translate;
     if (strcmp(signature, "static TopoAlgo.mirror(_,_,_)") == 0) return w_TopoAlgo_mirror;
     if (strcmp(signature, "static TopoAlgo.draft(_,_,_,_)") == 0) return w_TopoAlgo_draft;

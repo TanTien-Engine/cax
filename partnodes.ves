@@ -11,6 +11,8 @@ CylindricalSurface, EllipseCurve, TrimmedCurve,
 Chamfer, Fillet, Draft, Shelling, Offset,
 // SketchBasedFeatures
 Extrude, Split, Cut, Fuse, Common, Section, 
+// 
+Sew, UnifySameDomain,
 // FeaturesTransformed
 Translate, Mirror,
 // SketchBasedFeatures

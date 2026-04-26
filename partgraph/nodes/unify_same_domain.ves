@@ -1,0 +1,43 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph" for TopoAlgo, GlobalConfig
+
+class UnifySameDomain is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.layout()
+
+		this.op_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_src = Blueprint.calc_input_value(this, 0)
+		if (!v_src) {
+			return nil
+		}
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_face_graph().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.unify_same_domain(v_src.value, this.op_id)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+}

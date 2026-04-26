@@ -30,6 +30,11 @@ public:
 	static std::shared_ptr<TopoShape> Common(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2);
 	static std::shared_ptr<TopoShape> Section(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2);
 
+	static std::shared_ptr<TopoShape> Sew(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
+		uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
+	static std::shared_ptr<TopoShape> UnifySameDomain(const std::shared_ptr<TopoShape>& shape,
+		uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
+
 	static std::shared_ptr<TopoShape> Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z, 
 		uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 	static std::shared_ptr<TopoShape> Mirror(const std::shared_ptr<TopoShape>& shape, const sm::vec3& pos, const sm::vec3& dir);
