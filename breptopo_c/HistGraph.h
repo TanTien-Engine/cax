@@ -27,7 +27,6 @@ public:
 public:
 	HistGraph(Type type);
 
-	uint16_t NextOpId();
 	void Update(const partgraph::BRepHistory& hist, uint16_t op_id);
 
 	const std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
@@ -50,8 +49,6 @@ private:
 	Type m_type;
 
 	std::shared_ptr<graph::Graph> m_graph;
-
-	uint16_t m_next_op = 0;
 
 	// map shape to gid
 	NCollection_DataMap<TopoDS_Shape, size_t, TopTools_ShapeMapHasher> m_curr_shapes;

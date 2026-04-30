@@ -6,9 +6,14 @@ namespace breptopo
 
 TopoNaming::TopoNaming()
 {
-	//m_edge_hg = std::make_shared<HistGraph>(HistGraph::Type::Edge);
+	m_edge_hg = std::make_shared<HistGraph>(HistGraph::Type::Edge);
 	m_face_hg = std::make_shared<HistGraph>(HistGraph::Type::Face);
-	//m_solid_hg = std::make_shared<HistGraph>(HistGraph::Type::Solid);
+	m_solid_hg = std::make_shared<HistGraph>(HistGraph::Type::Solid);
+}
+
+uint16_t TopoNaming::NextOpId()
+{
+	return m_next_op++;
 }
 
 }

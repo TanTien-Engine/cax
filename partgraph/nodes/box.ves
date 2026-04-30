@@ -6,6 +6,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for PrimMaker, GlobalConfig
+import "breptopo" for TopoNaming
 
 class Box is Node
 {
@@ -56,7 +57,7 @@ class Box is Node
 		var height = NodeHelper.calc_prop_value(this, "height")
 
 		if (this.op_id < 0) {
-			this.op_id = GlobalConfig.get_topo_naming().get_face_graph().get_next_op_id()
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
 		}
 
 		var shape = PrimMaker.box(length, height, width, this.op_id)

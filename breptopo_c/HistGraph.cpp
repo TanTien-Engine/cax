@@ -37,11 +37,6 @@ HistGraph::HistGraph(Type type)
 	InitDelNode();
 }
 
-uint16_t HistGraph::NextOpId()
-{
-	return m_next_op++;
-}
-
 void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 {
 	auto itr = m_op2nodes.find(op_id);

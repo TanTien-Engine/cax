@@ -11,6 +11,7 @@ import "maths.vector" for Vector2
 import "graphics" for Graphics
 import "keyboard" for Keyboard
 import "partgraph" for GlobalConfig
+import "breptopo" for TopoNaming
 
 class Selector is Node
 {
@@ -124,7 +125,7 @@ class Selector is Node
 		{
 			this.selected_objs.add(Variant(obj_type, obj))
 
-			var hg = GlobalConfig.get_topo_naming().get_face_graph()
+			var hg = this.get_hist_graph()
 			var uid = hg.get_node_uid(obj)
 			this.selected_uids.add(uid)
 
@@ -197,11 +198,24 @@ class Selector is Node
 
 		for (var uid in uids)
 		{
-			var hg = GlobalConfig.get_topo_naming().get_face_graph()
+			var hg = this.get_hist_graph()
 			var shapes = hg.query_shapes(uid)
 			for (var shp in shapes) {
 				this.selected_objs.add(Variant(VAR_TOPO_SHAPE, shp))
 			}
+		}
+	}
+
+	get_hist_graph()
+	{
+		var type = this.query_param("type").value
+		var tn = GlobalConfig.get_topo_naming()
+		if (type == "edge") {
+			return tn.get_edge_graph()
+		} else if (type == "face") {
+			return tn.get_face_graph()
+		} else {
+			return nil
 		}
 	}
 }

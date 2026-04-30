@@ -52,20 +52,20 @@ void w_TopoGraph_get_graph()
     ves_pop(1);
 }
 
-void w_HistMgr_allocate()
+void w_TopoNaming_allocate()
 {
     auto proxy = (wrapper::Proxy<breptopo::TopoNaming>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<breptopo::TopoNaming>));
     proxy->obj = std::make_shared<breptopo::TopoNaming>();
 }
 
-int w_HistMgr_finalize(void* data)
+int w_TopoNaming_finalize(void* data)
 {
     auto proxy = (wrapper::Proxy<breptopo::TopoNaming>*)(data);
     proxy->~Proxy();
     return sizeof(wrapper::Proxy<breptopo::TopoNaming>);
 }
 
-void w_HistMgr_get_edge_graph()
+void w_TopoNaming_get_edge_graph()
 {
     auto tn = ((wrapper::Proxy<breptopo::TopoNaming>*)ves_toforeign(0))->obj;
 
@@ -78,7 +78,7 @@ void w_HistMgr_get_edge_graph()
     ves_pop(1);
 }
 
-void w_HistMgr_get_face_graph()
+void w_TopoNaming_get_face_graph()
 {
     auto tn = ((wrapper::Proxy<breptopo::TopoNaming>*)ves_toforeign(0))->obj;
 
@@ -91,7 +91,7 @@ void w_HistMgr_get_face_graph()
     ves_pop(1);
 }
 
-void w_HistMgr_get_solid_graph()
+void w_TopoNaming_get_solid_graph()
 {
     auto tn = ((wrapper::Proxy<breptopo::TopoNaming>*)ves_toforeign(0))->obj;
 
@@ -102,6 +102,12 @@ void w_HistMgr_get_solid_graph()
     auto proxy = (wrapper::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<breptopo::HistGraph>));
     proxy->obj = tn->GetSolidGraph();
     ves_pop(1);
+}
+
+void w_TopoNaming_get_next_op_id()
+{
+    auto tn = ((wrapper::Proxy<breptopo::TopoNaming>*)ves_toforeign(0))->obj;
+    ves_set_number(0, tn->NextOpId());
 }
 
 void w_HistGraph_allocate()
@@ -128,12 +134,6 @@ void w_HistGraph_get_hist_graph()
     auto proxy = (wrapper::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>));
     proxy->obj = tg->GetGraph();
     ves_pop(1);
-}
-
-void w_HistGraph_get_next_op_id()
-{
-    auto tg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
-    ves_set_number(0, tg->NextOpId());
 }
 
 void w_HistGraph_get_node_uid()
@@ -541,15 +541,13 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 {
     if (strcmp(signature, "TopoGraph.get_graph()") == 0) return w_TopoGraph_get_graph;
 
-    if (strcmp(signature, "TopoNaming.get_edge_graph()") == 0) return w_HistMgr_get_edge_graph;
-    if (strcmp(signature, "TopoNaming.get_face_graph()") == 0) return w_HistMgr_get_face_graph;
-    if (strcmp(signature, "TopoNaming.get_solid_graph()") == 0) return w_HistMgr_get_solid_graph;
+    if (strcmp(signature, "TopoNaming.get_edge_graph()") == 0) return w_TopoNaming_get_edge_graph;
+    if (strcmp(signature, "TopoNaming.get_face_graph()") == 0) return w_TopoNaming_get_face_graph;
+    if (strcmp(signature, "TopoNaming.get_solid_graph()") == 0) return w_TopoNaming_get_solid_graph;
+    if (strcmp(signature, "TopoNaming.get_next_op_id()") == 0) return w_TopoNaming_get_next_op_id;
 
-    if (strcmp(signature, "HistGraph.get_hist_graph()") == 0) 
-        return w_HistGraph_get_hist_graph;
-    if (strcmp(signature, "HistGraph.get_next_op_id()") == 0) return w_HistGraph_get_next_op_id;
-    if (strcmp(signature, "HistGraph.get_node_uid(_)") == 0) 
-        return w_HistGraph_get_node_uid;
+    if (strcmp(signature, "HistGraph.get_hist_graph()") == 0) return w_HistGraph_get_hist_graph;
+    if (strcmp(signature, "HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
     if (strcmp(signature, "HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
@@ -585,8 +583,8 @@ void BrepTopoBindClass(const char* class_name, VesselForeignClassMethods* method
 
     if (strcmp(class_name, "TopoNaming") == 0)
     {
-        methods->allocate = w_HistMgr_allocate;
-        methods->finalize = w_HistMgr_finalize;
+        methods->allocate = w_TopoNaming_allocate;
+        methods->finalize = w_TopoNaming_finalize;
         return;
     }
 

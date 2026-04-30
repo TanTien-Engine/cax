@@ -15,6 +15,8 @@ foreign class TopoNaming
 	foreign get_edge_graph()
 	foreign get_face_graph()
 	foreign get_solid_graph()
+
+	foreign get_next_op_id()
 }
 
 foreign class HistGraph
@@ -22,7 +24,6 @@ foreign class HistGraph
 	init() {}
 
 	foreign get_hist_graph()
-	foreign get_next_op_id()
 	foreign get_node_uid(shape)
 	foreign query_shapes(uid)
 }

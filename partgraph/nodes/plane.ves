@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for PrimMaker, GlobalConfig
 import "maths.vector" for Vector3
+import "breptopo" for TopoNaming
 
 class Plane is Node
 {
@@ -36,7 +37,7 @@ class Plane is Node
 		var dir = NodeHelper.calc_prop_value(this, "dir")
 
 		if (this.op_id < 0) {
-			this.op_id = GlobalConfig.get_topo_naming().get_face_graph().get_next_op_id()
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
 		}
 
 		var shape = PrimMaker.plane(ori.x, ori.y, ori.z, dir.x, dir.y, dir.z, this.op_id)
