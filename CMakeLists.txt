@@ -145,6 +145,25 @@ set(sketchlib__script
 )
 source_group("sketchlib\\script" FILES ${sketchlib__script})
 
+set(brepir
+    "brepir_c/Data.cpp"
+    "brepir_c/Data.h"
+    "brepir_c/Sender.cpp"
+    "brepir_c/Sender.h"
+    "brepir_c/Receiver.cpp"
+    "brepir_c/Receiver.h"
+    "brepir_c/File.cpp"
+    "brepir_c/File.h"
+)
+source_group("brepir" FILES ${brepir})
+
+set(brepir__script
+    "brepir_c/brepir.ves.inc"
+    "brepir_c/wrap_Brepir.cpp"
+    "brepir_c/wrap_Brepir.h"
+)
+source_group("brepir\\script" FILES ${brepir__script})
+
 set(ALL_FILES
     ${breptopo}
     ${breptopo__computation}
@@ -162,6 +181,8 @@ set(ALL_FILES
     ${sketchlib__data}
     ${sketchlib__external__PlaneGCS}
     ${sketchlib__script}
+    ${brepir}
+    ${brepir__script}
 )
 
 ################################################################################

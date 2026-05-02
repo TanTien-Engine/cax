@@ -49,8 +49,11 @@ void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
 const std::shared_ptr<graph::Node> 
 HistGraph::QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
 {
-	size_t gid = m_curr_shapes.Find(shape->GetShape());
-	return m_graph->GetNode(gid);
+	const size_t* gid = m_curr_shapes.Seek(shape->GetShape());
+	if (gid)
+		return m_graph->GetNode(*gid);
+	else
+		return nullptr;
 }
 
 bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const

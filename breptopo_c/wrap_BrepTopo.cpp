@@ -41,14 +41,14 @@ int w_TopoGraph_finalize(void* data)
 
 void w_TopoGraph_get_graph()
 {
-    auto tg = ((wrapper::Proxy<breptopo::TopoGraph>*)ves_toforeign(0))->obj;
+    auto hg = ((wrapper::Proxy<breptopo::TopoGraph>*)ves_toforeign(0))->obj;
 
     ves_pop(ves_argnum());
 
     ves_pushnil();
     ves_import_class("graph", "Graph");
     auto proxy = (wrapper::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>));
-    proxy->obj = tg->GetGraph();
+    proxy->obj = hg->GetGraph();
     ves_pop(1);
 }
 
@@ -125,36 +125,36 @@ int w_HistGraph_finalize(void* data)
 
 void w_HistGraph_get_hist_graph()
 {
-    auto tg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
+    auto hg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
 
     ves_pop(ves_argnum());
 
     ves_pushnil();
     ves_import_class("graph", "Graph");
     auto proxy = (wrapper::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>));
-    proxy->obj = tg->GetGraph();
+    proxy->obj = hg->GetGraph();
     ves_pop(1);
 }
 
 void w_HistGraph_get_node_uid()
 {
-    auto tg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
+    auto hg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
 
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
 
-    auto node = tg->QueryNode(shape);
+    auto node = hg->QueryNode(shape);
     auto& cid = node->GetComponent<breptopo::NodeId>();
     ves_set_number(0, cid.GetUID());
 }
 
 void w_HistGraph_query_shapes()
 {
-    auto tg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
+    auto hg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
 
     uint32_t uid = (uint32_t)ves_tonumber(1);
 
     std::vector<std::shared_ptr<graph::Node>> nodes;
-    if (tg->QueryNodes(uid, nodes))
+    if (hg->QueryNodes(uid, nodes))
     {
         assert(!nodes.empty());
 
