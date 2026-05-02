@@ -353,8 +353,10 @@ void w_TopoAlgo_fillet()
     double thickness = ves_tonumber(2);
     std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
     wrapper::list_to_foreigns(3, edges);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
 
-    auto dst = partgraph::TopoAlgo::Fillet(src, thickness, edges);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo::Fillet(src, thickness, edges, op_id, naming);
     partgraph::return_topo_shape(dst);
 }
 
@@ -364,8 +366,10 @@ void w_TopoAlgo_chamfer()
     double dist = ves_tonumber(2);
     std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
     wrapper::list_to_foreigns(3, edges);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
 
-    auto dst = partgraph::TopoAlgo::Chamfer(src, dist, edges);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo::Chamfer(src, dist, edges, op_id, naming);
     partgraph::return_topo_shape(dst);
 }
 
@@ -724,8 +728,8 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static BRepTools.map_faces(_)") == 0) return w_BRepTools_map_faces;
     if (strcmp(signature, "static BRepTools.map_edges(_)") == 0) return w_BRepTools_map_edges;
 
-    if (strcmp(signature, "static TopoAlgo.fillet(_,_,_)") == 0) return w_TopoAlgo_fillet;
-    if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_)") == 0) return w_TopoAlgo_chamfer;
+    if (strcmp(signature, "static TopoAlgo.fillet(_,_,_,_)") == 0) return w_TopoAlgo_fillet;
+    if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_,_)") == 0) return w_TopoAlgo_chamfer;
     if (strcmp(signature, "static TopoAlgo.extrude(_,_,_,_)") == 0) return w_TopoAlgo_extrude;
     if (strcmp(signature, "static TopoAlgo.split(_,_,_)") == 0) return w_TopoAlgo_split;
     if (strcmp(signature, "static TopoAlgo.cut(_,_,_)") == 0) return w_TopoAlgo_cut;

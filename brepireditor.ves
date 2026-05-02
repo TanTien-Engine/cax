@@ -28,6 +28,11 @@ class Brepireditor is Editor
 			super.add_popup_node(node)
 		}
 
+		import "breptoponodes" for BREP_TOPO_NODES
+		for (var node in BREP_TOPO_NODES) {
+			super.add_popup_node(node)
+		}
+		
 		import "brepirnodes" for BREP_IR_NODES
 		for (var node in BREP_IR_NODES) {
 			super.add_popup_node(node)

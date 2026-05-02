@@ -22,6 +22,7 @@
 #include <BRep_Builder.hxx>
 
 #include <string>
+#include <assert.h>
 
 namespace
 {
@@ -44,8 +45,13 @@ void w_BrepIR_save()
         const TopoDS_Shape& shape = all_shapes(i);
 
         uint32_t uid = sender.GetUID(shape);
-        if (uid == 0xffffffff) 
+        if (uid == 0xffffffff)
+        {
+            TopAbs_ShapeEnum type = shape.ShapeType();
+            assert(type != TopAbs_VERTEX && type != TopAbs_EDGE && 
+                type != TopAbs_FACE && type != TopAbs_SOLID);
             continue;
+        }
 
         switch (shape.ShapeType())
         {

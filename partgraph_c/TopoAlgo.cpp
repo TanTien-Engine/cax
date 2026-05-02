@@ -28,7 +28,8 @@ namespace partgraph
 {
 
 std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius, 
-                                            const std::vector<std::shared_ptr<TopoShape>>& edges)
+                                            const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id, 
+                                            const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     BRepFilletAPI_MakeFillet fillet(shape->GetShape());
 
@@ -49,14 +50,16 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
     }
 
-    BRepHistory hist(fillet, TopAbs_FACE, fillet.Shape(), shape->GetShape());
-    //BRepHistory hist(fillet, TopAbs_EDGE, fillet.Shape(), shape->GetShape());
+    if (tn) {
+        tn->Update(fillet, fillet.Shape(), shape->GetShape(), op_id);
+    }
 
     return std::make_shared<partgraph::TopoShape>(fillet.Shape());
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& shape, double dist,
-                                             const std::vector<std::shared_ptr<TopoShape>>& edges)
+                                             const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id, 
+                                             const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     BRepFilletAPI_MakeChamfer chamfer(shape->GetShape());
 
@@ -75,6 +78,10 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         for (auto& edge : edges) {
             chamfer.Add(dist, edge->ToEdge());
         }
+    }
+
+    if (tn) {
+        tn->Update(chamfer, chamfer.Shape(), shape->GetShape(), op_id);
     }
 
     return std::make_shared<partgraph::TopoShape>(chamfer.Shape());

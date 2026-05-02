@@ -16,9 +16,11 @@ class TopoAlgo
 {
 public:
 	static std::shared_ptr<TopoShape> Fillet(const std::shared_ptr<TopoShape>& shape, double radius,
-		const std::vector<std::shared_ptr<TopoShape>>& edges);
+		const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id, 
+		const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 	static std::shared_ptr<TopoShape> Chamfer(const std::shared_ptr<TopoShape>& shape, double dist,
-		const std::vector<std::shared_ptr<TopoShape>>& edges);
+		const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id, 
+		const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 
 	static std::shared_ptr<TopoShape> Prism(const std::shared_ptr<TopoShape>& face, double x, double y, double z);
 

@@ -153,6 +153,14 @@ void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id
 
 	// init new_gid, add new
 	auto& new_map = hist.GetNewMap();
+
+	// unbind old
+	for (auto itr : hist.GetIdxMap()) {
+		if (itr.second.empty()) {
+			m_curr_shapes.UnBind(old_map(itr.first + 1));
+		}
+	}
+
 	for (int i = 1; i <= new_map.Extent(); ++i)
 	{
 		const uint32_t uid = CalcUID(type_id, op_id, i - 1);
@@ -223,8 +231,6 @@ void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id
 			std::string s = "++ unbind " + std::to_string(uid) + "\n";
 			OutputDebugStringA(s.c_str());
 #endif // DEBUG_PRINT
-
-			m_curr_shapes.UnBind(old_map(itr.first + 1));
 
 			bool exists = false;
 			auto node = m_graph->GetNode(f_gid);
