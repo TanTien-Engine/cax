@@ -31,13 +31,13 @@ HistGraph::HistGraph()
 	InitDelNode();
 }
 
-void HistGraph::Update(const partgraph::BRepHistory& hist, uint16_t op_id)
+void HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id)
 {
 	auto itr = m_op2nodes.find(op_id);
 	if (itr == m_op2nodes.end())
-		CreateGraph(hist, op_id);
+		CreateGraph(hist, type_id, op_id);
 	else
-		UpdateGraph(hist, op_id, itr->second);
+		UpdateGraph(hist, type_id, op_id, itr->second);
 }
 
 const std::shared_ptr<graph::Node> 
@@ -132,7 +132,7 @@ void HistGraph::InitDelNode()
 	m_graph->AddNode(del_node);
 }
 
-void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id)
+void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id)
 {
 	std::vector<size_t> old_gid, new_gid;
 
@@ -155,7 +155,7 @@ void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id)
 	auto& new_map = hist.GetNewMap();
 	for (int i = 1; i <= new_map.Extent(); ++i)
 	{
-		uint32_t uid = (op_id << 16) | (i - 1);
+		const uint32_t uid = CalcUID(type_id, op_id, i - 1);
 		auto itr = m_uid2gid.find(uid);
 		if (itr == m_uid2gid.end())
 		{
@@ -275,14 +275,14 @@ void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id)
 	graph::GraphLayout::OptimalHierarchy(*m_graph);
 }
 
-void HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint16_t op_id,
+void HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id,
 	                        const std::vector<size_t>& old_nodes)
 {
 	std::vector<size_t> new_nodes;
 	auto& new_map = hist.GetNewMap();
 	for (int i = 1; i <= new_map.Extent(); ++i)
 	{
-		uint32_t uid = (op_id << 16) | (i - 1);
+		const uint32_t uid = CalcUID(type_id, op_id, i - 1);
 		auto itr = m_uid2gid.find(uid);
 		if (itr != m_uid2gid.end())
 			new_nodes.push_back(itr->second);
@@ -308,6 +308,14 @@ void HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint16_t op_id,
 	{
 		int zz = 0;
 	}
+}
+
+uint32_t HistGraph::CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index)
+{
+	uint32_t uid = ((type_id & 0x07) << 29) |
+		((op_id & 0x3FFF) << 15) |
+		(index & 0x7FFF);
+	return uid;
 }
 
 }

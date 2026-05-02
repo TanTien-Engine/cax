@@ -88,7 +88,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& fac
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
-                                           uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                           uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     TopTools_ListOfShape bases, tools;
     bases.Append(base->GetShape());
@@ -117,7 +117,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, 
-                                         uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                         uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     BRepAlgoAPI_Cut algo(s1->GetShape(), s2->GetShape());
     algo.Build();
@@ -188,7 +188,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Sew(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
-    uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+    uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     Standard_Real tolerance = 1e-6;
     BRepBuilderAPI_Sewing algo(tolerance);
@@ -223,7 +223,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Sew(const std::shared_ptr<TopoShape>& s1, c
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::UnifySameDomain(const std::shared_ptr<TopoShape>& shape,
-                                                     uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                                     uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     ShapeUpgrade_UnifySameDomain algo;
     algo.Initialize(shape->GetShape(), Standard_True, Standard_True, Standard_False);
@@ -239,7 +239,7 @@ std::shared_ptr<TopoShape> TopoAlgo::UnifySameDomain(const std::shared_ptr<TopoS
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z, 
-                                               uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                               uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     gp_Trsf trsf; 
     trsf.SetTranslation(gp_Vec(x, y, z));
@@ -300,19 +300,15 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid, 
-                                                 uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                                 uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     BRepOffset_MakeSimpleOffset builder;
     builder.Initialize(shape->GetShape(), offset);
     builder.SetBuildSolidFlag(is_solid);
     builder.Perform();
 
-    if (tn)
-    {
-        BRepHistory hist(builder, shape->GetShape());
-        //tn->GetEdgeGraph()->Update(hist, op_id);
-        tn->GetFaceGraph()->Update(hist, op_id);
-        //tn->GetSolidGraph()->Update(hist, op_id);
+    if (tn) {
+        tn->Update(builder, shape->GetShape(), op_id);
     }
 
     return std::make_shared<partgraph::TopoShape>(builder.GetResultShape());

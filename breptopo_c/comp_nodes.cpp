@@ -84,7 +84,7 @@ std::shared_ptr<CompVariant> NodeBox::Eval(CompGraph& cg, const std::shared_ptr<
 		z = std::static_pointer_cast<VarNumber>(v_height)->val;
 	}
 
-	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+	const uint32_t op_id = cg.CalcOpId(GetOpId(), 0);
 	auto shape = partgraph::PrimMaker::Box(x, y, z, op_id, tn);
 	return std::make_shared<VarShape>(shape);
 }
@@ -112,7 +112,7 @@ std::shared_ptr<CompVariant> NodeTranslate::Eval(CompGraph& cg, const std::share
 		offset = std::static_pointer_cast<VarNumber3>(v_offset)->val;
 	}
 
-	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+	const uint32_t op_id = cg.CalcOpId(GetOpId(), 0);
 	auto shp = partgraph::TopoAlgo::Translate(src, offset.x, offset.y, offset.z, op_id, tn);
 	auto var = std::make_shared<VarShape>(shp);
 	//m_cached = var;
@@ -199,7 +199,7 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, const std::shared_p
 		for (int i = 0; i < v_shape_array.size(); ++i)
 		{
 			auto src_shape = std::static_pointer_cast<breptopo::VarShape>(v_shape_array[i])->val;
-			const uint16_t op_id = cg.CalcOpId(GetOpId(), i);
+			const uint32_t op_id = cg.CalcOpId(GetOpId(), i);
 			auto dst_shape = partgraph::TopoAlgo::OffsetShape(src_shape, offset, is_solid, op_id, tn);
 			dst.push_back(std::make_shared<VarShape>(dst_shape));
 		}
@@ -208,7 +208,7 @@ std::shared_ptr<CompVariant> NodeOffset::Eval(CompGraph& cg, const std::shared_p
 	else if (v_shape->Type() == VAR_SHAPE)
 	{
 		auto src = std::static_pointer_cast<VarShape>(v_shape)->val;
-		const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+		const uint32_t op_id = cg.CalcOpId(GetOpId(), 0);
 		auto dst = partgraph::TopoAlgo::OffsetShape(src, offset, is_solid, op_id, tn);
 		return std::make_shared<VarShape>(dst);
 	}
@@ -258,7 +258,7 @@ std::shared_ptr<CompVariant> NodeCut::Eval(CompGraph& cg, const std::shared_ptr<
 		shp2 = std::static_pointer_cast<VarShape>(v_shp2)->val;
 	}
 
-	const uint16_t op_id = cg.CalcOpId(GetOpId(), 0);
+	const uint32_t op_id = cg.CalcOpId(GetOpId(), 0);
 	auto shp = partgraph::TopoAlgo::Cut(shp1, shp2, op_id, tn);
 	auto var = std::make_shared<VarShape>(shp);
 	//m_cached = var;

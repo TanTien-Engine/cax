@@ -32,7 +32,7 @@ namespace partgraph
 {
 
 std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double nx, double ny, double nz,
-                                            uint16_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                            uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
@@ -50,7 +50,7 @@ std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint16_t op_id, 
+std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint32_t op_id, 
                                           const std::shared_ptr<breptopo::TopoNaming>& tn)
 {
     std::shared_ptr<TopoShape> shape = nullptr;

@@ -2,18 +2,16 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "brepir" for BrepIR
 
-class Save is Node
+class Load is Node
 {
 	init()
 	{
 		super.init()
 
-		this.imports = [
-			Pin(this, "shape", VAR_TOPO_SHAPE),
-		]
 		this.exports = [
 			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
@@ -25,14 +23,8 @@ class Save is Node
 
 	calc_value(idx)
 	{
-		var v_shape = Blueprint.calc_input_value(this, 0)
-		if (!v_shape) {
-			return nil
-		}
-
 		var filename = this.query_param("filename").value
-		BrepIR.save(v_shape.value, filename)
-
-		return v_shape
+		var shape = BrepIR.load(filename)
+		return Variant(VAR_TOPO_SHAPE, shape)
 	}
 }

@@ -21,7 +21,7 @@ int CompGraph::AddNode(const std::shared_ptr<CompNode>& cnode, const std::string
 	auto node = std::make_shared<graph::Node>();
 	node->SetValue(idx);
 
-	uint16_t op_id = CalcOpId(idx, 0);
+	uint32_t op_id = CalcOpId(idx, 0);
 	cnode->SetOpId(op_id);
 	node->AddComponent<NodeComp>(cnode);
 
@@ -58,13 +58,13 @@ CompGraph::GetNode(size_t idx) const
 	return m_graph->GetNode(idx);
 }
 
-uint16_t CompGraph::CalcOpId(int op_id, int sub_op_id) const
+uint32_t CompGraph::CalcOpId(int op_id, int sub_op_id) const
 {
 	auto key = std::make_pair(op_id, sub_op_id);
 	auto itr = m_id_map.find(key);
 	if (itr == m_id_map.end())
 	{
-		uint16_t val = static_cast<uint16_t>(m_id_map.size());
+		uint32_t val = m_id_map.size();
 		m_id_map.insert({ key, val });
 		return val;
 	}

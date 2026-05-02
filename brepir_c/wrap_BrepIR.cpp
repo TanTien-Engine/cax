@@ -71,7 +71,7 @@ void w_BrepIR_save()
 
 void w_BrepIR_load()
 {
-    std::string filepath = ves_tostring(0);
+    std::string filepath = ves_tostring(1);
     brepir::GeometryPool pool;
     brepir::File::Load(filepath, pool);
 
@@ -103,7 +103,7 @@ namespace brepir
 VesselForeignMethodFn BrepIRBindMethod(const char* signature)
 {
     if (strcmp(signature, "static BrepIR.save(_,_)") == 0) return w_BrepIR_save;
-    if (strcmp(signature, "static BrepIR.load(_,_)") == 0) return w_BrepIR_load;
+    if (strcmp(signature, "static BrepIR.load(_)") == 0) return w_BrepIR_load;
 
     return nullptr;
 }

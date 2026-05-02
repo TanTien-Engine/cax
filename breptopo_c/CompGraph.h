@@ -25,7 +25,7 @@ public:
 
 	const std::shared_ptr<graph::Node> GetNode(size_t idx) const;
 
-	uint16_t CalcOpId(int op_id, int sub_op_id) const;
+	uint32_t CalcOpId(int op_id, int sub_op_id) const;
 
 	void Layout();
 
@@ -35,7 +35,7 @@ private:
 	std::shared_ptr<graph::Graph> m_graph;
 
 	// op_id + sub_op_id -> unique_op_id
-	mutable std::map<std::pair<int, int>, uint16_t> m_id_map;
+	mutable std::map<std::pair<int, int>, uint32_t> m_id_map;
 
 }; // CompGraph
 
