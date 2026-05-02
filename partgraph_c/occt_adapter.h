@@ -40,22 +40,4 @@ static gp_Ax2d trans_axis(const sm::vec2& pnt, const sm::vec2& dir)
 	return gp_Ax2d(trans_pnt(pnt), trans_dir(dir));
 }
 
-static TopAbs_ShapeEnum trans_type(const breptopo::HistGraph::Type src)
-{
-    TopAbs_ShapeEnum dst;
-    switch (src)
-    {
-    case breptopo::HistGraph::Type::Edge:
-        dst = TopAbs_EDGE;
-        break;
-    case breptopo::HistGraph::Type::Face:
-        dst = TopAbs_FACE;
-        break;
-    case breptopo::HistGraph::Type::Solid:
-        dst = TopAbs_SOLID;
-        break;
-    }
-    return dst;
-}
-
 }

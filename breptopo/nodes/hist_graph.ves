@@ -20,7 +20,7 @@ class HistGraph is Node
 			Pin(this, "selected", VAR_TYPE_ARRAY),
 		]
 
-		this.params.add(NodeParam("type", "face", { "combo" : [ "edge", "face", "shell" ] }))
+		this.params.add(NodeParam("type", "face", { "combo" : [ "vertex", "edge", "face", "shell" ] }))
 
 		this.layout()
 
@@ -50,7 +50,9 @@ class HistGraph is Node
 	build_graph()
 	{
 		var tn = GlobalConfig.get_topo_naming()
-		if (this.curr_type == "edge")
+		if (this.curr_type == "vertex")
+			this.hist_graph = tn.get_vertex_graph()
+		else if (this.curr_type == "edge")
 			this.hist_graph = tn.get_edge_graph()
 		else if (this.curr_type == "face")
 			this.hist_graph = tn.get_face_graph()

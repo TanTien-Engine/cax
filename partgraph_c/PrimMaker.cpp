@@ -38,23 +38,9 @@ std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double
     try {
         gp_Pln pln(gp_Pnt(x, y, z), gp_Dir(nx, ny, nz));
         TopoDS_Face face = BRepBuilderAPI_MakeFace(pln, -20.0, 20.0, -20.0, 20.0).Face();
-
-        if (tn)
-        {
-            auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
-            {
-                if (!hg) {
-                    return;
-                }
-                auto type = trans_type(hg->GetType());
-                BRepHistory hist(face);
-                hg->Update(hist, op_id);
-            };
-            upd_hist_graph(tn->GetEdgeGraph());
-            upd_hist_graph(tn->GetFaceGraph());
-            upd_hist_graph(tn->GetSolidGraph());
+        if (tn) {
+            tn->Update(face, op_id);
         }
-
         shape = std::make_shared<partgraph::TopoShape>(face);
     }
     catch (Standard_Failure& e) {
@@ -70,24 +56,11 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint1
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeBox mk_box(dx, dy, dz);
-
         if (tn)
         {
             auto old_shp = BRepBuilder::MakeCompound({});
-            auto upd_hist_graph = [&](const std::shared_ptr<breptopo::HistGraph>& hg)
-            {
-                if (!hg) {
-                    return;
-                }
-                auto type = trans_type(hg->GetType());
-                BRepHistory hist(mk_box, type, mk_box.Shape(), old_shp->GetShape());
-                hg->Update(hist, op_id);
-            };
-            upd_hist_graph(tn->GetEdgeGraph());
-            upd_hist_graph(tn->GetFaceGraph());
-            upd_hist_graph(tn->GetSolidGraph());
+            tn->Update(mk_box, mk_box.Shape(), old_shp->GetShape(), op_id);
         }
-
         shape = std::make_shared<partgraph::TopoShape>(mk_box.Shape());
     } catch (Standard_Failure& e) {
         LOGI("Build box fail: %s", e.GetMessageString());

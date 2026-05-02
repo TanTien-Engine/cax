@@ -10,11 +10,6 @@
 #include <graph/Edge.h>
 #include <graph/GraphLayout.h>
 
-#include <TopoDS.hxx>
-#include <TopoDS_Face.hxx>
-#include <TopoDS_Solid.hxx>
-#include <TopoDS_Edge.hxx>
-
 #include <set>
 #include <queue>
 
@@ -29,8 +24,7 @@
 namespace breptopo
 {
 
-HistGraph::HistGraph(Type type)
-	: m_type(type)
+HistGraph::HistGraph()
 {
 	m_graph = std::make_shared<graph::Graph>();
 
@@ -138,27 +132,6 @@ void HistGraph::InitDelNode()
 	m_graph->AddNode(del_node);
 }
 
-std::shared_ptr<partgraph::TopoShape> 
-HistGraph::TransShape(const TopoDS_Shape& shape) const
-{
-	std::shared_ptr<partgraph::TopoShape> t_shape = nullptr;
-
-	switch (m_type)
-	{
-	case Type::Edge:
-		t_shape = std::make_shared<partgraph::TopoShape>(TopoDS::Edge(shape));
-		break;
-	case Type::Face:
-		t_shape = std::make_shared<partgraph::TopoShape>(TopoDS::Face(shape));
-		break;
-	case Type::Solid:
-		t_shape = std::make_shared<partgraph::TopoShape>(TopoDS::Solid(shape));
-		break;
-	}
-
-	return t_shape;
-}
-
 void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id)
 {
 	std::vector<size_t> old_gid, new_gid;
@@ -192,7 +165,7 @@ void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id)
 			auto node = std::make_shared<graph::Node>();
 			node->SetValue(static_cast<int>(gid));
 
-			auto shape = TransShape(new_map(i));
+			auto shape = std::make_shared<partgraph::TopoShape>(new_map(i));
 			node->AddComponent<NodeShape>(shape);
 
 			node->AddComponent<NodeId>(uid, gid);
@@ -225,7 +198,7 @@ void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id)
 
 			auto node = m_graph->GetNode(gid);
 
-			auto shape = TransShape(new_map(i));
+			auto shape = std::make_shared<partgraph::TopoShape>(new_map(i));
 			node->GetComponent<NodeShape>().SetShape(shape);
 
 #ifdef DEBUG_PRINT
@@ -327,7 +300,7 @@ void HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint16_t op_id,
 			{
 				m_curr_shapes.UnBind(cshape.GetShape()->GetShape());
 				m_curr_shapes.Bind(new_map(i), gid);
-				cshape.SetShape(TransShape(new_map(i)));
+				cshape.SetShape(std::make_shared<partgraph::TopoShape>(new_map(i)));
 			}
 		}
 	}

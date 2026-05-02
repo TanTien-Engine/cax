@@ -147,6 +147,9 @@ uint32_t Sender::GetUID(const TopoDS_Shape& shape) const
     std::shared_ptr<breptopo::HistGraph> hg = nullptr;
     switch (shape.ShapeType())
     {
+    case TopAbs_VERTEX:
+        hg = m_tn->GetVertexGraph();
+        break;
     case TopAbs_EDGE:
         hg = m_tn->GetEdgeGraph();
         break;

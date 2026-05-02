@@ -12,6 +12,7 @@ foreign class TopoNaming
 {
 	init() {}
 
+	foreign get_vertex_graph()
 	foreign get_edge_graph()
 	foreign get_face_graph()
 	foreign get_solid_graph()

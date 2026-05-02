@@ -65,6 +65,19 @@ int w_TopoNaming_finalize(void* data)
     return sizeof(wrapper::Proxy<breptopo::TopoNaming>);
 }
 
+void w_TopoNaming_get_vertex_graph()
+{
+    auto tn = ((wrapper::Proxy<breptopo::TopoNaming>*)ves_toforeign(0))->obj;
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("breptopo", "HistGraph");
+    auto proxy = (wrapper::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<breptopo::HistGraph>));
+    proxy->obj = tn->GetVertexGraph();
+    ves_pop(1);
+}
+
 void w_TopoNaming_get_edge_graph()
 {
     auto tn = ((wrapper::Proxy<breptopo::TopoNaming>*)ves_toforeign(0))->obj;
@@ -113,7 +126,7 @@ void w_TopoNaming_get_next_op_id()
 void w_HistGraph_allocate()
 {
     auto proxy = (wrapper::Proxy<breptopo::HistGraph>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<breptopo::HistGraph>));
-    proxy->obj = std::make_shared<breptopo::HistGraph>(breptopo::HistGraph::Type::Face);
+    proxy->obj = std::make_shared<breptopo::HistGraph>();
 }
 
 int w_HistGraph_finalize(void* data)
@@ -541,6 +554,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 {
     if (strcmp(signature, "TopoGraph.get_graph()") == 0) return w_TopoGraph_get_graph;
 
+    if (strcmp(signature, "TopoNaming.get_vertex_graph()") == 0) return w_TopoNaming_get_vertex_graph;
     if (strcmp(signature, "TopoNaming.get_edge_graph()") == 0) return w_TopoNaming_get_edge_graph;
     if (strcmp(signature, "TopoNaming.get_face_graph()") == 0) return w_TopoNaming_get_face_graph;
     if (strcmp(signature, "TopoNaming.get_solid_graph()") == 0) return w_TopoNaming_get_solid_graph;

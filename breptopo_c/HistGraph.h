@@ -17,15 +17,7 @@ namespace breptopo
 class HistGraph
 {
 public:
-	enum class Type
-	{
-		Edge,
-		Face,
-		Solid
-	};
-
-public:
-	HistGraph(Type type);
+	HistGraph();
 
 	void Update(const partgraph::BRepHistory& hist, uint16_t op_id);
 
@@ -34,20 +26,14 @@ public:
 
 	auto GetGraph() { return m_graph; }
 
-	auto GetType() const { return m_type; }
-
 private:
 	void InitDelNode();
-
-	std::shared_ptr<partgraph::TopoShape> TransShape(const TopoDS_Shape& shape) const;
 
 	void CreateGraph(const partgraph::BRepHistory& hist, uint16_t op_id);
 	void UpdateGraph(const partgraph::BRepHistory& hist, uint16_t op_id,
 		const std::vector<size_t>& old_nodes);
 
 private:
-	Type m_type;
-
 	std::shared_ptr<graph::Graph> m_graph;
 
 	// map shape to gid
