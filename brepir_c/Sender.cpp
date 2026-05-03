@@ -24,6 +24,8 @@
 #include <TopoDS.hxx>
 #include <BRepTools.hxx>
 #include <BRepTools_WireExplorer.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 
 namespace
 {
@@ -36,6 +38,26 @@ void PushPoint(brepir::GeometryPool& p, const gp_Pnt& pt)
 void PushDir(brepir::GeometryPool& p, const gp_Dir& d)
 {
     p.data_pool.push_back(d.X()); p.data_pool.push_back(d.Y()); p.data_pool.push_back(d.Z());
+}
+
+void FillHeaderAABB(const TopoDS_Shape& shape, brepir::Header& header) 
+{
+    Bnd_Box bbox;
+    BRepBndLib::Add(shape, bbox);
+
+    if (bbox.IsVoid()) 
+    {
+        for (int i = 0; i < 3; ++i) 
+        {
+            header.min_pt[i] = 0.0;
+            header.max_pt[i] = 0.0;
+        }
+    }
+    else 
+    {
+        bbox.Get(header.min_pt[0], header.min_pt[1], header.min_pt[2],
+            header.max_pt[0], header.max_pt[1], header.max_pt[2]);
+    }
 }
 
 }
@@ -52,6 +74,8 @@ void Sender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, Geometry
 {
     Header header{ Type::Vertex, uid, (uint32_t)pool.data_pool.size(), 0 };
 
+    FillHeaderAABB(vertex, header);
+
     gp_Pnt pt = BRep_Tool::Pnt(vertex);
     PushPoint(pool, pt);
 
@@ -64,6 +88,8 @@ void Sender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, Geometry
 void Sender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& pool)
 {
     Header header{ Type::Edge, uid, (uint32_t)pool.data_pool.size(), 0 };
+
+    FillHeaderAABB(edge, header);
 
     TopoDS_Vertex vFirst, vLast;
     TopExp::Vertices(edge, vFirst, vLast);
@@ -91,6 +117,8 @@ void Sender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& 
 void Sender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPool& pool)
 {
     Header header{ Type::Face, uid, (uint32_t)pool.data_pool.size(), 0 };
+
+    FillHeaderAABB(face, header);
 
     pool.data_pool.push_back(BRep_Tool::Tolerance(face));
     pool.data_pool.push_back(static_cast<double>(face.Orientation()));
@@ -125,6 +153,8 @@ void Sender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPool& 
 void Sender::SerializeSolid(const TopoDS_Solid& solid, uint32_t uid, GeometryPool& pool)
 {
     Header header{ Type::Solid, uid, (uint32_t)pool.data_pool.size(), 0 };
+
+    FillHeaderAABB(solid, header);
 
     uint32_t countIndex = pool.data_pool.size();
     pool.data_pool.push_back(0.0);

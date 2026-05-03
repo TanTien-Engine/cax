@@ -26,12 +26,14 @@ enum class Type : uint8_t
     Compound = 26
 };
 
-struct alignas(16) Header 
+struct alignas(64) Header
 {
     Type type;
     uint32_t persistent_id;
     uint32_t param_offset;
     uint32_t param_count;
+    double min_pt[3];
+    double max_pt[3];
 };
 
 struct GeometryPool 
