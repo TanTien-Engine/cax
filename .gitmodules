@@ -31,3 +31,6 @@
 [submodule "thirdparty/unirender"]
 	path = thirdparty/unirender
 	url = git@github.com:xzrunner/unirender.git
+[submodule "thirdparty/brepdb"]
+	path = thirdparty/brepdb
+	url = git@github.com:xzrunner/brepdb.git

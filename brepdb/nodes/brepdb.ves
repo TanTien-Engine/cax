@@ -1,0 +1,49 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
+import "logger.logger" for Logger
+import "filesystem" for Filesystem
+import "brepdb" for BrepDB
+import "brepdb.variant" for VAR_TYPE_BREP_DB
+import "db" for RFile
+
+class Brepdb is Node
+{
+	init()
+	{
+		super.init()
+
+		this.exports = [
+			Pin(this, "brepdb", VAR_TYPE_BREP_DB),
+		]
+
+		this.params.add(NodeParam("filename", "test_db"))
+
+		this.layout()
+
+		this.db = nil
+	}
+
+	calc_value(idx)
+	{
+		if (!this.db) {
+			this.db = this.calc_rtree_impl(idx)
+		}
+
+		return Variant(VAR_TYPE_BREP_DB, this.db)
+	}
+
+	calc_rtree_impl(idx)
+	{
+		Logger.info("init db")
+
+		var filename = this.query_param("filename").value
+		if (!Filesystem.is_file_exists(filename + ".idx")) {
+			return BrepDB.init()
+		} else {
+			var db = RFile.init(filename)
+			return BrepDB.init(db)
+		}
+	}
+}

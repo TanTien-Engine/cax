@@ -1,0 +1,43 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_CUBE
+import "blueprint.blueprint" for Blueprint
+import "dbgraph.variant" for VAR_TYPE_RTREE, VAR_TYPE_RKEY
+import "logger.logger" for Logger
+import "brepir.variant" for VAR_TYPE_BREP_IR
+import "brepdb.variant" for VAR_TYPE_BREP_DB, VAR_TYPE_AABB
+
+class Query is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "brepdb", VAR_TYPE_BREP_DB),
+			Pin(this, "aabb", VAR_TYPE_CUBE),
+		]
+		this.exports = [
+			Pin(this, "ir", VAR_TYPE_BREP_IR),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_db = Blueprint.calc_input_value(this, 0)
+		if (!v_db) {
+			return nil
+		}
+
+		var v_aabb = Blueprint.calc_input_value(this, 1)
+		if (!v_aabb) {
+			return nil
+		}
+
+		var ir = v_db.value.query(v_aabb.value)
+		return Variant(VAR_TYPE_BREP_IR, ir)
+	}
+}

@@ -164,6 +164,13 @@ set(brepir__script
 )
 source_group("brepir\\script" FILES ${brepir__script})
 
+set(brepdb__script
+    "brepdb_c/brepdb.ves.inc"
+    "brepdb_c/wrap_Brepdb.cpp"
+    "brepdb_c/wrap_Brepdb.h"
+)
+source_group("brepdb\\script" FILES ${brepdb__script})
+
 set(ALL_FILES
     ${breptopo}
     ${breptopo__computation}
@@ -183,6 +190,7 @@ set(ALL_FILES
     ${sketchlib__script}
     ${brepir}
     ${brepir__script}
+    ${brepdb__script}
 )
 
 ################################################################################
@@ -207,4 +215,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE . thirdparty thirdparty/sm thirdparty/objcomp/include thirdparty/vessel/src/include thirdparty/wrapper/include thirdparty/graph/include thirdparty/guard/include thirdparty/geoshape/include thirdparty/nurbs/include thirdparty/unirender/include thirdparty/eigen ${OpenCASCADE_INCLUDE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE . thirdparty thirdparty/sm thirdparty/objcomp/include thirdparty/vessel/src/include thirdparty/wrapper/include thirdparty/graph/include thirdparty/guard/include thirdparty/geoshape/include thirdparty/nurbs/include thirdparty/unirender/include thirdparty/brepdb/include thirdparty/eigen ${OpenCASCADE_INCLUDE_DIR})
+
+if(NOT TARGET brepdb)
+    add_subdirectory(thirdparty/brepdb)
+endif()

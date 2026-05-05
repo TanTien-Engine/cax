@@ -1,0 +1,39 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "dbgraph.variant" for VAR_TYPE_RTREE
+import "brepir.variant" for VAR_TYPE_BREP_IR
+import "brepdb.variant" for VAR_TYPE_BREP_DB
+
+class Insert is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "brepdb", VAR_TYPE_BREP_DB),
+			Pin(this, "ir", VAR_TYPE_BREP_IR),
+		]
+		this.exports = [
+			Pin(this, "brepdb", VAR_TYPE_BREP_DB),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_db = Blueprint.calc_input_value(this, 0)
+		if (!v_db) {
+			return nil
+		}
+
+		var v_ir = Blueprint.calc_input_value(this, 1)
+		if (v_ir) {
+			v_db.value.insert(v_ir.value)
+		}
+
+		return v_db
+	}
+}
