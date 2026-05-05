@@ -27,23 +27,49 @@
 namespace
 {
 
+void w_BrepIR_allocate()
+{
+    auto proxy = (wrapper::Proxy<brepir::GeometryPool>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<brepir::GeometryPool>));
+    auto pool = std::make_shared<brepir::GeometryPool>();
+    proxy->obj = pool;
+}
+
+int w_BrepIR_finalize(void* data)
+{
+    auto proxy = (wrapper::Proxy<brepir::GeometryPool>*)(data);
+    proxy->~Proxy();
+    return sizeof(wrapper::Proxy<brepir::GeometryPool>);
+}
+
 void w_BrepIR_save()
 {
+    auto pool = ((wrapper::Proxy<brepir::GeometryPool>*)ves_toforeign(0))->obj;
+    std::string filepath = ves_tostring(1);
+    brepir::File::Save(filepath, *pool);
+}
+
+void w_BrepIR_load()
+{
+    auto pool = ((wrapper::Proxy<brepir::GeometryPool>*)ves_toforeign(0))->obj;
+    std::string filepath = ves_tostring(1);
+    brepir::File::Load(filepath, *pool);
+}
+
+void w_BrepIR_serialize()
+{
+    auto pool = ((wrapper::Proxy<brepir::GeometryPool>*)ves_toforeign(0))->obj;
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
-    std::string filepath = ves_tostring(2);
-
     const TopoDS_Shape& tshape = shape->GetShape();
-
-	brepir::GeometryPool pool;
+    
     brepir::Sender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
-
+    
     TopTools_IndexedMapOfShape all_shapes;
     TopExp::MapShapes(tshape, all_shapes);
-
+    
     for (int i = 1; i <= all_shapes.Extent(); ++i)
     {
         const TopoDS_Shape& shape = all_shapes(i);
-
+    
         uint32_t uid = sender.GetUID(shape);
         if (uid == 0xffffffff)
         {
@@ -52,41 +78,37 @@ void w_BrepIR_save()
                 type != TopAbs_FACE && type != TopAbs_SOLID);
             continue;
         }
-
+    
         switch (shape.ShapeType())
         {
         case TopAbs_SOLID:
-            sender.SerializeSolid(TopoDS::Solid(shape), uid, pool);
+            sender.SerializeSolid(TopoDS::Solid(shape), uid, *pool);
             break;
         case TopAbs_FACE:
-            sender.SerializeFace(TopoDS::Face(shape), uid, pool);
+            sender.SerializeFace(TopoDS::Face(shape), uid, *pool);
             break;
         case TopAbs_EDGE:
-            sender.SerializeEdge(TopoDS::Edge(shape), uid, pool);
+            sender.SerializeEdge(TopoDS::Edge(shape), uid, *pool);
             break;
         case TopAbs_VERTEX:
-            sender.SerializeVertex(TopoDS::Vertex(shape), uid, pool);
+            sender.SerializeVertex(TopoDS::Vertex(shape), uid, *pool);
             break;
         default:
             break;
         }
     }
-
-    brepir::File::Save(filepath, pool);
 }
 
-void w_BrepIR_load()
+void w_BrepIR_deserialize()
 {
-    std::string filepath = ves_tostring(1);
-    brepir::GeometryPool pool;
-    brepir::File::Load(filepath, pool);
-
-    brepir::Receiver receiver(pool);
+    auto pool = ((wrapper::Proxy<brepir::GeometryPool>*)ves_toforeign(0))->obj;
+        
+    brepir::Receiver receiver(*pool);
     BRep_Builder B;
     TopoDS_Compound root_compound;
     B.MakeCompound(root_compound);
-
-    for (const auto& h : pool.headers)
+        
+    for (const auto& h : pool->headers)
     {
         if (h.type == brepir::Type::Solid)
         {
@@ -96,7 +118,7 @@ void w_BrepIR_load()
             }
         }
     }
-
+        
     auto shape = std::make_shared<partgraph::TopoShape>(root_compound);
     partgraph::return_topo_shape(shape);
 }
@@ -108,14 +130,23 @@ namespace brepir
 
 VesselForeignMethodFn BrepIRBindMethod(const char* signature)
 {
-    if (strcmp(signature, "static BrepIR.save(_,_)") == 0) return w_BrepIR_save;
-    if (strcmp(signature, "static BrepIR.load(_)") == 0) return w_BrepIR_load;
+    if (strcmp(signature, "BrepIR.save(_)") == 0) return w_BrepIR_save;
+    if (strcmp(signature, "BrepIR.load(_)") == 0) return w_BrepIR_load;
+
+    if (strcmp(signature, "BrepIR.serialize(_)") == 0) return w_BrepIR_serialize;
+    if (strcmp(signature, "BrepIR.deserialize()") == 0) return w_BrepIR_deserialize;
 
     return nullptr;
 }
 
 void BrepIRBindClass(const char* class_name, VesselForeignClassMethods* methods)
 {
+    if (strcmp(class_name, "BrepIR") == 0)
+    {
+        methods->allocate = w_BrepIR_allocate;
+        methods->finalize = w_BrepIR_finalize;
+        return;
+    }
 }
 
 }

@@ -1,11 +1,12 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
-import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "brepir" for BrepIR
+import "brepir.variant" for VAR_TYPE_BREP_IR
 
-class Save is Node
+class Serialize is Node
 {
 	init()
 	{
@@ -15,10 +16,8 @@ class Save is Node
 			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 		this.exports = [
-			Pin(this, "shape", VAR_TOPO_SHAPE),
+			Pin(this, "ir", VAR_TYPE_BREP_IR),		
 		]
-
-		this.params.add(NodeParam("filename", "test_db"))
 
 		this.layout()
 	}
@@ -30,9 +29,8 @@ class Save is Node
 			return nil
 		}
 
-		var filename = this.query_param("filename").value
-		BrepIR.save(v_shape.value, filename)
-
-		return v_shape
+		var ir = BrepIR.init()
+		ir.serialize(v_shape.value)
+		return Variant(VAR_TYPE_BREP_IR, ir)
 	}
 }

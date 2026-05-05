@@ -3,8 +3,13 @@ static const char* brepirModuleSource = QUOTE(
 
 foreign class BrepIR
 {
-	foreign static save(shape, filepath)
-	foreign static load(filepath)
+	init() {}
+
+	foreign save(filepath)
+	foreign load(filepath)
+
+	foreign serialize(shape)
+	foreign deserialize()
 }
 
 );

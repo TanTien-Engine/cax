@@ -1,0 +1,37 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "brepir.variant" for VAR_TYPE_BREP_IR
+
+class SaveIR is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "ir", VAR_TYPE_BREP_IR),
+		]
+		this.exports = [
+			Pin(this, "ir", VAR_TYPE_BREP_IR),
+		]
+
+		this.params.add(NodeParam("filename", "test_ir"))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_ir = Blueprint.calc_input_value(this, 0)
+		if (!v_ir) {
+			return nil
+		}
+
+		var filename = this.query_param("filename").value
+		v_ir.value.save(filename)
+
+		return v_ir
+	}
+}
