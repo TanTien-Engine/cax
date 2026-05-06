@@ -1,4 +1,4 @@
-#include "brepdb_c/Receiver.h"
+#include "brepdb_c/GeomReceiver.h"
 
 #include <BRep_Builder.hxx>
 #include <TopoDS.hxx>
@@ -46,7 +46,7 @@ gp_Dir PopDir(const brepdb::GeometryPool& p, uint32_t& offset)
 namespace brepdb
 {
 
-Receiver::Receiver(const GeometryPool& pool)
+GeomReceiver::GeomReceiver(const GeometryPool& pool)
     : m_pool(pool)
 {
     for (const auto& h : m_pool.headers) {
@@ -54,7 +54,7 @@ Receiver::Receiver(const GeometryPool& pool)
     }
 }
 
-TopoDS_Shape Receiver::GetShape(uint32_t uid)
+TopoDS_Shape GeomReceiver::GetShape(uint32_t uid)
 {
     auto cache_it = m_rebuilt_shapes.find(uid);
     if (cache_it != m_rebuilt_shapes.end()) {
@@ -92,7 +92,7 @@ TopoDS_Shape Receiver::GetShape(uint32_t uid)
     return result;
 }
 
-TopoDS_Vertex Receiver::DeserializeVertex(uint32_t& offset)
+TopoDS_Vertex GeomReceiver::DeserializeVertex(uint32_t& offset)
 {
     gp_Pnt pt = PopPoint(m_pool, offset);
     double tol = m_pool.data_pool[offset++];
@@ -103,7 +103,7 @@ TopoDS_Vertex Receiver::DeserializeVertex(uint32_t& offset)
     return V;
 }
 
-TopoDS_Edge Receiver::DeserializeEdge(uint32_t& offset)
+TopoDS_Edge GeomReceiver::DeserializeEdge(uint32_t& offset)
 {
     double vFirst_id_val = m_pool.data_pool[offset++];
     double vLast_id_val  = m_pool.data_pool[offset++];
@@ -143,7 +143,7 @@ TopoDS_Edge Receiver::DeserializeEdge(uint32_t& offset)
     return E;
 }
 
-TopoDS_Face Receiver::DeserializeFace(uint32_t& offset)
+TopoDS_Face GeomReceiver::DeserializeFace(uint32_t& offset)
 {
     double tol = m_pool.data_pool[offset++];
     TopAbs_Orientation ori = static_cast<TopAbs_Orientation>(m_pool.data_pool[offset++]);
@@ -173,7 +173,7 @@ TopoDS_Face Receiver::DeserializeFace(uint32_t& offset)
     return F;
 }
 
-TopoDS_Solid Receiver::DeserializeSolid(uint32_t& offset)
+TopoDS_Solid GeomReceiver::DeserializeSolid(uint32_t& offset)
 {
     TopoDS_Solid S;
     BRep_Builder B;
@@ -189,7 +189,7 @@ TopoDS_Solid Receiver::DeserializeSolid(uint32_t& offset)
     return S;
 }
 
-TopoDS_Wire Receiver::DeserializeWire(uint32_t& offset)
+TopoDS_Wire GeomReceiver::DeserializeWire(uint32_t& offset)
 {
     TopoDS_Wire W;
     BRep_Builder B;
@@ -213,7 +213,7 @@ TopoDS_Wire Receiver::DeserializeWire(uint32_t& offset)
     return W;
 }
 
-TopoDS_Shell Receiver::DeserializeShell(uint32_t& offset)
+TopoDS_Shell GeomReceiver::DeserializeShell(uint32_t& offset)
 {
     TopAbs_Orientation ori = static_cast<TopAbs_Orientation>(m_pool.data_pool[offset++]);
     int count = static_cast<int>(m_pool.data_pool[offset++]);
@@ -234,7 +234,7 @@ TopoDS_Shell Receiver::DeserializeShell(uint32_t& offset)
     return Sh;
 }
 
-Handle(Geom_Curve) Receiver::DeserializeCurve(uint32_t& offset)
+Handle(Geom_Curve) GeomReceiver::DeserializeCurve(uint32_t& offset)
 {
     Type c_type = static_cast<Type>(m_pool.data_pool[offset++]);
     
@@ -297,7 +297,7 @@ Handle(Geom_Curve) Receiver::DeserializeCurve(uint32_t& offset)
     return nullptr;
 }
 
-Handle(Geom_Surface) Receiver::DeserializeSurface(uint32_t& offset)
+Handle(Geom_Surface) GeomReceiver::DeserializeSurface(uint32_t& offset)
 {
     Type s_type = static_cast<Type>(m_pool.data_pool[offset++]);
     

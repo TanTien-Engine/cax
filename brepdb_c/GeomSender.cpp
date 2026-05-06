@@ -1,5 +1,5 @@
-#include "brepdb_c/Sender.h"
-#include "brepdb_c/Data.h"
+#include "brepdb_c/GeomSender.h"
+#include "brepdb_c/GeomPool.h"
 
 #include "partgraph_c/GlobalConfig.h"
 #include "partgraph_c/TopoShape.h"
@@ -65,12 +65,12 @@ void FillHeaderAABB(const TopoDS_Shape& shape, brepdb::Header& header)
 namespace brepdb
 {
 
-Sender::Sender(const std::shared_ptr<breptopo::TopoNaming>& tn)
+GeomSender::GeomSender(const std::shared_ptr<breptopo::TopoNaming>& tn)
     : m_tn(tn)
 {
 }
 
-void Sender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, GeometryPool& pool)
+void GeomSender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, GeometryPool& pool)
 {
     Header header{ Type::Vertex, uid, (uint32_t)pool.data_pool.size(), 0 };
 
@@ -85,7 +85,7 @@ void Sender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, Geometry
     pool.headers.push_back(header);
 }
 
-void Sender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& pool)
+void GeomSender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& pool)
 {
     Header header{ Type::Edge, uid, (uint32_t)pool.data_pool.size(), 0 };
 
@@ -114,7 +114,7 @@ void Sender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& 
     pool.headers.push_back(header);
 }
 
-void Sender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPool& pool)
+void GeomSender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPool& pool)
 {
     Header header{ Type::Face, uid, (uint32_t)pool.data_pool.size(), 0 };
 
@@ -150,7 +150,7 @@ void Sender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPool& 
     pool.headers.push_back(header);
 }
 
-void Sender::SerializeSolid(const TopoDS_Solid& solid, uint32_t uid, GeometryPool& pool)
+void GeomSender::SerializeSolid(const TopoDS_Solid& solid, uint32_t uid, GeometryPool& pool)
 {
     Header header{ Type::Solid, uid, (uint32_t)pool.data_pool.size(), 0 };
 
@@ -172,7 +172,7 @@ void Sender::SerializeSolid(const TopoDS_Solid& solid, uint32_t uid, GeometryPoo
     pool.headers.push_back(header);
 }
 
-uint32_t Sender::GetUID(const TopoDS_Shape& shape) const
+uint32_t GeomSender::GetUID(const TopoDS_Shape& shape) const
 {
     std::shared_ptr<breptopo::HistGraph> hg = nullptr;
     switch (shape.ShapeType())
@@ -202,7 +202,7 @@ uint32_t Sender::GetUID(const TopoDS_Shape& shape) const
     return cid.GetUID();
 }
 
-void Sender::SerializeCurve(const Handle(Geom_Curve)& curve, GeometryPool& pool)
+void GeomSender::SerializeCurve(const Handle(Geom_Curve)& curve, GeometryPool& pool)
 {
     if (curve->IsKind(STANDARD_TYPE(Geom_Line))) 
     {
@@ -245,7 +245,7 @@ void Sender::SerializeCurve(const Handle(Geom_Curve)& curve, GeometryPool& pool)
     }
 }
 
-void Sender::SerializeSurface(const Handle(Geom_Surface)& surf, GeometryPool& pool) 
+void GeomSender::SerializeSurface(const Handle(Geom_Surface)& surf, GeometryPool& pool) 
 {
     if (surf->IsKind(STANDARD_TYPE(Geom_Plane))) 
     {
@@ -310,7 +310,7 @@ void Sender::SerializeSurface(const Handle(Geom_Surface)& surf, GeometryPool& po
     }
 }
 
-void Sender::SerializeShell(const TopoDS_Shell& shell, GeometryPool& pool)
+void GeomSender::SerializeShell(const TopoDS_Shell& shell, GeometryPool& pool)
 {
     pool.data_pool.push_back(static_cast<double>(shell.Orientation()));
 
@@ -325,7 +325,7 @@ void Sender::SerializeShell(const TopoDS_Shell& shell, GeometryPool& pool)
     }
 }
 
-void Sender::SerializeWire(const TopoDS_Wire& wire, GeometryPool& pool)
+void GeomSender::SerializeWire(const TopoDS_Wire& wire, GeometryPool& pool)
 {
     pool.data_pool.push_back(static_cast<double>(wire.Orientation()));
 

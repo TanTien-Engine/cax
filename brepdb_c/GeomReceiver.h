@@ -1,6 +1,6 @@
 #pragma once
 
-#include "brepdb_c/Data.h"
+#include "brepdb_c/GeomPool.h"
 
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
@@ -18,10 +18,10 @@
 namespace brepdb
 {
 
-class Receiver
+class GeomReceiver
 {
 public:
-    Receiver(const GeometryPool& pool);
+    GeomReceiver(const GeometryPool& pool);
 
     TopoDS_Shape GetShape(uint32_t uid);
 
@@ -44,6 +44,6 @@ private:
     
     std::unordered_map<uint32_t, TopoDS_Shape> m_rebuilt_shapes;
 
-}; // Receiver
+}; // GeomReceiver
 
 }

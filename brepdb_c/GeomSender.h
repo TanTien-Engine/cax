@@ -16,10 +16,10 @@ namespace brepdb
 
 class GeometryPool;
 
-class Sender
+class GeomSender
 {
 public:
-    Sender(const std::shared_ptr<breptopo::TopoNaming>& tn);
+    GeomSender(const std::shared_ptr<breptopo::TopoNaming>& tn);
 
     void SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, GeometryPool& pool);
     void SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& pool);
@@ -38,6 +38,6 @@ private:
 private:
     std::shared_ptr<breptopo::TopoNaming> m_tn;
 
-}; // Sender
+}; // GeomSender
 
 }

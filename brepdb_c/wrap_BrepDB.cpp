@@ -1,8 +1,8 @@
 #include "brepdb_c/wrap_BrepDB.h"
-#include "brepdb_c/Data.h"
-#include "brepdb_c/Sender.h"
-#include "brepdb_c/Receiver.h"
-#include "brepdb_c/File.h"
+#include "brepdb_c/GeomPool.h"
+#include "brepdb_c/GeomSender.h"
+#include "brepdb_c/GeomReceiver.h"
+#include "brepdb_c/GeomFile.h"
 
 #include <spatialdb/RTree.h>
 #include <spatialdb/DiskStorageManager.h>
@@ -43,14 +43,14 @@ void w_BrepIR_save()
 {
     auto pool = ((wrapper::Proxy<brepdb::GeometryPool>*)ves_toforeign(0))->obj;
     std::string filepath = ves_tostring(1);
-    brepdb::File::Save(filepath, *pool);
+    brepdb::GeomFile::Save(filepath, *pool);
 }
 
 void w_BrepIR_load()
 {
     auto pool = ((wrapper::Proxy<brepdb::GeometryPool>*)ves_toforeign(0))->obj;
     std::string filepath = ves_tostring(1);
-    brepdb::File::Load(filepath, *pool);
+    brepdb::GeomFile::Load(filepath, *pool);
 }
 
 void w_BrepIR_serialize()
@@ -59,7 +59,7 @@ void w_BrepIR_serialize()
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     const TopoDS_Shape& tshape = shape->GetShape();
     
-    brepdb::Sender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
+    brepdb::GeomSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
     
     TopTools_IndexedMapOfShape all_shapes;
     TopExp::MapShapes(tshape, all_shapes);
@@ -101,7 +101,7 @@ void w_BrepIR_deserialize()
 {
     auto pool = ((wrapper::Proxy<brepdb::GeometryPool>*)ves_toforeign(0))->obj;
         
-    brepdb::Receiver receiver(*pool);
+    brepdb::GeomReceiver receiver(*pool);
     BRep_Builder B;
     TopoDS_Compound root_compound;
     B.MakeCompound(root_compound);

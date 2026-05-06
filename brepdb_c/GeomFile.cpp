@@ -1,5 +1,5 @@
-#include "brepdb_c/File.h"
-#include "brepdb_c/Data.h"
+#include "brepdb_c/GeomFile.h"
+#include "brepdb_c/GeomPool.h"
 
 #include <fstream>
 #include <iostream>
@@ -20,7 +20,7 @@ struct FileHeader
 namespace brepdb
 {
 
-bool File::Save(const std::string& filename, const GeometryPool& pool)
+bool GeomFile::Save(const std::string& filename, const GeometryPool& pool)
 {
     std::ofstream os(filename, std::ios::binary);
     if (!os) return false;
@@ -44,7 +44,7 @@ bool File::Save(const std::string& filename, const GeometryPool& pool)
     return true;
 }
 
-bool File::Load(const std::string& filename, GeometryPool& pool)
+bool GeomFile::Load(const std::string& filename, GeometryPool& pool)
 {
     std::ifstream is(filename, std::ios::binary);
     if (!is) return false;
