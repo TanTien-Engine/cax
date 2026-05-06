@@ -2,8 +2,8 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant
-import "brepir" for BrepIR
-import "brepir.variant" for VAR_TYPE_BREP_IR
+import "brepdb" for BrepIR
+import "brepdb.variant" for VAR_TYPE_BREP_IR
 
 class LoadIR is Node
 {

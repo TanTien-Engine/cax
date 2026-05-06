@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace brepir
+namespace brepdb
 {
 
 struct GeometryPool;

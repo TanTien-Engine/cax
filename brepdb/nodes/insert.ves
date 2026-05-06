@@ -2,7 +2,7 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "dbgraph.variant" for VAR_TYPE_RTREE
-import "brepir.variant" for VAR_TYPE_BREP_IR
+import "brepdb.variant" for VAR_TYPE_BREP_IR
 import "brepdb.variant" for VAR_TYPE_BREP_DB
 
 class Insert is Node

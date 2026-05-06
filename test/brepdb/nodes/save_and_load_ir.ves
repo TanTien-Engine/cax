@@ -66,21 +66,21 @@ node11.query_param("type").value = "edge"
 
 _editor.add_node(node11, 437.24692650882, -144.4222365857)
 
-var node12 = ::brepir::nodes::serialize::Serialize()
+var node12 = ::brepdb::nodes::serialize::Serialize()
 
 _editor.add_node(node12, 103.64482333694, 423.50875116485)
 
-var node13 = ::brepir::nodes::save_i_r::SaveIR()
+var node13 = ::brepdb::nodes::save_i_r::SaveIR()
 node13.query_param("filename").value = "test_ir"
 
 _editor.add_node(node13, 252.04502057161, 424.75060742053)
 
-var node14 = ::brepir::nodes::load_i_r::LoadIR()
+var node14 = ::brepdb::nodes::load_i_r::LoadIR()
 node14.query_param("filename").value = "test_ir"
 
 _editor.add_node(node14, 259.77830757753, 316.3151634143)
 
-var node15 = ::brepir::nodes::deserialize::Deserialize()
+var node15 = ::brepdb::nodes::deserialize::Deserialize()
 
 _editor.add_node(node15, 403.96875172696, 317.19117347548)
 

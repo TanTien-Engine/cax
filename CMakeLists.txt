@@ -145,24 +145,29 @@ set(sketchlib__script
 )
 source_group("sketchlib\\script" FILES ${sketchlib__script})
 
-set(brepir
-    "brepir_c/Data.cpp"
-    "brepir_c/Data.h"
-    "brepir_c/Sender.cpp"
-    "brepir_c/Sender.h"
-    "brepir_c/Receiver.cpp"
-    "brepir_c/Receiver.h"
-    "brepir_c/File.cpp"
-    "brepir_c/File.h"
+set(brepdb__ir
+    "brepdb_c/Data.cpp"
+    "brepdb_c/Data.h"
+    "brepdb_c/Sender.cpp"
+    "brepdb_c/Sender.h"
+    "brepdb_c/Receiver.cpp"
+    "brepdb_c/Receiver.h"
+    "brepdb_c/File.cpp"
+    "brepdb_c/File.h"
 )
-source_group("brepir" FILES ${brepir})
+source_group("brepdb\\ir" FILES ${brepdb__ir})
 
-set(brepir__script
-    "brepir_c/brepir.ves.inc"
-    "brepir_c/wrap_Brepir.cpp"
-    "brepir_c/wrap_Brepir.h"
+set(brepdb__topo
+    "brepdb_c/TopoGraph.cpp"
+    "brepdb_c/TopoGraph.h"
 )
-source_group("brepir\\script" FILES ${brepir__script})
+source_group("brepdb\\topo" FILES ${brepdb__topo})
+
+set(brepdb__idx
+    "brepdb_c/ShapeIndex.cpp"
+    "brepdb_c/ShapeIndex.h"
+)
+source_group("brepdb\\idx" FILES ${brepdb__idx})
 
 set(brepdb__script
     "brepdb_c/brepdb.ves.inc"
@@ -188,8 +193,9 @@ set(ALL_FILES
     ${sketchlib__data}
     ${sketchlib__external__PlaneGCS}
     ${sketchlib__script}
-    ${brepir}
-    ${brepir__script}
+    ${brepdb__ir}
+    ${brepdb__topo}
+    ${brepdb__idx}    
     ${brepdb__script}
 )
 

@@ -113,6 +113,7 @@ bool HistGraph::QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node
 		{
 			for (auto cnode : cnodes) {
 				results.push_back(cnode);
+				break;
 			}
 			return true;
 		}

@@ -1,1 +1,2 @@
 var VAR_TYPE_BREP_DB = "brepdb"
+var VAR_TYPE_BREP_IR = "brepir"

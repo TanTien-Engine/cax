@@ -11,7 +11,7 @@
 
 namespace breptopo { class TopoNaming; }
 
-namespace brepir
+namespace brepdb
 {
 
 class GeometryPool;

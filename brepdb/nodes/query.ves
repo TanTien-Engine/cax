@@ -5,8 +5,8 @@ import "blueprint.variant" for Variant, VAR_TYPE_CUBE
 import "blueprint.blueprint" for Blueprint
 import "dbgraph.variant" for VAR_TYPE_RTREE, VAR_TYPE_RKEY
 import "logger.logger" for Logger
-import "brepir.variant" for VAR_TYPE_BREP_IR
-import "brepdb.variant" for VAR_TYPE_BREP_DB, VAR_TYPE_AABB
+import "brepdb.variant" for VAR_TYPE_BREP_IR
+import "brepdb.variant" for VAR_TYPE_BREP_DB
 
 class Query is Node
 {

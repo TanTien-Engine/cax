@@ -1,6 +1,6 @@
 #pragma once
 
-#include "brepir_c/Data.h"
+#include "brepdb_c/Data.h"
 
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
@@ -15,7 +15,7 @@
 
 #include <unordered_map>
 
-namespace brepir
+namespace brepdb
 {
 
 class Receiver

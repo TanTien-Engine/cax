@@ -1,4 +1,4 @@
-#include "brepir_c/Receiver.h"
+#include "brepdb_c/Receiver.h"
 
 #include <BRep_Builder.hxx>
 #include <TopoDS.hxx>
@@ -25,7 +25,7 @@
 namespace 
 {
 
-gp_Pnt PopPoint(const brepir::GeometryPool& p, uint32_t& offset)
+gp_Pnt PopPoint(const brepdb::GeometryPool& p, uint32_t& offset)
 {
     double x = p.data_pool[offset++];
     double y = p.data_pool[offset++];
@@ -33,7 +33,7 @@ gp_Pnt PopPoint(const brepir::GeometryPool& p, uint32_t& offset)
     return gp_Pnt(x, y, z);
 }
 
-gp_Dir PopDir(const brepir::GeometryPool& p, uint32_t& offset)
+gp_Dir PopDir(const brepdb::GeometryPool& p, uint32_t& offset)
 {
     double x = p.data_pool[offset++];
     double y = p.data_pool[offset++];
@@ -43,7 +43,7 @@ gp_Dir PopDir(const brepir::GeometryPool& p, uint32_t& offset)
 
 }
 
-namespace brepir
+namespace brepdb
 {
 
 Receiver::Receiver(const GeometryPool& pool)

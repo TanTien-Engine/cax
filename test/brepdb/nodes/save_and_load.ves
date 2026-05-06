@@ -24,12 +24,12 @@ node3.set_prop_value("no_bg", false)
 
 _editor.add_node(node3, 781.75739548213, 130.07227839696)
 
-var node4 = ::brepir::nodes::load_i_r::LoadIR()
+var node4 = ::brepdb::nodes::load_i_r::LoadIR()
 node4.query_param("filename").value = "test_ir"
 
 _editor.add_node(node4, -80.445524809429, 242.42039438908)
 
-var node5 = ::brepir::nodes::deserialize::Deserialize()
+var node5 = ::brepdb::nodes::deserialize::Deserialize()
 
 _editor.add_node(node5, 166.88970110438, 160.67794741512)
 

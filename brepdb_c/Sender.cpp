@@ -1,5 +1,5 @@
-#include "brepir_c/Sender.h"
-#include "brepir_c/Data.h"
+#include "brepdb_c/Sender.h"
+#include "brepdb_c/Data.h"
 
 #include "partgraph_c/GlobalConfig.h"
 #include "partgraph_c/TopoShape.h"
@@ -30,17 +30,17 @@
 namespace
 {
 
-void PushPoint(brepir::GeometryPool& p, const gp_Pnt& pt)
+void PushPoint(brepdb::GeometryPool& p, const gp_Pnt& pt)
 {
     p.data_pool.push_back(pt.X()); p.data_pool.push_back(pt.Y()); p.data_pool.push_back(pt.Z());
 }
 
-void PushDir(brepir::GeometryPool& p, const gp_Dir& d)
+void PushDir(brepdb::GeometryPool& p, const gp_Dir& d)
 {
     p.data_pool.push_back(d.X()); p.data_pool.push_back(d.Y()); p.data_pool.push_back(d.Z());
 }
 
-void FillHeaderAABB(const TopoDS_Shape& shape, brepir::Header& header) 
+void FillHeaderAABB(const TopoDS_Shape& shape, brepdb::Header& header) 
 {
     Bnd_Box bbox;
     BRepBndLib::Add(shape, bbox);
@@ -62,7 +62,7 @@ void FillHeaderAABB(const TopoDS_Shape& shape, brepir::Header& header)
 
 }
 
-namespace brepir
+namespace brepdb
 {
 
 Sender::Sender(const std::shared_ptr<breptopo::TopoNaming>& tn)

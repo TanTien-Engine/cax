@@ -1,5 +1,5 @@
-#include "brepir_c/File.h"
-#include "brepir_c/Data.h"
+#include "brepdb_c/File.h"
+#include "brepdb_c/Data.h"
 
 #include <fstream>
 #include <iostream>
@@ -17,7 +17,7 @@ struct FileHeader
 
 }
 
-namespace brepir
+namespace brepdb
 {
 
 bool File::Save(const std::string& filename, const GeometryPool& pool)

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace brepir
+namespace brepdb
 {
 
 enum class Type : uint8_t

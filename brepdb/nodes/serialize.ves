@@ -3,8 +3,8 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "brepir" for BrepIR
-import "brepir.variant" for VAR_TYPE_BREP_IR
+import "brepdb" for BrepIR
+import "brepdb.variant" for VAR_TYPE_BREP_IR
 
 class Serialize is Node
 {
