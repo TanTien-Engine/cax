@@ -3,10 +3,10 @@
 #include <brepir_c/Data.h>
 #include <brepir_c/Receiver.h>
 
-#include <brepdb/RTree.h>
-#include <brepdb/DiskStorageManager.h>
-#include <brepdb/Region.h>
-#include <brepdb/ObjVisitor.h>
+#include <spatialdb/RTree.h>
+#include <spatialdb/DiskStorageManager.h>
+#include <spatialdb/Region.h>
+#include <spatialdb/ObjVisitor.h>
 #include <partgraph_c/TransHelper.h>
 
 #include <SM_Cube.h>
@@ -16,37 +16,37 @@ namespace
 
 void w_BrepDB_allocate()
 {
-    auto proxy = (wrapper::Proxy<brepdb::RTree>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<brepdb::RTree>));
+    auto proxy = (wrapper::Proxy<spatialdb::RTree>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<spatialdb::RTree>));
 
     auto num = ves_argnum();
     if (num < 2)
     {
-        auto sm = std::make_shared<brepdb::DiskStorageManager>("test_db");
-        proxy->obj = std::make_shared<brepdb::RTree>(sm, true);
+        auto sm = std::make_shared<spatialdb::DiskStorageManager>("test_db");
+        proxy->obj = std::make_shared<spatialdb::RTree>(sm, true);
     }
     else
     {
-        auto sm = ((wrapper::Proxy<brepdb::DiskStorageManager>*)ves_toforeign(1))->obj;
-        proxy->obj = std::make_shared<brepdb::RTree>(sm, false);
+        auto sm = ((wrapper::Proxy<spatialdb::DiskStorageManager>*)ves_toforeign(1))->obj;
+        proxy->obj = std::make_shared<spatialdb::RTree>(sm, false);
     }
 }
 
 int w_BrepDB_finalize(void* data)
 {
-    auto proxy = (wrapper::Proxy<brepdb::RTree>*)(data);
+    auto proxy = (wrapper::Proxy<spatialdb::RTree>*)(data);
     proxy->~Proxy();
-    return sizeof(wrapper::Proxy<brepdb::RTree>);
+    return sizeof(wrapper::Proxy<spatialdb::RTree>);
 }
 
 void w_BrepDB_insert()
 {
-    auto rtree = ((wrapper::Proxy<brepdb::RTree>*)ves_toforeign(0))->obj;
+    auto rtree = ((wrapper::Proxy<spatialdb::RTree>*)ves_toforeign(0))->obj;
     auto pool = ((wrapper::Proxy<brepir::GeometryPool>*)ves_toforeign(1))->obj;
 
     //for (const auto& h : pool->headers)
     //{
-    //    const brepdb::Region aabb(h.min_pt, h.max_pt);
-    //    const brepdb::id_type id = h.persistent_id;
+    //    const spatialdb::Region aabb(h.min_pt, h.max_pt);
+    //    const spatialdb::id_type id = h.persistent_id;
     //    rtree->InsertData(h.param_count, (uint8_t*)&pool->data_pool[h.param_offset], aabb, id);
     //}
 
@@ -66,7 +66,7 @@ void w_BrepDB_insert()
 
     memcpy(ptr, pool->data_pool.data(), sizeof(double) * pool->data_pool.size());
 
-    brepdb::Region aabb;
+    spatialdb::Region aabb;
     for (const auto& h : pool->headers) {
         aabb.Combine({ h.min_pt, h.max_pt });
     }
@@ -78,14 +78,14 @@ void w_BrepDB_insert()
 
 void w_BrepDB_query()
 {
-    auto rtree = ((wrapper::Proxy<brepdb::RTree>*)ves_toforeign(0))->obj;
+    auto rtree = ((wrapper::Proxy<spatialdb::RTree>*)ves_toforeign(0))->obj;
     sm::cube* aabb = (sm::cube*)ves_toforeign(1);
 
     const double min[] = { aabb->xmin, aabb->ymin, aabb->zmin };
     const double max[] = { aabb->xmax, aabb->ymax, aabb->zmax };
-    brepdb::Region region(min, max);
+    spatialdb::Region region(min, max);
 
-    auto visitor = std::make_unique<brepdb::ObjVisitor>();
+    auto visitor = std::make_unique<spatialdb::ObjVisitor>();
     rtree->IntersectsWithQuery(region, *visitor);
 
     auto& items = visitor->GetResults();

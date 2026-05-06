@@ -215,8 +215,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE . thirdparty thirdparty/sm thirdparty/objcomp/include thirdparty/vessel/src/include thirdparty/wrapper/include thirdparty/graph/include thirdparty/guard/include thirdparty/geoshape/include thirdparty/nurbs/include thirdparty/unirender/include thirdparty/brepdb/include thirdparty/eigen ${OpenCASCADE_INCLUDE_DIR})
+target_include_directories(${PROJECT_NAME} PRIVATE . thirdparty thirdparty/sm thirdparty/objcomp/include thirdparty/vessel/src/include thirdparty/wrapper/include thirdparty/graph/include thirdparty/guard/include thirdparty/geoshape/include thirdparty/nurbs/include thirdparty/unirender/include thirdparty/spatialdb/include thirdparty/eigen ${OpenCASCADE_INCLUDE_DIR})
 
-if(NOT TARGET brepdb)
-    add_subdirectory(thirdparty/brepdb)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
+
+if(NOT TARGET spatialdb)
+    add_subdirectory(thirdparty/spatialdb)
 endif()
