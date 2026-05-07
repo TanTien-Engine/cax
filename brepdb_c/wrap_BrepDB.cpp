@@ -276,6 +276,8 @@ void w_BrepDB_build()
     }
 
     topo.FinalizeAll();
+
+    db->Flush();
 }
 
 void w_BrepDB_query()
