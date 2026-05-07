@@ -11,6 +11,7 @@
 #include <TopoDS_Solid.hxx>
 
 #include <Geom_Curve.hxx>
+#include <Geom2d_Curve.hxx>
 #include <Geom_Surface.hxx>
 
 #include <unordered_map>
@@ -31,10 +32,11 @@ private:
     TopoDS_Face   DeserializeFace(uint32_t& offset);
     TopoDS_Solid  DeserializeSolid(uint32_t& offset);
 
-    TopoDS_Wire   DeserializeWire(uint32_t& offset);
+    TopoDS_Wire   DeserializeWire(uint32_t& offset, const TopoDS_Face& face);
     TopoDS_Shell  DeserializeShell(uint32_t& offset);
 
     Handle(Geom_Curve)   DeserializeCurve(uint32_t& offset);
+    Handle(Geom2d_Curve) DeserializeCurve2d(uint32_t& offset);
     Handle(Geom_Surface) DeserializeSurface(uint32_t& offset);
 
 private:

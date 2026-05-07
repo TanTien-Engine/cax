@@ -15,12 +15,17 @@
 #include <Geom_Plane.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_BSplineSurface.hxx>
+#include <Geom2d_Line.hxx>
+#include <Geom2d_Circle.hxx>
+#include <Geom2d_BSplineCurve.hxx>
 
 #include <TColgp_Array1OfPnt.hxx>
 #include <TColgp_Array2OfPnt.hxx>
 #include <TColStd_Array1OfReal.hxx>
 #include <TColStd_Array2OfReal.hxx>
 #include <TColStd_Array1OfInteger.hxx>
+
+#include <BRepTools.hxx>
 
 namespace 
 {
@@ -163,19 +168,20 @@ TopoDS_Face GeomReceiver::DeserializeFace(uint32_t& offset)
     double has_outer_wire = m_pool.data_pool[offset++];
     if (has_outer_wire > 0.5) 
     {
-        TopoDS_Wire outer_wire = DeserializeWire(offset);
+        TopoDS_Wire outer_wire = DeserializeWire(offset, F);
         B.Add(F, outer_wire);
     }
 
     int inner_count = static_cast<int>(m_pool.data_pool[offset++]);
     for (int i = 0; i < inner_count; ++i) 
     {
-        TopoDS_Wire inner_wire = DeserializeWire(offset);
+        TopoDS_Wire inner_wire = DeserializeWire(offset, F);
         B.Add(F, inner_wire);
     }
 
-    F.Orientation(ori);
+    BRepTools::Update(F);
 
+    F.Orientation(ori);
     return F;
 }
 
@@ -195,7 +201,7 @@ TopoDS_Solid GeomReceiver::DeserializeSolid(uint32_t& offset)
     return S;
 }
 
-TopoDS_Wire GeomReceiver::DeserializeWire(uint32_t& offset)
+TopoDS_Wire GeomReceiver::DeserializeWire(uint32_t& offset, const TopoDS_Face& face)
 {
     TopoDS_Wire W;
     BRep_Builder B;
@@ -204,23 +210,27 @@ TopoDS_Wire GeomReceiver::DeserializeWire(uint32_t& offset)
     TopAbs_Orientation wire_ori = static_cast<TopAbs_Orientation>(m_pool.data_pool[offset++]);
 
     int count = static_cast<int>(m_pool.data_pool[offset++]);
-    for (int i = 0; i < count; ++i) 
+    for (int i = 0; i < count; ++i)
     {
         uint32_t edge_uid = static_cast<uint32_t>(m_pool.data_pool[offset++]);
         TopAbs_Orientation ori = static_cast<TopAbs_Orientation>(m_pool.data_pool[offset++]);
 
-        TopoDS_Shape shape = GetShape(edge_uid);
-        if (shape.IsNull()) {
-            continue;
+        TopoDS_Edge E = TopoDS::Edge(GetShape(edge_uid));
+
+        // ∂¡»°≤¢…Ë÷√ pcurve
+        Handle(Geom2d_Curve) pc = DeserializeCurve2d(offset);
+        double pcf = m_pool.data_pool[offset++];
+        double pcl = m_pool.data_pool[offset++];
+        if (!pc.IsNull()) {
+            B.UpdateEdge(E, pc, face, BRep_Tool::Tolerance(E));
+            B.Range(E, face, pcf, pcl);
         }
-        
-        TopoDS_Edge E = TopoDS::Edge(shape);
+
         E.Orientation(ori);
         B.Add(W, E);
     }
 
     W.Orientation(wire_ori);
-
     return W;
 }
 
@@ -311,6 +321,71 @@ Handle(Geom_Curve) GeomReceiver::DeserializeCurve(uint32_t& offset)
         return new Geom_BSplineCurve(poles, weights, knots, mults, degree, isPeriodic);
     }
     
+    return nullptr;
+}
+
+Handle(Geom2d_Curve) GeomReceiver::DeserializeCurve2d(uint32_t& offset)
+{
+    Type c_type = static_cast<Type>(m_pool.data_pool[offset++]);
+
+    if (c_type == Type::Empty) {
+        return nullptr;
+    }
+
+    if (c_type == Type::Line)
+    {
+        double lx = m_pool.data_pool[offset++];
+        double ly = m_pool.data_pool[offset++];
+        double dx = m_pool.data_pool[offset++];
+        double dy = m_pool.data_pool[offset++];
+        return new Geom2d_Line(gp_Pnt2d(lx, ly), gp_Dir2d(dx, dy));
+    }
+    else if (c_type == Type::Circle)
+    {
+        double cx = m_pool.data_pool[offset++];
+        double cy = m_pool.data_pool[offset++];
+        double xx = m_pool.data_pool[offset++];
+        double xy = m_pool.data_pool[offset++];
+        double r = m_pool.data_pool[offset++];
+        gp_Ax2d ax(gp_Pnt2d(cx, cy), gp_Dir2d(xx, xy));
+        gp_Ax22d ax22(gp_Pnt2d(cx, cy), gp_Dir2d(xx, xy));
+        return new Geom2d_Circle(ax22, r);
+    }
+    else if (c_type == Type::BSplineCurve)
+    {
+        int degree = static_cast<int>(m_pool.data_pool[offset++]);
+        int nbPoles = static_cast<int>(m_pool.data_pool[offset++]);
+        int nbKnots = static_cast<int>(m_pool.data_pool[offset++]);
+        bool isRational = (m_pool.data_pool[offset++] > 0.5);
+        bool isPeriodic = (m_pool.data_pool[offset++] > 0.5);
+
+        TColgp_Array1OfPnt2d poles(1, nbPoles);
+        for (int i = 1; i <= nbPoles; ++i) {
+            double x = m_pool.data_pool[offset++];
+            double y = m_pool.data_pool[offset++];
+            poles(i) = gp_Pnt2d(x, y);
+        }
+
+        TColStd_Array1OfReal weights(1, nbPoles);
+        if (isRational) {
+            for (int i = 1; i <= nbPoles; ++i)
+                weights(i) = m_pool.data_pool[offset++];
+        }
+        else {
+            weights.Init(1.0);
+        }
+
+        TColStd_Array1OfReal knots(1, nbKnots);
+        for (int i = 1; i <= nbKnots; ++i)
+            knots(i) = m_pool.data_pool[offset++];
+
+        TColStd_Array1OfInteger mults(1, nbKnots);
+        for (int i = 1; i <= nbKnots; ++i)
+            mults(i) = static_cast<int>(m_pool.data_pool[offset++]);
+
+        return new Geom2d_BSplineCurve(poles, weights, knots, mults, degree, isPeriodic);
+    }
+
     return nullptr;
 }
 

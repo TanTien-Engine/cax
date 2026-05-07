@@ -14,10 +14,15 @@
 #include <Geom_Plane.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_BSplineSurface.hxx>
+#include <Geom2d_Line.hxx>
+#include <Geom2d_Circle.hxx>
+#include <Geom2d_BSplineCurve.hxx>
 #include <gp_Lin.hxx>
 #include <gp_Circ.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Cylinder.hxx>
+#include <gp_Lin2d.hxx>
+#include <gp_Circ2d.hxx>
 #include <BRep_Tool.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopExp.hxx>
@@ -129,7 +134,7 @@ void GeomSender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPo
     TopoDS_Wire outer_wire = BRepTools::OuterWire(face);
     pool.data_pool.push_back(outer_wire.IsNull() ? 0.0 : 1.0);
     if (!outer_wire.IsNull()) {
-        SerializeWire(outer_wire, pool);
+        SerializeWire(outer_wire, face, pool);
     }
 
     uint32_t countIndex = pool.data_pool.size();
@@ -140,7 +145,7 @@ void GeomSender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPo
         const TopoDS_Wire& current_wire = TopoDS::Wire(exp.Current());
         if (outer_wire.IsNull() || !current_wire.IsSame(outer_wire)) 
         {
-            SerializeWire(current_wire, pool);
+            SerializeWire(current_wire, face, pool);
             ++count;
         }
     }
@@ -245,6 +250,61 @@ void GeomSender::SerializeCurve(const Handle(Geom_Curve)& curve, GeometryPool& p
     }
 }
 
+void GeomSender::SerializeCurve2d(const Handle(Geom2d_Curve)& curve, GeometryPool& pool)
+{
+    if (curve.IsNull()) {
+        pool.data_pool.push_back(static_cast<double>(Type::Empty));
+        return;
+    }
+
+    if (curve->IsKind(STANDARD_TYPE(Geom2d_Line)))
+    {
+        pool.data_pool.push_back(static_cast<double>(Type::Line));
+        auto g = Handle(Geom2d_Line)::DownCast(curve)->Lin2d();
+        pool.data_pool.push_back(g.Location().X());
+        pool.data_pool.push_back(g.Location().Y());
+        pool.data_pool.push_back(g.Direction().X());
+        pool.data_pool.push_back(g.Direction().Y());
+    }
+    else if (curve->IsKind(STANDARD_TYPE(Geom2d_Circle)))
+    {
+        pool.data_pool.push_back(static_cast<double>(Type::Circle));
+        auto g = Handle(Geom2d_Circle)::DownCast(curve)->Circ2d();
+        pool.data_pool.push_back(g.Location().X());
+        pool.data_pool.push_back(g.Location().Y());
+        pool.data_pool.push_back(g.XAxis().Direction().X());
+        pool.data_pool.push_back(g.XAxis().Direction().Y());
+        pool.data_pool.push_back(g.Radius());
+    }
+    else if (curve->IsKind(STANDARD_TYPE(Geom2d_BSplineCurve)))
+    {
+        pool.data_pool.push_back(static_cast<double>(Type::BSplineCurve));
+        auto g = Handle(Geom2d_BSplineCurve)::DownCast(curve);
+        pool.data_pool.push_back(g->Degree());
+        pool.data_pool.push_back(g->NbPoles());
+        pool.data_pool.push_back(g->NbKnots());
+        pool.data_pool.push_back(g->IsRational() ? 1.0 : 0.0);
+        pool.data_pool.push_back(g->IsPeriodic() ? 1.0 : 0.0);
+        for (int i = 1; i <= g->NbPoles(); ++i) {
+            pool.data_pool.push_back(g->Pole(i).X());
+            pool.data_pool.push_back(g->Pole(i).Y());
+        }
+        if (g->IsRational()) {
+            for (int i = 1; i <= g->NbPoles(); ++i)
+                pool.data_pool.push_back(g->Weight(i));
+        }
+        for (int i = 1; i <= g->NbKnots(); ++i)
+            pool.data_pool.push_back(g->Knot(i));
+        for (int i = 1; i <= g->NbKnots(); ++i)
+            pool.data_pool.push_back(static_cast<double>(g->Multiplicity(i)));
+    }
+    else
+    {
+        // 不认识的类型，存 Empty
+        pool.data_pool.push_back(static_cast<double>(Type::Empty));
+    }
+}
+
 void GeomSender::SerializeSurface(const Handle(Geom_Surface)& surf, GeometryPool& pool) 
 {
     if (surf->IsKind(STANDARD_TYPE(Geom_Plane))) 
@@ -325,22 +385,28 @@ void GeomSender::SerializeShell(const TopoDS_Shell& shell, GeometryPool& pool)
     }
 }
 
-void GeomSender::SerializeWire(const TopoDS_Wire& wire, GeometryPool& pool)
+void GeomSender::SerializeWire(const TopoDS_Wire& wire, const TopoDS_Face& face, GeometryPool& pool)
 {
     pool.data_pool.push_back(static_cast<double>(wire.Orientation()));
 
-    uint32_t countIndex = pool.data_pool.size();
-    pool.data_pool.push_back(0.0);
-
+    // 先数 edge 数量
     int count = 0;
-    for (BRepTools_WireExplorer exp(wire); exp.More(); exp.Next())
+    for (TopExp_Explorer exp(wire, TopAbs_EDGE); exp.More(); exp.Next()) ++count;
+    pool.data_pool.push_back(static_cast<double>(count));
+
+    for (TopExp_Explorer exp(wire, TopAbs_EDGE); exp.More(); exp.Next())
     {
-        const TopoDS_Shape& edge = exp.Current();
+        const TopoDS_Edge& edge = TopoDS::Edge(exp.Current());
         pool.data_pool.push_back(static_cast<double>(GetUID(edge)));
         pool.data_pool.push_back(static_cast<double>(edge.Orientation()));
-        count++;
+
+        // pcurve on this face
+        Standard_Real pcf, pcl;
+        Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, pcf, pcl);
+        SerializeCurve2d(pc, pool);
+        pool.data_pool.push_back(pcf);
+        pool.data_pool.push_back(pcl);
     }
-    pool.data_pool[countIndex] = static_cast<double>(count);
 }
 
 }

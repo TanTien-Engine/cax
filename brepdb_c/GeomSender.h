@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Geom_Curve.hxx>
+#include <Geom2d_Curve.hxx>
 #include <Geom_Surface.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Edge.hxx>
@@ -30,10 +31,11 @@ public:
 
 private:
     void SerializeCurve(const Handle(Geom_Curve)& curve, GeometryPool& pool);
+    void SerializeCurve2d(const Handle(Geom2d_Curve)& curve, GeometryPool& pool);
     void SerializeSurface(const Handle(Geom_Surface)& surf, GeometryPool& pool);
 
     void SerializeShell(const TopoDS_Shell& shell, GeometryPool& pool);
-    void SerializeWire(const TopoDS_Wire& wire, GeometryPool& pool);
+    void SerializeWire(const TopoDS_Wire& wire, const TopoDS_Face& face, GeometryPool& pool);
 
 private:
     std::shared_ptr<breptopo::TopoNaming> m_tn;

@@ -205,7 +205,7 @@ void TopoBlock::StoreToByteArray(uint8_t** data, uint32_t& len) const
         + nc * sizeof(uint32_t)                 // node_ids
         + (nc + 1) * sizeof(uint32_t) * 2       // fwd + rev offsets
         + ec * PACKED_EDGE_SIZE * 2             // fwd + rev edges
-        + fc * sizeof(uint32_t)               %  // face_ids
+        + fc * sizeof(uint32_t)                 // face_ids
         + (fc + 1) * sizeof(uint32_t)           // adj_offsets
         + ac * sizeof(uint32_t);                // adj_faces
 
