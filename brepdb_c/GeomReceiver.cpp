@@ -179,6 +179,7 @@ TopoDS_Face GeomReceiver::DeserializeFace(uint32_t& offset)
         B.Add(F, inner_wire);
     }
 
+    // Compute UV bounds from pcurves and clear NaturalRestriction flag
     BRepTools::Update(F);
 
     F.Orientation(ori);
@@ -217,13 +218,16 @@ TopoDS_Wire GeomReceiver::DeserializeWire(uint32_t& offset, const TopoDS_Face& f
 
         TopoDS_Edge E = TopoDS::Edge(GetShape(edge_uid));
 
-        // ∂¡»°≤¢…Ë÷√ pcurve
+        // Read and set pcurve (always use FORWARD to match Sender)
         Handle(Geom2d_Curve) pc = DeserializeCurve2d(offset);
         double pcf = m_pool.data_pool[offset++];
         double pcl = m_pool.data_pool[offset++];
         if (!pc.IsNull()) {
-            B.UpdateEdge(E, pc, face, BRep_Tool::Tolerance(E));
-            B.Range(E, face, pcf, pcl);
+            TopoDS_Edge fwd_E = TopoDS::Edge(E.Oriented(TopAbs_FORWARD));
+            B.UpdateEdge(fwd_E, pc, face, BRep_Tool::Tolerance(E));
+            B.Range(fwd_E, face, pcf, pcl);
+            B.SameParameter(fwd_E, true);
+            B.SameRange(fwd_E, true);
         }
 
         E.Orientation(ori);
@@ -279,8 +283,9 @@ Handle(Geom_Curve) GeomReceiver::DeserializeCurve(uint32_t& offset)
     {
         gp_Pnt loc = PopPoint(m_pool, offset);
         gp_Dir dir = PopDir(m_pool, offset);
+        gp_Dir xdir = PopDir(m_pool, offset);
         double r = m_pool.data_pool[offset++];
-        gp_Ax2 ax2(loc, dir);
+        gp_Ax2 ax2(loc, dir, xdir);
         return new Geom_Circle(ax2, r);
     }
     else if (c_type == Type::BSplineCurve) 
@@ -347,7 +352,6 @@ Handle(Geom2d_Curve) GeomReceiver::DeserializeCurve2d(uint32_t& offset)
         double xx = m_pool.data_pool[offset++];
         double xy = m_pool.data_pool[offset++];
         double r = m_pool.data_pool[offset++];
-        gp_Ax2d ax(gp_Pnt2d(cx, cy), gp_Dir2d(xx, xy));
         gp_Ax22d ax22(gp_Pnt2d(cx, cy), gp_Dir2d(xx, xy));
         return new Geom2d_Circle(ax22, r);
     }

@@ -222,6 +222,7 @@ void GeomSender::SerializeCurve(const Handle(Geom_Curve)& curve, GeometryPool& p
         auto g = Handle(Geom_Circle)::DownCast(curve)->Circ();
         PushPoint(pool, g.Position().Location());
         PushDir(pool, g.Position().Direction());
+        PushDir(pool, g.Position().XDirection());
         pool.data_pool.push_back(g.Radius());
     }
     else if (curve->IsKind(STANDARD_TYPE(Geom_BSplineCurve))) 
@@ -300,7 +301,6 @@ void GeomSender::SerializeCurve2d(const Handle(Geom2d_Curve)& curve, GeometryPoo
     }
     else
     {
-        // 不认识的类型，存 Empty
         pool.data_pool.push_back(static_cast<double>(Type::Empty));
     }
 }
@@ -329,16 +329,16 @@ void GeomSender::SerializeSurface(const Handle(Geom_Surface)& surf, GeometryPool
         pool.data_pool.push_back(static_cast<double>(Type::BSplineSurface));
         auto g = Handle(Geom_BSplineSurface)::DownCast(surf);
 
-        pool.data_pool.push_back(static_cast<double>(g->UDegree()));    // [0]
-        pool.data_pool.push_back(static_cast<double>(g->VDegree()));    // [1]
-        pool.data_pool.push_back(static_cast<double>(g->NbUPoles()));   // [2]
-        pool.data_pool.push_back(static_cast<double>(g->NbVPoles()));   // [3]
-        pool.data_pool.push_back(static_cast<double>(g->NbUKnots()));   // [4]
-        pool.data_pool.push_back(static_cast<double>(g->NbVKnots()));   // [5]
-        pool.data_pool.push_back(g->IsURational() ? 1.0 : 0.0);         // [6]
-        pool.data_pool.push_back(g->IsVRational() ? 1.0 : 0.0);         // [7]
-        pool.data_pool.push_back(g->IsUPeriodic() ? 1.0 : 0.0);         // [8]
-        pool.data_pool.push_back(g->IsVPeriodic() ? 1.0 : 0.0);         // [9]
+        pool.data_pool.push_back(static_cast<double>(g->UDegree()));
+        pool.data_pool.push_back(static_cast<double>(g->VDegree()));
+        pool.data_pool.push_back(static_cast<double>(g->NbUPoles()));
+        pool.data_pool.push_back(static_cast<double>(g->NbVPoles()));
+        pool.data_pool.push_back(static_cast<double>(g->NbUKnots()));
+        pool.data_pool.push_back(static_cast<double>(g->NbVKnots()));
+        pool.data_pool.push_back(g->IsURational() ? 1.0 : 0.0);
+        pool.data_pool.push_back(g->IsVRational() ? 1.0 : 0.0);
+        pool.data_pool.push_back(g->IsUPeriodic() ? 1.0 : 0.0);
+        pool.data_pool.push_back(g->IsVPeriodic() ? 1.0 : 0.0);
 
         for (int u = 1; u <= g->NbUPoles(); ++u) {
             for (int v = 1; v <= g->NbVPoles(); ++v) {
@@ -354,19 +354,15 @@ void GeomSender::SerializeSurface(const Handle(Geom_Surface)& surf, GeometryPool
             }
         }
 
-        for (int i = 1; i <= g->NbUKnots(); ++i) {
+        for (int i = 1; i <= g->NbUKnots(); ++i)
             pool.data_pool.push_back(g->UKnot(i));
-        }
-        for (int i = 1; i <= g->NbUKnots(); ++i) {
+        for (int i = 1; i <= g->NbUKnots(); ++i)
             pool.data_pool.push_back(static_cast<double>(g->UMultiplicity(i)));
-        }
 
-        for (int i = 1; i <= g->NbVKnots(); ++i) {
+        for (int i = 1; i <= g->NbVKnots(); ++i)
             pool.data_pool.push_back(g->VKnot(i));
-        }
-        for (int i = 1; i <= g->NbVKnots(); ++i) {
+        for (int i = 1; i <= g->NbVKnots(); ++i)
             pool.data_pool.push_back(static_cast<double>(g->VMultiplicity(i)));
-        }
     }
 }
 
@@ -389,9 +385,9 @@ void GeomSender::SerializeWire(const TopoDS_Wire& wire, const TopoDS_Face& face,
 {
     pool.data_pool.push_back(static_cast<double>(wire.Orientation()));
 
-    // 先数 edge 数量
     int count = 0;
-    for (TopExp_Explorer exp(wire, TopAbs_EDGE); exp.More(); exp.Next()) ++count;
+    for (TopExp_Explorer exp(wire, TopAbs_EDGE); exp.More(); exp.Next()) 
+        ++count;
     pool.data_pool.push_back(static_cast<double>(count));
 
     for (TopExp_Explorer exp(wire, TopAbs_EDGE); exp.More(); exp.Next())
@@ -400,9 +396,10 @@ void GeomSender::SerializeWire(const TopoDS_Wire& wire, const TopoDS_Face& face,
         pool.data_pool.push_back(static_cast<double>(GetUID(edge)));
         pool.data_pool.push_back(static_cast<double>(edge.Orientation()));
 
-        // pcurve on this face
+        // Always query pcurve with FORWARD orientation for consistent serialization
+        TopoDS_Edge fwd_edge = TopoDS::Edge(edge.Oriented(TopAbs_FORWARD));
         Standard_Real pcf, pcl;
-        Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(edge, face, pcf, pcl);
+        Handle(Geom2d_Curve) pc = BRep_Tool::CurveOnSurface(fwd_edge, face, pcf, pcl);
         SerializeCurve2d(pc, pool);
         pool.data_pool.push_back(pcf);
         pool.data_pool.push_back(pcl);

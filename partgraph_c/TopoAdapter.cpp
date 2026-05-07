@@ -25,6 +25,9 @@
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Wire.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
+#include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
+#include <BRepLib.hxx>
 
 #include <set>
 
@@ -70,7 +73,7 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
     TopoDS_Shape shape = mkBuilder.Shape();
     shape.Location(loc);
 
-    BRepMesh_IncrementalMesh(shape, 0.1);
+    BRepMesh_IncrementalMesh(shape, 0.01, Standard_False, 0.1);
     return BRep_Tool::Triangulation(TopoDS::Face(shape), loc);
 }
 
@@ -192,9 +195,12 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
     }
     else
     {
-        auto algo = std::make_unique<BRepMesh_IncrementalMesh>();
-        algo->SetShape(shape);
-        algo->Perform();
+        // Rebuild missing 3D curves from pcurves (needed for deserialized shapes)
+        BRepLib::BuildCurves3d(shape);
+
+        BRepTools::Clean(shape);
+        BRepMesh_IncrementalMesh algo(shape, 0.01, Standard_False, 0.1);
+        algo.Perform();
 
         TriangulationFaces(shape, vertices);
     }
@@ -227,7 +233,6 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
 void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vertex>& vertices)
 {
     TopLoc_Location aLoc;
-    //    shape.Location(aLoc);
 
     TopTools_IndexedMapOfShape face_map;
     TopExp::MapShapes(shape, TopAbs_FACE, face_map);
@@ -235,9 +240,23 @@ void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vert
     {
         const TopoDS_Face& act_face = TopoDS::Face(face_map(i));
         Handle(Poly_Triangulation) mesh = BRep_Tool::Triangulation(act_face, aLoc);
+
+        // BRepMesh may under-tessellate curved surfaces; detect and re-triangulate
+        if (!mesh.IsNull())
+        {
+            BRepAdaptor_Surface adapt(act_face);
+            if (adapt.GetType() != GeomAbs_Plane && mesh->NbNodes() <= 4)
+            {
+                BRep_Builder BB;
+                BB.UpdateFace(act_face, Handle(Poly_Triangulation)());
+                mesh.Nullify();
+            }
+        }
+
         if (mesh.IsNull()) {
             mesh = TriangulationOfFace(act_face);
         }
+
         if (mesh.IsNull()) {
             continue;
         }
@@ -262,9 +281,6 @@ void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vert
                 v2(V2.X(), V2.Y(), V2.Z()),
                 v3(V3.X(), V3.Y(), V3.Z());
             gp_Vec normal = (v2 - v1) ^ (v3 - v1);
-            //gp_Vec NV1 = normal;
-            //gp_Vec NV2 = normal;
-            //gp_Vec NV3 = normal;
 
             sm::vec3 norm(sm::vec3(
                 static_cast<float>(normal.X()),
