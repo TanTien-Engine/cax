@@ -22,7 +22,8 @@ void TopoBlock::AddEdge(uint32_t parent_id, uint32_t child_id, Rel rel)
 
 void TopoBlock::AddFaceAdjacency(uint32_t face_a, uint32_t face_b)
 {
-    if (face_a == face_b) return;
+    if (face_a == face_b) 
+        return;
     m_temp_adj.push_back({ face_a, face_b });
     m_temp_adj.push_back({ face_b, face_a });
 }
@@ -31,7 +32,8 @@ void TopoBlock::Finalize()
 {
     std::vector<uint32_t> ids;
     ids.reserve(m_temp_edges.size() * 2);
-    for (const auto& e : m_temp_edges) {
+    for (const auto& e : m_temp_edges) 
+    {
         ids.push_back(e.from);
         ids.push_back(e.to);
     }
@@ -51,7 +53,8 @@ void TopoBlock::Finalize()
         m_fwd_offsets[i] += m_fwd_offsets[i - 1];
 
     std::vector<uint32_t> cursor(m_fwd_offsets.begin(), m_fwd_offsets.end());
-    for (const auto& e : m_temp_edges) {
+    for (const auto& e : m_temp_edges) 
+    {
         uint32_t pos = cursor[FindIndex(e.from)]++;
         m_fwd_edges[pos] = Edge{ e.to, e.rel };
     }
@@ -65,7 +68,8 @@ void TopoBlock::Finalize()
         m_rev_offsets[i] += m_rev_offsets[i - 1];
 
     cursor.assign(m_rev_offsets.begin(), m_rev_offsets.end());
-    for (const auto& e : m_temp_edges) {
+    for (const auto& e : m_temp_edges) 
+    {
         uint32_t pos = cursor[FindIndex(e.to)]++;
         m_rev_edges[pos] = Edge{ e.from, e.rel };
     }
@@ -101,7 +105,8 @@ void TopoBlock::Finalize()
         m_adj_offsets[i] += m_adj_offsets[i - 1];
 
     cursor.assign(m_adj_offsets.begin(), m_adj_offsets.end());
-    for (const auto& a : m_temp_adj) {
+    for (const auto& a : m_temp_adj) 
+    {
         uint32_t pos = cursor[FindFaceIndex(a.a)]++;
         m_adj_faces[pos] = a.b;
     }
@@ -114,47 +119,64 @@ void TopoBlock::Finalize()
 
 void TopoBlock::Clear()
 {
-    m_node_ids.clear(); m_fwd_offsets.clear(); m_fwd_edges.clear();
-    m_rev_offsets.clear(); m_rev_edges.clear();
-    m_face_ids.clear(); m_adj_offsets.clear(); m_adj_faces.clear();
-    m_temp_edges.clear(); m_temp_adj.clear();
+    m_node_ids.clear(); 
+    m_fwd_offsets.clear(); 
+    m_fwd_edges.clear();
+    m_rev_offsets.clear(); 
+    m_rev_edges.clear();
+    
+    m_face_ids.clear(); 
+    m_adj_offsets.clear(); 
+    m_adj_faces.clear();
+
+    m_temp_edges.clear(); 
+    m_temp_adj.clear();
+
     m_finalized = false;
 }
 
 int32_t TopoBlock::FindIndex(uint32_t id) const
 {
     auto it = std::lower_bound(m_node_ids.begin(), m_node_ids.end(), id);
-    if (it == m_node_ids.end() || *it != id) return -1;
+    if (it == m_node_ids.end() || *it != id) 
+        return -1;
     return static_cast<int32_t>(it - m_node_ids.begin());
 }
 
 int32_t TopoBlock::FindFaceIndex(uint32_t face_id) const
 {
     auto it = std::lower_bound(m_face_ids.begin(), m_face_ids.end(), face_id);
-    if (it == m_face_ids.end() || *it != face_id) return -1;
+    if (it == m_face_ids.end() || *it != face_id) 
+        return -1;
     return static_cast<int32_t>(it - m_face_ids.begin());
 }
 
-bool TopoBlock::HasNode(uint32_t id) const { return FindIndex(id) >= 0; }
+bool TopoBlock::HasNode(uint32_t id) const 
+{ 
+    return FindIndex(id) >= 0; 
+}
 
 std::span<const TopoBlock::Edge> TopoBlock::GetChildren(uint32_t id) const
 {
     int32_t idx = FindIndex(id);
-    if (idx < 0) return {};
+    if (idx < 0) 
+        return {};
     return { &m_fwd_edges[m_fwd_offsets[idx]], m_fwd_offsets[idx+1] - m_fwd_offsets[idx] };
 }
 
 std::span<const TopoBlock::Edge> TopoBlock::GetParents(uint32_t id) const
 {
     int32_t idx = FindIndex(id);
-    if (idx < 0) return {};
+    if (idx < 0) 
+        return {};
     return { &m_rev_edges[m_rev_offsets[idx]], m_rev_offsets[idx+1] - m_rev_offsets[idx] };
 }
 
 std::span<const uint32_t> TopoBlock::GetAdjacentFaces(uint32_t face_id) const
 {
     int32_t idx = FindFaceIndex(face_id);
-    if (idx < 0) return {};
+    if (idx < 0) 
+        return {};
     return { &m_adj_faces[m_adj_offsets[idx]], m_adj_offsets[idx+1] - m_adj_offsets[idx] };
 }
 
@@ -183,36 +205,52 @@ void TopoBlock::StoreToByteArray(uint8_t** data, uint32_t& len) const
         + nc * sizeof(uint32_t)                 // node_ids
         + (nc + 1) * sizeof(uint32_t) * 2       // fwd + rev offsets
         + ec * PACKED_EDGE_SIZE * 2             // fwd + rev edges
-        + fc * sizeof(uint32_t)                 // face_ids
+        + fc * sizeof(uint32_t)               %  // face_ids
         + (fc + 1) * sizeof(uint32_t)           // adj_offsets
         + ac * sizeof(uint32_t);                // adj_faces
 
     *data = new uint8_t[len];
     uint8_t* ptr = *data;
 
-    auto W = [&](const void* src, size_t sz) { memcpy(ptr, src, sz); ptr += sz; };
-    auto W32 = [&](uint32_t v) { W(&v, 4); };
+    auto W = [&](const void* src, size_t sz) { 
+        memcpy(ptr, src, sz); ptr += sz; 
+    };
+    auto W32 = [&](uint32_t v) { 
+        W(&v, 4); 
+    };
 
-    W32(m_solid_id); W32(nc); W32(ec); W32(fc); W32(ac);
+    W32(m_solid_id); 
+    W32(nc); 
+    W32(ec); 
+    W32(fc); 
+    W32(ac);
 
-    if (nc) W(m_node_ids.data(), nc * 4);
-    if (nc) W(m_fwd_offsets.data(), (nc + 1) * 4);
+    if (nc) 
+        W(m_node_ids.data(), nc * 4);
+    if (nc) 
+        W(m_fwd_offsets.data(), (nc + 1) * 4);
 
-    for (uint32_t i = 0; i < ec; ++i) {
+    for (uint32_t i = 0; i < ec; ++i) 
+    {
         W(&m_fwd_edges[i].target, 4);
         *ptr++ = static_cast<uint8_t>(m_fwd_edges[i].rel);
     }
 
-    if (nc) W(m_rev_offsets.data(), (nc + 1) * 4);
+    if (nc) 
+        W(m_rev_offsets.data(), (nc + 1) * 4);
 
-    for (uint32_t i = 0; i < ec; ++i) {
+    for (uint32_t i = 0; i < ec; ++i) 
+    {
         W(&m_rev_edges[i].target, 4);
         *ptr++ = static_cast<uint8_t>(m_rev_edges[i].rel);
     }
 
-    if (fc) W(m_face_ids.data(), fc * 4);
-    if (fc) W(m_adj_offsets.data(), (fc + 1) * 4);
-    if (ac) W(m_adj_faces.data(), ac * 4);
+    if (fc) 
+        W(m_face_ids.data(), fc * 4);
+    if (fc) 
+        W(m_adj_offsets.data(), (fc + 1) * 4);
+    if (ac) 
+        W(m_adj_faces.data(), ac * 4);
 }
 
 void TopoBlock::LoadFromByteArray(const uint8_t* data, uint32_t len)
@@ -220,41 +258,56 @@ void TopoBlock::LoadFromByteArray(const uint8_t* data, uint32_t len)
     Clear();
     const uint8_t* ptr = data;
 
-    auto R = [&](void* dst, size_t sz) { memcpy(dst, ptr, sz); ptr += sz; };
-    auto R32 = [&]() -> uint32_t { uint32_t v; R(&v, 4); return v; };
+    auto R = [&](void* dst, size_t sz) { 
+        memcpy(dst, ptr, sz); ptr += sz; 
+    };
+    auto R32 = [&]() -> uint32_t 
+    { 
+        uint32_t v; 
+        R(&v, 4); 
+        return v; 
+    };
 
     m_solid_id = R32();
     uint32_t nc = R32(), ec = R32(), fc = R32(), ac = R32();
 
     m_node_ids.resize(nc);
-    if (nc) R(m_node_ids.data(), nc * 4);
+    if (nc) 
+        R(m_node_ids.data(), nc * 4);
 
     m_fwd_offsets.resize(nc + 1);
-    if (nc) R(m_fwd_offsets.data(), (nc + 1) * 4);
+    if (nc) 
+        R(m_fwd_offsets.data(), (nc + 1) * 4);
 
     m_fwd_edges.resize(ec);
-    for (uint32_t i = 0; i < ec; ++i) {
+    for (uint32_t i = 0; i < ec; ++i) 
+    {
         R(&m_fwd_edges[i].target, 4);
         m_fwd_edges[i].rel = static_cast<Rel>(*ptr++);
     }
 
     m_rev_offsets.resize(nc + 1);
-    if (nc) R(m_rev_offsets.data(), (nc + 1) * 4);
+    if (nc) 
+        R(m_rev_offsets.data(), (nc + 1) * 4);
 
     m_rev_edges.resize(ec);
-    for (uint32_t i = 0; i < ec; ++i) {
+    for (uint32_t i = 0; i < ec; ++i) 
+    {
         R(&m_rev_edges[i].target, 4);
         m_rev_edges[i].rel = static_cast<Rel>(*ptr++);
     }
 
     m_face_ids.resize(fc);
-    if (fc) R(m_face_ids.data(), fc * 4);
+    if (fc) 
+        R(m_face_ids.data(), fc * 4);
 
     m_adj_offsets.resize(fc + 1);
-    if (fc) R(m_adj_offsets.data(), (fc + 1) * 4);
+    if (fc) 
+        R(m_adj_offsets.data(), (fc + 1) * 4);
 
     m_adj_faces.resize(ac);
-    if (ac) R(m_adj_faces.data(), ac * 4);
+    if (ac) 
+        R(m_adj_faces.data(), ac * 4);
 
     m_finalized = true;
 }
@@ -279,20 +332,27 @@ void TopoGraph::FinalizeAll()
     uint32_t hw = std::thread::hardware_concurrency();
     uint32_t num_threads = std::min(hw > 0 ? hw : 4, n);
 
-    if (num_threads <= 1 || n <= 4) {
-        for (auto& b : m_blocks) b.Finalize();
-    } else {
+    if (num_threads <= 1 || n <= 4) 
+    {
+        for (auto& b : m_blocks) 
+            b.Finalize();
+    } 
+    else 
+    {
         std::vector<std::thread> threads;
         uint32_t chunk = (n + num_threads - 1) / num_threads;
-        for (uint32_t t = 0; t < num_threads; ++t) {
+        for (uint32_t t = 0; t < num_threads; ++t) 
+        {
             uint32_t begin = t * chunk;
             uint32_t end = std::min(begin + chunk, n);
-            if (begin < end)
+            if (begin < end) {
                 threads.emplace_back([&, begin, end]() {
                     for (uint32_t i = begin; i < end; ++i) m_blocks[i].Finalize();
                 });
+            }
         }
-        for (auto& t : threads) t.join();
+        for (auto& t : threads) 
+            t.join();
     }
 
     m_entity_to_block.clear();
@@ -361,18 +421,27 @@ void TopoGraph::StoreToByteArray(uint8_t** data, uint32_t& len) const
 
     uint32_t header_sz = sizeof(uint32_t) * (3 + bc);
     uint32_t total_blocks = 0;
-    for (uint32_t i = 0; i < bc; ++i) total_blocks += lens[i];
+    for (uint32_t i = 0; i < bc; ++i) 
+        total_blocks += lens[i];
 
     len = header_sz + total_blocks;
     *data = new uint8_t[len];
     uint8_t* ptr = *data;
 
-    auto W = [&](const void* src, size_t sz) { memcpy(ptr, src, sz); ptr += sz; };
-    auto W32 = [&](uint32_t v) { W(&v, 4); };
+    auto W = [&](const void* src, size_t sz) { 
+        memcpy(ptr, src, sz); ptr += sz; 
+    };
+    auto W32 = [&](uint32_t v) { 
+        W(&v, 4); 
+    };
 
-    W32(TOPO_MAGIC); W32(TOPO_VERSION); W32(bc);
-    for (uint32_t i = 0; i < bc; ++i) W32(lens[i]);
-    for (uint32_t i = 0; i < bc; ++i) {
+    W32(TOPO_MAGIC); 
+    W32(TOPO_VERSION); 
+    W32(bc);
+    for (uint32_t i = 0; i < bc; ++i) 
+        W32(lens[i]);
+    for (uint32_t i = 0; i < bc; ++i) 
+    {
         memcpy(ptr, bufs[i], lens[i]);
         ptr += lens[i];
         delete[] bufs[i];
@@ -382,21 +451,31 @@ void TopoGraph::StoreToByteArray(uint8_t** data, uint32_t& len) const
 void TopoGraph::LoadFromByteArray(const uint8_t* data, uint32_t len)
 {
     Clear();
-    if (len < 12) return;
+    if (len < 12) 
+        return;
     const uint8_t* ptr = data;
 
-    auto R32 = [&]() -> uint32_t { uint32_t v; memcpy(&v, ptr, 4); ptr += 4; return v; };
+    auto R32 = [&]() -> uint32_t 
+    { 
+        uint32_t v; 
+        memcpy(&v, ptr, 4); 
+        ptr += 4; 
+        return v; 
+    };
 
     uint32_t magic = R32();
-    if (magic != TOPO_MAGIC) return;
+    if (magic != TOPO_MAGIC) 
+        return;
     R32(); // version
     uint32_t bc = R32();
 
     std::vector<uint32_t> sizes(bc);
-    for (uint32_t i = 0; i < bc; ++i) sizes[i] = R32();
+    for (uint32_t i = 0; i < bc; ++i) 
+        sizes[i] = R32();
 
     m_blocks.resize(bc);
-    for (uint32_t i = 0; i < bc; ++i) {
+    for (uint32_t i = 0; i < bc; ++i) 
+    {
         m_blocks[i].LoadFromByteArray(ptr, sizes[i]);
         ptr += sizes[i];
         m_solid_to_block[m_blocks[i].GetSolidId()] = i;

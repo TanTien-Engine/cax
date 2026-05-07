@@ -60,7 +60,9 @@ ShapeIndex::~ShapeIndex()
 bool ShapeIndex::Lookup(spatialdb::id_type persistent_id, ShapeSlot& slot) const
 {
     auto it = m_id_to_slot.find(persistent_id);
-    if (it == m_id_to_slot.end()) return false;
+    if (it == m_id_to_slot.end()) {
+        return false;
+    }
     slot = it->second;
     return true;
 }
@@ -70,37 +72,58 @@ bool ShapeIndex::Contains(spatialdb::id_type persistent_id) const
     return m_id_to_slot.count(persistent_id) > 0;
 }
 
+//// fix
+//bool ShapeIndex::GetData(spatialdb::id_type persistent_id, uint32_t& len, uint8_t** data)
+//{
+//    ShapeSlot slot;
+//    if (!Lookup(persistent_id, slot)) {
+//        return false;
+//    }
+//
+//    std::shared_ptr<spatialdb::Node> node = m_tree.ReadNode(slot.page_id);
+//    if (!node->IsLeaf()) {
+//        return false;
+//    }
+//
+//    // Validate: the child at this index should match our persistent_id
+//    if (slot.child_idx < node->GetChildrenCount() &&
+//        node->GetChildIdentifier(slot.child_idx) == persistent_id)
+//    {
+//        node->GetChildData(slot.child_idx, len, data);
+//        return true;
+//    }
+//
+//    // Index is stale for this entry, linear search the node
+//    for (uint32_t i = 0; i < node->GetChildrenCount(); ++i)
+//    {
+//        if (node->GetChildIdentifier(i) == persistent_id)
+//        {
+//            node->GetChildData(i, len, data);
+//            // Fix the stale entry
+//            m_id_to_slot[persistent_id] = ShapeSlot{ slot.page_id, i };
+//            return true;
+//        }
+//    }
+//
+//    // Entry no longer in this node ¡ª remove stale mapping
+//    m_id_to_slot.erase(persistent_id);
+//    return false;
+//}
+
 bool ShapeIndex::GetData(spatialdb::id_type persistent_id, uint32_t& len, uint8_t** data)
 {
     ShapeSlot slot;
-    if (!Lookup(persistent_id, slot)) return false;
+    if (!Lookup(persistent_id, slot)) {
+        return false;
+    }
 
     std::shared_ptr<spatialdb::Node> node = m_tree.ReadNode(slot.page_id);
-    if (!node->IsLeaf()) return false;
+    assert(node->IsLeaf());
+    assert(slot.child_idx < node->GetChildrenCount());
+    assert(node->GetChildIdentifier(slot.child_idx) == persistent_id);
 
-    // Validate: the child at this index should match our persistent_id
-    if (slot.child_idx < node->GetChildrenCount() &&
-        node->GetChildIdentifier(slot.child_idx) == persistent_id)
-    {
-        node->GetChildData(slot.child_idx, len, data);
-        return true;
-    }
-
-    // Index is stale for this entry, linear search the node
-    for (uint32_t i = 0; i < node->GetChildrenCount(); ++i)
-    {
-        if (node->GetChildIdentifier(i) == persistent_id)
-        {
-            node->GetChildData(i, len, data);
-            // Fix the stale entry
-            m_id_to_slot[persistent_id] = ShapeSlot{ slot.page_id, i };
-            return true;
-        }
-    }
-
-    // Entry no longer in this node ¡ª remove stale mapping
-    m_id_to_slot.erase(persistent_id);
-    return false;
+    node->GetChildData(slot.child_idx, len, data);
+    return true;
 }
 
 // ============================================================
@@ -162,12 +185,9 @@ void ShapeIndex::Load(spatialdb::id_type page)
     uint32_t len = 0;
     uint8_t* buf = nullptr;
 
-    try
-    {
+    try {
         m_sm->LoadByteArray(page, len, &buf);
-    }
-    catch (spatialdb::InvalidPageException&)
-    {
+    } catch (spatialdb::InvalidPageException&) {
         return;  // No index stored yet
     }
 
@@ -281,10 +301,12 @@ void ShapeIndex::DeleteCmd::Execute(const spatialdb::INode& n)
 
 void ShapeIndex::OnLeafWritten(const spatialdb::INode& n)
 {
-    if (!n.IsLeaf()) return;
+    if (!n.IsLeaf()) 
+        return;
 
     spatialdb::id_type page = n.GetIdentifier();
-    if (page < 0) return;
+    if (page < 0) 
+        return;
 
     // Clear old mappings for this page
     RemoveByPage(page);
@@ -301,14 +323,16 @@ void ShapeIndex::OnLeafWritten(const spatialdb::INode& n)
 
 void ShapeIndex::OnLeafDeleted(const spatialdb::INode& n)
 {
-    if (!n.IsLeaf()) return;
+    if (!n.IsLeaf()) 
+        return;
     RemoveByPage(n.GetIdentifier());
 }
 
 void ShapeIndex::RemoveByPage(spatialdb::id_type page)
 {
     auto it = m_page_to_ids.find(page);
-    if (it == m_page_to_ids.end()) return;
+    if (it == m_page_to_ids.end()) 
+        return;
 
     for (spatialdb::id_type sid : it->second) {
         m_id_to_slot.erase(sid);
