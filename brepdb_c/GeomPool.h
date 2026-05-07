@@ -26,7 +26,7 @@ enum class Type : uint8_t
     Compound = 26
 };
 
-struct alignas(64) Header
+struct alignas(64) GeomHeader
 {
     Type type;
     uint32_t persistent_id;
@@ -38,7 +38,7 @@ struct alignas(64) Header
 
 struct GeometryPool 
 {
-    std::vector<Header> headers;
+    std::vector<GeomHeader> headers;
     std::vector<double> data_pool;
 };
 

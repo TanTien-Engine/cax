@@ -40,7 +40,7 @@ private:
 private:
     const GeometryPool& m_pool;
     
-    std::unordered_map<uint32_t, const Header*> m_header_map;
+    std::unordered_map<uint32_t, const GeomHeader*> m_header_map;
     
     std::unordered_map<uint32_t, TopoDS_Shape> m_rebuilt_shapes;
 

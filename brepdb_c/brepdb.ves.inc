@@ -17,7 +17,7 @@ foreign class BrepDB
 	init() {}
 	init(db) {}
 
-	foreign insert(ir)
+	foreign build(shape)
 	foreign query(aabb)
 }
 

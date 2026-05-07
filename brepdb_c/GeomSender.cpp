@@ -40,7 +40,7 @@ void PushDir(brepdb::GeometryPool& p, const gp_Dir& d)
     p.data_pool.push_back(d.X()); p.data_pool.push_back(d.Y()); p.data_pool.push_back(d.Z());
 }
 
-void FillHeaderAABB(const TopoDS_Shape& shape, brepdb::Header& header) 
+void FillHeaderAABB(const TopoDS_Shape& shape, brepdb::GeomHeader& header) 
 {
     Bnd_Box bbox;
     BRepBndLib::Add(shape, bbox);
@@ -72,7 +72,7 @@ GeomSender::GeomSender(const std::shared_ptr<breptopo::TopoNaming>& tn)
 
 void GeomSender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, GeometryPool& pool)
 {
-    Header header{ Type::Vertex, uid, (uint32_t)pool.data_pool.size(), 0 };
+    GeomHeader header{ Type::Vertex, uid, (uint32_t)pool.data_pool.size(), 0 };
 
     FillHeaderAABB(vertex, header);
 
@@ -87,7 +87,7 @@ void GeomSender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, Geom
 
 void GeomSender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& pool)
 {
-    Header header{ Type::Edge, uid, (uint32_t)pool.data_pool.size(), 0 };
+    GeomHeader header{ Type::Edge, uid, (uint32_t)pool.data_pool.size(), 0 };
 
     FillHeaderAABB(edge, header);
 
@@ -116,7 +116,7 @@ void GeomSender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPo
 
 void GeomSender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPool& pool)
 {
-    Header header{ Type::Face, uid, (uint32_t)pool.data_pool.size(), 0 };
+    GeomHeader header{ Type::Face, uid, (uint32_t)pool.data_pool.size(), 0 };
 
     FillHeaderAABB(face, header);
 
@@ -152,7 +152,7 @@ void GeomSender::SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPo
 
 void GeomSender::SerializeSolid(const TopoDS_Solid& solid, uint32_t uid, GeometryPool& pool)
 {
-    Header header{ Type::Solid, uid, (uint32_t)pool.data_pool.size(), 0 };
+    GeomHeader header{ Type::Solid, uid, (uint32_t)pool.data_pool.size(), 0 };
 
     FillHeaderAABB(solid, header);
 

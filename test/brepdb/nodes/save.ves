@@ -3,7 +3,7 @@ node0.query_param("length").value = 1
 node0.query_param("width").value = 1
 node0.query_param("height").value = 1
 
-_editor.add_node(node0, -330.56598814597, 230.53483065185)
+_editor.add_node(node0, -692.9582512405, 263.27431859497)
 
 var node1 = ::partgraph::nodes::to_mesh::ToMesh()
 
@@ -34,7 +34,7 @@ _editor.add_node(node4, 781.75739548213, 130.07227839696)
 var node5 = ::blueprint::nodes::cache::Cache()
 node5.query_param("disable").value = false
 
-_editor.add_node(node5, -142.17449447374, 194.29576722173)
+_editor.add_node(node5, -504.56675756827, 227.03525516485)
 
 var node6 = ::blueprint::nodes::print::Print()
 
@@ -49,12 +49,12 @@ node8.query_param("type").value = "edge"
 
 node8.selected_uids = [ 3221225483 ]
 
-_editor.add_node(node8, -5.6384682474167, 93.815128766764)
+_editor.add_node(node8, -368.03073134194, 126.55461670988)
 
 var node9 = ::partgraph::nodes::fillet::Fillet()
 node9.query_param("radius").value = 0.05
 
-_editor.add_node(node9, 141.02611606469, 190.45816460572)
+_editor.add_node(node9, -221.36614702984, 223.19765254884)
 
 var node10 = ::blueprint::nodes::cache::Cache()
 node10.query_param("disable").value = false
@@ -84,11 +84,25 @@ var node15 = ::brepdb::nodes::deserialize::Deserialize()
 
 _editor.add_node(node15, 403.96875172696, 317.19117347548)
 
+var node16 = ::brepdb::nodes::brepdb::Brepdb()
+node16.query_param("filename").value = "test_db"
+
+_editor.add_node(node16, -213.89546713019, 313.01153798242)
+
+var node17 = ::blueprint::nodes::cache::Cache()
+node17.query_param("disable").value = false
+
+_editor.add_node(node17, -40.878057330322, 28.894163103575)
+
+var node18 = ::brepdb::nodes::build::Build()
+
+_editor.add_node(node18, -21.147005661666, 263.29382953867)
+
 Blueprint.connect(node14, "ir", node15, "ir")
 Blueprint.connect(node15, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node12, "ir", node13, "ir")
 Blueprint.connect(node11, "selected", node7, "shape")
-Blueprint.connect(node10, "var", node6, "value")
 Blueprint.connect(node3, "var", node4, "geos")
 Blueprint.connect(node2, "this", node4, "view_cam")
 Blueprint.connect(node7, "va", node4, "selected")
@@ -97,5 +111,7 @@ Blueprint.connect(node5, "var", node8, "shape")
 Blueprint.connect(node2, "this", node8, "camera")
 Blueprint.connect(node5, "var", node9, "shape")
 Blueprint.connect(node8, "objs", node9, "edges")
-Blueprint.connect(node9, "shape", node12, "shape")
-Blueprint.connect(node12, "ir", node13, "ir")
+Blueprint.connect(node16, "brepdb", node18, "brepdb")
+Blueprint.connect(node9, "shape", node18, "shape")
+Blueprint.connect(node18, "brepdb", node10, "var")
+Blueprint.connect(node10, "var", node6, "value")

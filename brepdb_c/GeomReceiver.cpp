@@ -66,7 +66,7 @@ TopoDS_Shape GeomReceiver::GetShape(uint32_t uid)
         return TopoDS_Shape();
     }
     
-    const Header* header = head_it->second;
+    const GeomHeader* header = head_it->second;
     uint32_t offset = header->param_offset;
     TopoDS_Shape result;
 
@@ -109,13 +109,19 @@ TopoDS_Edge GeomReceiver::DeserializeEdge(uint32_t& offset)
     double vLast_id_val  = m_pool.data_pool[offset++];
 
     TopoDS_Vertex vFirst, vLast;
-    if (vFirst_id_val >= 0.0) {
+    if (vFirst_id_val >= 0.0) 
+    {
         TopoDS_Shape s = GetShape(static_cast<uint32_t>(vFirst_id_val));
-        if (!s.IsNull()) vFirst = TopoDS::Vertex(s);
+        if (!s.IsNull()) {
+            vFirst = TopoDS::Vertex(s);
+        }
     }
-    if (vLast_id_val >= 0.0) {
+    if (vLast_id_val >= 0.0) 
+    {
         TopoDS_Shape s = GetShape(static_cast<uint32_t>(vLast_id_val));
-        if (!s.IsNull()) vLast = TopoDS::Vertex(s);
+        if (!s.IsNull()) {
+            vLast = TopoDS::Vertex(s);
+        }
     }
 
     double tol   = m_pool.data_pool[offset++];
@@ -202,8 +208,13 @@ TopoDS_Wire GeomReceiver::DeserializeWire(uint32_t& offset)
     {
         uint32_t edge_uid = static_cast<uint32_t>(m_pool.data_pool[offset++]);
         TopAbs_Orientation ori = static_cast<TopAbs_Orientation>(m_pool.data_pool[offset++]);
+
+        TopoDS_Shape shape = GetShape(edge_uid);
+        if (shape.IsNull()) {
+            continue;
+        }
         
-        TopoDS_Edge E = TopoDS::Edge(GetShape(edge_uid));
+        TopoDS_Edge E = TopoDS::Edge(shape);
         E.Orientation(ori);
         B.Add(W, E);
     }
@@ -225,7 +236,13 @@ TopoDS_Shell GeomReceiver::DeserializeShell(uint32_t& offset)
     for (int i = 0; i < count; ++i) 
     {
         uint32_t face_uid = static_cast<uint32_t>(m_pool.data_pool[offset++]);
-        TopoDS_Face F = TopoDS::Face(GetShape(face_uid));
+
+        TopoDS_Shape shape = GetShape(face_uid);
+        if (shape.IsNull()) {
+            continue;
+        }
+
+        TopoDS_Face F = TopoDS::Face(shape);
         B.Add(Sh, F); 
     }
 

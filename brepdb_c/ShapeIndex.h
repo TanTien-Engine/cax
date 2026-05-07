@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace caxdb
+namespace brepdb
 {
 
 struct ShapeSlot
@@ -32,8 +32,8 @@ public:
     bool GetData(spatialdb::id_type persistent_id, uint32_t& len, uint8_t** data);
 
     // Persistence: store/load the index itself into the storage manager
-    void Store();
-    void Load();
+    void Store(spatialdb::id_type& page);
+    void Load(spatialdb::id_type page);
 
     // Full rebuild by scanning all R-tree leaves
     void Rebuild();
@@ -65,7 +65,6 @@ private:
 private:
     spatialdb::RTree& m_tree;
     std::shared_ptr<spatialdb::IStorageManager> m_sm;
-    spatialdb::id_type m_index_page;  // page id where the index is stored
 
     // Forward: persistent_id ¡ú location
     std::unordered_map<spatialdb::id_type, ShapeSlot> m_id_to_slot;
@@ -78,4 +77,4 @@ private:
 
 }; // ShapeIndex
 
-} // namespace spatialdb
+}

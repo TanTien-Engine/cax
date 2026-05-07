@@ -145,6 +145,12 @@ set(sketchlib__script
 )
 source_group("sketchlib\\script" FILES ${sketchlib__script})
 
+set(brepdb
+    "brepdb_c/BrepDB.cpp"
+    "brepdb_c/BrepDB.h"
+)
+source_group("brepdb" FILES ${brepdb})
+
 set(brepdb__geom
     "brepdb_c/GeomPool.h"
     "brepdb_c/GeomSender.cpp"
@@ -192,6 +198,7 @@ set(ALL_FILES
     ${sketchlib__data}
     ${sketchlib__external__PlaneGCS}
     ${sketchlib__script}
+    ${brepdb}    
     ${brepdb__geom}
     ${brepdb__topo}
     ${brepdb__index}    

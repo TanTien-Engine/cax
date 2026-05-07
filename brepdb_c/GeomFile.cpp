@@ -32,7 +32,7 @@ bool GeomFile::Save(const std::string& filename, const GeometryPool& pool)
 
     if (!pool.headers.empty()) {
         os.write(reinterpret_cast<const char*>(pool.headers.data()), 
-                    pool.headers.size() * sizeof(Header));
+                    pool.headers.size() * sizeof(GeomHeader));
     }
 
     if (!pool.data_pool.empty()) {
@@ -56,7 +56,7 @@ bool GeomFile::Load(const std::string& filename, GeometryPool& pool)
     pool.headers.resize(fHead.header_count);
     if (fHead.header_count > 0) {
         is.read(reinterpret_cast<char*>(pool.headers.data()),
-            fHead.header_count * sizeof(Header));
+            fHead.header_count * sizeof(GeomHeader));
     }
 
     pool.data_pool.resize(fHead.data_count);

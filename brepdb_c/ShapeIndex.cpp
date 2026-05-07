@@ -1,6 +1,5 @@
 #include "brepdb_c/ShapeIndex.h"
 
-//#include <spatialdb/ShapeIndex.h>
 #include <spatialdb/Node.h>
 #include <spatialdb/Leaf.h>
 #include <spatialdb/Exception.h>
@@ -8,7 +7,7 @@
 #include <cstring>
 #include <assert.h>
 
-namespace caxdb
+namespace brepdb
 {
 
 //
@@ -42,7 +41,6 @@ struct SerializedEntry
 ShapeIndex::ShapeIndex(spatialdb::RTree& tree, const std::shared_ptr<spatialdb::IStorageManager>& sm)
     : m_tree(tree)
     , m_sm(sm)
-    , m_index_page(spatialdb::NewPage)
 {
     m_write_cmd  = std::make_shared<WriteCmd>(*this);
     m_delete_cmd = std::make_shared<DeleteCmd>(*this);
@@ -109,7 +107,7 @@ bool ShapeIndex::GetData(spatialdb::id_type persistent_id, uint32_t& len, uint8_
 // Persistence
 // ============================================================
 
-void ShapeIndex::Store()
+void ShapeIndex::Store(spatialdb::id_type& page)
 {
     const uint32_t count = static_cast<uint32_t>(m_id_to_slot.size());
 
@@ -148,7 +146,7 @@ void ShapeIndex::Store()
 
     try
     {
-        m_sm->StoreByteArray(m_index_page, total, buf);
+        m_sm->StoreByteArray(page, total, buf);
     }
     catch (...)
     {
@@ -159,16 +157,14 @@ void ShapeIndex::Store()
     delete[] buf;
 }
 
-void ShapeIndex::Load()
+void ShapeIndex::Load(spatialdb::id_type page)
 {
-    if (m_index_page == spatialdb::NewPage) return;
-
     uint32_t len = 0;
     uint8_t* buf = nullptr;
 
     try
     {
-        m_sm->LoadByteArray(m_index_page, len, &buf);
+        m_sm->LoadByteArray(page, len, &buf);
     }
     catch (spatialdb::InvalidPageException&)
     {
