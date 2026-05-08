@@ -174,6 +174,13 @@ set(brepdb__index
 )
 source_group("brepdb\\index" FILES ${brepdb__index})
 
+set(brepdb__version
+    "brepdb_c/VersionTree.cpp"
+    "brepdb_c/VersionTree.h"
+    "brepdb_c/VersionTreeHistory.cpp"
+)
+source_group("brepdb\\version" FILES ${brepdb__version})
+
 set(brepdb__script
     "brepdb_c/brepdb.ves.inc"
     "brepdb_c/wrap_Brepdb.cpp"
@@ -201,7 +208,8 @@ set(ALL_FILES
     ${brepdb}    
     ${brepdb__geom}
     ${brepdb__topo}
-    ${brepdb__index}    
+    ${brepdb__index}
+    ${brepdb__version}    
     ${brepdb__script}
 )
 
@@ -233,4 +241,14 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 
 if(NOT TARGET spatialdb)
     add_subdirectory(thirdparty/spatialdb)
+endif()
+
+################################################################################
+# Unit tests
+################################################################################
+option(CAX_BUILD_TESTS "Build unit tests" ON)
+
+if(CAX_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(brepdb_test)
 endif()
