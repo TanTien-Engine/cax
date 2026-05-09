@@ -97,6 +97,14 @@ struct VersionNode
 class VersionTree
 {
 public:
+    // Mapping from old persistent_id to new persistent_id(s):
+    //   empty list  -> entity deleted
+    //   one entry   -> entity modified (CalcUID assigned a new uid)
+    //   multi entry -> entity split (first = modified, rest = added)
+    // Entities in new_pool not referenced as targets are detected as ADDED.
+    // Entities not present in the mapping fall back to pid-matching.
+    using PidMapping = std::map<uint32_t, std::vector<uint32_t>>;
+
     VersionTree();
 
     // ----- Build -----
@@ -111,6 +119,14 @@ public:
 
     // Fallback: compute diff by comparing both pools. O(total).
     uint32_t Commit(const GeometryPool& new_pool,
+                    const std::string&  op_desc,
+                    uint32_t            op_type = 0);
+
+    // pid_map form: builds diff from BRepHistory-derived mapping. On the
+    // very first call the tree has no root, so pid_map is irrelevant and
+    // new_pool is installed as the root snapshot.
+    uint32_t Commit(const GeometryPool& new_pool,
+                    const PidMapping&   pid_map,
                     const std::string&  op_desc,
                     uint32_t            op_type = 0);
 
@@ -180,14 +196,6 @@ public:
                                                        uint32_t           new_pid,
                                                        const EntityEntry& old_entry,
                                                        const EntityEntry& new_entry);
-
-    // Mapping from old persistent_id to new persistent_id(s):
-    //   empty list  -> entity deleted
-    //   one entry   -> entity modified (CalcUID assigned a new uid)
-    //   multi entry -> entity split (first = modified, rest = added)
-    // Entities in new_pool not referenced as targets are detected as ADDED.
-    // Entities not present in the mapping fall back to pid-matching.
-    using PidMapping = std::map<uint32_t, std::vector<uint32_t>>;
 
     // Build diff from a pid mapping. OCCT-free; directly testable.
     static PoolDiff BuildDiffFromPidMapping(const GeometryPool& old_pool,
