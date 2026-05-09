@@ -5,7 +5,10 @@
 #include "BRepBuilder.h"
 #include "BRepHistory.h"
 
-#include "breptopo_c/TopoNaming.h"
+#include <breptopo_c/TopoNaming.h>
+#include <brepdb_c/GeomSender.h>
+#include <brepdb_c/GeomPool.h>
+#include <brepdb_c/VersionTree.h>
 
 #include <logger/logger.h>
 
@@ -50,24 +53,33 @@ std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint32_t op_id, 
-                                          const std::shared_ptr<breptopo::TopoNaming>& tn)
+std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint32_t op_id,
+                                          const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                          const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeBox mk_box(dx, dy, dz);
+        breptopo::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = BRepBuilder::MakeCompound({});
-            tn->Update(mk_box, mk_box.Shape(), old_shp->GetShape(), op_id);
+            pid_map = tn->Update(mk_box, mk_box.Shape(), old_shp->GetShape(), op_id);
         }
         shape = std::make_shared<partgraph::TopoShape>(mk_box.Shape());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "box");
+        }
     } catch (Standard_Failure& e) {
         LOGI("Build box fail: %s", e.GetMessageString());
     }
 
     return shape;
-} 
+}
 
 std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length)
 {

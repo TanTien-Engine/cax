@@ -22,6 +22,8 @@ class GeomSender
 public:
     GeomSender(const std::shared_ptr<breptopo::TopoNaming>& tn);
 
+    void Serialize(const TopoDS_Shape& shape, GeometryPool& pool);
+
     void SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, GeometryPool& pool);
     void SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, GeometryPool& pool);
     void SerializeFace(const TopoDS_Face& face, uint32_t uid, GeometryPool& pool);

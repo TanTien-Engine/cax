@@ -38,9 +38,6 @@ BrepDB::~BrepDB()
 
 void BrepDB::Insert(const GeomHeader& header, const double* params)
 {
-    if (header.persistent_id == 1073774592)
-        printf("");
-
     spatialdb::Region mbr(header.min_pt, header.max_pt);
 
     uint32_t param_bytes = header.param_count * sizeof(double);

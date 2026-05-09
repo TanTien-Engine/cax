@@ -3,6 +3,7 @@
 #include <memory>
 
 namespace breptopo { class TopoNaming; }
+namespace brepdb { class VersionTree; }
 
 namespace partgraph
 {
@@ -15,8 +16,8 @@ public:
 	static std::shared_ptr<TopoShape> Plane(double x, double y, double z, double nx, double ny, double nz,
 		uint32_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
 
-	static std::shared_ptr<TopoShape> Box(double dx, double dy, double dz, 
-		uint32_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr);
+	static std::shared_ptr<TopoShape> Box(double dx, double dy, double dz, uint32_t op_id = 0, 
+		const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr, const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 	static std::shared_ptr<TopoShape> Cylinder(double radius, double length);
 	static std::shared_ptr<TopoShape> Cone(double r1, double r2, double height);
 	static std::shared_ptr<TopoShape> Sphere(double radius);

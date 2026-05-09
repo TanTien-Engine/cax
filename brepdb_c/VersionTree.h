@@ -10,12 +10,8 @@
 #include <unordered_map>
 #include <vector>
 
-namespace partgraph { class BRepHistory; }
-
 namespace brepdb
 {
-
-class GeomSender;
 
 // Immutable pool snapshot, shared across multiple holders.
 // NavigateTo creates a new object each time; anyone still holding
@@ -97,13 +93,17 @@ struct VersionNode
 class VersionTree
 {
 public:
+    // Mapping from old persistent_id to new persistent_id(s):
+    //   empty list  -> entity deleted
+    //   one entry   -> entity modified (CalcUID assigned a new uid)
+    //   multi entry -> entity split (first = modified, rest = added)
+    // Entities in new_pool not referenced as targets are detected as ADDED.
+    // Entities not present in the mapping fall back to pid-matching.
+    using PidMapping = std::map<uint32_t, std::vector<uint32_t>>;
+
     VersionTree();
 
-    // ----- Build -----
-
-    void Init(const GeometryPool& pool, const std::string& desc = "initial");
-
-    // Primary: diff pre-built by caller from BRepHistory. O(changed).
+    // Primary: diff pre-built by caller from a PidMapping. O(changed).
     uint32_t Commit(const GeometryPool& new_pool,
                     PoolDiff&&          diff,
                     const std::string&  op_desc,
@@ -111,6 +111,14 @@ public:
 
     // Fallback: compute diff by comparing both pools. O(total).
     uint32_t Commit(const GeometryPool& new_pool,
+                    const std::string&  op_desc,
+                    uint32_t            op_type = 0);
+
+    // pid_map form: builds diff from BRepHistory-derived mapping. On the
+    // very first call the tree has no root, so pid_map is irrelevant and
+    // new_pool is installed as the root snapshot.
+    uint32_t Commit(const GeometryPool& new_pool,
+                    const PidMapping&   pid_map,
                     const std::string&  op_desc,
                     uint32_t            op_type = 0);
 
@@ -181,26 +189,12 @@ public:
                                                        const EntityEntry& old_entry,
                                                        const EntityEntry& new_entry);
 
-    // Mapping from old persistent_id to new persistent_id(s):
-    //   empty list  -> entity deleted
-    //   one entry   -> entity modified (CalcUID assigned a new uid)
-    //   multi entry -> entity split (first = modified, rest = added)
-    // Entities in new_pool not referenced as targets are detected as ADDED.
-    // Entities not present in the mapping fall back to pid-matching.
-    using PidMapping = std::map<uint32_t, std::vector<uint32_t>>;
-
     // Build diff from a pid mapping. OCCT-free; directly testable.
+    // Producers (e.g. breptopo::TopoNaming::Update) emit a PidMapping
+    // covering all sub-shape types, which plugs in directly.
     static PoolDiff BuildDiffFromPidMapping(const GeometryPool& old_pool,
                                              const GeometryPool& new_pool,
                                              const PidMapping&   pid_map);
-
-    // Build diff from BRepHistory + GeomSender (requires OCCT).
-    // Converts the shape map to a PidMapping then calls BuildDiffFromPidMapping.
-    // Implemented in VersionTreeHistory.cpp.
-    static PoolDiff BuildDiffFromHistory(const GeometryPool&          old_pool,
-                                          const GeometryPool&          new_pool,
-                                          const partgraph::BRepHistory& hist,
-                                          const GeomSender&             sender);
 
     static GeometryPool ApplyForward(const GeometryPool& base,    const PoolDiff& diff);
     static GeometryPool ApplyReverse(const GeometryPool& current, const PoolDiff& diff);

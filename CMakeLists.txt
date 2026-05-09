@@ -177,7 +177,6 @@ source_group("brepdb\\index" FILES ${brepdb__index})
 set(brepdb__version
     "brepdb_c/VersionTree.cpp"
     "brepdb_c/VersionTree.h"
-    "brepdb_c/VersionTreeHistory.cpp"
 )
 source_group("brepdb\\version" FILES ${brepdb__version})
 

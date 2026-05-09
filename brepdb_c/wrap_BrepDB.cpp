@@ -63,41 +63,7 @@ void w_BrepIR_serialize()
     const TopoDS_Shape& tshape = shape->GetShape();
     
     brepdb::GeomSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
-    
-    TopTools_IndexedMapOfShape all_shapes;
-    TopExp::MapShapes(tshape, all_shapes);
-    
-    for (int i = 1; i <= all_shapes.Extent(); ++i)
-    {
-        const TopoDS_Shape& shape = all_shapes(i);
-    
-        uint32_t uid = sender.GetUID(shape);
-        if (uid == 0xffffffff)
-        {
-            TopAbs_ShapeEnum type = shape.ShapeType();
-            assert(type != TopAbs_VERTEX && type != TopAbs_EDGE && 
-                type != TopAbs_FACE && type != TopAbs_SOLID);
-            continue;
-        }
-    
-        switch (shape.ShapeType())
-        {
-        case TopAbs_SOLID:
-            sender.SerializeSolid(TopoDS::Solid(shape), uid, *pool);
-            break;
-        case TopAbs_FACE:
-            sender.SerializeFace(TopoDS::Face(shape), uid, *pool);
-            break;
-        case TopAbs_EDGE:
-            sender.SerializeEdge(TopoDS::Edge(shape), uid, *pool);
-            break;
-        case TopAbs_VERTEX:
-            sender.SerializeVertex(TopoDS::Vertex(shape), uid, *pool);
-            break;
-        default:
-            break;
-        }
-    }
+    sender.Serialize(tshape, *pool);
 }
 
 void w_BrepIR_deserialize()

@@ -3,6 +3,7 @@
 #include "VersionTree.h"
 
 #include <numeric>
+#include <set>
 #include <string>
 #include <set>
 
@@ -502,6 +503,71 @@ TEST_CASE("PidMapping: stale old_pid not in old_pool falls back to added", "[pid
 // ============================================================
 // VersionTree navigation tests
 // ============================================================
+
+TEST_CASE("VersionTree: Commit(pid_map) auto-installs root on first call", "[tree][pidmap]")
+{
+    VersionTree tree;
+    REQUIRE(tree.GetCurrentPool() == nullptr);
+    REQUIRE(tree.GetRootId() == UINT32_MAX);
+
+    auto p0 = make_pool_ab();
+
+    // pid_map content is irrelevant on first call — there is no old pool.
+    VersionTree::PidMapping junk_map;
+    junk_map[999] = { 12345 };
+
+    uint32_t root_id = tree.Commit(p0, junk_map, "create box", /*op_type=*/7);
+
+    REQUIRE(tree.GetRootId()    == root_id);
+    REQUIRE(tree.GetCurrentId() == root_id);
+    REQUIRE(tree.GetNodeCount() == 1);
+
+    auto current = tree.GetCurrentPool();
+    REQUIRE(current);
+    REQUIRE(current->headers.size() == p0.headers.size());
+    REQUIRE(current->headers[0].persistent_id == 10);
+    REQUIRE(current->headers[1].persistent_id == 20);
+
+    const auto* node = tree.GetNode(root_id);
+    REQUIRE(node);
+    REQUIRE(node->op_desc == "create box");
+    REQUIRE(node->op_type == 7);
+}
+
+TEST_CASE("VersionTree: Commit(pid_map) builds diff for non-first call", "[tree][pidmap]")
+{
+    VersionTree tree;
+
+    GeometryPool p0;
+    p0.headers.push_back(make_header(Type::Face, 10, 0, 2));
+    p0.data_pool = { 1, 2 };
+    tree.Commit(p0, VersionTree::PidMapping{}, "init", 0);
+
+    GeometryPool p1;
+    p1.headers.push_back(make_header(Type::Face, 110, 0, 2));
+    p1.headers.push_back(make_header(Type::Face, 111, 2, 3));
+    p1.data_pool = { 1, 2, 7, 8, 9 };
+
+    VersionTree::PidMapping pid_map;
+    pid_map[10] = { 110, 111 };  // 110 = modified, 111 = split-added
+
+    uint32_t commit_id = tree.Commit(p1, pid_map, "split face", 1);
+    REQUIRE(commit_id != tree.GetRootId());
+    REQUIRE(tree.GetNodeCount() == 2);
+
+    auto cur = tree.GetCurrentPool();
+    REQUIRE(cur->headers.size() == 2);
+    REQUIRE(cur->headers[0].persistent_id == 110);
+    REQUIRE(cur->headers[1].persistent_id == 111);
+
+    auto undone = tree.Undo();
+    REQUIRE(undone->headers.size()            == 1);
+    REQUIRE(undone->headers[0].persistent_id == 10);
+
+    auto redone = tree.Redo();
+    REQUIRE(redone->headers.size()            == 2);
+    REQUIRE(redone->headers[1].persistent_id == 111);
+}
 
 TEST_CASE("VersionTree: linear undo / redo", "[tree]")
 {

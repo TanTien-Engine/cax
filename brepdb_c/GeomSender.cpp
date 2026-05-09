@@ -32,6 +32,8 @@
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
 
+#include <assert.h>
+
 namespace
 {
 
@@ -73,6 +75,44 @@ namespace brepdb
 GeomSender::GeomSender(const std::shared_ptr<breptopo::TopoNaming>& tn)
     : m_tn(tn)
 {
+}
+
+void GeomSender::Serialize(const TopoDS_Shape& shape, GeometryPool& pool)
+{
+    TopTools_IndexedMapOfShape all_shapes;
+    TopExp::MapShapes(shape, all_shapes);
+
+    for (int i = 1; i <= all_shapes.Extent(); ++i)
+    {
+        const TopoDS_Shape& shape = all_shapes(i);
+
+        uint32_t uid = GetUID(shape);
+        if (uid == 0xffffffff)
+        {
+            TopAbs_ShapeEnum type = shape.ShapeType();
+            assert(type != TopAbs_VERTEX && type != TopAbs_EDGE &&
+                type != TopAbs_FACE && type != TopAbs_SOLID);
+            continue;
+        }
+
+        switch (shape.ShapeType())
+        {
+        case TopAbs_SOLID:
+            SerializeSolid(TopoDS::Solid(shape), uid, pool);
+            break;
+        case TopAbs_FACE:
+            SerializeFace(TopoDS::Face(shape), uid, pool);
+            break;
+        case TopAbs_EDGE:
+            SerializeEdge(TopoDS::Edge(shape), uid, pool);
+            break;
+        case TopAbs_VERTEX:
+            SerializeVertex(TopoDS::Vertex(shape), uid, pool);
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 void GeomSender::SerializeVertex(const TopoDS_Vertex& vertex, uint32_t uid, GeometryPool& pool)

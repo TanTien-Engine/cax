@@ -17,9 +17,14 @@ namespace breptopo
 class HistGraph
 {
 public:
+	// Per-type partial pid mapping produced by an Update:
+	//   old uid (assigned in a prior op) -> new uid(s) (assigned by this op)
+	//   empty value vector means the entity was deleted
+	using PartialPidMap = std::map<uint32_t, std::vector<uint32_t>>;
+
 	HistGraph();
 
-	void Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id);
+	PartialPidMap Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id);
 
 	const std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
 	bool QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const;
@@ -29,8 +34,8 @@ public:
 private:
 	void InitDelNode();
 
-	void CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id);
-	void UpdateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id,
+	PartialPidMap CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id);
+	PartialPidMap UpdateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id,
 		const std::vector<size_t>& old_nodes);
 
 	static uint32_t CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index);

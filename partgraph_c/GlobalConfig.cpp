@@ -1,6 +1,7 @@
 #include "GlobalConfig.h"
 
-#include "breptopo_c/TopoNaming.h"
+#include <breptopo_c/TopoNaming.h>
+#include <brepdb_c/VersionTree.h>
 
 namespace partgraph
 {
@@ -18,6 +19,7 @@ GlobalConfig* GlobalConfig::Instance()
 GlobalConfig::GlobalConfig()
 {
 	m_topo_naming = std::make_shared<breptopo::TopoNaming>();
+	m_version_tree = std::make_shared<brepdb::VersionTree>();
 }
 
 GlobalConfig::~GlobalConfig()

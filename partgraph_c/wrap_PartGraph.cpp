@@ -118,7 +118,8 @@ void w_PrimMaker_box()
     }
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto shape = partgraph::PrimMaker::Box(L, W, H, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Box(L, W, H, op_id, naming, vt);
 
     partgraph::return_topo_shape(shape);
 }

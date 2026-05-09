@@ -10,6 +10,8 @@
 #include <graph/Edge.h>
 #include <graph/GraphLayout.h>
 
+#include <utility>
+
 #include <set>
 #include <queue>
 
@@ -31,13 +33,14 @@ HistGraph::HistGraph()
 	InitDelNode();
 }
 
-void HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id)
+HistGraph::PartialPidMap
+HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id)
 {
 	auto itr = m_op2nodes.find(op_id);
 	if (itr == m_op2nodes.end())
-		CreateGraph(hist, type_id, op_id);
+		return CreateGraph(hist, type_id, op_id);
 	else
-		UpdateGraph(hist, type_id, op_id, itr->second);
+		return UpdateGraph(hist, type_id, op_id, itr->second);
 }
 
 const std::shared_ptr<graph::Node> 
@@ -133,7 +136,8 @@ void HistGraph::InitDelNode()
 	m_graph->AddNode(del_node);
 }
 
-void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id)
+HistGraph::PartialPidMap
+HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id)
 {
 	std::vector<size_t> old_gid, new_gid;
 
@@ -280,10 +284,26 @@ void HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id
 	}
 
 	graph::GraphLayout::OptimalHierarchy(*m_graph);
+
+	PartialPidMap pid_map;
+	for (const auto& kv : hist.GetIdxMap())
+	{
+		const size_t f_gid = old_gid[kv.first];
+		auto old_node = m_graph->GetNode(f_gid);
+		const uint32_t old_uid = old_node->GetComponent<NodeId>().GetUID();
+
+		std::vector<uint32_t>& targets = pid_map[old_uid];
+		targets.reserve(kv.second.size());
+		for (int new_idx : kv.second) {
+			targets.push_back(CalcUID(type_id, op_id, new_idx));
+		}
+	}
+	return pid_map;
 }
 
-void HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id,
-	                        const std::vector<size_t>& old_nodes)
+HistGraph::PartialPidMap
+HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id,
+	                   const std::vector<size_t>& old_nodes)
 {
 	std::vector<size_t> new_nodes;
 	auto& new_map = hist.GetNewMap();
@@ -313,8 +333,10 @@ void HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint32_t type_id
 	}
 	else
 	{
-		int zz = 0;
+		// todo
 	}
+
+	return {};
 }
 
 uint32_t HistGraph::CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index)

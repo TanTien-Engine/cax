@@ -724,6 +724,21 @@ uint32_t VersionTree::Commit(const GeometryPool& new_pool,
     return Branch(m_current_id, new_pool, std::move(diff), op_desc, op_type);
 }
 
+uint32_t VersionTree::Commit(const GeometryPool& new_pool,
+                              const PidMapping&   pid_map,
+                              const std::string&  op_desc,
+                              uint32_t            op_type)
+{
+    // First call: no current pool yet, pid_map carries no useful information
+    // (there is nothing to map _from_). Install new_pool as the root snapshot.
+    if (m_root_id == UINT32_MAX) {
+        return InitRoot(new_pool, op_desc, op_type);
+    }
+
+    PoolDiff diff = BuildDiffFromPidMapping(*m_current_pool, new_pool, pid_map);
+    return Branch(m_current_id, new_pool, std::move(diff), op_desc, op_type);
+}
+
 uint32_t VersionTree::Branch(uint32_t            parent_id,
                               const GeometryPool& new_pool,
                               PoolDiff&&          diff,
