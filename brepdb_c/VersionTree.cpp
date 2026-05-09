@@ -679,22 +679,25 @@ PoolDiff::ModifiedEntry VersionTree::BuildModifiedEntry(uint32_t           old_p
 
 VersionTree::VersionTree() {}
 
-void VersionTree::Init(const GeometryPool& pool, const std::string& desc)
+uint32_t VersionTree::InitRoot(const GeometryPool& pool, const std::string& desc, uint32_t op_type)
 {
     Clear();
 
-    uint32_t id  = AllocNodeId();
-    m_root_id    = id;
+    uint32_t id = AllocNodeId();
+    m_root_id = id;
     m_current_id = id;
 
     VersionNode node;
-    node.id        = id;
+    node.id = id;
     node.parent_id = UINT32_MAX;
-    node.op_desc   = desc;
+    node.op_desc = desc;
+    node.op_type = op_type;
     node.timestamp = NowMs();
 
-    m_nodes[id]    = std::move(node);
+    m_nodes[id] = std::move(node);
     m_current_pool = std::make_shared<GeometryPool>(pool);
+
+    return id;
 }
 
 uint32_t VersionTree::Commit(const GeometryPool& new_pool,
@@ -702,7 +705,10 @@ uint32_t VersionTree::Commit(const GeometryPool& new_pool,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    assert(m_current_id != UINT32_MAX);
+    // First call: create root node, diff is irrelevant
+    if (m_root_id == UINT32_MAX) { 
+        return InitRoot(new_pool, op_desc, op_type); 
+    }
     return Branch(m_current_id, new_pool, std::move(diff), op_desc, op_type);
 }
 
@@ -710,7 +716,10 @@ uint32_t VersionTree::Commit(const GeometryPool& new_pool,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    assert(m_current_id != UINT32_MAX);
+    // First call: create root node, no diff needed
+    if (m_root_id == UINT32_MAX) { 
+        return InitRoot(new_pool, op_desc, op_type); 
+    }
     PoolDiff diff = ComputeDiff(*m_current_pool, new_pool);
     return Branch(m_current_id, new_pool, std::move(diff), op_desc, op_type);
 }

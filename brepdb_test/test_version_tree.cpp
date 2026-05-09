@@ -4,6 +4,7 @@
 
 #include <numeric>
 #include <string>
+#include <set>
 
 using namespace brepdb;
 
@@ -506,7 +507,7 @@ TEST_CASE("VersionTree: linear undo / redo", "[tree]")
 {
     VersionTree tree;
     auto p0 = make_pool_ab();
-    tree.Init(p0, "create box");
+    tree.Commit(p0, "create box");
 
     auto p1 = make_pool_cab();
     tree.Commit(p1, "fillet");
@@ -538,7 +539,7 @@ TEST_CASE("VersionTree: branching and cross-branch checkout", "[tree]")
 {
     VersionTree tree;
     auto p0 = make_pool_ab();
-    tree.Init(p0, "init");
+    tree.Commit(p0, "init");
 
     // Branch A: pid 10->50
     GeometryPool pA;
@@ -587,7 +588,7 @@ TEST_CASE("VersionTree: branching and cross-branch checkout", "[tree]")
 TEST_CASE("VersionTree: Redo selects correct child by index", "[tree]")
 {
     VersionTree tree;
-    tree.Init(make_pool_ab(), "root");
+    tree.Commit(make_pool_ab(), "root");
 
     tree.Commit(make_pool_cab(), "branch A");
 
@@ -615,7 +616,7 @@ TEST_CASE("VersionTree: deep chain of 20 commits — undo all then redo all", "[
     GeometryPool p;
     p.headers.push_back(make_header(Type::Face, 1, 0, 10));
     p.data_pool.resize(10, 0.0);
-    tree.Init(p, "init");
+    tree.Commit(p, "init");
 
     constexpr int DEPTH = 20;
     for (int i = 1; i <= DEPTH; ++i)
@@ -644,7 +645,7 @@ TEST_CASE("VersionTree: deep chain of 20 commits — undo all then redo all", "[
 TEST_CASE("VersionTree: GetPathFromRoot and GetLeaves", "[tree][query]")
 {
     VersionTree tree;
-    tree.Init(make_pool_ab(), "root");
+    tree.Commit(make_pool_ab(), "root");
     tree.Commit(make_pool_cab(), "op1");
 
     GeometryPool p2 = make_pool_cab();
@@ -668,7 +669,7 @@ TEST_CASE("VersionTree: GetPathFromRoot and GetLeaves", "[tree][query]")
 TEST_CASE("VersionTree: TraverseAll visits every node", "[tree][query]")
 {
     VersionTree tree;
-    tree.Init(make_pool_ab(), "root");
+    tree.Commit(make_pool_ab(), "root");
     tree.Commit(make_pool_cab(), "op1");
 
     int count = 0;
@@ -685,7 +686,7 @@ TEST_CASE("Persistence: SaveToFile / LoadFromFile round-trip", "[persist]")
     const std::string fp = "/vt_brepdb_test.vtbd";
 
     VersionTree t1;
-    t1.Init(make_pool_ab(), "create box");
+    t1.Commit(make_pool_ab(), "create box");
     t1.Commit(make_pool_cab(), "fillet");
 
     GeometryPool p2 = make_pool_cab();
@@ -717,7 +718,7 @@ TEST_CASE("Persistence: StoreToByteArray / LoadFromByteArray (BrepDB meta page p
 {
     VersionTree t1;
     auto p0 = make_pool_ab();
-    t1.Init(p0, "create box");
+    t1.Commit(p0, "create box");
 
     auto p1 = make_pool_cab();
     t1.Commit(p1, "fillet");
@@ -757,7 +758,7 @@ TEST_CASE("Persistence: byte-array with branches", "[persist]")
 {
     VersionTree t1;
     auto p0 = make_pool_ab();
-    t1.Init(p0, "init");
+    t1.Commit(p0, "init");
 
     GeometryPool pA;
     pA.headers.push_back(make_header(Type::Face, 50, 0, 3));
@@ -804,7 +805,7 @@ TEST_CASE("Integration: BrepDB open/save/undo/redo cycle", "[integration]")
     auto p0 = make_pool_ab();
 
     VersionTree tree;
-    tree.Init(p0, "create box");
+    tree.Commit(p0, "create box");
 
     // Modeling op: add face_c
     auto p1 = make_pool_cab();

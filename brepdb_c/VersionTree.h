@@ -210,6 +210,7 @@ public:
 
 private:
     uint32_t AllocNodeId();
+    uint32_t InitRoot(const GeometryPool& pool, const std::string& desc, uint32_t op_type);
     void     NavigateTo(uint32_t target_id);
     uint32_t FindLCA(uint32_t a, uint32_t b) const;
 

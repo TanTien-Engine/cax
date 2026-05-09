@@ -363,7 +363,7 @@ void w_VersionTree_init_pool()
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     auto pool = ((wrapper::Proxy<brepdb::GeometryPool>*)ves_toforeign(1))->obj;
     const char* desc = ves_tostring(2);
-    vt->Init(*pool, desc ? desc : "initial");
+    vt->Commit(*pool, desc ? desc : "initial");
 }
 
 void w_VersionTree_commit()
