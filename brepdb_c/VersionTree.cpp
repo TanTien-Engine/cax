@@ -898,37 +898,38 @@ PoolDiff VersionTree::BuildDiffFromPidMapping(const GeometryPool& old_pool,
 
     for (const auto& [old_pid, new_pids] : pid_map)
     {
+        auto old_it = old_idx.find(old_pid);
+        bool has_old = (old_it != old_idx.end());
+
         if (new_pids.empty())
         {
             // Entity deleted
-            auto it = old_idx.find(old_pid);
-            if (it != old_idx.end()) {
-                diff.removed.push_back(ExtractEntity(old_pool, it->second));
+            if (has_old) {
+                diff.removed.push_back(ExtractEntity(old_pool, old_it->second));
             }
             continue;
         }
 
-        // First new pid = modified entity; additional pids = split results (added)
-        uint32_t primary_new_pid = new_pids[0];
-        accounted_new.insert(primary_new_pid);
-
-        auto old_it = old_idx.find(old_pid);
-        auto new_it = new_idx.find(primary_new_pid);
-
-        if (old_it != old_idx.end() && new_it != new_idx.end()) {
-            diff.modified.push_back(
-                BuildModifiedEntry(old_pid, primary_new_pid,
-                                   ExtractEntity(old_pool, old_it->second),
-                                   ExtractEntity(new_pool, new_it->second)));
-        }
-
-        for (size_t k = 1; k < new_pids.size(); ++k)
+        // k==0 with has_old: modified; k>0 or !has_old: added.
+        // The !has_old case covers the initial commit (empty old_pool) and
+        // any pid_map entry whose old_pid was never in old_pool — without
+        // this, the primary new pid would be marked accounted but never
+        // pushed into diff, silently disappearing.
+        for (size_t k = 0; k < new_pids.size(); ++k)
         {
-            uint32_t extra_pid = new_pids[k];
-            accounted_new.insert(extra_pid);
-            auto extra_it = new_idx.find(extra_pid);
-            if (extra_it != new_idx.end()) {
-                diff.added.push_back(ExtractEntity(new_pool, extra_it->second));
+            uint32_t new_pid = new_pids[k];
+            accounted_new.insert(new_pid);
+
+            auto new_it = new_idx.find(new_pid);
+            if (new_it == new_idx.end()) { continue; }
+
+            if (k == 0 && has_old) {
+                diff.modified.push_back(
+                    BuildModifiedEntry(old_pid, new_pid,
+                                       ExtractEntity(old_pool, old_it->second),
+                                       ExtractEntity(new_pool, new_it->second)));
+            } else {
+                diff.added.push_back(ExtractEntity(new_pool, new_it->second));
             }
         }
     }

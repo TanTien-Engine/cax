@@ -435,6 +435,69 @@ TEST_CASE("PidMapping: unlisted entity falls back to pid match", "[pidmap]")
     REQUIRE(curve_modified);
 }
 
+TEST_CASE("PidMapping: empty old_pool — initial commit through pid_map", "[pidmap]")
+{
+    // Regression: when old_pool is empty (or old_pid is missing), the primary
+    // new_pid was being marked accounted but never pushed into diff.added,
+    // causing entities to silently disappear.
+    GeometryPool old_p;  // empty
+
+    GeometryPool new_p;
+    new_p.headers.push_back(make_header(Type::Face, 110, 0, 2));
+    new_p.headers.push_back(make_header(Type::Face, 120, 2, 3));
+    new_p.headers.push_back(make_header(Type::Face, 121, 5, 1));
+    new_p.data_pool = { 1, 2, 3, 4, 5, 6 };
+
+    VersionTree::PidMapping pid_map;
+    pid_map[10] = { 110 };       // old_pid not in (empty) old_pool
+    pid_map[20] = { 120, 121 };  // split-style entry, also rooted at missing old_pid
+
+    auto diff = VersionTree::BuildDiffFromPidMapping(old_p, new_p, pid_map);
+
+    REQUIRE(diff.modified.empty());
+    REQUIRE(diff.removed.empty());
+    REQUIRE(diff.added.size() == 3);
+
+    std::set<uint32_t> added_pids;
+    for (const auto& e : diff.added) { added_pids.insert(e.PersistentId()); }
+    REQUIRE(added_pids == std::set<uint32_t>{ 110, 120, 121 });
+
+    auto fwd = VersionTree::ApplyForward(old_p, diff);
+    REQUIRE(fwd.headers.size() == 3);
+
+    auto rev = VersionTree::ApplyReverse(fwd, diff);
+    REQUIRE(rev.headers.empty());
+}
+
+TEST_CASE("PidMapping: stale old_pid not in old_pool falls back to added", "[pidmap]")
+{
+    // pid_map references an old_pid that no longer exists in old_pool —
+    // the primary new_pid should still surface as ADDED rather than vanishing.
+    GeometryPool old_p;
+    old_p.headers.push_back(make_header(Type::Face, 10, 0, 2));
+    old_p.data_pool = { 1, 2 };
+
+    GeometryPool new_p;
+    new_p.headers.push_back(make_header(Type::Face, 110, 0, 2));
+    new_p.headers.push_back(make_header(Type::Face, 210, 2, 2));
+    new_p.data_pool = { 1, 2, 7, 8 };
+
+    VersionTree::PidMapping pid_map;
+    pid_map[10] = { 110 };
+    pid_map[99] = { 210 };  // 99 is not in old_pool
+
+    auto diff = VersionTree::BuildDiffFromPidMapping(old_p, new_p, pid_map);
+
+    REQUIRE(diff.modified.size() == 1);
+    REQUIRE(diff.modified[0].old_persistent_id == 10);
+    REQUIRE(diff.modified[0].new_persistent_id == 110);
+
+    REQUIRE(diff.added.size()            == 1);
+    REQUIRE(diff.added[0].PersistentId() == 210);
+
+    REQUIRE(diff.removed.empty());
+}
+
 // ============================================================
 // VersionTree navigation tests
 // ============================================================
