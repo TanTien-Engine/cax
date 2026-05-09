@@ -221,6 +221,13 @@ private:
     void     NavigateTo(uint32_t target_id);
     uint32_t FindLCA(uint32_t a, uint32_t b) const;
 
+    // Creates the root node from `pool`. Precondition: tree must already be
+    // empty (m_root_id == UINT32_MAX). Used by Init() (after Clear) and by
+    // Commit-with-pid_map's first-call branch.
+    uint32_t InstallRoot(const GeometryPool& pool,
+                         const std::string&  desc,
+                         uint32_t            op_type);
+
     static GeometryPool RebuildPool(
         const std::unordered_map<uint32_t, EntityEntry>& entities,
         const std::vector<uint32_t>&                     order);

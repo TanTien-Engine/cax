@@ -679,9 +679,11 @@ PoolDiff::ModifiedEntry VersionTree::BuildModifiedEntry(uint32_t           old_p
 
 VersionTree::VersionTree() {}
 
-void VersionTree::Init(const GeometryPool& pool, const std::string& desc)
+uint32_t VersionTree::InstallRoot(const GeometryPool& pool,
+                                   const std::string&  desc,
+                                   uint32_t            op_type)
 {
-    Clear();
+    assert(m_root_id == UINT32_MAX);
 
     uint32_t id  = AllocNodeId();
     m_root_id    = id;
@@ -691,10 +693,19 @@ void VersionTree::Init(const GeometryPool& pool, const std::string& desc)
     node.id        = id;
     node.parent_id = UINT32_MAX;
     node.op_desc   = desc;
+    node.op_type   = op_type;
     node.timestamp = NowMs();
 
     m_nodes[id]    = std::move(node);
     m_current_pool = std::make_shared<GeometryPool>(pool);
+
+    return id;
+}
+
+void VersionTree::Init(const GeometryPool& pool, const std::string& desc)
+{
+    Clear();
+    InstallRoot(pool, desc, /*op_type=*/0);
 }
 
 uint32_t VersionTree::Commit(const GeometryPool& new_pool,
@@ -722,10 +733,11 @@ uint32_t VersionTree::Commit(const GeometryPool& new_pool,
 {
     // First call: no current pool yet, pid_map carries no useful information
     // (there is nothing to map _from_). Install new_pool as the root snapshot.
+    // Bypass Init() — Init clears the tree, which would silently destroy
+    // anything we mistakenly didn't notice; InstallRoot only adds the root
+    // and asserts the precondition.
     if (m_root_id == UINT32_MAX) {
-        Init(new_pool, op_desc);
-        m_nodes[m_root_id].op_type = op_type;
-        return m_root_id;
+        return InstallRoot(new_pool, op_desc, op_type);
     }
 
     PoolDiff diff = BuildDiffFromPidMapping(*m_current_pool, new_pool, pid_map);
