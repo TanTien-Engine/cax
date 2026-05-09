@@ -5,7 +5,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
 import "maths.vector" for Vector3
-import "partgraph" for TopoAlgo
+import "partgraph" for TopoAlgo, GlobalConfig
 
 class Mirror is Node
 {
@@ -24,6 +24,8 @@ class Mirror is Node
 		this.params.add(NodeParam("dir", Vector3(0, 0, 1), { "region" : 1 }))
 
 		this.layout()
+
+		this.op_id = -1
 	}
 
 	calc_value(idx)
@@ -40,7 +42,12 @@ class Mirror is Node
 
 		var pos = this.query_param("pos").value
 		var dir = this.query_param("dir").value
-		var shape = TopoAlgo.mirror(v_obj.value, [ pos.x, pos.z, pos.y], [ dir.x, dir.z, dir.y ])
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.mirror(v_obj.value, [ pos.x, pos.z, pos.y], [ dir.x, dir.z, dir.y ], this.op_id)
 		if (shape) {
 			return Variant(type, shape)
 		} else {

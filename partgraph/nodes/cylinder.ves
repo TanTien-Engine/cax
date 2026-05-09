@@ -6,7 +6,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
-import "partgraph" for PrimMaker
+import "partgraph" for PrimMaker, GlobalConfig
 
 class Cylinder is Node
 {
@@ -26,13 +26,20 @@ class Cylinder is Node
 		this.params.add(NodeParam("length", 1.0, { "region" : 2 }))
 
 		this.layout()
+
+		this.op_id = -1
 	}
 
 	calc_value(idx)
 	{
 		var radius = NodeHelper.calc_prop_value(this, "radius")
 		var length = NodeHelper.calc_prop_value(this, "length")
-		var shape = PrimMaker.cylinder(radius, length)
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = PrimMaker.cylinder(radius, length, this.op_id)
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

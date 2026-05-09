@@ -88,7 +88,8 @@ void w_PrimMaker_plane()
     uint32_t op_id = (uint32_t)ves_tonumber(7);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto shape = partgraph::PrimMaker::Plane(x, y, z, nx, ny, nz, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Plane(x, y, z, nx, ny, nz, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -128,6 +129,7 @@ void w_PrimMaker_cylinder()
 {
     double radius = ves_tonumber(1);
     double length = ves_tonumber(2);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
 
     bool skip = false;
     if (radius < Precision::Confusion()) {
@@ -143,7 +145,9 @@ void w_PrimMaker_cylinder()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Cylinder(radius, length);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Cylinder(radius, length, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -152,6 +156,7 @@ void w_PrimMaker_cone()
     double radius1 = ves_tonumber(1);
     double radius2 = ves_tonumber(2);
     double height = ves_tonumber(3);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
 
     bool skip = false;
     if (radius1 < Precision::Confusion()) {
@@ -171,13 +176,16 @@ void w_PrimMaker_cone()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Cone(radius1, radius2, height);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Cone(radius1, radius2, height, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
 void w_PrimMaker_sphere()
 {
     double radius = ves_tonumber(1);
+    uint32_t op_id = (uint32_t)ves_tonumber(2);
 
     bool skip = false;
     if (radius < Precision::Confusion()) {
@@ -189,7 +197,9 @@ void w_PrimMaker_sphere()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Sphere(radius);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Sphere(radius, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -197,6 +207,7 @@ void w_PrimMaker_sphere_with_angle()
 {
     double radius = ves_tonumber(1);
     double angle = ves_tonumber(2);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
 
     bool skip = false;
     if (radius < Precision::Confusion()) {
@@ -212,7 +223,9 @@ void w_PrimMaker_sphere_with_angle()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Sphere(radius, angle);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Sphere(radius, angle, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -220,6 +233,7 @@ void w_PrimMaker_torus()
 {
     double r1 = ves_tonumber(1);
     double r2 = ves_tonumber(2);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
 
     bool skip = false;
     if (r1 < Precision::Confusion()) {
@@ -235,7 +249,9 @@ void w_PrimMaker_torus()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Torus(r1, r2);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Torus(r1, r2, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -244,6 +260,7 @@ void w_PrimMaker_torus_with_angle()
     double r1 = ves_tonumber(1);
     double r2 = ves_tonumber(2);
     double angle = ves_tonumber(3);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
 
     bool skip = false;
     if (r1 < Precision::Confusion()) {
@@ -263,7 +280,9 @@ void w_PrimMaker_torus_with_angle()
         return;
     }
 
-    auto shape = partgraph::PrimMaker::Torus(r1, r2, angle);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Torus(r1, r2, angle, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -271,7 +290,11 @@ void w_PrimMaker_threading()
 {
     double thickness = ves_tonumber(1);
     double height = ves_tonumber(2);
-    auto shape = partgraph::PrimMaker::Threading(thickness, height);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::PrimMaker::Threading(thickness, height, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -357,7 +380,8 @@ void w_TopoAlgo_fillet()
     uint32_t op_id = (uint32_t)ves_tonumber(4);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto dst = partgraph::TopoAlgo::Fillet(src, thickness, edges, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Fillet(src, thickness, edges, op_id, naming, vt);
     partgraph::return_topo_shape(dst);
 }
 
@@ -370,7 +394,8 @@ void w_TopoAlgo_chamfer()
     uint32_t op_id = (uint32_t)ves_tonumber(4);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto dst = partgraph::TopoAlgo::Chamfer(src, dist, edges, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Chamfer(src, dist, edges, op_id, naming, vt);
     partgraph::return_topo_shape(dst);
 }
 
@@ -380,7 +405,11 @@ void w_TopoAlgo_extrude()
     double x = ves_tonumber(2);
     double y = ves_tonumber(3);
     double z = ves_tonumber(4);
-    auto dst = partgraph::TopoAlgo::Prism(src, x, y, z);
+    uint32_t op_id = (uint32_t)ves_tonumber(5);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Prism(src, x, y, z, op_id, naming, vt);
     partgraph::return_topo_shape(dst);
 }
 
@@ -391,7 +420,8 @@ void w_TopoAlgo_split()
     uint32_t op_id = (uint32_t)ves_tonumber(3);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto shape = partgraph::TopoAlgo::Split(base, tool, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::TopoAlgo::Split(base, tool, op_id, naming, vt);
 
     partgraph::return_topo_shape(shape);
 }
@@ -403,7 +433,8 @@ void w_TopoAlgo_sew()
     uint32_t op_id = (uint32_t)ves_tonumber(3);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto shape = partgraph::TopoAlgo::Sew(s1, s2, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::TopoAlgo::Sew(s1, s2, op_id, naming, vt);
 
     partgraph::return_topo_shape(shape);
 }
@@ -414,7 +445,8 @@ void w_TopoAlgo_unify_same_domain()
     uint32_t op_id = (uint32_t)ves_tonumber(2);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto dst = partgraph::TopoAlgo::UnifySameDomain(src, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::UnifySameDomain(src, op_id, naming, vt);
 
     partgraph::return_topo_shape(dst);
 }
@@ -426,7 +458,8 @@ void w_TopoAlgo_cut()
     uint32_t op_id = (uint32_t)ves_tonumber(3);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto shape = partgraph::TopoAlgo::Cut(s1, s2, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::TopoAlgo::Cut(s1, s2, op_id, naming, vt);
 
     partgraph::return_topo_shape(shape);
 }
@@ -435,7 +468,11 @@ void w_TopoAlgo_fuse()
 {
     auto s1 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto s2 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
-    auto shape = partgraph::TopoAlgo::Fuse(s1, s2);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::TopoAlgo::Fuse(s1, s2, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -443,7 +480,11 @@ void w_TopoAlgo_common()
 {
     auto s1 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto s2 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
-    auto shape = partgraph::TopoAlgo::Common(s1, s2);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::TopoAlgo::Common(s1, s2, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -451,7 +492,11 @@ void w_TopoAlgo_section()
 {
     auto s1 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto s2 = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
-    auto shape = partgraph::TopoAlgo::Section(s1, s2);
+    uint32_t op_id = (uint32_t)ves_tonumber(3);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::TopoAlgo::Section(s1, s2, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -464,7 +509,8 @@ void w_TopoAlgo_translate()
     uint32_t op_id = (uint32_t)ves_tonumber(5);
 
     auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
-    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z, op_id, naming);
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Translate(src, x, y, z, op_id, naming, vt);
 
     partgraph::return_topo_shape(dst);
 }
@@ -474,7 +520,11 @@ void w_TopoAlgo_mirror()
     auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto pos = wrapper::list_to_vec3(2);
     auto dir = wrapper::list_to_vec3(3);
-    auto dst = partgraph::TopoAlgo::Mirror(src, pos, dir);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Mirror(src, pos, dir, op_id, naming, vt);
     partgraph::return_topo_shape(dst);
 }
 
@@ -484,7 +534,11 @@ void w_TopoAlgo_draft()
     auto dir = wrapper::list_to_vec3(2);
     auto angle = (float)ves_tonumber(3);
     auto len_max = (float)ves_tonumber(4);
-    auto dst = partgraph::TopoAlgo::Draft(src, dir, angle, len_max);
+    uint32_t op_id = (uint32_t)ves_tonumber(5);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Draft(src, dir, angle, len_max, op_id, naming, vt);
     partgraph::return_topo_shape(dst);
 }
 
@@ -496,8 +550,11 @@ void w_TopoAlgo_thick_solid()
     wrapper::list_to_foreigns(2, faces);
 
     auto offset = (float)ves_tonumber(3);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
 
-    auto dst = partgraph::TopoAlgo::ThickSolid(shape, faces, offset);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::ThickSolid(shape, faces, offset, op_id, naming, vt);
     partgraph::return_topo_shape(dst);
 }
 
@@ -505,7 +562,11 @@ void w_TopoAlgo_thru_sections()
 {
     std::vector<std::shared_ptr<partgraph::TopoShape>> wires;
     wrapper::list_to_foreigns(1, wires);
-    auto shape = partgraph::TopoAlgo::ThruSections(wires);
+    uint32_t op_id = (uint32_t)ves_tonumber(2);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto shape = partgraph::TopoAlgo::ThruSections(wires, op_id, naming, vt);
     partgraph::return_topo_shape(shape);
 }
 
@@ -516,7 +577,9 @@ void w_TopoAlgo_offset_shape()
     auto is_solid = ves_toboolean(3);
     uint32_t op_id = (uint32_t)ves_tonumber(4);
 
-    auto dst = partgraph::TopoAlgo::OffsetShape(shape, offset, is_solid, op_id);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::OffsetShape(shape, offset, is_solid, op_id, naming, vt);
 
     partgraph::return_topo_shape(dst);
 }
@@ -710,13 +773,13 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static PrimMaker.plane(_,_,_,_,_,_,_)") == 0) return w_PrimMaker_plane;
     if (strcmp(signature, "static PrimMaker.box(_,_,_,_)") == 0) return w_PrimMaker_box;
-    if (strcmp(signature, "static PrimMaker.cylinder(_,_)") == 0) return w_PrimMaker_cylinder;
-    if (strcmp(signature, "static PrimMaker.cone(_,_,_)") == 0) return w_PrimMaker_cone;
-    if (strcmp(signature, "static PrimMaker.sphere(_)") == 0) return w_PrimMaker_sphere;
-    if (strcmp(signature, "static PrimMaker.sphere_with_angle(_,_)") == 0) return w_PrimMaker_sphere_with_angle;
-    if (strcmp(signature, "static PrimMaker.torus(_,_)") == 0) return w_PrimMaker_torus;
-    if (strcmp(signature, "static PrimMaker.torus_with_angle(_,_,_)") == 0) return w_PrimMaker_torus_with_angle;
-    if (strcmp(signature, "static PrimMaker.threading(_,_)") == 0) return w_PrimMaker_threading;
+    if (strcmp(signature, "static PrimMaker.cylinder(_,_,_)") == 0) return w_PrimMaker_cylinder;
+    if (strcmp(signature, "static PrimMaker.cone(_,_,_,_)") == 0) return w_PrimMaker_cone;
+    if (strcmp(signature, "static PrimMaker.sphere(_,_)") == 0) return w_PrimMaker_sphere;
+    if (strcmp(signature, "static PrimMaker.sphere_with_angle(_,_,_)") == 0) return w_PrimMaker_sphere_with_angle;
+    if (strcmp(signature, "static PrimMaker.torus(_,_,_)") == 0) return w_PrimMaker_torus;
+    if (strcmp(signature, "static PrimMaker.torus_with_angle(_,_,_,_)") == 0) return w_PrimMaker_torus_with_angle;
+    if (strcmp(signature, "static PrimMaker.threading(_,_,_)") == 0) return w_PrimMaker_threading;
 
     if (strcmp(signature, "static BRepSelector.select_face(_,_,_)") == 0) return w_BRepSelector_select_face;
     if (strcmp(signature, "static BRepSelector.select_edge(_,_,_)") == 0) return w_BRepSelector_select_edge;
@@ -731,19 +794,19 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static TopoAlgo.fillet(_,_,_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_,_)") == 0) return w_TopoAlgo_chamfer;
-    if (strcmp(signature, "static TopoAlgo.extrude(_,_,_,_)") == 0) return w_TopoAlgo_extrude;
+    if (strcmp(signature, "static TopoAlgo.extrude(_,_,_,_,_)") == 0) return w_TopoAlgo_extrude;
     if (strcmp(signature, "static TopoAlgo.split(_,_,_)") == 0) return w_TopoAlgo_split;
     if (strcmp(signature, "static TopoAlgo.cut(_,_,_)") == 0) return w_TopoAlgo_cut;
-    if (strcmp(signature, "static TopoAlgo.fuse(_,_)") == 0) return w_TopoAlgo_fuse;
-    if (strcmp(signature, "static TopoAlgo.common(_,_)") == 0) return w_TopoAlgo_common;
-    if (strcmp(signature, "static TopoAlgo.section(_,_)") == 0) return w_TopoAlgo_section;
+    if (strcmp(signature, "static TopoAlgo.fuse(_,_,_)") == 0) return w_TopoAlgo_fuse;
+    if (strcmp(signature, "static TopoAlgo.common(_,_,_)") == 0) return w_TopoAlgo_common;
+    if (strcmp(signature, "static TopoAlgo.section(_,_,_)") == 0) return w_TopoAlgo_section;
     if (strcmp(signature, "static TopoAlgo.sew(_,_,_)") == 0) return w_TopoAlgo_sew;
     if (strcmp(signature, "static TopoAlgo.unify_same_domain(_,_)") == 0) return w_TopoAlgo_unify_same_domain;
     if (strcmp(signature, "static TopoAlgo.translate(_,_,_,_,_)") == 0) return w_TopoAlgo_translate;
-    if (strcmp(signature, "static TopoAlgo.mirror(_,_,_)") == 0) return w_TopoAlgo_mirror;
-    if (strcmp(signature, "static TopoAlgo.draft(_,_,_,_)") == 0) return w_TopoAlgo_draft;
-    if (strcmp(signature, "static TopoAlgo.thick_solid(_,_,_)") == 0) return w_TopoAlgo_thick_solid;
-    if (strcmp(signature, "static TopoAlgo.thru_sections(_)") == 0) return w_TopoAlgo_thru_sections;
+    if (strcmp(signature, "static TopoAlgo.mirror(_,_,_,_)") == 0) return w_TopoAlgo_mirror;
+    if (strcmp(signature, "static TopoAlgo.draft(_,_,_,_,_)") == 0) return w_TopoAlgo_draft;
+    if (strcmp(signature, "static TopoAlgo.thick_solid(_,_,_,_)") == 0) return w_TopoAlgo_thick_solid;
+    if (strcmp(signature, "static TopoAlgo.thru_sections(_,_)") == 0) return w_TopoAlgo_thru_sections;
     if (strcmp(signature, "static TopoAlgo.offset_shape(_,_,_,_)") == 0) return w_TopoAlgo_offset_shape;
 
     if (strcmp(signature, "static TopoAdapter.build_mesh(_,_)") == 0) return w_TopoAdapter_build_mesh;

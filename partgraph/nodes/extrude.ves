@@ -6,7 +6,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER3
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_FACE, VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
-import "partgraph" for TopoAlgo
+import "partgraph" for TopoAlgo, GlobalConfig
 
 class Extrude is Node
 {
@@ -25,6 +25,8 @@ class Extrude is Node
 		this.params.add(NodeParam("dist", Vector3(0, 0, 0), { "region" : 2 }))
 
 		this.layout()
+
+		this.op_id = -1
 	}
 
 	calc_value(idx)
@@ -35,7 +37,12 @@ class Extrude is Node
 		}
 
 		var dist = NodeHelper.calc_prop_value(this, "dist")
-		var shape = TopoAlgo.extrude(v_face.value, dist.x, dist.z, dist.y)
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.extrude(v_face.value, dist.x, dist.z, dist.y, this.op_id)
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

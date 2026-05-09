@@ -4,7 +4,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "partgraph" for PrimMaker
+import "partgraph" for PrimMaker, GlobalConfig
 import "math" for Math
 
 class Sphere is Node
@@ -15,7 +15,7 @@ class Sphere is Node
 
 		this.imports = [
 			Pin(this, "radius", VAR_TYPE_NUMBER),
-			Pin(this, "angle", VAR_TYPE_NUMBER),			
+			Pin(this, "angle", VAR_TYPE_NUMBER),
 		]
 		this.exports = [
 			Pin(this, "shape", VAR_TOPO_SHAPE),
@@ -25,6 +25,8 @@ class Sphere is Node
 		this.params.add(NodeParam("angle", Math.pi() * 2, { "region" : Math.pi() * 2 }))
 
 		this.layout()
+
+		this.op_id = -1
 	}
 
 	calc_value(idx)
@@ -32,13 +34,17 @@ class Sphere is Node
 		var radius = NodeHelper.calc_prop_value(this, "radius")
 		var angle = NodeHelper.calc_prop_value(this, "angle")
 
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
 		var shape = nil
 		if (angle == Math.pi() * 2) {
-			shape = PrimMaker.sphere(radius)
+			shape = PrimMaker.sphere(radius, this.op_id)
 		} else {
-			shape = PrimMaker.sphere_with_angle(radius, angle)
+			shape = PrimMaker.sphere_with_angle(radius, angle, this.op_id)
 		}
-		
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

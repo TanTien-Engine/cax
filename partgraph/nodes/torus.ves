@@ -4,7 +4,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "partgraph" for PrimMaker
+import "partgraph" for PrimMaker, GlobalConfig
 import "math" for Math
 
 class Torus is Node
@@ -15,18 +15,20 @@ class Torus is Node
 
 		this.imports = [
 			Pin(this, "r1", VAR_TYPE_NUMBER),
-			Pin(this, "r2", VAR_TYPE_NUMBER),			
-			Pin(this, "angle", VAR_TYPE_NUMBER),			
+			Pin(this, "r2", VAR_TYPE_NUMBER),
+			Pin(this, "angle", VAR_TYPE_NUMBER),
 		]
 		this.exports = [
 			Pin(this, "shape", VAR_TOPO_SHAPE),
 		]
 
 		this.params.add(NodeParam("r1", 1.0, { "region" : 5 }))
-		this.params.add(NodeParam("r2", 0.25, { "region" : 2 }))		
+		this.params.add(NodeParam("r2", 0.25, { "region" : 2 }))
 		this.params.add(NodeParam("angle", Math.pi() * 2, { "region" : Math.pi() * 2 }))
 
 		this.layout()
+
+		this.op_id = -1
 	}
 
 	calc_value(idx)
@@ -35,13 +37,17 @@ class Torus is Node
 		var r2 = NodeHelper.calc_prop_value(this, "r2")
 		var angle = NodeHelper.calc_prop_value(this, "angle")
 
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
 		var shape = nil
 		if (angle == Math.pi() * 2) {
-			shape = PrimMaker.torus(r1, r2)
+			shape = PrimMaker.torus(r1, r2, this.op_id)
 		} else {
-			shape = PrimMaker.torus_with_angle(r1, r2, angle)
+			shape = PrimMaker.torus_with_angle(r1, r2, angle, this.op_id)
 		}
-		
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

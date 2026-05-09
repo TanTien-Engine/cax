@@ -49,14 +49,14 @@ foreign class PrimMaker
 	foreign static plane(x, y, z, nx, ny, nz, op_id)
 
 	foreign static box(length, width, height, op_id)
-	foreign static cylinder(radius, length)
-	foreign static cone(radius1, radius2, height)
-	foreign static sphere(radius)
-	foreign static sphere_with_angle(radius, angle)
-	foreign static torus(r1, r2)
-	foreign static torus_with_angle(r1, r2, angle)
+	foreign static cylinder(radius, length, op_id)
+	foreign static cone(radius1, radius2, height, op_id)
+	foreign static sphere(radius, op_id)
+	foreign static sphere_with_angle(radius, angle, op_id)
+	foreign static torus(r1, r2, op_id)
+	foreign static torus_with_angle(r1, r2, angle, op_id)
 
-	foreign static threading(thickness, height)
+	foreign static threading(thickness, height, op_id)
 }
 
 foreign class BRepSelector
@@ -84,25 +84,25 @@ foreign class TopoAlgo
 	foreign static chamfer(shape, dist, edges, op_id)
 
 	// sweep
-	foreign static extrude(shape, x, y, z)
+	foreign static extrude(shape, x, y, z, op_id)
 
 	// boolean
 	foreign static split(base, tool, op_id)
 	foreign static cut(s1, s2, op_id)
-	foreign static fuse(s1, s2)
-	foreign static common(s1, s2)
-	foreign static section(s1, s2)
+	foreign static fuse(s1, s2, op_id)
+	foreign static common(s1, s2, op_id)
+	foreign static section(s1, s2, op_id)
 
 	foreign static sew(s1, s2, op_id)
 	foreign static unify_same_domain(shape, op_id)
 
 	foreign static translate(shape, x, y, z, op_id)
-	foreign static mirror(shape, pos, dir)
+	foreign static mirror(shape, pos, dir, op_id)
 
 	// offset
-	foreign static draft(shape, dir, angle, len)
-	foreign static thick_solid(shape, face, offset)
-	foreign static thru_sections(wires)
+	foreign static draft(shape, dir, angle, len, op_id)
+	foreign static thick_solid(shape, face, offset, op_id)
+	foreign static thru_sections(wires, op_id)
 	foreign static offset_shape(shape, offset, is_solid, op_id)
 }
 

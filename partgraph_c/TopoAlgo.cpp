@@ -5,6 +5,9 @@
 #include "BRepHistory.h"
 #include "BRepBuilder.h"
 #include "breptopo_c/TopoNaming.h"
+#include "brepdb_c/GeomSender.h"
+#include "brepdb_c/GeomPool.h"
+#include "brepdb_c/VersionTree.h"
 
 // OCCT
 #include <BRepFilletAPI_MakeFillet.hxx>
@@ -24,12 +27,33 @@
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 
+namespace
+{
+
+void commit_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
+                  const std::shared_ptr<brepdb::VersionTree>& vt,
+                  const TopoDS_Shape& shape,
+                  const breptopo::TopoNaming::PidMap& pid_map,
+                  const std::string& op_name)
+{
+    if (!tn || !vt) {
+        return;
+    }
+    brepdb::GeomSender sender(tn);
+    brepdb::GeometryPool new_pool;
+    sender.Serialize(shape, new_pool);
+    vt->Commit(new_pool, pid_map, op_name);
+}
+
+}
+
 namespace partgraph
 {
 
-std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius, 
-                                            const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id, 
-                                            const std::shared_ptr<breptopo::TopoNaming>& tn)
+std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius,
+                                            const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id,
+                                            const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepFilletAPI_MakeFillet fillet(shape->GetShape());
 
@@ -50,16 +74,19 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
     }
 
+    breptopo::TopoNaming::PidMap pid_map;
     if (tn) {
-        tn->Update(fillet, fillet.Shape(), shape->GetShape(), op_id);
+        pid_map = tn->Update(fillet, fillet.Shape(), shape->GetShape(), op_id);
     }
-
-    return std::make_shared<partgraph::TopoShape>(fillet.Shape());
+    auto dst = std::make_shared<partgraph::TopoShape>(fillet.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "fillet");
+    return dst;
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& shape, double dist,
-                                             const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id, 
-                                             const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                             const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id,
+                                             const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepFilletAPI_MakeChamfer chamfer(shape->GetShape());
 
@@ -80,22 +107,33 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         }
     }
 
+    breptopo::TopoNaming::PidMap pid_map;
     if (tn) {
-        tn->Update(chamfer, chamfer.Shape(), shape->GetShape(), op_id);
+        pid_map = tn->Update(chamfer, chamfer.Shape(), shape->GetShape(), op_id);
     }
-
-    return std::make_shared<partgraph::TopoShape>(chamfer.Shape());
+    auto dst = std::make_shared<partgraph::TopoShape>(chamfer.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "chamfer");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& face, double x, double y, double z)
+std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& face, double x, double y, double z,
+                                           uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                           const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    gp_Vec vec;
-    auto prism = BRepPrimAPI_MakePrism(face->GetShape(), gp_Vec(x, y, z));
-    return std::make_shared<partgraph::TopoShape>(prism.Shape());
+    BRepPrimAPI_MakePrism prism(face->GetShape(), gp_Vec(x, y, z));
+
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn) {
+        pid_map = tn->Update(prism, prism.Shape(), face->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(prism.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "prism");
+    return dst;
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
-                                           uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                           uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                           const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     TopTools_ListOfShape bases, tools;
     bases.Append(base->GetShape());
@@ -113,18 +151,21 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
         algo.DumpErrors(std::cout);
     }
 
+    breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
         auto old_shp = BRepBuilder::MakeCompound({ base, tool });
         opencascade::handle<BRepTools_History> o_hist = algo.History();
-        tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
-
-    return std::make_shared<partgraph::TopoShape>(algo.Shape());
+    auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "split");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2, 
-                                         uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
+                                         uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                         const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepAlgoAPI_Cut algo(s1->GetShape(), s2->GetShape());
     algo.Build();
@@ -136,17 +177,21 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         algo.DumpErrors(std::cout);
     }
 
+    breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
         auto old_shp = BRepBuilder::MakeCompound({ s1, s2 });
         opencascade::handle<BRepTools_History> o_hist = algo.History();
-        tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
-
-    return std::make_shared<partgraph::TopoShape>(algo.Shape());
+    auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "cut");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2)
+std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
+                                          uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                          const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepAlgoAPI_Fuse algo(s1->GetShape(), s2->GetShape());
     algo.Build();
@@ -158,10 +203,21 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         algo.DumpErrors(std::cout);
     }
 
-    return std::make_shared<partgraph::TopoShape>(algo.Shape());
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn)
+    {
+        auto old_shp = BRepBuilder::MakeCompound({ s1, s2 });
+        opencascade::handle<BRepTools_History> o_hist = algo.History();
+        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "fuse");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2)
+std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
+                                            uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepAlgoAPI_Common algo(s1->GetShape(), s2->GetShape());
     //algo.Build();
@@ -173,10 +229,21 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
         algo.DumpErrors(std::cout);
     }
 
-    return std::make_shared<partgraph::TopoShape>(algo.Shape());
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn)
+    {
+        auto old_shp = BRepBuilder::MakeCompound({ s1, s2 });
+        opencascade::handle<BRepTools_History> o_hist = algo.History();
+        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "common");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2)
+std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
+                                             uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepAlgoAPI_Section algo;
     algo.Init1(s1->GetShape());
@@ -191,11 +258,21 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
         algo.DumpErrors(std::cout);
     }
 
-    return std::make_shared<partgraph::TopoShape>(algo.Shape());
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn)
+    {
+        auto old_shp = BRepBuilder::MakeCompound({ s1, s2 });
+        opencascade::handle<BRepTools_History> o_hist = algo.History();
+        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "section");
+    return dst;
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::Sew(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
-    uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+    uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+    const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     Standard_Real tolerance = 1e-6;
     BRepBuilderAPI_Sewing algo(tolerance);
@@ -230,34 +307,44 @@ std::shared_ptr<TopoShape> TopoAlgo::Sew(const std::shared_ptr<TopoShape>& s1, c
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::UnifySameDomain(const std::shared_ptr<TopoShape>& shape,
-                                                     uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                                     uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                                     const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     ShapeUpgrade_UnifySameDomain algo;
     algo.Initialize(shape->GetShape(), Standard_True, Standard_True, Standard_False);
     algo.Build();
 
+    breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
         opencascade::handle<BRepTools_History> o_hist = algo.History();
-        tn->Update(o_hist, algo.Shape(), shape->GetShape(), op_id);
+        pid_map = tn->Update(o_hist, algo.Shape(), shape->GetShape(), op_id);
     }
-
-    return std::make_shared<partgraph::TopoShape>(algo.Shape());
+    auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "unify_same_domain");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z, 
-                                               uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z,
+                                               uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                               const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    gp_Trsf trsf; 
+    gp_Trsf trsf;
     trsf.SetTranslation(gp_Vec(x, y, z));
     auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
+
+    breptopo::TopoNaming::PidMap pid_map;
     if (tn) {
-        tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
+        pid_map = tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
     }
-    return std::make_shared<partgraph::TopoShape>(trans.Shape());
+    auto dst = std::make_shared<partgraph::TopoShape>(trans.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "translate");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Mirror(const std::shared_ptr<TopoShape>& shape, const sm::vec3& pos, const sm::vec3& dir)
+std::shared_ptr<TopoShape> TopoAlgo::Mirror(const std::shared_ptr<TopoShape>& shape, const sm::vec3& pos, const sm::vec3& dir,
+                                            uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     gp_Ax1 axis;
     axis.SetLocation(trans_pnt(pos));
@@ -267,11 +354,20 @@ std::shared_ptr<TopoShape> TopoAlgo::Mirror(const std::shared_ptr<TopoShape>& sh
     trsf.SetMirror(axis);
 
     auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
-    return std::make_shared<partgraph::TopoShape>(trans.Shape());
+
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn) {
+        pid_map = tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(trans.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "mirror");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::Draft(const std::shared_ptr<TopoShape>& shape, 
-                                           const sm::vec3& dir, float angle, float len_max)
+std::shared_ptr<TopoShape> TopoAlgo::Draft(const std::shared_ptr<TopoShape>& shape,
+                                           const sm::vec3& dir, float angle, float len_max,
+                                           uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                           const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     TopTools_IndexedMapOfShape faces;
     TopExp::MapShapes(shape->GetShape(), TopAbs_FACE, faces);
@@ -280,10 +376,19 @@ std::shared_ptr<TopoShape> TopoAlgo::Draft(const std::shared_ptr<TopoShape>& sha
 
     BRepOffsetAPI_MakeDraft draft(face, trans_vec(dir), angle);
     draft.Perform(len_max);
-    return std::make_shared<partgraph::TopoShape>(draft.Shape());
+
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn) {
+        pid_map = tn->Update(draft, draft.Shape(), shape->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(draft.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "draft");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoShape>>& faces, float offset)
+std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoShape>>& faces, float offset,
+                                                uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                                const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     TopTools_ListOfShape faces_to_rm;
     for (auto& face : faces) {
@@ -293,32 +398,51 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
     BRepOffsetAPI_MakeThickSolid thick_solid;
     thick_solid.MakeThickSolidByJoin(shape->GetShape(), faces_to_rm, offset, 1.e-3);
 
-    return std::make_shared<partgraph::TopoShape>(thick_solid.Shape());
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn) {
+        pid_map = tn->Update(thick_solid, thick_solid.Shape(), shape->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(thick_solid.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "thick_solid");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_ptr<TopoShape>>& wires)
+std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_ptr<TopoShape>>& wires,
+                                                  uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                                  const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepOffsetAPI_ThruSections thru_sections(Standard_False);
     for (auto& wire : wires) {
         thru_sections.AddWire(wire->ToWire());
     }
 
-    return std::make_shared<partgraph::TopoShape>(thru_sections.Shape());
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn)
+    {
+        auto old_shp = BRepBuilder::MakeCompound(wires);
+        pid_map = tn->Update(thru_sections, thru_sections.Shape(), old_shp->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(thru_sections.Shape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "thru_sections");
+    return dst;
 }
 
-std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid, 
-                                                 uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid,
+                                                 uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                                 const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     BRepOffset_MakeSimpleOffset builder;
     builder.Initialize(shape->GetShape(), offset);
     builder.SetBuildSolidFlag(is_solid);
     builder.Perform();
 
+    breptopo::TopoNaming::PidMap pid_map;
     if (tn) {
-        tn->Update(builder, shape->GetShape(), op_id);
+        pid_map = tn->Update(builder, shape->GetShape(), op_id);
     }
-
-    return std::make_shared<partgraph::TopoShape>(builder.GetResultShape());
+    auto dst = std::make_shared<partgraph::TopoShape>(builder.GetResultShape());
+    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "offset_shape");
+    return dst;
 }
 
-} 
+}

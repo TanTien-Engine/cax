@@ -35,16 +35,27 @@ namespace partgraph
 {
 
 std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double nx, double ny, double nz,
-                                            uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn)
+                                            uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         gp_Pln pln(gp_Pnt(x, y, z), gp_Dir(nx, ny, nz));
-        TopoDS_Face face = BRepBuilderAPI_MakeFace(pln, -20.0, 20.0, -20.0, 20.0).Face();
-        if (tn) {
-            tn->Update(face, op_id);
+        BRepBuilderAPI_MakeFace mk_face(pln, -20.0, 20.0, -20.0, 20.0);
+        breptopo::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_face, mk_face.Shape(), old_shp->GetShape(), op_id);
         }
-        shape = std::make_shared<partgraph::TopoShape>(face);
+        shape = std::make_shared<partgraph::TopoShape>(mk_face.Face());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "plane");
+        }
     }
     catch (Standard_Failure& e) {
         LOGI("Build plane fail: %s", e.GetMessageString());
@@ -81,12 +92,27 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint3
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length)
+std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length, uint32_t op_id,
+                                               const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                               const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
-        TopoDS_Shape cylinder = BRepPrimAPI_MakeCylinder(radius, length);
-        shape = std::make_shared<partgraph::TopoShape>(cylinder);
+        BRepPrimAPI_MakeCylinder mk_cyl(radius, length);
+        breptopo::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_cyl, mk_cyl.Shape(), old_shp->GetShape(), op_id);
+        }
+        shape = std::make_shared<partgraph::TopoShape>(mk_cyl.Shape());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "cylinder");
+        }
     } catch (Standard_Failure& e) {
         LOGI("Build cylinder fail: %s", e.GetMessageString());
     }
@@ -94,12 +120,27 @@ std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length)
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height)
+std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height, uint32_t op_id,
+                                           const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                           const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
-        TopoDS_Shape cone = BRepPrimAPI_MakeCone(r1, r2, height);
-        shape = std::make_shared<partgraph::TopoShape>(cone);
+        BRepPrimAPI_MakeCone mk_cone(r1, r2, height);
+        breptopo::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_cone, mk_cone.Shape(), old_shp->GetShape(), op_id);
+        }
+        shape = std::make_shared<partgraph::TopoShape>(mk_cone.Shape());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "cone");
+        }
     } catch (Standard_Failure& e) {
         LOGI("Build cone fail: %s", e.GetMessageString());
     }
@@ -107,12 +148,27 @@ std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height)
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius)
+std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, uint32_t op_id,
+                                             const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
-        TopoDS_Shape sphere = BRepPrimAPI_MakeSphere(radius);
-        shape = std::make_shared<partgraph::TopoShape>(sphere);
+        BRepPrimAPI_MakeSphere mk_sphere(radius);
+        breptopo::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_sphere, mk_sphere.Shape(), old_shp->GetShape(), op_id);
+        }
+        shape = std::make_shared<partgraph::TopoShape>(mk_sphere.Shape());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "sphere");
+        }
     } catch (Standard_Failure& e) {
         LOGI("Build sphere fail: %s", e.GetMessageString());
     }
@@ -120,12 +176,27 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius)
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle)
+std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle, uint32_t op_id,
+                                             const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
-        TopoDS_Shape sphere = BRepPrimAPI_MakeSphere(radius, angle);
-        shape = std::make_shared<partgraph::TopoShape>(sphere);
+        BRepPrimAPI_MakeSphere mk_sphere(radius, angle);
+        breptopo::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_sphere, mk_sphere.Shape(), old_shp->GetShape(), op_id);
+        }
+        shape = std::make_shared<partgraph::TopoShape>(mk_sphere.Shape());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "sphere");
+        }
     } catch (Standard_Failure& e) {
         LOGI("Build sphere fail: %s", e.GetMessageString());
     }
@@ -133,12 +204,27 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle)
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2)
+std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, uint32_t op_id,
+                                            const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
-        TopoDS_Shape torus = BRepPrimAPI_MakeTorus(r1, r2);
-        shape = std::make_shared<partgraph::TopoShape>(torus);
+        BRepPrimAPI_MakeTorus mk_torus(r1, r2);
+        breptopo::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_torus, mk_torus.Shape(), old_shp->GetShape(), op_id);
+        }
+        shape = std::make_shared<partgraph::TopoShape>(mk_torus.Shape());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "torus");
+        }
     } catch (Standard_Failure& e) {
         LOGI("Build torus fail: %s", e.GetMessageString());
     }
@@ -146,12 +232,27 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2)
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle)
+std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle, uint32_t op_id,
+                                            const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
-        TopoDS_Shape torus = BRepPrimAPI_MakeTorus(r1, r2, angle);
-        shape = std::make_shared<partgraph::TopoShape>(torus);
+        BRepPrimAPI_MakeTorus mk_torus(r1, r2, angle);
+        breptopo::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = BRepBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_torus, mk_torus.Shape(), old_shp->GetShape(), op_id);
+        }
+        shape = std::make_shared<partgraph::TopoShape>(mk_torus.Shape());
+        if (tn && vt)
+        {
+            brepdb::GeomSender sender(tn);
+            brepdb::GeometryPool new_pool;
+            sender.Serialize(shape->GetShape(), new_pool);
+            vt->Commit(new_pool, pid_map, "torus");
+        }
     } catch (Standard_Failure& e) {
         LOGI("Build torus fail: %s", e.GetMessageString());
     }
@@ -159,7 +260,9 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle)
     return shape;
 }
 
-std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height)
+std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height, uint32_t op_id,
+                                                const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                                const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     gp_Pnt neckLocation(0, 0, height);
     gp_Dir neckAxis = gp::DZ();
@@ -198,14 +301,27 @@ std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height)
     BRepLib::BuildCurves3d(threadingWire1);
     BRepLib::BuildCurves3d(threadingWire2);
 
-    // Create Threading 
+    // Create Threading
     BRepOffsetAPI_ThruSections aTool(Standard_True);
     aTool.AddWire(threadingWire1);
     aTool.AddWire(threadingWire2);
     aTool.CheckCompatibility(Standard_False);
 
-    TopoDS_Shape myThreading = aTool.Shape();
-    return std::make_shared<partgraph::TopoShape>(myThreading);
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn)
+    {
+        auto old_shp = BRepBuilder::MakeCompound({});
+        pid_map = tn->Update(aTool, aTool.Shape(), old_shp->GetShape(), op_id);
+    }
+    auto shape = std::make_shared<partgraph::TopoShape>(aTool.Shape());
+    if (tn && vt)
+    {
+        brepdb::GeomSender sender(tn);
+        brepdb::GeometryPool new_pool;
+        sender.Serialize(shape->GetShape(), new_pool);
+        vt->Commit(new_pool, pid_map, "threading");
+    }
+    return shape;
 }
 
 }
