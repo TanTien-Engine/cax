@@ -752,6 +752,17 @@ void w_GlobalConfig_get_topo_naming()
     ves_pop(1);
 }
 
+void w_GlobalConfig_get_version_tree()
+{
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("brepdb", "VersionTree");
+    auto proxy = (wrapper::Proxy<brepdb::VersionTree>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<brepdb::VersionTree>));
+    proxy->obj = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    ves_pop(1);
+}
+
 }
 
 namespace partgraph
@@ -815,6 +826,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAdapter.shape2wire(_)") == 0) return w_TopoAdapter_shape2wire;
 
     if (strcmp(signature, "static GlobalConfig.get_topo_naming()") == 0) return w_GlobalConfig_get_topo_naming;
+    if (strcmp(signature, "static GlobalConfig.get_version_tree()") == 0) return w_GlobalConfig_get_version_tree;
 
     return nullptr;
 }

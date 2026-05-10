@@ -52,24 +52,23 @@ node8.query_param("radius").value = 0.4
 
 _editor.add_node(node8, -221.36614702984, 223.19765254884)
 
-var node9 = ::breptopo::nodes::hist_graph::HistGraph()
-node9.query_param("type").value = "edge"
+var node9 = ::blueprint::nodes::cache::Cache()
+node9.query_param("disable").value = false
 
-_editor.add_node(node9, 437.24692650882, -144.4222365857)
+_editor.add_node(node9, 5.121942669678, 245.89416310358)
 
-var node10 = ::blueprint::nodes::cache::Cache()
-node10.query_param("disable").value = false
+var node10 = ::brepdb::nodes::deserialize::Deserialize()
 
-_editor.add_node(node10, 5.121942669678, 245.89416310358)
+_editor.add_node(node10, 448.04449728672, -216.51396352708)
 
-Blueprint.connect(node9, "selected", node6, "shape")
+Blueprint.connect(node10, "shape", node6, "shape")
 Blueprint.connect(node0, "shape", node5, "var")
 Blueprint.connect(node5, "var", node7, "shape")
 Blueprint.connect(node2, "this", node7, "camera")
 Blueprint.connect(node5, "var", node8, "shape")
 Blueprint.connect(node7, "objs", node8, "edges")
-Blueprint.connect(node8, "shape", node10, "var")
-Blueprint.connect(node10, "var", node1, "shape")
+Blueprint.connect(node8, "shape", node9, "var")
+Blueprint.connect(node9, "var", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")
 Blueprint.connect(node2, "this", node4, "view_cam")

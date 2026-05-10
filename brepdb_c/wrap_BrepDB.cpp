@@ -5,6 +5,9 @@
 #include "brepdb_c/GeomFile.h"
 #include "brepdb_c/BrepDB.h"
 #include "brepdb_c/VersionTree.h"
+#include "brepdb_c/VersionGraph.h"
+
+#include <graph/Graph.h>
 
 #include <spatialdb/RTree.h>
 #include <spatialdb/DiskStorageManager.h>
@@ -191,14 +194,14 @@ void w_BrepDB_build()
 
         brepdb::TopoBlock& block = topo.CreateBlock(solid_uid);
 
-        // Solid ¡ú Face
+        // Solid ï¿½ï¿½ Face
         for (TopExp_Explorer fe(solid_exp.Current(), TopAbs_FACE); fe.More(); fe.Next()) {
             uint32_t fuid = sender.GetUID(fe.Current());
             if (fuid != 0xffffffff)
                 block.AddEdge(solid_uid, fuid, brepdb::TopoBlock::FaceOfSolid);
         }
 
-        // Face ¡ú Edge
+        // Face ï¿½ï¿½ Edge
         for (TopExp_Explorer fe(solid_exp.Current(), TopAbs_FACE); fe.More(); fe.Next()) {
             uint32_t fuid = sender.GetUID(fe.Current());
             if (fuid == 0xffffffff) continue;
@@ -209,7 +212,7 @@ void w_BrepDB_build()
             }
         }
 
-        // Edge ¡ú Vertex
+        // Edge ï¿½ï¿½ Vertex
         for (TopExp_Explorer ee(solid_exp.Current(), TopAbs_EDGE); ee.More(); ee.Next()) {
             uint32_t euid = sender.GetUID(ee.Current());
             if (euid == 0xffffffff) continue;
@@ -439,6 +442,35 @@ void w_VersionTree_clear() {
     vt->Clear();
 }
 
+void w_VersionGraph_allocate()
+{
+    auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(1))->obj;
+    auto proxy = reinterpret_cast<wrapper::Proxy<brepdb::VersionGraph>*>(
+        ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<brepdb::VersionGraph>)));
+    proxy->obj = std::make_shared<brepdb::VersionGraph>(*vt);
+}
+
+int w_VersionGraph_finalize(void* data)
+{
+    auto proxy = reinterpret_cast<wrapper::Proxy<brepdb::VersionGraph>*>(data);
+    proxy->~Proxy();
+    return sizeof(wrapper::Proxy<brepdb::VersionGraph>);
+}
+
+void w_VersionGraph_get_graph()
+{
+    auto vg = reinterpret_cast<wrapper::Proxy<brepdb::VersionGraph>*>(ves_toforeign(0))->obj;
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("graph", "Graph");
+    auto proxy = reinterpret_cast<wrapper::Proxy<graph::Graph>*>(
+        ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>)));
+    proxy->obj = vg->GetGraph();
+    ves_pop(1);
+}
+
 }
 
 namespace brepdb
@@ -469,6 +501,8 @@ VesselForeignMethodFn BrepDBBindMethod(const char* signature)
     if (strcmp(signature, "VersionTree.load(_)") == 0) return w_VersionTree_load;
     if (strcmp(signature, "VersionTree.clear()") == 0) return w_VersionTree_clear;
 
+    if (strcmp(signature, "VersionGraph.get_graph()") == 0) return w_VersionGraph_get_graph;
+
     return nullptr;
 }
 
@@ -492,6 +526,13 @@ void BrepDBBindClass(const char* class_name, VesselForeignClassMethods* methods)
     {
         methods->allocate = w_VersionTree_allocate;
         methods->finalize = w_VersionTree_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "VersionGraph") == 0)
+    {
+        methods->allocate = w_VersionGraph_allocate;
+        methods->finalize = w_VersionGraph_finalize;
     }
 }
 

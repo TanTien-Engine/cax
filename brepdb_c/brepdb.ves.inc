@@ -51,4 +51,11 @@ foreign class VersionTree
 	foreign clear()
 }
 
+foreign class VersionGraph
+{
+	init(vt) {}
+
+	foreign get_graph()
+}
+
 );

@@ -1,0 +1,122 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant
+import "blueprint.variant_proxy" for VariantProxy
+import "graph.nodes.draw" for Draw
+import "graph.variant" for VAR_TYPE_GRAPH
+import "brepdb.variant" for VAR_TYPE_VERSION_GRAPH, VAR_TYPE_BREP_IR
+import "brepdb" for VersionGraph as tt_VersionGraph
+import "partgraph" for GlobalConfig
+
+class VersionGraph is Node
+{
+	init()
+	{
+		super.init()
+
+		this.exports = [
+			Pin(this, "ir", VAR_TYPE_BREP_IR),
+		]
+
+		this.layout()
+
+		this.graph = nil
+		this.v_ir = nil
+
+		this.n_draw = Draw()
+	}
+
+	calc_value(idx)
+	{
+		if (!this.graph) {
+			this.build_graph()
+		}
+
+		if (idx == 0) {
+			return this.v_ir
+		}
+	}
+
+	build_graph()
+	{
+		var vt = GlobalConfig.get_version_tree()
+
+		System.print("++ vt %(vt)")
+
+		if (!vt) {
+			return
+		}
+
+		var version_graph = tt_VersionGraph.init(vt)
+
+		var graph = version_graph.get_graph()
+		Blueprint.connect(VariantProxy(Variant(VAR_TYPE_GRAPH, graph)), "out", this.n_draw, "graph")
+
+		this.graph = version_graph
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		this.n_draw.draw_preview()
+	}
+
+	bind_editor()
+	{
+		return this.n_draw.bind_editor()
+	}
+
+	draw_editor()
+	{
+		this.n_draw.draw_editor()
+	}
+
+	on_mouse_pressed(x, y, btn)
+	{
+		this.n_draw.on_mouse_pressed(x, y, btn)
+
+		this.update_selected()
+	}
+
+	on_mouse_dragged(x, y, btn)
+	{
+		this.n_draw.on_mouse_dragged(x, y, btn)
+	}
+
+	on_mouse_scrolled(x, y, dx, dy)
+	{
+		this.n_draw.on_mouse_scrolled(x, y, dx, dy)
+	}
+
+	on_key_pressed(key)
+	{
+		this.n_draw.on_key_pressed(key)
+	}
+
+	update_selected()
+	{
+		this.v_ir = nil
+
+		var v_selecteds = Blueprint.calc_output_value(this.n_draw, "selected")
+		if (!v_selecteds) {
+			return
+		}
+
+		var vt = GlobalConfig.get_version_tree()
+		if (!vt) {
+			return
+		}
+
+		for (var v_sel in v_selecteds.value)
+		{
+			var version_id = v_sel.value.get_component("version_info")
+			if (version_id != nil) {
+				var ir = vt.checkout(version_id)
+				this.v_ir = Variant(VAR_TYPE_BREP_IR, ir)
+				break
+			}
+		}
+	}
+}

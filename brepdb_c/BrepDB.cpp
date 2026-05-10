@@ -1,5 +1,11 @@
 #include "brepdb_c/BrepDB.h"
+#include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/GeomPool.h"
+#include "brepdb_c/NodeVersionInfo.h"
+
+#include <graph/Node.h>
+#include <vessel.h>
+#include <wrapper/Graph.h>
 
 #include <spatialdb/Region.h>
 #include <spatialdb/Exception.h>
@@ -14,6 +20,19 @@ static constexpr const char* META_TOPO_GRAPH  = "topo_graph";
 
 namespace brepdb
 {
+
+void init_cb()
+{
+    wrapper::Graph::Instance()->RegNodeGetCompCB("version_info", [](const graph::Node& node)
+    {
+        if (node.HasComponent<NodeVersionInfo>()) {
+            auto& info = node.GetComponent<NodeVersionInfo>();
+            ves_set_number(0, static_cast<double>(info.GetVersionId()));
+        } else {
+            ves_set_nil(0);
+        }
+    });
+}
 
 BrepDB::BrepDB(const std::shared_ptr<spatialdb::IStorageManager>& sm, bool overwrite)
     : m_sm(sm)
