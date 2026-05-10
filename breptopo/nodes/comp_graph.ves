@@ -8,12 +8,10 @@ import "graph.nodes.draw" for Draw
 import "partgraph.node_helper" for NodeHelper
 import "logger.logger" for Logger
 import "partgraph.variant" for VAR_TOPO_SHAPE
-import "breptopo.variant" for VAR_COMP_GRAPH, VAR_HIST_GRAPH
+import "breptopo.variant" for VAR_COMP_GRAPH
 import "breptopo.compiler" for Compiler
-import "logger.logger" for Logger
-import "breptopo" for CompGraph as tt_CompGraph
+import "partgraph" for GlobalConfig, TopoShape
 import "graph" for GraphTools
-import "partgraph" for TopoShape
 
 class CompGraph is Node
 {
@@ -23,7 +21,6 @@ class CompGraph is Node
 
 		this.imports = [
 			Pin(this, "val", VAR_TYPE_ANY),
-			Pin(this, "hist", VAR_HIST_GRAPH),
 		]
 		this.exports = [
 			Pin(this, "val", VAR_TYPE_ANY),
@@ -34,43 +31,44 @@ class CompGraph is Node
 		this.graph = nil
 		this.node_idx = -1
 
-		this.compiler = nil
-
 		this.n_draw = Draw()
+
+		this.vis_dirty = true
 	}
 
 	on_pin_dirty(pin, type, msg)
 	{
 		super.on_pin_dirty(pin, type, msg)
 
-		if (type == DIRTY_CONNECTION)
-		{
-			// msg is conn
-			if (this.compiler)
-			{
-				this.compile_graph_partial(msg.from.node)
-			}
-		}
-		else if (type == DIRTY_GUI)
-		{
-			// reuse graph
-		}
-		else
-		{
-			this.graph = nil
-			this.node_idx = -1
-		}
+		this.graph = nil
+		this.node_idx = -1
+		this.vis_dirty = true
 	}
 
 	calc_value(idx)
 	{
-		if (!this.graph) {
-			this.build_graph()
+		this.graph = GlobalConfig.get_comp_graph()
+
+		var t_node = Blueprint.get_input_node(this, 0)
+		if (t_node) {
+			Compiler.register_graph(t_node)
+			var step_id = Compiler.find_comp_source(t_node)
+			if (step_id >= 0) {
+				this.node_idx = step_id
+			}
 		}
 
-		var v_hist = Blueprint.calc_input_value(this, 1)
+		if (this.vis_dirty) {
+			this.update_vis()
+			this.vis_dirty = false
+		}
 
-		var val = this.graph.eval(this.node_idx, v_hist.value)
+		if (this.node_idx < 0) {
+			return nil
+		}
+
+		var val = this.graph.eval(this.node_idx)
+
 		return this.return_value(val)
 	}
 
@@ -99,74 +97,16 @@ class CompGraph is Node
 		}
 	}
 
-	build_graph()
+	update_vis()
 	{
-		Logger.info("computational graph compile")
-
-		this.graph = tt_CompGraph.init()
-		this.compile_graph_no_recursion()
-
-		var graph = this.graph.get_graph()
-		GraphTools.layout(graph, "hierarchy")
-
-		Blueprint.connect(VariantProxy (Variant(VAR_COMP_GRAPH, graph)), "out", this.n_draw, "graph")
-	}
-
-	compile_graph_recursion()
-	{
-		this.compiler = Compiler(this.graph)
-		this.compiler.recursion = true
-		this.node_idx = NodeHelper.compile_graph(this, 0, this.compiler)
-	}
-
-	compile_graph_no_recursion()
-	{
-		this.compiler = Compiler(this.graph)
-		this.compiler.recursion = false
-
-		var t_node = Blueprint.get_input_node(this, 0)
-		var prev_nodes = Blueprint.get_precursor_nodes(t_node)
-		var sorted_nodes = Blueprint.topo_sort(prev_nodes)
-		for (var node in sorted_nodes)
-		{
-			if (node.has_method("compile_graph(_,_)")) 
-			{
-				var id = node.compile_graph(this.compiler, 0)
-				var key = "%(node.to_pointer())_0"
-				this.compiler.evaluated[key] = id
-				this.node_idx = id
-			}
-		}
-	}
-
-	compile_graph_partial(start_node)
-	{
-		var t_node = Blueprint.get_input_node(this, 0)
-		var prev_nodes = Blueprint.get_precursor_nodes(t_node)
-		var sorted_nodes = Blueprint.topo_sort(prev_nodes)
-		var start = false
-
-		for (var node in sorted_nodes)
-		{
-			if (node == start_node)
-			{
-				start = true
-
-				var graph = this.graph.get_graph()
-				var key = "%(node.to_pointer())_0"
-				graph.clear_edges(this.compiler.evaluated[key])
-			}
-			else if (start and node.has_method("compile_graph(_,_)")) 
-			{
-				var id = node.compile_graph(this.compiler, 0)
-				var key = "%(node.to_pointer())_0"
-				this.compiler.evaluated[key] = id
-				this.node_idx = id
-			}
+		if (!this.graph) {
+			return
 		}
 
 		var graph = this.graph.get_graph()
 		GraphTools.layout(graph, "hierarchy")
+
+		Blueprint.connect(VariantProxy(Variant(VAR_COMP_GRAPH, graph)), "out", this.n_draw, "graph")
 	}
 
 	draw(mt, cam_mt)

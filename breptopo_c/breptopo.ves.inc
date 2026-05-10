@@ -35,7 +35,7 @@ foreign class CompGraph
 
 	foreign get_graph()
 
-	foreign eval(node_idx, hist)
+	foreign eval(node_idx)
 
 	foreign add_integer_node(int, desc)
 	foreign add_number_node(num, desc)
@@ -56,6 +56,11 @@ foreign class CompGraph
 	foreign update_number3_node(node_idx, x, y, z)
 	foreign update_boolean_node(node_idx, bool)
 	foreign update_shape_node(node_idx, shp)
+
+	// generic
+	foreign add_op(op_name, inputs)
+	foreign add_op_v(op_name, inputs, var_inputs)
+	foreign update_const(node_idx, value)
 }
 
 );

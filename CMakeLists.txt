@@ -16,20 +16,14 @@ set(breptopo
 source_group("breptopo" FILES ${breptopo})
 
 set(breptopo__computation
-    "breptopo_c/comp_nodes.cpp"
-    "breptopo_c/comp_nodes.h"
-    "breptopo_c/comp_variants.h"
     "breptopo_c/CompGraph.cpp"
     "breptopo_c/CompGraph.h"
-    "breptopo_c/CompNode.h"
-    "breptopo_c/CompVariant.h"
+    "breptopo_c/CompGraphBuilder.cpp"
+    "breptopo_c/CompGraphBuilder.h"
+    "breptopo_c/comp_ops.cpp"
+    "breptopo_c/comp_ops.h"
 )
 source_group("breptopo\\computation" FILES ${breptopo__computation})
-
-set(breptopo__computation__comp
-    "breptopo_c/NodeComp.h"
-)
-source_group("breptopo\\computation\\comp" FILES ${breptopo__computation__comp})
 
 set(breptopo__history
     "breptopo_c/HistGraph.cpp"
@@ -197,7 +191,6 @@ source_group("brepdb\\script" FILES ${brepdb__script})
 set(ALL_FILES
     ${breptopo}
     ${breptopo__computation}
-    ${breptopo__computation__comp}
     ${breptopo__history}
     ${breptopo__history__comp}
     ${breptopo__script}

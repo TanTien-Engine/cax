@@ -5,6 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for PrimMaker, GlobalConfig
+import "breptopo.compiler" for Compiler
 import "math" for Math
 
 class Sphere is Node
@@ -26,7 +27,26 @@ class Sphere is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "sphere",
+			"params" : [
+				{"name":"radius", "type":"number"},
+				{"name":"angle",  "type":"number"},
+			],
+			"inputs" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -44,6 +64,7 @@ class Sphere is Node
 		} else {
 			shape = PrimMaker.sphere_with_angle(radius, angle, this.op_id)
 		}
+
 
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)

@@ -133,6 +133,7 @@ foreign class GlobalConfig
 {
 	foreign static get_topo_naming()
 	foreign static get_version_tree()
+	foreign static get_comp_graph()
 }
 
 );

@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Scale is Node
 {
@@ -26,7 +27,26 @@ class Scale is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "scale",
+			"inputs" : [0],
+			"params" : [
+				{"name":"center", "type":"number3"},
+				{"name":"factor", "type":"number"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -44,6 +64,8 @@ class Scale is Node
 		}
 
 		var shape = TopoAlgo.scale(v_shape.value, [ center.x, center.z, center.y ], factor, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

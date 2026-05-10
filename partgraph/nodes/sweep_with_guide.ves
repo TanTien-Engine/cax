@@ -5,6 +5,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class SweepWithGuide is Node
 {
@@ -25,7 +26,26 @@ class SweepWithGuide is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"         : "sweep_with_guide",
+			"inputs"     : [0, 1],
+			"params"     : [
+				{"name":"is_solid", "type":"boolean"},
+			],
+			"var_inputs" : [2],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -51,6 +71,8 @@ class SweepWithGuide is Node
 		}
 
 		var shape = TopoAlgo.sweep_with_guide(v_profile.value, v_path.value, guides, is_solid, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

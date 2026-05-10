@@ -5,6 +5,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class GeneralTransform is Node
 {
@@ -21,6 +22,16 @@ class GeneralTransform is Node
 		]
 
 		this.layout()
+
+		this.comp_info = {
+			"op"     : "general_transform",
+			"inputs" : [0],
+			"params" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = -1
 	}
@@ -43,11 +54,9 @@ class GeneralTransform is Node
 			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
 		}
 
-		var shape = TopoAlgo.transform(v_shape.value,
-			m[0], m[1], m[2], m[3],
-			m[4], m[5], m[6], m[7],
-			m[8], m[9], m[10], m[11],
-			this.op_id)
+		var shape = TopoAlgo.transform(v_shape.value, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11], this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

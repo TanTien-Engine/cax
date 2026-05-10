@@ -6,6 +6,7 @@ import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph.node_helper" for NodeHelper
 import "partgraph" for TopoAlgo, GlobalConfig
 import "breptopo" for TopoNaming
+import "breptopo.compiler" for Compiler
 
 class Cut is Node
 {
@@ -22,6 +23,16 @@ class Cut is Node
 		]
 
 		this.layout()
+
+		this.comp_info = {
+			"op"     : "cut",
+			"inputs" : [0, 1],
+			"params" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = -1
 	}
@@ -42,6 +53,8 @@ class Cut is Node
 		}
 
 		var shape = TopoAlgo.cut(v_a.value, v_b.value, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
@@ -51,12 +64,6 @@ class Cut is Node
 
 	compile_graph(compiler, idx)
 	{
-		var G = compiler.graph
-
-		var i_a = NodeHelper.compile_graph(this, 0, compiler)
-		var i_b = NodeHelper.compile_graph(this, 1, compiler)
-		var comp_id = G.add_cut_node(i_a, i_b)
-
-		return comp_id
+		return compiler.compile_node(this, compiler)
 	}
 }

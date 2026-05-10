@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_FACE, VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class ExtrudeEx is Node
 {
@@ -34,7 +35,27 @@ class ExtrudeEx is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "extrude_ex",
+			"inputs" : [0],
+			"params" : [
+				{"name":"dist",  "type":"number"},
+				{"name":"dist2", "type":"number"},
+				{"name":"dir",   "type":"number3"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -51,13 +72,18 @@ class ExtrudeEx is Node
 		var dir = this.query_param("dir").value
 
 		var v_ref = Blueprint.calc_input_value(this, 5)
-		var ref = v_ref ? v_ref.value : nil
+		var ref
+		if (v_ref) {
+			ref = v_ref.value
+		}
 
 		if (this.op_id < 0) {
 			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
 		}
 
 		var shape = TopoAlgo.extrude_ex(v_face.value, dir.x, dir.z, dir.y, dist, dist2, end_type, end_type2, ref, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "blueprint.variant_helper" for VariantHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Shelling is Node
 {
@@ -27,7 +28,26 @@ class Shelling is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"         : "shelling",
+			"inputs"     : [0],
+			"params"     : [
+				{"name":"offset", "type":"number"},
+			],
+			"var_inputs" : [1],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -50,6 +70,8 @@ class Shelling is Node
 		}
 
 		var shape = TopoAlgo.thick_solid(v_shape.value, faces, offset, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

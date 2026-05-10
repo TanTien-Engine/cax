@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_FACE, VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 import "math" for Math
 
 class Revolve is Node
@@ -30,7 +31,28 @@ class Revolve is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "revolve",
+			"inputs" : [0],
+			"params" : [
+				{"name":"ax_origin", "type":"number3"},
+				{"name":"ax_dir",    "type":"number3"},
+				{"name":"angle",     "type":"number"},
+				{"name":"is_full",   "type":"boolean"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -50,6 +72,8 @@ class Revolve is Node
 		}
 
 		var shape = TopoAlgo.revolve(v_face.value, ax_origin.x, ax_origin.z, ax_origin.y, ax_dir.x, ax_dir.z, ax_dir.y, angle, is_full, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

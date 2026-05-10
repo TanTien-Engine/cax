@@ -5,6 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for PrimMaker, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Cone is Node
 {
@@ -27,7 +28,27 @@ class Cone is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "cone",
+			"params" : [
+				{"name":"radius1", "type":"number"},
+				{"name":"radius2", "type":"number"},
+				{"name":"height",  "type":"number"},
+			],
+			"inputs" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -41,6 +62,8 @@ class Cone is Node
 		}
 
 		var shape = PrimMaker.cone(radius1, radius2, height, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

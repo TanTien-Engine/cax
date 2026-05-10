@@ -1,3 +1,9 @@
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_helper" for NodeHelper
+import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
+import "partgraph" for GlobalConfig
+import "maths.vector" for Vector3
+
 class Compiler
 {
 	init(graph)
@@ -7,5 +13,248 @@ class Compiler
 		this.evaluated = {}
 
 		this.recursion = true
+	}
+
+	static find_modeling_node(node)
+	{
+		var curr = node
+		for (var i in 0..10) {
+			if (curr["comp_info"] or curr["comp_step_id"]) {
+				return curr
+			}
+			if (!curr.imports or curr.imports.isEmpty) {
+				return nil
+			}
+			var pin = curr.imports[0]
+			if (!pin or pin.conns.isEmpty) {
+				return nil
+			}
+			curr = pin.conns.front().from.node
+		}
+		return nil
+	}
+
+	static register_graph(node)
+	{
+		var curr = Compiler.find_modeling_node(node)
+		if (!curr) {
+			return
+		}
+
+		var step = curr["comp_step_id"]
+		if (step and step >= 0) {
+			return
+		}
+
+		for (var pin in curr.imports) {
+			if (pin and !pin.conns.isEmpty) {
+				Compiler.register_graph(pin.conns.front().from.node)
+			}
+		}
+
+		if (curr["comp_info"]) {
+			Compiler.register_node(curr)
+		} else if (curr.has_method("register_selector(_)")) {
+			for (var uid in curr.selected_uids) {
+				curr.register_selector(uid)
+			}
+		}
+	}
+
+	static find_comp_source(node)
+	{
+		var curr = node
+		for (var i in 0..10) {
+			var step = curr["comp_step_id"]
+			if (step) {
+				if (step >= 0) {
+					return step
+				}
+				return -1
+			}
+			if (!curr.imports or curr.imports.isEmpty) {
+				return -1
+			}
+			var pin = curr.imports[0]
+			if (!pin or pin.conns.isEmpty) {
+				return -1
+			}
+			curr = pin.conns.front().from.node
+		}
+		return -1
+	}
+
+	static register_node(node)
+	{
+		if (!node.comp_info or node.comp_step_id >= 0) {
+			return
+		}
+
+		var cg = GlobalConfig.get_comp_graph()
+		var info = node.comp_info
+		var all_inputs = []
+
+		if (info.containsKey("inputs")) {
+			for (var pin_idx in info["inputs"]) {
+				var pin = Blueprint.query_pin(node.imports, pin_idx)
+				if (pin and !pin.conns.isEmpty) {
+					var f_node = pin.conns.front().from.node
+					var step_id = Compiler.find_comp_source(f_node)
+					if (step_id >= 0) {
+						all_inputs.add(step_id)
+					}
+				}
+			}
+		}
+
+		var const_refs = {}
+		if (info.containsKey("params")) {
+			for (var p in info["params"]) {
+				var name = p["name"]
+				var type = p["type"]
+				var val = NodeHelper.calc_prop_value(node, name)
+
+				var ref
+				if (type == "number") {
+					ref = cg.add_number_node(val, name)
+				} else if (type == "number3") {
+					ref = cg.add_number3_node(val.x, val.z, val.y, name)
+				} else if (type == "boolean") {
+					ref = cg.add_boolean_node(val, name)
+				} else if (type == "integer") {
+					ref = cg.add_integer_node(val, name)
+				}
+
+				all_inputs.add(ref)
+				const_refs[name] = ref
+			}
+		}
+
+		node.comp_const_refs = const_refs
+		node.comp_graph_ref = cg
+
+		if (info.containsKey("var_inputs")) {
+			var var_list = []
+			for (var pin_idx in info["var_inputs"]) {
+				var pin = Blueprint.query_pin(node.imports, pin_idx)
+				if (pin and !pin.conns.isEmpty) {
+					var f_node = pin.conns.front().from.node
+					var step_id = Compiler.find_comp_source(f_node)
+					if (step_id >= 0) {
+						var_list.add(step_id)
+					}
+				}
+			}
+			node.comp_step_id = cg.add_op_v(info["op"], all_inputs, var_list)
+		} else {
+			node.comp_step_id = cg.add_op(info["op"], all_inputs)
+		}
+
+	}
+
+	// Generic compilation: reads comp_info from the node and builds IR.
+	//
+	// comp_info is a map:
+	//   "op"     : op name string (e.g. "box", "translate", "offset", "cut")
+	//   "params" : list of { "name": param_name, "type": "number"|"number3"|"boolean"|"integer" }
+	//   "inputs" : list of input pin indices that carry shapes (compiled recursively)
+	//
+	// Example for Box:
+	//   comp_info {
+	//     "op"     : "box",
+	//     "params" : [ {"name":"length","type":"number"}, {"name":"width","type":"number"}, {"name":"height","type":"number"} ],
+	//     "inputs" : [],
+	//   }
+	//
+	// Example for Offset:
+	//   comp_info {
+	//     "op"     : "offset",
+	//     "params" : [ {"name":"offset","type":"number"}, {"name":"is_solid","type":"boolean"} ],
+	//     "inputs" : [0],
+	//   }
+	compile_node(node, compiler)
+	{
+		var info = node.comp_info
+		if (!info) {
+			return nil
+		}
+
+		var G = compiler.graph
+
+		var all_inputs = []
+
+		// compile upstream shape inputs first
+		if (info.containsKey("inputs")) {
+			for (var pin_idx in info["inputs"]) {
+				var ref = pg_NodeHelper.compile_graph(node, pin_idx, compiler)
+				all_inputs.add(ref)
+			}
+		}
+
+		// compile parameter constants
+		var const_refs = {}
+		if (info.containsKey("params")) {
+			for (var p in info["params"]) {
+				var name = p["name"]
+				var type = p["type"]
+				var val = NodeHelper.calc_prop_value(node, name)
+
+				var ref
+				if (type == "number") {
+					ref = G.add_number_node(val, name)
+				} else if (type == "number3") {
+					ref = G.add_number3_node(val.x, val.z, val.y, name)
+				} else if (type == "boolean") {
+					ref = G.add_boolean_node(val, name)
+				} else if (type == "integer") {
+					ref = G.add_integer_node(val, name)
+				}
+
+				all_inputs.add(ref)
+				const_refs[name] = ref
+			}
+		}
+
+		// store refs on node for on_param_dirty updates
+		node.comp_const_refs = const_refs
+		node.comp_graph_ref = G
+
+		return G.add_op(info["op"], all_inputs)
+	}
+
+	// Generic param update: called from on_param_dirty.
+	// Re-reads all params and calls update_const for each.
+	static update_params(node)
+	{
+		if (!node.comp_info or !node.comp_const_refs or !node.comp_graph_ref) {
+			return
+		}
+
+		var G = node.comp_graph_ref
+		var info = node.comp_info
+
+		if (!info.containsKey("params")) {
+			return
+		}
+
+		for (var p in info["params"]) {
+			var name = p["name"]
+			var type = p["type"]
+			var ref = node.comp_const_refs[name]
+			if (!ref) {
+				continue
+			}
+
+			var val = NodeHelper.calc_prop_value(node, name)
+			if (type == "number") {
+				G.update_number_node(ref, val)
+			} else if (type == "number3") {
+				G.update_number3_node(ref, val.x, val.z, val.y)
+			} else if (type == "boolean") {
+				G.update_boolean_node(ref, val)
+			} else if (type == "integer") {
+				G.update_integer_node(ref, val)
+			}
+		}
 	}
 }

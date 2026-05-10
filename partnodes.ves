@@ -4,19 +4,22 @@ var PART_NODES = [
 // BRep
 Edge, Wire, Face, Shell, Compound,
 // Prim
-Plane, Box, Cylinder, Threading,
+Plane, Box, Cylinder, Cone, Sphere, Torus, Threading,
 // Geom
 CylindricalSurface, EllipseCurve, TrimmedCurve,
 // DressUpFeatures
-Chamfer, Fillet, Draft, Shelling, Offset,
+Chamfer, Fillet, VariableFillet, Draft, Shelling, Offset,
 // SketchBasedFeatures
-Extrude, Split, Cut, Fuse, Common, Section, 
-// 
+Extrude, ExtrudeEx, Revolve, Split, Cut, Fuse, Common, Section,
+Loft, Sweep, SweepWithGuide, Rib,
+// Boolean
 Sew, UnifySameDomain,
 // FeaturesTransformed
-Translate, Mirror,
-// SketchBasedFeatures
-Loft,
+Translate, Rotate, Scale, Mirror, GeneralTransform,
+// Pattern
+LinearPattern, CircularPattern,
+// Hole
+HoleWizard,
 // Tools
 ToMesh, ToGeometry, Defeature, Selector, MapShapes,
 ]

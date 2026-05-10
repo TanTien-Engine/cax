@@ -5,6 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for PrimMaker, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Threading is Node
 {
@@ -21,6 +22,16 @@ class Threading is Node
 		]
 
 		this.layout()
+
+		this.comp_info = {
+			"op"     : "threading",
+			"inputs" : [],
+			"params" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = -1
 	}
@@ -41,6 +52,8 @@ class Threading is Node
 		}
 
 		var shape = PrimMaker.threading(v_thickness.value, v_height.value, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

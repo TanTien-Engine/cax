@@ -4,14 +4,12 @@
 #include "HistGraph.h"
 #include "TopoNaming.h"
 #include "CompGraph.h"
+#include "CompGraphBuilder.h"
 #include "NodeId.h"
 #include "NodeShape.h"
-#include "comp_nodes.h"
-#include "NodeComp.h"
 
 #include "partgraph_c/TopoShape.h"
 #include "partgraph_c/TransHelper.h"
-#include "partgraph_c/TopoShape.h"
 
 #include <graph/Node.h>
 #include <graph/Graph.h>
@@ -214,24 +212,8 @@ void w_CompGraph_get_graph()
     ves_pushnil();
     ves_import_class("graph", "Graph");
     auto proxy = (wrapper::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>));
-    proxy->obj = cg->GetGraph();
+    proxy->obj = breptopo::CompGraphBuilder::BuildGraph(*cg);
     ves_pop(1);
-}
-
-static void flatten_vars(const std::shared_ptr<breptopo::CompVariant>& src, std::vector<std::shared_ptr<breptopo::CompVariant>>& dst)
-{
-    if (src->Type() == breptopo::VAR_ARRAY)
-    {
-        auto& items = std::static_pointer_cast<breptopo::VarArray>(src)->val;
-        for (auto item : items)
-        {
-            flatten_vars(item, dst);
-        }
-    }
-    else
-    {
-        dst.push_back(src);
-    }
 }
 
 void w_CompGraph_eval()
@@ -239,80 +221,28 @@ void w_CompGraph_eval()
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
-    auto node = cg->GetNode(node_idx);
-    auto& cnode = node->GetComponent<breptopo::NodeComp>();
 
-    std::shared_ptr<breptopo::TopoNaming> tn = nullptr;
-    auto v_hist = ves_toforeign(2);
-    if (v_hist) {
-        tn = ((wrapper::Proxy<breptopo::TopoNaming>*)v_hist)->obj;
-    }
-    
-    int node_num = cg->GetGraph()->GetNodesNum();
-    auto cvar = cnode.GetCompNode()->Eval(*cg, tn, node_idx);
-    if (!cvar) {
+    auto result = cg->Eval(node_idx);
+
+    if (std::holds_alternative<std::monostate>(result)) {
         ves_set_nil(0);
         return;
     }
 
-    if (cg->GetGraph()->GetNodesNum() != node_num) {
-        cg->Layout();
-    }
-    
-    std::vector<std::shared_ptr<breptopo::CompVariant>> vars;
-    flatten_vars(cvar, vars);
-    if (vars.empty()) {
+    if (auto* v = std::get_if<int>(&result)) {
+        ves_set_number(0, *v);
+    } else if (auto* v = std::get_if<double>(&result)) {
+        ves_set_number(0, *v);
+    } else if (auto* v = std::get_if<bool>(&result)) {
+        ves_set_boolean(0, *v);
+    } else if (auto* v = std::get_if<breptopo::ShapeVal>(&result)) {
+        if (v->shape) {
+            partgraph::return_topo_shape(v->shape);
+        } else {
+            ves_set_nil(0);
+        }
+    } else {
         ves_set_nil(0);
-        return;
-    }
-
-    if (vars.size() == 1)
-    {
-        auto var = vars[0];
-        switch (var->Type())
-        {
-        case breptopo::VAR_NUMBER:
-            ves_set_number(0, std::static_pointer_cast<breptopo::VarNumber>(var)->val);
-            break;
-        case breptopo::VAR_BOOLEAN:
-            ves_set_boolean(0, std::static_pointer_cast<breptopo::VarBoolean>(var)->val);
-            break;
-        case breptopo::VAR_SHAPE:
-            partgraph::return_topo_shape(std::static_pointer_cast<breptopo::VarShape>(var)->val);
-            break;
-        }
-    }
-    else if (vars.size() > 1)
-    {
-        ves_pop(ves_argnum());
-
-        const int num = (int)vars.size();
-        ves_newlist(num);
-        for (int i = 0; i < num; ++i)
-        {
-            switch (vars[i]->Type())
-            {
-            case breptopo::VAR_NUMBER:
-                ves_pushnumber(std::static_pointer_cast<breptopo::VarNumber>(vars[i])->val);
-                break;
-            case breptopo::VAR_BOOLEAN:
-                ves_pushboolean(std::static_pointer_cast<breptopo::VarBoolean>(vars[i])->val);
-                break;
-            case breptopo::VAR_SHAPE:
-            {
-                ves_pushnil();
-                ves_import_class("partgraph", "TopoShape");
-                auto proxy = (wrapper::Proxy<partgraph::TopoShape>*)ves_set_newforeign(1, 2, sizeof(wrapper::Proxy<partgraph::TopoShape>));
-                proxy->obj = std::static_pointer_cast<breptopo::VarShape>(vars[i])->val;
-                ves_pop(1);
-            }
-            break;
-            default:
-                assert(0);
-            }
-            ves_seti(-2, i);
-            ves_pop(1);
-        }
     }
 }
 
@@ -323,9 +253,7 @@ void w_CompGraph_add_integer_node()
     int val = (int)ves_tonumber(1);
     const char* desc = ves_tostring(2);
 
-    auto node = std::make_shared<breptopo::NodeInteger>(val);
-    int id = cg->AddNode(node, desc);
-
+    int id = cg->AddConst(val, desc);
     ves_set_number(0, id);
 }
 
@@ -333,12 +261,10 @@ void w_CompGraph_add_number_node()
 {
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
-    float num = (float)ves_tonumber(1);
+    double num = ves_tonumber(1);
     const char* desc = ves_tostring(2);
 
-    auto node = std::make_shared<breptopo::NodeNumber>(num);
-    int id = cg->AddNode(node, desc);
-
+    int id = cg->AddConst(num, desc);
     ves_set_number(0, id);
 }
 
@@ -346,14 +272,12 @@ void w_CompGraph_add_number3_node()
 {
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
-    float x = (float)ves_tonumber(1);
-    float y = (float)ves_tonumber(2);
-    float z = (float)ves_tonumber(3);
+    double x = ves_tonumber(1);
+    double y = ves_tonumber(2);
+    double z = ves_tonumber(3);
     const char* desc = ves_tostring(4);
 
-    auto node = std::make_shared<breptopo::NodeNumber3>(sm::vec3(x, y, z));
-    int id = cg->AddNode(node, desc);
-
+    int id = cg->AddConst(breptopo::Vec3{x, y, z}, desc);
     ves_set_number(0, id);
 }
 
@@ -364,9 +288,7 @@ void w_CompGraph_add_boolean_node()
     bool b = ves_toboolean(1);
     const char* desc = ves_tostring(2);
 
-    auto node = std::make_shared<breptopo::NodeBoolean>(b);
-    int id = cg->AddNode(node, desc);
-
+    int id = cg->AddConst(b, desc);
     ves_set_number(0, id);
 }
 
@@ -377,9 +299,7 @@ void w_CompGraph_add_shape_node()
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     const char* desc = ves_tostring(2);
 
-    auto node = std::make_shared<breptopo::NodeTopoShape>(shape);
-    int id = cg->AddNode(node, desc);
-
+    int id = cg->AddConst(shape, desc);
     ves_set_number(0, id);
 }
 
@@ -391,13 +311,7 @@ void w_CompGraph_add_box_node()
     int width  = (int)ves_tonumber(2);
     int height = (int)ves_tonumber(3);
 
-    auto node = std::make_shared<breptopo::NodeBox>(length, width, height);
-    int id = cg->AddNode(node, "box op");
-
-    cg->AddEdge(length, id);
-    cg->AddEdge(width, id);
-    cg->AddEdge(height, id);
-
+    int id = cg->AddOp("box", {length, width, height}, {}, "box op");
     ves_set_number(0, id);
 }
 
@@ -408,12 +322,7 @@ void w_CompGraph_add_translate_node()
     int shape = (int)ves_tonumber(1);
     int offset = (int)ves_tonumber(2);
 
-    auto node = std::make_shared<breptopo::NodeTranslate>(shape, offset);
-    int id = cg->AddNode(node, "translate op");
-
-    cg->AddEdge(shape, id);
-    cg->AddEdge(offset, id);
-
+    int id = cg->AddOp("translate", {shape, offset}, {}, "translate op");
     ves_set_number(0, id);
 }
 
@@ -425,13 +334,7 @@ void w_CompGraph_add_offset_node()
     int offset = (int)ves_tonumber(2);
     int is_solid = (int)ves_tonumber(3);
 
-    auto node = std::make_shared<breptopo::NodeOffset>(shape, offset, is_solid);
-    int id = cg->AddNode(node, "offset op");
-
-    cg->AddEdge(shape, id);
-    cg->AddEdge(offset, id);
-    cg->AddEdge(is_solid, id);
-
+    int id = cg->AddOp("offset", {shape, offset, is_solid}, {}, "offset op");
     ves_set_number(0, id);
 }
 
@@ -442,12 +345,7 @@ void w_CompGraph_add_cut_node()
     int shp1 = (int)ves_tonumber(1);
     int shp2 = (int)ves_tonumber(2);
 
-    auto node = std::make_shared<breptopo::NodeCut>(shp1, shp2);
-    int id = cg->AddNode(node, "cut op");
-
-    cg->AddEdge(shp1, id);
-    cg->AddEdge(shp2, id);
-
+    int id = cg->AddOp("cut", {shp1, shp2}, {}, "cut op");
     ves_set_number(0, id);
 }
 
@@ -458,12 +356,7 @@ void w_CompGraph_add_selector_node()
     int shp = (int)ves_tonumber(1);
     int uid = (int)ves_tonumber(2);
 
-    auto node = std::make_shared<breptopo::NodeSelector>(uid);
-    int id = cg->AddNode(node, "selector");
-
-    cg->AddEdge(shp, id);
-    cg->AddEdge(uid, id);
-
+    int id = cg->AddOp("selector", {shp, uid}, {}, "selector");
     ves_set_number(0, id);
 }
 
@@ -471,15 +364,9 @@ void w_CompGraph_add_merge_node()
 {
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
-    auto nodes = wrapper::list_to_array<size_t>(1);
+    auto nodes = wrapper::list_to_array<int>(1);
 
-    auto node = std::make_shared<breptopo::NodeMerge>(nodes);
-    int id = cg->AddNode(node, "merge");
-
-    for (auto i : nodes) {
-        cg->AddEdge(i, id);
-    }
-
+    int id = cg->AddOp("merge", {}, std::vector<int>(nodes.begin(), nodes.end()), "merge");
     ves_set_number(0, id);
 }
 
@@ -490,9 +377,7 @@ void w_CompGraph_update_integer_node()
     int node_idx = (int)ves_tonumber(1);
     int val = (int)ves_tonumber(2);
 
-    auto node = cg->GetNode(node_idx);
-    auto& cnode = node->GetComponent<breptopo::NodeComp>();
-    std::static_pointer_cast<breptopo::NodeInteger>(cnode.GetCompNode())->SetValue(val);
+    cg->UpdateConst(node_idx, val);
 }
 
 void w_CompGraph_update_number_node()
@@ -500,11 +385,9 @@ void w_CompGraph_update_number_node()
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
-    float val = (float)ves_tonumber(2);
+    double val = ves_tonumber(2);
 
-    auto node = cg->GetNode(node_idx);
-    auto& cnode = node->GetComponent<breptopo::NodeComp>();
-    std::static_pointer_cast<breptopo::NodeNumber>(cnode.GetCompNode())->SetValue(val);
+    cg->UpdateConst(node_idx, val);
 }
 
 void w_CompGraph_update_number3_node()
@@ -516,9 +399,7 @@ void w_CompGraph_update_number3_node()
     double y = ves_tonumber(3);
     double z = ves_tonumber(4);
 
-    auto node = cg->GetNode(node_idx);
-    auto& cnode = node->GetComponent<breptopo::NodeComp>();
-    std::static_pointer_cast<breptopo::NodeNumber3>(cnode.GetCompNode())->SetValue(sm::vec3(x, y, z));
+    cg->UpdateConst(node_idx, breptopo::Vec3{x, y, z});
 }
 
 void w_CompGraph_update_boolean_node()
@@ -528,9 +409,7 @@ void w_CompGraph_update_boolean_node()
     int node_idx = (int)ves_tonumber(1);
     bool val = ves_toboolean(2);
 
-    auto node = cg->GetNode(node_idx);
-    auto& cnode = node->GetComponent<breptopo::NodeComp>();
-    std::static_pointer_cast<breptopo::NodeBoolean>(cnode.GetCompNode())->SetValue(val);
+    cg->UpdateConst(node_idx, val);
 }
 
 void w_CompGraph_update_shape_node()
@@ -540,9 +419,54 @@ void w_CompGraph_update_shape_node()
     int node_idx = (int)ves_tonumber(1);
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
 
-    auto node = cg->GetNode(node_idx);
-    auto& cnode = node->GetComponent<breptopo::NodeComp>();
-    std::static_pointer_cast<breptopo::NodeTopoShape>(cnode.GetCompNode())->SetValue(shape);
+    breptopo::ShapeVal sv;
+    sv.shape = shape;
+    cg->UpdateConst(node_idx, std::move(sv));
+}
+
+// generic: add_op(op_name, inputs_list)
+void w_CompGraph_add_op()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    const char* op_name = ves_tostring(1);
+    auto inputs = wrapper::list_to_array<int>(2);
+
+    int id = cg->AddOp(op_name, inputs, {}, op_name);
+    ves_set_number(0, id);
+}
+
+// generic: add_op_v(op_name, inputs_list, var_inputs_list)
+void w_CompGraph_add_op_v()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    const char* op_name = ves_tostring(1);
+    auto inputs = wrapper::list_to_array<int>(2);
+    auto var_inputs = wrapper::list_to_array<int>(3);
+
+    int id = cg->AddOp(op_name, inputs, var_inputs, op_name);
+    ves_set_number(0, id);
+}
+
+// generic: update_const(node_idx, value)
+// value type is detected automatically
+void w_CompGraph_update_const()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+
+    if (ves_type(2) == VES_TYPE_NUM) {
+        cg->UpdateConst(node_idx, ves_tonumber(2));
+    } else if (ves_type(2) == VES_TYPE_BOOL) {
+        cg->UpdateConst(node_idx, (bool)ves_toboolean(2));
+    } else if (ves_type(2) == VES_TYPE_FOREIGN) {
+        auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+        breptopo::ShapeVal sv;
+        sv.shape = shape;
+        cg->UpdateConst(node_idx, std::move(sv));
+    }
 }
 
 }
@@ -565,7 +489,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
-    if (strcmp(signature, "CompGraph.eval(_,_)") == 0) return w_CompGraph_eval;
+    if (strcmp(signature, "CompGraph.eval(_)") == 0) return w_CompGraph_eval;
     if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
     if (strcmp(signature, "CompGraph.add_number_node(_,_)") == 0) return w_CompGraph_add_number_node;
     if (strcmp(signature, "CompGraph.add_number3_node(_,_,_,_)") == 0) return w_CompGraph_add_number3_node;
@@ -582,6 +506,10 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "CompGraph.update_number3_node(_,_,_,_)") == 0) return w_CompGraph_update_number3_node;
     if (strcmp(signature, "CompGraph.update_boolean_node(_,_)") == 0) return w_CompGraph_update_boolean_node;
     if (strcmp(signature, "CompGraph.update_shape_node(_,_)") == 0) return w_CompGraph_update_shape_node;
+
+    if (strcmp(signature, "CompGraph.add_op(_,_)") == 0) return w_CompGraph_add_op;
+    if (strcmp(signature, "CompGraph.add_op_v(_,_,_)") == 0) return w_CompGraph_add_op_v;
+    if (strcmp(signature, "CompGraph.update_const(_,_)") == 0) return w_CompGraph_update_const;
 
     return nullptr;
 }

@@ -5,6 +5,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_WIRE, VAR_TOPO_SHAPE
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Loft is Node
 {
@@ -21,6 +22,16 @@ class Loft is Node
 		]
 
 		this.layout()
+
+		this.comp_info = {
+			"op"     : "loft",
+			"inputs" : [],
+			"params" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = -1
 	}
@@ -41,6 +52,8 @@ class Loft is Node
 		}
 
 		var shape = TopoAlgo.thru_sections(wires, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

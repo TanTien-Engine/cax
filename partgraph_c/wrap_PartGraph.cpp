@@ -10,6 +10,7 @@
 #include "GeomDataset.h"
 #include "TransHelper.h"
 #include "GlobalConfig.h"
+#include <breptopo_c/CompGraph.h>
 
 #include <logger/logger.h>
 #include <SM_Vector.h>
@@ -1063,6 +1064,17 @@ void w_GlobalConfig_get_version_tree()
     ves_pop(1);
 }
 
+void w_GlobalConfig_get_comp_graph()
+{
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("breptopo", "CompGraph");
+    auto proxy = (wrapper::Proxy<breptopo::CompGraph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<breptopo::CompGraph>));
+    proxy->obj = partgraph::GlobalConfig::Instance()->GetCompGraph();
+    ves_pop(1);
+}
+
 }
 
 namespace partgraph
@@ -1140,6 +1152,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
 
     if (strcmp(signature, "static GlobalConfig.get_topo_naming()") == 0) return w_GlobalConfig_get_topo_naming;
     if (strcmp(signature, "static GlobalConfig.get_version_tree()") == 0) return w_GlobalConfig_get_version_tree;
+    if (strcmp(signature, "static GlobalConfig.get_comp_graph()") == 0) return w_GlobalConfig_get_comp_graph;
 
     return nullptr;
 }

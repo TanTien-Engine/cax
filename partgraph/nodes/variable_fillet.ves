@@ -6,6 +6,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "blueprint.variant_helper" for VariantHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class VariableFillet is Node
 {
@@ -23,6 +24,17 @@ class VariableFillet is Node
 		]
 
 		this.layout()
+
+		this.comp_info = {
+			"op"         : "variable_fillet",
+			"inputs"     : [0],
+			"params"     : [],
+			"var_inputs" : [1],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = -1
 	}
@@ -47,6 +59,8 @@ class VariableFillet is Node
 		}
 
 		var shape = TopoAlgo.variable_fillet(v_shape.value, edges, v_params.value, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

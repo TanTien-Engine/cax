@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class LinearPattern is Node
 {
@@ -30,7 +31,30 @@ class LinearPattern is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "linear_pattern",
+			"inputs" : [0],
+			"params" : [
+				{"name":"dir1",     "type":"number3"},
+				{"name":"count1",   "type":"integer"},
+				{"name":"spacing1", "type":"number"},
+				{"name":"dir2",     "type":"number3"},
+				{"name":"count2",   "type":"integer"},
+				{"name":"spacing2", "type":"number"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -52,6 +76,8 @@ class LinearPattern is Node
 		}
 
 		var shape = TopoAlgo.linear_pattern(v_shape.value, dir1.x, dir1.z, dir1.y, count1, spacing1, dir2.x, dir2.z, dir2.y, count2, spacing2, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

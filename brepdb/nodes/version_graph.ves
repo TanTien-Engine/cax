@@ -41,9 +41,6 @@ class VersionGraph is Node
 	build_graph()
 	{
 		var vt = GlobalConfig.get_version_tree()
-
-		System.print("++ vt %(vt)")
-
 		if (!vt) {
 			return
 		}

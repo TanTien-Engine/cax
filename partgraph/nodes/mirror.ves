@@ -6,6 +6,7 @@ import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Mirror is Node
 {
@@ -25,7 +26,26 @@ class Mirror is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "mirror",
+			"inputs" : [0],
+			"params" : [
+				{"name":"pos", "type":"number3"},
+				{"name":"dir", "type":"number3"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -48,6 +68,8 @@ class Mirror is Node
 		}
 
 		var shape = TopoAlgo.mirror(v_obj.value, [ pos.x, pos.z, pos.y], [ dir.x, dir.z, dir.y ], this.op_id)
+
+
 		if (shape) {
 			return Variant(type, shape)
 		} else {

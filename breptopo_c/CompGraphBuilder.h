@@ -1,0 +1,19 @@
+#pragma once
+
+#include <memory>
+
+namespace graph { class Graph; }
+
+namespace breptopo
+{
+
+class CompGraph;
+
+class CompGraphBuilder
+{
+public:
+	static std::shared_ptr<graph::Graph> BuildGraph(const CompGraph& cg);
+
+}; // CompGraphBuilder
+
+}

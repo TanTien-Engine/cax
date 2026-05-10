@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Rib is Node
 {
@@ -28,7 +29,27 @@ class Rib is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "rib",
+			"inputs" : [0, 1],
+			"params" : [
+				{"name":"dir",          "type":"number3"},
+				{"name":"thickness",    "type":"number"},
+				{"name":"is_symmetric", "type":"boolean"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -48,6 +69,8 @@ class Rib is Node
 		}
 
 		var shape = TopoAlgo.rib(v_body.value, v_profile.value, dir.x, dir.z, dir.y, thickness, is_symmetric, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

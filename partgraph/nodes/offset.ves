@@ -8,6 +8,7 @@ import "blueprint.variant_helper" for VariantHelper, VAR_TYPE_ARRAY
 import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
 import "partgraph" for TopoAlgo
+import "breptopo.compiler" for Compiler
 
 class Offset is Node
 {
@@ -28,10 +29,18 @@ class Offset is Node
 
 		this.layout()
 
-		// compute graph
-		this.graph = nil
-		this.i_offset = -1
-		this.i_is_solid = -1
+		this.comp_info = {
+			"op"     : "offset",
+			"inputs" : [0],
+			"params" : [
+				{"name":"offset",   "type":"number"},
+				{"name":"is_solid", "type":"boolean"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = []
 	}
@@ -39,12 +48,7 @@ class Offset is Node
 	on_param_dirty()
 	{
 		super.on_param_dirty()
-
-		var offset = NodeHelper.calc_prop_value(this, "offset")
-		this.graph.update_number_node(this.i_offset, offset)
-
-		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
-		this.graph.update_boolean_node(this.i_is_solid, is_solid)
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -59,13 +63,12 @@ class Offset is Node
 		var offset = NodeHelper.calc_prop_value(this, "offset")
 		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
 
+		var result
 		if (src_shps.count == 1)
 		{
 			var op_id
-			if (this.op_id.isEmpty) 
+			if (this.op_id.isEmpty)
 			{
-				//op_id = HistGraph.get_next_op_id()
-				//this.op_id.add(op_id)
 			}
 			else
 			{
@@ -73,7 +76,7 @@ class Offset is Node
 			}
 
 			var dst_shp = TopoAlgo.offset_shape(src_shps[0], offset, is_solid, op_id)
-			return Variant(VAR_TOPO_SHAPE, dst_shp)
+			result = Variant(VAR_TOPO_SHAPE, dst_shp)
 		}
 		else
 		{
@@ -82,10 +85,8 @@ class Offset is Node
 			for (var i in 0..src_shps.count)
 			{
 				var op_id
-				if (this.op_id.count <= i) 
+				if (this.op_id.count <= i)
 				{
-					//op_id = HistGraph.get_next_op_id()
-					//this.op_id.add(op_id)
 				}
 				else
 				{
@@ -96,62 +97,16 @@ class Offset is Node
 				dst_shps.add(Variant(VAR_TOPO_SHAPE, dst_shp))
 			}
 
-			return Variant(dst_shps)
+			result = Variant(dst_shps)
 		}
+
+
+		return result
 	}
 
 	compile_graph(compiler, idx)
 	{
-		var G = compiler.graph
-
-		var i_shape = pg_NodeHelper.compile_graph(this, 0, compiler)
-
-		var offset = NodeHelper.calc_prop_value(this, "offset")
-		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
-
-		var i_offset = G.add_number_node(offset, "offset")
-		var i_is_solid = G.add_boolean_node(is_solid, "is_solid")
-
-		this.graph = G
-		this.i_offset = i_offset
-		this.i_is_solid = i_is_solid
-
-		return G.add_offset_node(i_shape, i_offset, i_is_solid)
-	}
-
-	compile_graph_old(compiler, idx)
-	{
-		var G = compiler.graph
-		
-		var v_shape = Blueprint.calc_input_value(this, 0)
-		var src_shps = []
-		this.get_input_shapes(v_shape, src_shps)
-		if (src_shps.isEmpty) {
-			return nil
-		}
-
-		var offset = NodeHelper.calc_prop_value(this, "offset")
-		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
-
-		var i_offset = G.add_number_node(offset, "offset")
-		var i_is_solid = G.add_boolean_node(is_solid, "is_solid")
-
-		if (src_shps.count == 1)
-		{
-			var i_shape = G.add_shape_node(src_shps[0], "inp_shape")
-			return G.add_offset_node(i_shape, i_offset, i_is_solid)
-		}
-		else
-		{
-			var i_nodes = []
-			for (var i in 0..src_shps.count)
-			{
-				var i_shape = G.add_shape_node(src_shps[i], "inp_shape")
-				var i_ret = G.add_offset_node(i_shape, i_offset, i_is_solid)
-				i_nodes.add(i_ret)
-			}
-			return G.add_merge_node(i_nodes)
-		}
+		return compiler.compile_node(this, compiler)
 	}
 
 	get_input_shapes(val, shapes)

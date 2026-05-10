@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for PrimMaker, GlobalConfig
 import "breptopo" for TopoNaming
+import "breptopo.compiler" for Compiler
 
 class Box is Node
 {
@@ -29,11 +30,19 @@ class Box is Node
 
 		this.layout()
 
-		// compute graph
-		this.graph = nil
-		this.i_length = -1
-		this.i_width = -1
-		this.i_height = -1
+		this.comp_info = {
+			"op"     : "box",
+			"params" : [
+				{"name":"length", "type":"number"},
+				{"name":"width",  "type":"number"},
+				{"name":"height", "type":"number"},
+			],
+			"inputs" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = -1
 	}
@@ -41,13 +50,7 @@ class Box is Node
 	on_param_dirty()
 	{
 		super.on_param_dirty()
-
-		var length = NodeHelper.calc_prop_value(this, "length")
-		var width  = NodeHelper.calc_prop_value(this, "width")
-		var height = NodeHelper.calc_prop_value(this, "height")
-		this.graph.update_number_node(this.i_length, length)
-		this.graph.update_number_node(this.i_width, width)
-		this.graph.update_number_node(this.i_height, height)
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -61,6 +64,8 @@ class Box is Node
 		}
 
 		var shape = PrimMaker.box(length, height, width, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
@@ -70,21 +75,6 @@ class Box is Node
 
 	compile_graph(compiler, idx)
 	{
-		var G = compiler.graph
-
-		var length = NodeHelper.calc_prop_value(this, "length")
-		var width  = NodeHelper.calc_prop_value(this, "width")
-		var height = NodeHelper.calc_prop_value(this, "height")
-
-		var i_length = G.add_number_node(length, "length")
-		var i_width  = G.add_number_node(width, "width")
-		var i_height = G.add_number_node(height, "height")
-
-		this.graph = G
-		this.i_length = i_length
-		this.i_width = i_width
-		this.i_height = i_height
-
-		return G.add_box_node(i_length, i_height, i_width)
+		return compiler.compile_node(this, compiler)
 	}
 }

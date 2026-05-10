@@ -7,6 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 import "math" for Math
 
 class HoleWizard is Node
@@ -34,7 +35,32 @@ class HoleWizard is Node
 
 		this.layout()
 
+		this.comp_info = {
+			"op"     : "hole_wizard",
+			"inputs" : [0],
+			"params" : [
+				{"name":"pos",         "type":"number3"},
+				{"name":"dir",         "type":"number3"},
+				{"name":"diameter",    "type":"number"},
+				{"name":"depth",       "type":"number"},
+				{"name":"cb_diameter", "type":"number"},
+				{"name":"cb_depth",    "type":"number"},
+				{"name":"cs_diameter", "type":"number"},
+				{"name":"cs_angle",    "type":"number"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
 		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
 	}
 
 	calc_value(idx)
@@ -58,12 +84,9 @@ class HoleWizard is Node
 			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
 		}
 
-		var shape = TopoAlgo.hole_wizard(v_body.value,
-			pos.x, pos.z, pos.y,
-			dir.x, dir.z, dir.y,
-			diameter, depth, hole_type,
-			cb_diameter, cb_depth, cs_diameter, cs_angle,
-			this.op_id)
+		var shape = TopoAlgo.hole_wizard(v_body.value, pos.x, pos.z, pos.y, dir.x, dir.z, dir.y, diameter, depth, hole_type, cb_diameter, cb_depth, cs_diameter, cs_angle, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {

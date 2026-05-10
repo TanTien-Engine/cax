@@ -4,6 +4,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "partgraph" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
 
 class Section is Node
 {
@@ -20,6 +21,16 @@ class Section is Node
 		]
 
 		this.layout()
+
+		this.comp_info = {
+			"op"     : "section",
+			"inputs" : [0, 1],
+			"params" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
 
 		this.op_id = -1
 	}
@@ -40,6 +51,8 @@ class Section is Node
 		}
 
 		var shape = TopoAlgo.section(v_a.value, v_b.value, this.op_id)
+
+
 		if (shape) {
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
