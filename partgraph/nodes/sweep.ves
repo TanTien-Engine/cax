@@ -1,0 +1,51 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_BOOLEAN
+import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
+import "partgraph" for TopoAlgo, GlobalConfig
+
+class Sweep is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "profile", [ VAR_TOPO_SHAPE, VAR_TOPO_WIRE ]),
+			Pin(this, "path",    VAR_TOPO_WIRE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("is_solid", true))
+
+		this.layout()
+
+		this.op_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_profile = Blueprint.calc_input_value(this, 0)
+		var v_path = Blueprint.calc_input_value(this, 1)
+		if (!v_profile or !v_path) {
+			return nil
+		}
+
+		var is_solid = this.query_param("is_solid").value
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.sweep(v_profile.value, v_path.value, is_solid, this.op_id)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+}

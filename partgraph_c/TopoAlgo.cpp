@@ -418,6 +418,67 @@ std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>&
     return dst;
 }
 
+std::shared_ptr<TopoShape> TopoAlgo::Rotate(const std::shared_ptr<TopoShape>& shape,
+                                            const sm::vec3& pos, const sm::vec3& dir, double angle,
+                                            uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    gp_Ax1 axis(trans_pnt(pos), trans_dir(dir));
+
+    gp_Trsf trsf;
+    trsf.SetRotation(axis, angle);
+    auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
+
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn) {
+        pid_map = tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(trans.Shape());
+    commit_to_vt(tn, vt, shape, dst, pid_map, "rotate");
+    return dst;
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::Scale(const std::shared_ptr<TopoShape>& shape,
+                                           const sm::vec3& center, double factor,
+                                           uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                           const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    gp_Trsf trsf;
+    trsf.SetScale(trans_pnt(center), factor);
+    auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
+
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn) {
+        pid_map = tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(trans.Shape());
+    commit_to_vt(tn, vt, shape, dst, pid_map, "scale");
+    return dst;
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::Transform(const std::shared_ptr<TopoShape>& shape,
+                                                const double* mat4x4,
+                                                uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                                const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    gp_Trsf trsf;
+    // mat4x4 is row-major 4x4, OCCT SetValues takes row,col (1-based)
+    trsf.SetValues(
+        mat4x4[0],  mat4x4[1],  mat4x4[2],  mat4x4[3],
+        mat4x4[4],  mat4x4[5],  mat4x4[6],  mat4x4[7],
+        mat4x4[8],  mat4x4[9],  mat4x4[10], mat4x4[11]);
+
+    auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
+
+    breptopo::TopoNaming::PidMap pid_map;
+    if (tn) {
+        pid_map = tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<partgraph::TopoShape>(trans.Shape());
+    commit_to_vt(tn, vt, shape, dst, pid_map, "transform");
+    return dst;
+}
+
 std::shared_ptr<TopoShape> TopoAlgo::Mirror(const std::shared_ptr<TopoShape>& shape, const sm::vec3& pos, const sm::vec3& dir,
                                             uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
                                             const std::shared_ptr<brepdb::VersionTree>& vt)

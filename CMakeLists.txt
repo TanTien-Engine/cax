@@ -109,6 +109,8 @@ set(partgraph__tools
     "partgraph_c/TopoAdapter.h"
     "partgraph_c/TopoAlgo.cpp"
     "partgraph_c/TopoAlgo.h"
+    "partgraph_c/TopoAlgo_Ext.cpp"
+    "partgraph_c/TopoAlgo_Ext.h"
     "partgraph_c/GlobalConfig.cpp"
     "partgraph_c/GlobalConfig.h"
 )

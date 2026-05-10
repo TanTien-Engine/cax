@@ -582,7 +582,7 @@ bool EntityEntry::operator==(const EntityEntry& rhs) const
         }
     }
 
-    // param_offset is ignored — it is a pool-layout detail, not entity identity
+    // param_offset is ignored - it is a pool-layout detail, not entity identity
     return true;
 }
 
@@ -609,7 +609,7 @@ void VersionTree::ComputeParamHunks(const std::vector<double>& old_params,
             continue;
         }
 
-        // Found a difference — extend the hunk, coalescing nearby changes
+        // Found a difference - extend the hunk, coalescing nearby changes
         size_t start = i;
         while (i < common)
         {
@@ -704,7 +704,7 @@ PoolDiff::ModifiedEntry VersionTree::BuildModifiedEntry(uint32_t           old_p
 }
 
 // ============================================================
-// VersionTree — construction
+// VersionTree - construction
 // ============================================================
 
 VersionTree::VersionTree() {}
@@ -870,7 +870,7 @@ uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
 }
 
 // ============================================================
-// VersionTree — navigation
+// VersionTree - navigation
 // ============================================================
 
 PoolPtr VersionTree::Checkout(uint32_t node_id)
@@ -902,7 +902,7 @@ PoolPtr VersionTree::Redo(int child_index)
 }
 
 // ============================================================
-// VersionTree — query
+// VersionTree - query
 // ============================================================
 
 std::vector<uint32_t> VersionTree::GetRoots() const
@@ -995,7 +995,7 @@ void VersionTree::TraverseAll(const std::function<void(const VersionNode&)>& vis
 }
 
 // ============================================================
-// VersionTree — entity helpers
+// VersionTree - entity helpers
 // ============================================================
 
 EntityEntry VersionTree::ExtractEntity(const GeometryPool& pool, uint32_t idx)
@@ -1026,7 +1026,7 @@ std::unordered_map<uint32_t, uint32_t> VersionTree::BuildIdIndex(const GeometryP
 }
 
 // ============================================================
-// VersionTree — diff building
+// VersionTree - diff building
 // ============================================================
 
 PoolDiff VersionTree::BuildDiffFromPidMapping(const GeometryPool& old_pool,
@@ -1060,7 +1060,7 @@ PoolDiff VersionTree::BuildDiffFromPidMapping(const GeometryPool& old_pool,
 
         // k==0 with has_old: modified; k>0 or !has_old: added.
         // The !has_old case covers the initial commit (empty old_pool) and
-        // any pid_map entry whose old_pid was never in old_pool — without
+        // any pid_map entry whose old_pid was never in old_pool - without
         // this, the primary new pid would be marked accounted but never
         // pushed into diff, silently disappearing.
         for (size_t k = 0; k < new_pids.size(); ++k)
@@ -1162,7 +1162,7 @@ PoolDiff VersionTree::ComputeDiff(const GeometryPool& old_pool,
 }
 
 // ============================================================
-// VersionTree — pool rebuild and apply
+// VersionTree - pool rebuild and apply
 // ============================================================
 
 GeometryPool VersionTree::RebuildPool(
@@ -1263,7 +1263,7 @@ GeometryPool VersionTree::ApplyReverse(const GeometryPool& current, const PoolDi
 }
 
 // ============================================================
-// VersionTree — internal navigation
+// VersionTree - internal navigation
 // ============================================================
 
 uint32_t VersionTree::AllocNodeId() { return m_next_id++; }
@@ -1280,7 +1280,7 @@ void VersionTree::NavigateTo(uint32_t target_id)
 
     if (cur_root == tgt_root)
     {
-        // Same root chain — LCA-based navigation
+        // Same root chain - LCA-based navigation
         uint32_t lca = FindLCA(m_current_id, target_id);
 
         uint32_t cur = m_current_id;
@@ -1304,7 +1304,7 @@ void VersionTree::NavigateTo(uint32_t target_id)
     }
     else
     {
-        // Cross-root navigation — start from target's root pool
+        // Cross-root navigation - start from target's root pool
         auto rp = m_root_pools.find(tgt_root);
         assert(rp != m_root_pools.end());
         m_current_pool = rp->second;

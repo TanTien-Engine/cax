@@ -56,6 +56,18 @@ public:
 	static std::shared_ptr<TopoShape> Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z,
 		uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+	static std::shared_ptr<TopoShape> Rotate(const std::shared_ptr<TopoShape>& shape,
+		const sm::vec3& pos, const sm::vec3& dir, double angle,
+		uint32_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+	static std::shared_ptr<TopoShape> Scale(const std::shared_ptr<TopoShape>& shape,
+		const sm::vec3& center, double factor,
+		uint32_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+	static std::shared_ptr<TopoShape> Transform(const std::shared_ptr<TopoShape>& shape,
+		const double* mat4x4,
+		uint32_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 	static std::shared_ptr<TopoShape> Mirror(const std::shared_ptr<TopoShape>& shape, const sm::vec3& pos, const sm::vec3& dir,
 		uint32_t op_id = 0, const std::shared_ptr<breptopo::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);

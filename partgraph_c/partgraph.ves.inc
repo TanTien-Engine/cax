@@ -97,6 +97,9 @@ foreign class TopoAlgo
 	foreign static unify_same_domain(shape, op_id)
 
 	foreign static translate(shape, x, y, z, op_id)
+	foreign static rotate(shape, pos, dir, angle, op_id)
+	foreign static scale(shape, center, factor, op_id)
+	foreign static transform(shape, m00, m01, m02, m03, m10, m11, m12, m13, m20, m21, m22, m23, op_id)
 	foreign static mirror(shape, pos, dir, op_id)
 
 	// offset
@@ -104,6 +107,16 @@ foreign class TopoAlgo
 	foreign static thick_solid(shape, face, offset, op_id)
 	foreign static thru_sections(wires, op_id)
 	foreign static offset_shape(shape, offset, is_solid, op_id)
+
+	foreign static extrude_ex(shape, dx, dy, dz, dist1, dist2, end1, end2, ref, op_id)
+	foreign static revolve(shape, ox, oy, oz, dx, dy, dz, angle, is_full, op_id)
+	foreign static sweep(profile, path, is_solid, op_id)
+	foreign static linear_pattern(base, d1x, d1y, d1z, count1, sp1, d2x, d2y, d2z, count2, sp2, op_id)
+	foreign static circular_pattern(base, ox, oy, oz, dx, dy, dz, count, angle, op_id)
+	foreign static hole_wizard(body, px, py, pz, dx, dy, dz, diameter, depth, hole_type, cb_dia, cb_depth, cs_dia, cs_angle, op_id)
+	foreign static variable_fillet(shape, edges, params, op_id)
+	foreign static sweep_with_guide(profile, path, guides, is_solid, op_id)
+	foreign static rib(body, profile, dx, dy, dz, thickness, is_symmetric, op_id)
 }
 
 foreign class TopoAdapter

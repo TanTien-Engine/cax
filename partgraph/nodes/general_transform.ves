@@ -1,0 +1,57 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "partgraph" for TopoAlgo, GlobalConfig
+
+class GeneralTransform is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape",  VAR_TOPO_SHAPE),
+			Pin(this, "matrix", VAR_TYPE_ARRAY),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.layout()
+
+		this.op_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
+			return nil
+		}
+
+		var v_mat = Blueprint.calc_input_value(this, 1)
+		if (!v_mat or v_mat.value.count < 12) {
+			return v_shape
+		}
+
+		var m = v_mat.value
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.transform(v_shape.value,
+			m[0], m[1], m[2], m[3],
+			m[4], m[5], m[6], m[7],
+			m[8], m[9], m[10], m[11],
+			this.op_id)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+}

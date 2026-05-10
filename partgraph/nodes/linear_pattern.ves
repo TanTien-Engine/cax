@@ -1,0 +1,61 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER, VAR_TYPE_NUMBER3
+import "blueprint.node_helper" for NodeHelper
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "maths.vector" for Vector3
+import "partgraph" for TopoAlgo, GlobalConfig
+
+class LinearPattern is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("dir1", Vector3(1, 0, 0), { "region" : 1 }))
+		this.params.add(NodeParam("count1", 2))
+		this.params.add(NodeParam("spacing1", 2.0, { "region" : 10 }))
+		this.params.add(NodeParam("dir2", Vector3(0, 1, 0), { "region" : 1 }))
+		this.params.add(NodeParam("count2", 1))
+		this.params.add(NodeParam("spacing2", 0.0, { "region" : 10 }))
+
+		this.layout()
+
+		this.op_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
+			return nil
+		}
+
+		var dir1 = this.query_param("dir1").value
+		var count1 = this.query_param("count1").value
+		var spacing1 = this.query_param("spacing1").value
+		var dir2 = this.query_param("dir2").value
+		var count2 = this.query_param("count2").value
+		var spacing2 = this.query_param("spacing2").value
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.linear_pattern(v_shape.value, dir1.x, dir1.z, dir1.y, count1, spacing1, dir2.x, dir2.z, dir2.y, count2, spacing2, this.op_id)
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+}

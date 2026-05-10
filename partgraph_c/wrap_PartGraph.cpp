@@ -4,6 +4,7 @@
 #include "PrimMaker.h"
 #include "BRepBuilder.h"
 #include "TopoAlgo.h"
+#include "TopoAlgo_Ext.h"
 #include "BRepSelector.h"
 #include "BRepTools.h"
 #include "GeomDataset.h"
@@ -11,6 +12,9 @@
 #include "GlobalConfig.h"
 
 #include <logger/logger.h>
+#include <SM_Vector.h>
+
+#include <cstring>
 #include <geoshape/Line3D.h>
 #include <wrapper/TransHelper.h>
 
@@ -528,6 +532,49 @@ void w_TopoAlgo_mirror()
     partgraph::return_topo_shape(dst);
 }
 
+void w_TopoAlgo_rotate()
+{
+    auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto pos = wrapper::list_to_vec3(2);
+    auto dir = wrapper::list_to_vec3(3);
+    double angle = ves_tonumber(4);
+    uint32_t op_id = (uint32_t)ves_tonumber(5);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Rotate(src, pos, dir, angle, op_id, naming, vt);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_scale()
+{
+    auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto center = wrapper::list_to_vec3(2);
+    double factor = ves_tonumber(3);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Scale(src, center, factor, op_id, naming, vt);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_transform()
+{
+    auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    double mat[12];
+    for (int i = 0; i < 12; ++i) {
+        mat[i] = ves_tonumber(2 + i);
+    }
+    uint32_t op_id = (uint32_t)ves_tonumber(14);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
+    auto dst = partgraph::TopoAlgo::Transform(src, mat, op_id, naming, vt);
+    partgraph::return_topo_shape(dst);
+}
+
 void w_TopoAlgo_draft()
 {
     auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -581,6 +628,259 @@ void w_TopoAlgo_offset_shape()
     auto vt = partgraph::GlobalConfig::Instance()->GetVersionTree();
     auto dst = partgraph::TopoAlgo::OffsetShape(shape, offset, is_solid, op_id, naming, vt);
 
+    partgraph::return_topo_shape(dst);
+}
+
+static partgraph::ExtrudeEndType ParseEndType(const char* s)
+{
+    if (!s) {
+        return partgraph::ExtrudeEndType::Blind;
+    }
+    if (std::strcmp(s, "blind") == 0) {
+        return partgraph::ExtrudeEndType::Blind;
+    }
+    if (std::strcmp(s, "through_all") == 0) {
+        return partgraph::ExtrudeEndType::ThroughAll;
+    }
+    if (std::strcmp(s, "up_to_surface") == 0) {
+        return partgraph::ExtrudeEndType::UpToSurface;
+    }
+    if (std::strcmp(s, "up_to_vertex") == 0) {
+        return partgraph::ExtrudeEndType::UpToVertex;
+    }
+    if (std::strcmp(s, "offset_from_surface") == 0) {
+        return partgraph::ExtrudeEndType::OffsetFromSurface;
+    }
+    if (std::strcmp(s, "mid_plane") == 0) {
+        return partgraph::ExtrudeEndType::MidPlane;
+    }
+    return partgraph::ExtrudeEndType::Blind;
+}
+
+void w_TopoAlgo_extrude_ex()
+{
+    auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    double dx = ves_tonumber(2);
+    double dy = ves_tonumber(3);
+    double dz = ves_tonumber(4);
+
+    double dist1 = ves_tonumber(5);
+    double dist2 = ves_tonumber(6);
+
+    const char* s_end1 = ves_tostring(7);
+    const char* s_end2 = ves_tostring(8);
+    auto end1 = ParseEndType(s_end1);
+    auto end2 = ParseEndType(s_end2);
+
+    std::shared_ptr<partgraph::TopoShape> ref = nullptr;
+    if (ves_type(9) == VES_TYPE_FOREIGN) {
+        ref = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(9))->obj;
+    }
+
+    uint32_t op_id = (uint32_t)ves_tonumber(10);
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+
+    auto dst = partgraph::TopoAlgo_Ext::ExtrudeEx(
+        src, dx, dy, dz, dist1, dist2, end1, end2, ref, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_revolve()
+{
+    auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    sm::vec3 origin;
+    origin.x = ves_tonumber(2);
+    origin.y = ves_tonumber(3);
+    origin.z = ves_tonumber(4);
+
+    sm::vec3 dir;
+    dir.x = ves_tonumber(5);
+    dir.y = ves_tonumber(6);
+    dir.z = ves_tonumber(7);
+
+    double angle = ves_tonumber(8);
+    bool is_full = ves_toboolean(9);
+    uint32_t op_id = (uint32_t)ves_tonumber(10);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::Revolve(src, origin, dir, angle, is_full, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_sweep()
+{
+    auto profile = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto path    = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    bool is_solid = ves_toboolean(3);
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::Sweep(profile, path, is_solid, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_linear_pattern()
+{
+    auto base = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    sm::vec3 dir1;
+    dir1.x = ves_tonumber(2);
+    dir1.y = ves_tonumber(3);
+    dir1.z = ves_tonumber(4);
+    int count1 = (int)ves_tonumber(5);
+    double spacing1 = ves_tonumber(6);
+
+    sm::vec3 dir2;
+    dir2.x = ves_tonumber(7);
+    dir2.y = ves_tonumber(8);
+    dir2.z = ves_tonumber(9);
+    int count2 = (int)ves_tonumber(10);
+    double spacing2 = ves_tonumber(11);
+
+    uint32_t op_id = (uint32_t)ves_tonumber(12);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::LinearPattern(
+        base, dir1, count1, spacing1, dir2, count2, spacing2, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_circular_pattern()
+{
+    auto base = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    sm::vec3 origin;
+    origin.x = ves_tonumber(2);
+    origin.y = ves_tonumber(3);
+    origin.z = ves_tonumber(4);
+
+    sm::vec3 dir;
+    dir.x = ves_tonumber(5);
+    dir.y = ves_tonumber(6);
+    dir.z = ves_tonumber(7);
+
+    int count = (int)ves_tonumber(8);
+    double angle = ves_tonumber(9);
+    uint32_t op_id = (uint32_t)ves_tonumber(10);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::CircularPattern(
+        base, origin, dir, count, angle, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+static partgraph::TopoAlgo_Ext::HoleType ParseHoleType(const char* s)
+{
+    if (!s) {
+        return partgraph::TopoAlgo_Ext::HoleType::Simple;
+    }
+    if (std::strcmp(s, "counterbore") == 0) {
+        return partgraph::TopoAlgo_Ext::HoleType::Counterbore;
+    }
+    if (std::strcmp(s, "countersink") == 0) {
+        return partgraph::TopoAlgo_Ext::HoleType::Countersink;
+    }
+    if (std::strcmp(s, "tapped") == 0) {
+        return partgraph::TopoAlgo_Ext::HoleType::Tapped;
+    }
+    return partgraph::TopoAlgo_Ext::HoleType::Simple;
+}
+
+void w_TopoAlgo_hole_wizard()
+{
+    auto body = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    sm::vec3 pos;
+    pos.x = ves_tonumber(2);
+    pos.y = ves_tonumber(3);
+    pos.z = ves_tonumber(4);
+
+    sm::vec3 dir;
+    dir.x = ves_tonumber(5);
+    dir.y = ves_tonumber(6);
+    dir.z = ves_tonumber(7);
+
+    double diameter = ves_tonumber(8);
+    double depth = ves_tonumber(9);
+
+    const char* s_type = ves_tostring(10);
+    auto hole_type = ParseHoleType(s_type);
+
+    double cb_diameter = ves_tonumber(11);
+    double cb_depth = ves_tonumber(12);
+    double cs_diameter = ves_tonumber(13);
+    double cs_angle = ves_tonumber(14);
+
+    uint32_t op_id = (uint32_t)ves_tonumber(15);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::HoleWizard(
+        body, pos, dir, diameter, depth, hole_type,
+        cb_diameter, cb_depth, cs_diameter, cs_angle, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_variable_fillet()
+{
+    auto src = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+
+    std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
+    wrapper::list_to_foreigns(2, edges);
+
+    // params is a flat list of numbers [u0, r0, u1, r1, ...]
+    std::vector<double> params;
+    int params_count = ves_len(3);
+    params.reserve(params_count);
+    for (int i = 0; i < params_count; ++i) {
+        ves_geti(3, i);
+        params.push_back(ves_tonumber(-1));
+        ves_pop(1);
+    }
+
+    uint32_t op_id = (uint32_t)ves_tonumber(4);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::VariableFillet(
+        src, edges, params, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_sweep_with_guide()
+{
+    auto profile = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto path    = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+
+    std::vector<std::shared_ptr<partgraph::TopoShape>> guides;
+    wrapper::list_to_foreigns(3, guides);
+
+    bool is_solid = ves_toboolean(4);
+    uint32_t op_id = (uint32_t)ves_tonumber(5);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::SweepWithGuide(
+        profile, path, guides, is_solid, op_id, naming);
+    partgraph::return_topo_shape(dst);
+}
+
+void w_TopoAlgo_rib()
+{
+    auto body    = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto profile = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+
+    sm::vec3 dir;
+    dir.x = ves_tonumber(3);
+    dir.y = ves_tonumber(4);
+    dir.z = ves_tonumber(5);
+
+    double thickness = ves_tonumber(6);
+    bool is_symmetric = ves_toboolean(7);
+    uint32_t op_id = (uint32_t)ves_tonumber(8);
+
+    auto naming = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = partgraph::TopoAlgo_Ext::Rib(
+        body, profile, dir, thickness, is_symmetric, op_id, naming);
     partgraph::return_topo_shape(dst);
 }
 
@@ -814,11 +1114,24 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.sew(_,_,_)") == 0) return w_TopoAlgo_sew;
     if (strcmp(signature, "static TopoAlgo.unify_same_domain(_,_)") == 0) return w_TopoAlgo_unify_same_domain;
     if (strcmp(signature, "static TopoAlgo.translate(_,_,_,_,_)") == 0) return w_TopoAlgo_translate;
+    if (strcmp(signature, "static TopoAlgo.rotate(_,_,_,_,_)") == 0) return w_TopoAlgo_rotate;
+    if (strcmp(signature, "static TopoAlgo.scale(_,_,_,_)") == 0) return w_TopoAlgo_scale;
+    if (strcmp(signature, "static TopoAlgo.transform(_,_,_,_,_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_transform;
     if (strcmp(signature, "static TopoAlgo.mirror(_,_,_,_)") == 0) return w_TopoAlgo_mirror;
     if (strcmp(signature, "static TopoAlgo.draft(_,_,_,_,_)") == 0) return w_TopoAlgo_draft;
     if (strcmp(signature, "static TopoAlgo.thick_solid(_,_,_,_)") == 0) return w_TopoAlgo_thick_solid;
     if (strcmp(signature, "static TopoAlgo.thru_sections(_,_)") == 0) return w_TopoAlgo_thru_sections;
     if (strcmp(signature, "static TopoAlgo.offset_shape(_,_,_,_)") == 0) return w_TopoAlgo_offset_shape;
+
+    if (strcmp(signature, "static TopoAlgo.extrude_ex(_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_extrude_ex;
+    if (strcmp(signature, "static TopoAlgo.revolve(_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_revolve;
+    if (strcmp(signature, "static TopoAlgo.sweep(_,_,_,_)") == 0) return w_TopoAlgo_sweep;
+    if (strcmp(signature, "static TopoAlgo.linear_pattern(_,_,_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_linear_pattern;
+    if (strcmp(signature, "static TopoAlgo.circular_pattern(_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_circular_pattern;
+    if (strcmp(signature, "static TopoAlgo.hole_wizard(_,_,_,_,_,_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_hole_wizard;
+    if (strcmp(signature, "static TopoAlgo.variable_fillet(_,_,_,_)") == 0) return w_TopoAlgo_variable_fillet;
+    if (strcmp(signature, "static TopoAlgo.sweep_with_guide(_,_,_,_,_)") == 0) return w_TopoAlgo_sweep_with_guide;
+    if (strcmp(signature, "static TopoAlgo.rib(_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_rib;
 
     if (strcmp(signature, "static TopoAdapter.build_mesh(_,_)") == 0) return w_TopoAdapter_build_mesh;
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
