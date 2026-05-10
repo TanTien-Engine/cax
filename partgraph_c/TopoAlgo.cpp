@@ -5,7 +5,7 @@
 #include "BRepHistory.h"
 #include "BRepBuilder.h"
 #include "breptopo_c/TopoNaming.h"
-#include "brepdb_c/GeomSender.h"
+#include "brepdb_c/WorldSender.h"
 #include "brepdb_c/GeomPool.h"
 #include "brepdb_c/VersionTree.h"
 
@@ -42,9 +42,10 @@ void commit_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
     if (!tn || !vt) {
         return;
     }
-    brepdb::GeomSender sender(tn);
-    brepdb::GeometryPool new_pool;
-    sender.Serialize(dst->GetShape(), new_pool);
+    brepdb::WorldSender sender(tn);
+    brepdb::BRepWorld world;
+    sender.Serialize(dst->GetShape(), world);
+    brepdb::GeometryPool new_pool = world.ExportToPool();
 
     uint32_t parent_id = src->GetVersionId();
     uint32_t new_id;
@@ -84,9 +85,10 @@ void merge_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
         tool_vid = vt->AddRoot(tool_pool, op_name + "_tool");
     }
 
-    brepdb::GeomSender sender(tn);
-    brepdb::GeometryPool result_pool;
-    sender.Serialize(dst->GetShape(), result_pool);
+    brepdb::WorldSender sender(tn);
+    brepdb::BRepWorld world;
+    sender.Serialize(dst->GetShape(), world);
+    brepdb::GeometryPool result_pool = world.ExportToPool();
 
     uint32_t primary_id = main_src->GetVersionId();
     uint32_t new_id = vt->Merge(primary_id, { tool_vid },
@@ -99,10 +101,10 @@ void merge_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
 brepdb::GeometryPool serialize_pool(const std::shared_ptr<breptopo::TopoNaming>& tn,
                                     const TopoDS_Shape& shape)
 {
-    brepdb::GeomSender sender(tn);
-    brepdb::GeometryPool pool;
-    sender.Serialize(shape, pool);
-    return pool;
+    brepdb::WorldSender sender(tn);
+    brepdb::BRepWorld world;
+    sender.Serialize(shape, world);
+    return world.ExportToPool();
 }
 
 }

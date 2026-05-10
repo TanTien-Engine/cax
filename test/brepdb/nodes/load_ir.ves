@@ -1,0 +1,46 @@
+var node0 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node0, 443.60065687643, 190.65491561192)
+
+var node1 = ::blueprint::nodes::camera3d::Camera3d()
+
+node1.cam.position.set(4.2374458504483, 2.7346023865288, 3.1412794835912)
+node1.cam.yaw = -146
+node1.cam.pitch = -26.4
+node1.cam.zoom = 45
+node1.cam.update_vectors()
+node1.speed = 0.30111083388329
+
+_editor.add_node(node1, 587.11287331174, 44.768841848253)
+
+var node2 = ::blueprint::nodes::cache::Cache()
+node2.query_param("disable").value = false
+
+_editor.add_node(node2, 586.5696320322, 182.36533806161)
+
+var node3 = ::blueprint::nodes::subgraph::Subgraph()
+node3.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node3.set_prop_value("no_bg", false)
+
+_editor.add_node(node3, 781.75739548213, 130.07227839696)
+
+var node4 = ::brepdb::nodes::deserialize::Deserialize()
+
+_editor.add_node(node4, 163.50285752406, 188.90164391781)
+
+var node5 = ::blueprint::nodes::cache::Cache()
+node5.query_param("disable").value = false
+
+_editor.add_node(node5, 299.98159859665, 180.67100722709)
+
+var node6 = ::brepdb::nodes::load_world::LoadWorld()
+node6.query_param("filename").value = "test_world"
+
+_editor.add_node(node6, 6.3073691519136, 186.94270098398)
+
+Blueprint.connect(node6, "world", node4, "world")
+Blueprint.connect(node4, "shape", node5, "var")
+Blueprint.connect(node5, "var", node0, "shape")
+Blueprint.connect(node0, "va", node2, "var")
+Blueprint.connect(node2, "var", node3, "geos")
+Blueprint.connect(node1, "this", node3, "view_cam")

@@ -1,11 +1,10 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
-import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "blueprint.node_param" for NodeParam
 import "brepdb.variant" for VAR_TYPE_BREP_WORLD
 
-class Deserialize is Node
+class SaveWorld is Node
 {
 	init()
 	{
@@ -15,8 +14,10 @@ class Deserialize is Node
 			Pin(this, "world", VAR_TYPE_BREP_WORLD),
 		]
 		this.exports = [
-			Pin(this, "shape", VAR_TOPO_SHAPE),
+			Pin(this, "world", VAR_TYPE_BREP_WORLD),
 		]
+
+		this.params.add(NodeParam("filename", "test_world"))
 
 		this.layout()
 	}
@@ -28,7 +29,9 @@ class Deserialize is Node
 			return nil
 		}
 
-		var shape = v_world.value.deserialize()
-		return Variant(VAR_TOPO_SHAPE, shape)
+		var filename = this.query_param("filename").value
+		v_world.value.save(filename)
+
+		return v_world
 	}
 }

@@ -1,6 +1,7 @@
 #include "brepdb_c/wrap_BrepDB.h"
 #include "brepdb_c/GeomPool.h"
-#include "brepdb_c/GeomSender.h"
+#include "brepdb_c/WorldSender.h"
+#include "brepdb_c/WorldFile.h"
 #include "brepdb_c/GeomReceiver.h"
 #include "brepdb_c/GeomFile.h"
 #include "brepdb_c/BrepDB.h"
@@ -65,8 +66,10 @@ void w_BrepIR_serialize()
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     const TopoDS_Shape& tshape = shape->GetShape();
     
-    brepdb::GeomSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
-    sender.Serialize(tshape, *pool);
+    brepdb::WorldSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
+    brepdb::BRepWorld world;
+    sender.Serialize(tshape, world);
+    *pool = world.ExportToPool();
 }
 
 void w_BrepIR_deserialize()
@@ -92,6 +95,80 @@ void w_BrepIR_deserialize()
     auto shape = std::make_shared<partgraph::TopoShape>(root_compound);
     partgraph::return_topo_shape(shape);
 }
+
+// ============================================================
+// BrepWorld foreign class
+// ============================================================
+
+void w_BrepWorld_allocate()
+{
+    auto proxy = (wrapper::Proxy<brepdb::BRepWorld>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<brepdb::BRepWorld>));
+    proxy->obj = std::make_shared<brepdb::BRepWorld>();
+}
+
+int w_BrepWorld_finalize(void* data)
+{
+    auto proxy = (wrapper::Proxy<brepdb::BRepWorld>*)(data);
+    proxy->~Proxy();
+    return sizeof(wrapper::Proxy<brepdb::BRepWorld>);
+}
+
+void w_BrepWorld_serialize()
+{
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
+    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    const TopoDS_Shape& tshape = shape->GetShape();
+
+    brepdb::WorldSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
+    sender.Serialize(tshape, *world);
+}
+
+void w_BrepWorld_save()
+{
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
+    std::string filepath = ves_tostring(1);
+    brepdb::WorldFile::Save(filepath, *world);
+}
+
+void w_BrepWorld_load()
+{
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
+    std::string filepath = ves_tostring(1);
+    brepdb::WorldFile::Load(filepath, *world);
+}
+
+void w_BrepWorld_deserialize()
+{
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
+
+    brepdb::GeometryPool pool = world->ExportToPool();
+    brepdb::GeomReceiver receiver(pool);
+
+    BRep_Builder B;
+    TopoDS_Compound root_compound;
+    B.MakeCompound(root_compound);
+
+    for (const auto& h : pool.headers)
+    {
+        if (h.type == brepdb::Type::Solid)
+        {
+            TopoDS_Shape solid = receiver.GetShape(h.persistent_id);
+            if (!solid.IsNull())
+                B.Add(root_compound, solid);
+        }
+    }
+
+    auto shape = std::make_shared<partgraph::TopoShape>(root_compound);
+    partgraph::return_topo_shape(shape);
+}
+
+void w_BrepWorld_entity_count()
+{
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
+    ves_set_number(0, static_cast<double>(world->EntityCount()));
+}
+
+// ============================================================
 
 void w_BrepDB_allocate()
 {
@@ -161,27 +238,10 @@ void w_BrepDB_build()
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto root = shape->GetShape();
 
-    brepdb::GeomSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
-
-    brepdb::GeometryPool pool;
-    TopTools_IndexedMapOfShape all_shapes;
-    TopExp::MapShapes(root, all_shapes);
-
-    for (int i = 1; i <= all_shapes.Extent(); ++i)
-    {
-        const TopoDS_Shape& shape = all_shapes(i);
-        uint32_t uid = sender.GetUID(shape);
-        if (uid == 0xffffffff) continue;
-
-        switch (shape.ShapeType())
-        {
-        case TopAbs_SOLID:  sender.SerializeSolid(TopoDS::Solid(shape), uid, pool); break;
-        case TopAbs_FACE:   sender.SerializeFace(TopoDS::Face(shape), uid, pool);   break;
-        case TopAbs_EDGE:   sender.SerializeEdge(TopoDS::Edge(shape), uid, pool);   break;
-        case TopAbs_VERTEX: sender.SerializeVertex(TopoDS::Vertex(shape), uid, pool); break;
-        default: break;
-        }
-    }
+    brepdb::WorldSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
+    brepdb::BRepWorld world;
+    sender.Serialize(root, world);
+    brepdb::GeometryPool pool = world.ExportToPool();
 
     db->ImportPool(pool);
 
@@ -483,6 +543,12 @@ VesselForeignMethodFn BrepDBBindMethod(const char* signature)
     if (strcmp(signature, "BrepIR.serialize(_)") == 0) return w_BrepIR_serialize;
     if (strcmp(signature, "BrepIR.deserialize()") == 0) return w_BrepIR_deserialize;
 
+    if (strcmp(signature, "BrepWorld.serialize(_)") == 0) return w_BrepWorld_serialize;
+    if (strcmp(signature, "BrepWorld.deserialize()") == 0) return w_BrepWorld_deserialize;
+    if (strcmp(signature, "BrepWorld.save(_)") == 0) return w_BrepWorld_save;
+    if (strcmp(signature, "BrepWorld.load(_)") == 0) return w_BrepWorld_load;
+    if (strcmp(signature, "BrepWorld.entity_count()") == 0) return w_BrepWorld_entity_count;
+
     if (strcmp(signature, "BrepDB.build(_)") == 0) return w_BrepDB_build;
     if (strcmp(signature, "BrepDB.query(_)") == 0) return w_BrepDB_query;
 
@@ -512,6 +578,13 @@ void BrepDBBindClass(const char* class_name, VesselForeignClassMethods* methods)
     {
         methods->allocate = w_BrepIR_allocate;
         methods->finalize = w_BrepIR_finalize;
+        return;
+    }
+
+    if (strcmp(class_name, "BrepWorld") == 0)
+    {
+        methods->allocate = w_BrepWorld_allocate;
+        methods->finalize = w_BrepWorld_finalize;
         return;
     }
 

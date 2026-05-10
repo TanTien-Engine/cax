@@ -155,6 +155,13 @@ set(brepdb__geom
     "brepdb_c/GeomReceiver.h"
     "brepdb_c/GeomFile.cpp"
     "brepdb_c/GeomFile.h"
+    "brepdb_c/WorldSender.cpp"
+    "brepdb_c/WorldSender.h"
+    "brepdb_c/WorldFile.cpp"
+    "brepdb_c/WorldFile.h"
+    "brepdb_c/TypedPool.h"
+    "brepdb_c/ComponentView.h"
+    "brepdb_c/ComponentDiff.h"
 )
 source_group("brepdb\\geom" FILES ${brepdb__geom})
 

@@ -6,7 +6,7 @@
 #include "BRepHistory.h"
 
 #include <breptopo_c/TopoNaming.h>
-#include <brepdb_c/GeomSender.h>
+#include <brepdb_c/WorldSender.h>
 #include <brepdb_c/GeomPool.h>
 #include <brepdb_c/VersionTree.h>
 
@@ -51,9 +51,10 @@ std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double
         shape = std::make_shared<partgraph::TopoShape>(mk_face.Face());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "plane"));
         }
     }
@@ -80,9 +81,10 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint3
         shape = std::make_shared<partgraph::TopoShape>(mk_box.Shape());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "box"));
         }
     } catch (Standard_Failure& e) {
@@ -108,9 +110,10 @@ std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length, uin
         shape = std::make_shared<partgraph::TopoShape>(mk_cyl.Shape());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "cylinder"));
         }
     } catch (Standard_Failure& e) {
@@ -136,9 +139,10 @@ std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height, 
         shape = std::make_shared<partgraph::TopoShape>(mk_cone.Shape());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "cone"));
         }
     } catch (Standard_Failure& e) {
@@ -164,9 +168,10 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, uint32_t op_id,
         shape = std::make_shared<partgraph::TopoShape>(mk_sphere.Shape());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "sphere"));
         }
     } catch (Standard_Failure& e) {
@@ -192,9 +197,10 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle, uint32
         shape = std::make_shared<partgraph::TopoShape>(mk_sphere.Shape());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "sphere"));
         }
     } catch (Standard_Failure& e) {
@@ -220,9 +226,10 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, uint32_t op_id
         shape = std::make_shared<partgraph::TopoShape>(mk_torus.Shape());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "torus"));
         }
     } catch (Standard_Failure& e) {
@@ -248,9 +255,10 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle, 
         shape = std::make_shared<partgraph::TopoShape>(mk_torus.Shape());
         if (tn && vt)
         {
-            brepdb::GeomSender sender(tn);
-            brepdb::GeometryPool new_pool;
-            sender.Serialize(shape->GetShape(), new_pool);
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            brepdb::GeometryPool new_pool = world.ExportToPool();
             shape->SetVersionId(vt->AddRoot(new_pool, "torus"));
         }
     } catch (Standard_Failure& e) {
@@ -316,9 +324,10 @@ std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height,
     auto shape = std::make_shared<partgraph::TopoShape>(aTool.Shape());
     if (tn && vt)
     {
-        brepdb::GeomSender sender(tn);
-        brepdb::GeometryPool new_pool;
-        sender.Serialize(shape->GetShape(), new_pool);
+        brepdb::WorldSender sender(tn);
+        brepdb::BRepWorld world;
+        sender.Serialize(shape->GetShape(), world);
+        brepdb::GeometryPool new_pool = world.ExportToPool();
         shape->SetVersionId(vt->AddRoot(new_pool, "threading"));
     }
     return shape;

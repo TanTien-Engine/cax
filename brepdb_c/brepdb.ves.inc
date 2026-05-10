@@ -12,6 +12,17 @@ foreign class BrepIR
 	foreign deserialize()
 }
 
+foreign class BrepWorld
+{
+	init() {}
+
+	foreign serialize(shape)
+	foreign deserialize()
+	foreign save(filepath)
+	foreign load(filepath)
+	foreign entity_count()
+}
+
 foreign class BrepDB
 {
 	init() {}

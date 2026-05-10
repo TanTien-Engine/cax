@@ -1,36 +1,30 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
-import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TOPO_SHAPE
 import "brepdb" for BrepWorld
 import "brepdb.variant" for VAR_TYPE_BREP_WORLD
 
-class Serialize is Node
+class LoadWorld is Node
 {
 	init()
 	{
 		super.init()
 
-		this.imports = [
-			Pin(this, "shape", VAR_TOPO_SHAPE),
-		]
 		this.exports = [
 			Pin(this, "world", VAR_TYPE_BREP_WORLD),
 		]
+
+		this.params.add(NodeParam("filename", "test_world"))
 
 		this.layout()
 	}
 
 	calc_value(idx)
 	{
-		var v_shape = Blueprint.calc_input_value(this, 0)
-		if (!v_shape) {
-			return nil
-		}
-
+		var filename = this.query_param("filename").value
 		var world = BrepWorld.init()
-		world.serialize(v_shape.value)
+		world.load(filename)
 		return Variant(VAR_TYPE_BREP_WORLD, world)
 	}
 }

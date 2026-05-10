@@ -1,3 +1,5 @@
 thirdparty/OCCT/
 out/
 .claude/
+build_test/
+.DS_Store

@@ -15,7 +15,12 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(${PROJECT_NAME}
     catch_main.cpp
     test_version_tree.cpp
+    test_component_view.cpp
+    test_component_diff.cpp
+    test_typed_pool.cpp
+    test_world_file.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/VersionTree.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/WorldFile.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
