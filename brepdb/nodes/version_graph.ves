@@ -5,7 +5,7 @@ import "blueprint.variant" for Variant
 import "blueprint.variant_proxy" for VariantProxy
 import "graph.nodes.draw" for Draw
 import "graph.variant" for VAR_TYPE_GRAPH
-import "brepdb.variant" for VAR_TYPE_VERSION_GRAPH, VAR_TYPE_BREP_IR
+import "brepdb.variant" for VAR_TYPE_VERSION_GRAPH, VAR_TYPE_BREP_WORLD
 import "brepdb" for VersionGraph as tt_VersionGraph
 import "partgraph" for GlobalConfig
 
@@ -16,13 +16,13 @@ class VersionGraph is Node
 		super.init()
 
 		this.exports = [
-			Pin(this, "ir", VAR_TYPE_BREP_IR),
+			Pin(this, "world", VAR_TYPE_BREP_WORLD),
 		]
 
 		this.layout()
 
 		this.graph = nil
-		this.v_ir = nil
+		this.v_world = nil
 
 		this.n_draw = Draw()
 	}
@@ -34,7 +34,7 @@ class VersionGraph is Node
 		}
 
 		if (idx == 0) {
-			return this.v_ir
+			return this.v_world
 		}
 	}
 
@@ -94,7 +94,7 @@ class VersionGraph is Node
 
 	update_selected()
 	{
-		this.v_ir = nil
+		this.v_world = nil
 
 		var v_selecteds = Blueprint.calc_output_value(this.n_draw, "selected")
 		if (!v_selecteds) {
@@ -110,8 +110,8 @@ class VersionGraph is Node
 		{
 			var version_id = v_sel.value.get_component("version_info")
 			if (version_id != nil) {
-				var ir = vt.checkout(version_id)
-				this.v_ir = Variant(VAR_TYPE_BREP_IR, ir)
+				var world = vt.checkout(version_id)
+				this.v_world = Variant(VAR_TYPE_BREP_WORLD, world)
 				return
 			}
 		}

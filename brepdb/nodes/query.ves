@@ -1,11 +1,9 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
-import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_CUBE
 import "blueprint.blueprint" for Blueprint
 import "dbgraph.variant" for VAR_TYPE_RTREE, VAR_TYPE_RKEY
-import "logger.logger" for Logger
-import "brepdb.variant" for VAR_TYPE_BREP_IR
+import "brepdb.variant" for VAR_TYPE_BREP_WORLD
 import "brepdb.variant" for VAR_TYPE_BREP_DB
 
 class Query is Node
@@ -19,7 +17,7 @@ class Query is Node
 			Pin(this, "aabb", VAR_TYPE_CUBE),
 		]
 		this.exports = [
-			Pin(this, "ir", VAR_TYPE_BREP_IR),
+			Pin(this, "world", VAR_TYPE_BREP_WORLD),
 		]
 
 		this.layout()
@@ -37,7 +35,7 @@ class Query is Node
 			return nil
 		}
 
-		var ir = v_db.value.query(v_aabb.value)
-		return Variant(VAR_TYPE_BREP_IR, ir)
+		var world = v_db.value.query(v_aabb.value)
+		return Variant(VAR_TYPE_BREP_WORLD, world)
 	}
 }

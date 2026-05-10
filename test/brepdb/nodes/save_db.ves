@@ -75,11 +75,6 @@ node13.query_param("filename").value = "test_ir"
 
 _editor.add_node(node13, 252.04502057161, 424.75060742053)
 
-var node14 = ::brepdb::nodes::load_i_r::LoadIR()
-node14.query_param("filename").value = "test_ir"
-
-_editor.add_node(node14, 259.77830757753, 316.3151634143)
-
 var node15 = ::brepdb::nodes::deserialize::Deserialize()
 
 _editor.add_node(node15, 403.96875172696, 317.19117347548)
@@ -98,7 +93,6 @@ var node18 = ::brepdb::nodes::build::Build()
 
 _editor.add_node(node18, -21.147005661666, 263.29382953867)
 
-Blueprint.connect(node14, "ir", node15, "ir")
 Blueprint.connect(node15, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node12, "ir", node13, "ir")

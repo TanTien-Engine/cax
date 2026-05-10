@@ -1,8 +1,7 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
-import "dbgraph.variant" for VAR_TYPE_RTREE
-import "brepdb.variant" for VAR_TYPE_BREP_IR
+import "brepdb.variant" for VAR_TYPE_BREP_WORLD
 import "brepdb.variant" for VAR_TYPE_BREP_DB
 
 class Insert is Node
@@ -13,7 +12,7 @@ class Insert is Node
 
 		this.imports = [
 			Pin(this, "brepdb", VAR_TYPE_BREP_DB),
-			Pin(this, "ir", VAR_TYPE_BREP_IR),
+			Pin(this, "world", VAR_TYPE_BREP_WORLD),
 		]
 		this.exports = [
 			Pin(this, "brepdb", VAR_TYPE_BREP_DB),
@@ -29,9 +28,9 @@ class Insert is Node
 			return nil
 		}
 
-		var v_ir = Blueprint.calc_input_value(this, 1)
-		if (v_ir) {
-			v_db.value.insert(v_ir.value)
+		var v_world = Blueprint.calc_input_value(this, 1)
+		if (v_world) {
+			v_db.value.insert(v_world.value)
 		}
 
 		return v_db

@@ -2,14 +2,12 @@
 
 #include "brepdb_c/ShapeIndex.h"
 #include "brepdb_c/TopoGraph.h"
+#include "brepdb_c/TypedPool.h"
 
 #include <spatialdb/RTree.h>
 
 namespace brepdb
 {
-
-struct GeomHeader;
-struct GeometryPool;
 
 class BrepDB
 {
@@ -17,8 +15,8 @@ public:
     BrepDB(const std::shared_ptr<spatialdb::IStorageManager>& sm, bool overwrite);
     ~BrepDB();
 
-    void Insert(const GeomHeader& header, const double* params);
-    void ImportPool(const GeometryPool& pool);
+    void Insert(uint32_t entity_id, const BRepWorld& world);
+    void ImportWorld(const BRepWorld& world);
 
     spatialdb::RTree& GetRTree() { return *m_rtree; }
     ShapeIndex& GetShapeIndex() { return *m_shape_index; }

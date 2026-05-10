@@ -1,0 +1,78 @@
+var node0 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node0, 443.60065687643, 190.65491561192)
+
+var node1 = ::blueprint::nodes::camera3d::Camera3d()
+
+node1.cam.position.set(4.2374458504483, 2.7346023865288, 3.1412794835912)
+node1.cam.yaw = -146
+node1.cam.pitch = -26.4
+node1.cam.zoom = 45
+node1.cam.update_vectors()
+node1.speed = 0.30111083388329
+
+_editor.add_node(node1, 587.11287331174, 44.768841848253)
+
+var node2 = ::blueprint::nodes::cache::Cache()
+node2.query_param("disable").value = false
+
+_editor.add_node(node2, 586.5696320322, 182.36533806161)
+
+var node3 = ::blueprint::nodes::subgraph::Subgraph()
+node3.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node3.set_prop_value("no_bg", false)
+
+_editor.add_node(node3, 781.75739548213, 130.07227839696)
+
+var node4 = ::brepdb::nodes::deserialize::Deserialize()
+
+_editor.add_node(node4, 166.88970110438, 160.67794741512)
+
+var node5 = ::brepdb::nodes::brepdb::Brepdb()
+node5.query_param("filename").value = "test_db"
+
+_editor.add_node(node5, -80.640053499813, 284.66620070199)
+
+var node6 = ::brepdb::nodes::insert::Insert()
+
+_editor.add_node(node6, 69.932949031201, 273.14131708874)
+
+var node7 = ::blueprint::nodes::cache::Cache()
+node7.query_param("disable").value = false
+
+_editor.add_node(node7, 220.18176407532, 272.30586473887)
+
+var node8 = ::blueprint::nodes::print::Print()
+
+_editor.add_node(node8, 381, 361)
+
+var node9 = ::brepdb::nodes::query::Query()
+
+_editor.add_node(node9, 16.730813605908, 148.50108672277)
+
+var node10 = ::brepdb::nodes::brepdb::Brepdb()
+node10.query_param("filename").value = "test_db"
+
+_editor.add_node(node10, -130.46508166661, 160.66195870647)
+
+var node11 = ::blueprint::nodes::cube::Cube()
+node11.query_param("min").value.set(-1, -1, -1)
+node11.query_param("max").value.set(2, 2, 2)
+
+_editor.add_node(node11, -134.57900815875, 21.039465861925)
+
+var node12 = ::blueprint::nodes::cache::Cache()
+node12.query_param("disable").value = false
+
+_editor.add_node(node12, 303.36844217697, 152.4473107244)
+
+Blueprint.connect(node10, "brepdb", node9, "brepdb")
+Blueprint.connect(node11, "cube", node9, "aabb")
+Blueprint.connect(node9, "world", node4, "world")
+Blueprint.connect(node4, "shape", node12, "var")
+Blueprint.connect(node12, "var", node0, "shape")
+Blueprint.connect(node0, "va", node2, "var")
+Blueprint.connect(node5, "brepdb", node6, "brepdb")
+Blueprint.connect(node6, "brepdb", node7, "var")
+Blueprint.connect(node2, "var", node3, "geos")
+Blueprint.connect(node1, "this", node3, "view_cam")

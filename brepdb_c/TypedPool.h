@@ -289,9 +289,104 @@ public:
         }
     }
 
+    // Parse flat ParamsComp data into typed components for each entity.
+    void RebuildTypedFromParams()
+    {
+        for (uint32_t id : m_alive)
+        {
+            const Type* t = m_types.Get(id);
+            if (!t) continue;
+            const ParamsComp* pc = m_params.Get(id);
+            if (!pc || pc->data.empty()) continue;
+
+            uint32_t offset = 0;
+            const auto& d = pc->data;
+
+            switch (*t)
+            {
+            case Type::Vertex:
+            {
+                if (d.size() < 4) break;
+                m_positions.Set(id, {d[0], d[1], d[2]});
+                m_tolerances.Set(id, {d[3]});
+                break;
+            }
+            case Type::Edge:
+            {
+                if (d.size() < 6) break;
+                EdgeTopoComp et;
+                et.v_first = d[0] < 0 ? UINT32_MAX : static_cast<uint32_t>(d[0]);
+                et.v_last  = d[1] < 0 ? UINT32_MAX : static_cast<uint32_t>(d[1]);
+                m_tolerances.Set(id, {d[2]});
+                et.t_first = d[3];
+                et.t_last  = d[4];
+                m_edge_topos.Set(id, et);
+                offset = 5;
+                if (offset < d.size())
+                {
+                    Type ct = static_cast<Type>(static_cast<int>(d[offset++]));
+                    if (ct != Type::Empty)
+                    {
+                        CurveComp curve;
+                        curve.curve_type = ct;
+                        curve.data.assign(d.begin() + offset, d.end());
+                        m_curves.Set(id, curve);
+                    }
+                }
+                break;
+            }
+            case Type::Face:
+            {
+                if (d.size() < 3) break;
+                FaceTopoComp ft;
+                m_tolerances.Set(id, {d[0]});
+                ft.orientation = static_cast<uint8_t>(d[1]);
+                offset = 2;
+                // surface
+                if (offset < d.size())
+                {
+                    Type st = static_cast<Type>(static_cast<int>(d[offset++]));
+                    SurfaceComp surf;
+                    surf.surface_type = st;
+                    // find end of surface data: before has_outer_wire flag
+                    // We scan for wire structure; surface data ends at has_outer_wire
+                    // Parse surface data by reading until we hit wire section
+                    // This requires knowing surface param counts per type...
+                    // For now store remaining as surface + wire combined in params
+                    // and let the full parse happen when we have surface size info.
+                    ParseFaceParams(id, d, offset, ft, surf);
+                    m_surfaces.Set(id, surf);
+                }
+                m_face_topos.Set(id, ft);
+                break;
+            }
+            case Type::Solid:
+            {
+                if (d.empty()) break;
+                SolidTopoComp st;
+                offset = 0;
+                int shell_count = static_cast<int>(d[offset++]);
+                for (int s = 0; s < shell_count && offset < d.size(); ++s)
+                {
+                    SolidTopoComp::ShellComp sh;
+                    sh.orientation = static_cast<uint8_t>(d[offset++]);
+                    int face_count = static_cast<int>(d[offset++]);
+                    for (int f = 0; f < face_count && offset < d.size(); ++f)
+                        sh.face_uids.push_back(static_cast<uint32_t>(d[offset++]));
+                    st.shells.push_back(std::move(sh));
+                }
+                m_solid_topos.Set(id, st);
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+
     // Export back to legacy GeometryPool.
     // If typed components (Curves, Surfaces, etc.) are populated,
-    // reconstructs the flat data_pool in GeomSender format.
+    // reconstructs the flat data_pool format.
     // Falls back to ParamsComp if no typed components exist.
     GeometryPool ExportToPool() const
     {
@@ -350,6 +445,123 @@ public:
     }
 
 private:
+    // Parse face params into typed components, advancing offset past surface+wires
+    void ParseFaceParams(uint32_t id, const std::vector<double>& d, uint32_t& offset,
+                         FaceTopoComp& ft, SurfaceComp& surf)
+    {
+        // Surface data was already started: surf.surface_type is set, offset is past type
+        uint32_t surf_start = offset;
+        // Advance offset past surface data based on type
+        SkipSurfaceData(surf.surface_type, d, offset);
+        surf.data.assign(d.begin() + surf_start, d.begin() + offset);
+
+        // has_outer_wire
+        if (offset >= d.size()) return;
+        ft.has_outer_wire = d[offset++] > 0.5;
+        if (ft.has_outer_wire)
+            ParseWire(d, offset, ft.outer_wire_orientation, ft.outer_wire_edges);
+
+        // inner wires
+        if (offset >= d.size()) return;
+        int inner_count = static_cast<int>(d[offset++]);
+        for (int i = 0; i < inner_count && offset < d.size(); ++i)
+        {
+            FaceTopoComp::WireComp iw;
+            ParseWire(d, offset, iw.orientation, iw.edges);
+            ft.inner_wires.push_back(std::move(iw));
+        }
+    }
+
+    void ParseWire(const std::vector<double>& d, uint32_t& offset,
+                   uint8_t& wire_ori, std::vector<FaceTopoComp::WireEdgeRef>& edges)
+    {
+        if (offset >= d.size()) return;
+        wire_ori = static_cast<uint8_t>(d[offset++]);
+        if (offset >= d.size()) return;
+        int count = static_cast<int>(d[offset++]);
+        for (int i = 0; i < count && offset < d.size(); ++i)
+        {
+            FaceTopoComp::WireEdgeRef ref;
+            ref.edge_uid = static_cast<uint32_t>(d[offset++]);
+            ref.orientation = static_cast<uint8_t>(d[offset++]);
+            // pcurve
+            ref.pcurve.curve_type = static_cast<Type>(static_cast<int>(d[offset++]));
+            if (ref.pcurve.curve_type != Type::Empty)
+            {
+                uint32_t pc_start = offset;
+                SkipCurve2dData(ref.pcurve.curve_type, d, offset);
+                ref.pcurve.data.assign(d.begin() + pc_start, d.begin() + offset);
+            }
+            ref.pcurve.first = d[offset++];
+            ref.pcurve.last  = d[offset++];
+            edges.push_back(std::move(ref));
+        }
+    }
+
+    static void SkipCurveData(Type curve_type, const std::vector<double>& d, uint32_t& offset)
+    {
+        if (curve_type == Type::Line) {
+            offset += 6; // point(3) + dir(3)
+        } else if (curve_type == Type::Circle) {
+            offset += 10; // point(3) + dir(3) + xdir(3) + radius(1)
+        } else if (curve_type == Type::BSplineCurve) {
+            int degree = static_cast<int>(d[offset++]); (void)degree;
+            int nbPoles = static_cast<int>(d[offset++]);
+            int nbKnots = static_cast<int>(d[offset++]);
+            bool isRational = d[offset++] > 0.5;
+            offset++; // isPeriodic
+            offset += nbPoles * 3; // poles
+            if (isRational) offset += nbPoles; // weights
+            offset += nbKnots; // knots
+            offset += nbKnots; // mults
+        }
+    }
+
+    static void SkipCurve2dData(Type curve_type, const std::vector<double>& d, uint32_t& offset)
+    {
+        if (curve_type == Type::Line) {
+            offset += 4; // lx, ly, dx, dy
+        } else if (curve_type == Type::Circle) {
+            offset += 5; // cx, cy, xx, xy, r
+        } else if (curve_type == Type::BSplineCurve) {
+            int degree = static_cast<int>(d[offset++]); (void)degree;
+            int nbPoles = static_cast<int>(d[offset++]);
+            int nbKnots = static_cast<int>(d[offset++]);
+            bool isRational = d[offset++] > 0.5;
+            offset++; // isPeriodic
+            offset += nbPoles * 2; // poles (2d)
+            if (isRational) offset += nbPoles; // weights
+            offset += nbKnots; // knots
+            offset += nbKnots; // mults
+        }
+    }
+
+    static void SkipSurfaceData(Type surf_type, const std::vector<double>& d, uint32_t& offset)
+    {
+        if (surf_type == Type::Plane) {
+            offset += 9; // point(3) + axisDir(3) + xDir(3)
+        } else if (surf_type == Type::Cylinder) {
+            offset += 10; // point(3) + axisDir(3) + xDir(3) + radius(1)
+        } else if (surf_type == Type::BSplineSurface) {
+            int uDeg = static_cast<int>(d[offset++]); (void)uDeg;
+            int vDeg = static_cast<int>(d[offset++]); (void)vDeg;
+            int nbUPoles = static_cast<int>(d[offset++]);
+            int nbVPoles = static_cast<int>(d[offset++]);
+            int nbUKnots = static_cast<int>(d[offset++]);
+            int nbVKnots = static_cast<int>(d[offset++]);
+            bool isURational = d[offset++] > 0.5;
+            bool isVRational = d[offset++] > 0.5;
+            offset++; // isUPeriodic
+            offset++; // isVPeriodic
+            offset += nbUPoles * nbVPoles * 3; // poles
+            if (isURational || isVRational) offset += nbUPoles * nbVPoles; // weights
+            offset += nbUKnots; // uKnots
+            offset += nbUKnots; // uMults
+            offset += nbVKnots; // vKnots
+            offset += nbVKnots; // vMults
+        }
+    }
+
     // Reconstruct flat data_pool segments from typed components
     bool ExportVertex(uint32_t id, std::vector<double>& d) const
     {

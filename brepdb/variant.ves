@@ -1,4 +1,3 @@
 var VAR_TYPE_BREP_DB = "brepdb"
-var VAR_TYPE_BREP_IR = "brepir"
 var VAR_TYPE_BREP_WORLD = "brepworld"
 var VAR_TYPE_VERSION_GRAPH = "version_graph"
