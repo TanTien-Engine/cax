@@ -75,12 +75,15 @@ struct PoolDiff
     bool IsEmpty() const { return added.empty() && removed.empty() && modified.empty(); }
 };
 
-// One node in the version tree.
+// One node in the version DAG.
+// parent_id is the primary parent (diff base, undo target).
+// aux_parent_ids holds secondary parents (e.g. tool body in a boolean cut).
 struct VersionNode
 {
     uint32_t id        = 0;
     uint32_t parent_id = UINT32_MAX;
 
+    std::vector<uint32_t> aux_parent_ids;
     std::vector<uint32_t> children;
 
     std::string op_desc;
@@ -122,11 +125,35 @@ public:
                     const std::string&  op_desc,
                     uint32_t            op_type = 0);
 
+    // Create an additional root node (independent body, e.g. a tool shape).
+    // Unlike InitRoot, this does NOT clear the tree.  The current pool and
+    // current_id are left unchanged.
+    uint32_t AddRoot(const GeometryPool& pool,
+                     const std::string&  op_desc,
+                     uint32_t            op_type = 0);
+
     uint32_t Branch(uint32_t            parent_id,
                     const GeometryPool& new_pool,
                     PoolDiff&&          diff,
                     const std::string&  op_desc,
                     uint32_t            op_type = 0);
+
+    // Merge: create a node with one primary parent and one or more auxiliary
+    // parents.  diff is computed against the primary parent's pool.
+    // All parents (primary + aux) get the new node in their children list.
+    uint32_t Merge(uint32_t                       primary_parent_id,
+                   const std::vector<uint32_t>&   aux_parent_ids,
+                   const GeometryPool&            new_pool,
+                   PoolDiff&&                     diff,
+                   const std::string&             op_desc,
+                   uint32_t                       op_type = 0);
+
+    uint32_t Merge(uint32_t                       primary_parent_id,
+                   const std::vector<uint32_t>&   aux_parent_ids,
+                   const GeometryPool&            new_pool,
+                   const PidMapping&              pid_map,
+                   const std::string&             op_desc,
+                   uint32_t                       op_type = 0);
 
     // ----- Navigation -----
     // Returns a shared_ptr to an immutable pool snapshot.
@@ -142,6 +169,9 @@ public:
 
     uint32_t GetCurrentId() const { return m_current_id; }
     uint32_t GetRootId()    const { return m_root_id; }
+
+    // All root node IDs (nodes with parent_id == UINT32_MAX).
+    std::vector<uint32_t> GetRoots() const;
 
     const VersionNode* GetNode(uint32_t id) const;
     size_t             GetNodeCount() const { return m_nodes.size(); }
@@ -215,10 +245,13 @@ private:
     std::unordered_map<uint32_t, VersionNode> m_nodes;
 
     uint32_t m_current_id = UINT32_MAX;
-    uint32_t m_root_id    = UINT32_MAX;
+    uint32_t m_root_id    = UINT32_MAX;   // primary root
     uint32_t m_next_id    = 0;
 
     PoolPtr  m_current_pool;  // shared immutable snapshot of the current version
+
+    // Pool snapshots for every root node (needed to navigate across root chains).
+    std::unordered_map<uint32_t, PoolPtr> m_root_pools;
 };
 
 } // namespace brepdb

@@ -30,9 +30,12 @@
 namespace
 {
 
+// Single-body op: commit as child of input shape's version node.
+// Stores the new version_id back into dst.
 void commit_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
                   const std::shared_ptr<brepdb::VersionTree>& vt,
-                  const TopoDS_Shape& shape,
+                  const std::shared_ptr<partgraph::TopoShape>& src,
+                  const std::shared_ptr<partgraph::TopoShape>& dst,
                   const breptopo::TopoNaming::PidMap& pid_map,
                   const std::string& op_name)
 {
@@ -41,8 +44,65 @@ void commit_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
     }
     brepdb::GeomSender sender(tn);
     brepdb::GeometryPool new_pool;
-    sender.Serialize(shape, new_pool);
-    vt->Commit(new_pool, pid_map, op_name);
+    sender.Serialize(dst->GetShape(), new_pool);
+
+    uint32_t parent_id = src->GetVersionId();
+    uint32_t new_id;
+    if (parent_id == partgraph::TopoShape::NO_VERSION) {
+        new_id = vt->Commit(new_pool, pid_map, op_name);
+    } else {
+        auto diff = brepdb::VersionTree::BuildDiffFromPidMapping(
+            *vt->Checkout(parent_id), new_pool, pid_map);
+        new_id = vt->Branch(parent_id, new_pool, std::move(diff), op_name);
+    }
+    dst->SetVersionId(new_id);
+}
+
+// Boolean-op variant: creates a merge node.
+// primary_parent comes from the main body's version_id,
+// the tool body's version_id becomes an auxiliary parent.
+//
+// tool_pool must be serialized BEFORE tn->Update(), because Update()
+// unbinds the old shapes (including the tool body) from the HistGraph.
+void merge_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
+                 const std::shared_ptr<brepdb::VersionTree>& vt,
+                 const std::shared_ptr<partgraph::TopoShape>& main_src,
+                 const std::shared_ptr<partgraph::TopoShape>& tool_src,
+                 const std::shared_ptr<partgraph::TopoShape>& dst,
+                 brepdb::GeometryPool&& tool_pool,
+                 const breptopo::TopoNaming::PidMap& pid_map,
+                 const std::string& op_name)
+{
+    if (!tn || !vt) {
+        return;
+    }
+
+    // If tool body was already committed, use its existing version node.
+    // Otherwise register it as a new independent root.
+    uint32_t tool_vid = tool_src->GetVersionId();
+    if (tool_vid == partgraph::TopoShape::NO_VERSION) {
+        tool_vid = vt->AddRoot(tool_pool, op_name + "_tool");
+    }
+
+    brepdb::GeomSender sender(tn);
+    brepdb::GeometryPool result_pool;
+    sender.Serialize(dst->GetShape(), result_pool);
+
+    uint32_t primary_id = main_src->GetVersionId();
+    uint32_t new_id = vt->Merge(primary_id, { tool_vid },
+                                result_pool, pid_map, op_name);
+    dst->SetVersionId(new_id);
+}
+
+// Serialize a shape into a GeometryPool using the current HistGraph state.
+// Call this BEFORE tn->Update() so the shapes are still bound.
+brepdb::GeometryPool serialize_pool(const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                    const TopoDS_Shape& shape)
+{
+    brepdb::GeomSender sender(tn);
+    brepdb::GeometryPool pool;
+    sender.Serialize(shape, pool);
+    return pool;
 }
 
 }
@@ -79,7 +139,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         pid_map = tn->Update(fillet, fillet.Shape(), shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(fillet.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "fillet");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "fillet");
     return dst;
 }
 
@@ -112,7 +172,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         pid_map = tn->Update(chamfer, chamfer.Shape(), shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(chamfer.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "chamfer");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "chamfer");
     return dst;
 }
 
@@ -127,7 +187,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& fac
         pid_map = tn->Update(prism, prism.Shape(), face->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(prism.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "prism");
+    commit_to_vt(tn, vt, face, dst, pid_map, "prism");
     return dst;
 }
 
@@ -151,6 +211,10 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
         algo.DumpErrors(std::cout);
     }
 
+    // Serialize tool BEFORE tn->Update() unbinds its shapes
+    brepdb::GeometryPool tool_pool;
+    if (tn && vt) { tool_pool = serialize_pool(tn, tool->GetShape()); }
+
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
@@ -159,7 +223,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "split");
+    merge_to_vt(tn, vt, base, tool, dst, std::move(tool_pool), pid_map, "split");
     return dst;
 }
 
@@ -177,6 +241,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         algo.DumpErrors(std::cout);
     }
 
+    brepdb::GeometryPool tool_pool;
+    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
@@ -185,7 +252,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "cut");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "cut");
     return dst;
 }
 
@@ -203,6 +270,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         algo.DumpErrors(std::cout);
     }
 
+    brepdb::GeometryPool tool_pool;
+    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
@@ -211,7 +281,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "fuse");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "fuse");
     return dst;
 }
 
@@ -229,6 +299,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
         algo.DumpErrors(std::cout);
     }
 
+    brepdb::GeometryPool tool_pool;
+    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
@@ -237,7 +310,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "common");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "common");
     return dst;
 }
 
@@ -258,6 +331,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
         algo.DumpErrors(std::cout);
     }
 
+    brepdb::GeometryPool tool_pool;
+    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
     {
@@ -266,7 +342,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "section");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "section");
     return dst;
 }
 
@@ -321,7 +397,7 @@ std::shared_ptr<TopoShape> TopoAlgo::UnifySameDomain(const std::shared_ptr<TopoS
         pid_map = tn->Update(o_hist, algo.Shape(), shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "unify_same_domain");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "unify_same_domain");
     return dst;
 }
 
@@ -338,7 +414,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Translate(const std::shared_ptr<TopoShape>&
         pid_map = tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(trans.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "translate");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "translate");
     return dst;
 }
 
@@ -360,7 +436,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Mirror(const std::shared_ptr<TopoShape>& sh
         pid_map = tn->Update(trans, trans.Shape(), shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(trans.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "mirror");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "mirror");
     return dst;
 }
 
@@ -382,7 +458,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Draft(const std::shared_ptr<TopoShape>& sha
         pid_map = tn->Update(draft, draft.Shape(), shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(draft.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "draft");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "draft");
     return dst;
 }
 
@@ -403,7 +479,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         pid_map = tn->Update(thick_solid, thick_solid.Shape(), shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(thick_solid.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "thick_solid");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "thick_solid");
     return dst;
 }
 
@@ -423,7 +499,8 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
         pid_map = tn->Update(thru_sections, thru_sections.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(thru_sections.Shape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "thru_sections");
+    auto dummy_src = std::make_shared<partgraph::TopoShape>();
+    commit_to_vt(tn, vt, dummy_src, dst, pid_map, "thru_sections");
     return dst;
 }
 
@@ -441,7 +518,7 @@ std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape
         pid_map = tn->Update(builder, shape->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(builder.GetResultShape());
-    commit_to_vt(tn, vt, dst->GetShape(), pid_map, "offset_shape");
+    commit_to_vt(tn, vt, shape, dst, pid_map, "offset_shape");
     return dst;
 }
 

@@ -400,14 +400,18 @@ struct MemReader
     }
 };
 
-// Write all nodes in BFS order (root first).
+// Write all nodes in BFS order (roots first), DAG-safe.
 void WriteNodesBfs(std::ofstream& os,
                    const std::unordered_map<uint32_t, brepdb::VersionNode>& nodes,
-                   uint32_t root_id,
+                   const std::vector<uint32_t>& root_ids,
                    bool include_diff)
 {
+    std::set<uint32_t> visited;
     std::queue<uint32_t> q;
-    if (root_id != UINT32_MAX) { q.push(root_id); }
+    for (uint32_t rid : root_ids)
+    {
+        if (rid != UINT32_MAX) { q.push(rid); visited.insert(rid); }
+    }
 
     while (!q.empty())
     {
@@ -421,6 +425,10 @@ void WriteNodesBfs(std::ofstream& os,
 
         Wr32(os, node.id);
         Wr32(os, node.parent_id);
+
+        Wr32(os, static_cast<uint32_t>(node.aux_parent_ids.size()));
+        for (uint32_t ap : node.aux_parent_ids) { Wr32(os, ap); }
+
         Wr32(os, static_cast<uint32_t>(node.children.size()));
         for (uint32_t c : node.children) { Wr32(os, c); }
 
@@ -430,16 +438,23 @@ void WriteNodesBfs(std::ofstream& os,
 
         if (include_diff && node.parent_id != UINT32_MAX) { WrDiff(os, node.diff); }
 
-        for (uint32_t c : node.children) { q.push(c); }
+        for (uint32_t c : node.children)
+        {
+            if (visited.insert(c).second) { q.push(c); }
+        }
     }
 }
 
 void WriteNodesBfs(MemWriter& w,
                    const std::unordered_map<uint32_t, brepdb::VersionNode>& nodes,
-                   uint32_t root_id)
+                   const std::vector<uint32_t>& root_ids)
 {
+    std::set<uint32_t> visited;
     std::queue<uint32_t> q;
-    if (root_id != UINT32_MAX) { q.push(root_id); }
+    for (uint32_t rid : root_ids)
+    {
+        if (rid != UINT32_MAX) { q.push(rid); visited.insert(rid); }
+    }
 
     while (!q.empty())
     {
@@ -453,6 +468,10 @@ void WriteNodesBfs(MemWriter& w,
 
         w.W32(node.id);
         w.W32(node.parent_id);
+
+        w.W32(static_cast<uint32_t>(node.aux_parent_ids.size()));
+        for (uint32_t ap : node.aux_parent_ids) { w.W32(ap); }
+
         w.W32(static_cast<uint32_t>(node.children.size()));
         for (uint32_t c : node.children) { w.W32(c); }
 
@@ -462,7 +481,10 @@ void WriteNodesBfs(MemWriter& w,
 
         if (node.parent_id != UINT32_MAX) { w.WDiff(node.diff); }
 
-        for (uint32_t c : node.children) { q.push(c); }
+        for (uint32_t c : node.children)
+        {
+            if (visited.insert(c).second) { q.push(c); }
+        }
     }
 }
 
@@ -477,6 +499,10 @@ uint32_t ReadNodes(std::ifstream& is,
         brepdb::VersionNode node;
         node.id        = Rd32(is);
         node.parent_id = Rd32(is);
+
+        uint32_t ac = Rd32(is);
+        node.aux_parent_ids.resize(ac);
+        for (uint32_t j = 0; j < ac; ++j) { node.aux_parent_ids[j] = Rd32(is); }
 
         uint32_t cc = Rd32(is);
         node.children.resize(cc);
@@ -504,6 +530,10 @@ uint32_t ReadNodes(MemReader& r,
         brepdb::VersionNode node;
         node.id        = r.R32();
         node.parent_id = r.R32();
+
+        uint32_t ac = r.R32();
+        node.aux_parent_ids.resize(ac);
+        for (uint32_t j = 0; j < ac; ++j) { node.aux_parent_ids[j] = r.R32(); }
 
         uint32_t cc = r.R32();
         node.children.resize(cc);
@@ -696,7 +726,30 @@ uint32_t VersionTree::InitRoot(const GeometryPool& pool, const std::string& desc
 
     m_nodes[id] = std::move(node);
     m_current_pool = std::make_shared<GeometryPool>(pool);
+    m_root_pools[id] = m_current_pool;
 
+    return id;
+}
+
+uint32_t VersionTree::AddRoot(const GeometryPool& pool,
+                               const std::string&  op_desc,
+                               uint32_t            op_type)
+{
+    if (m_root_id == UINT32_MAX) {
+        return InitRoot(pool, op_desc, op_type);
+    }
+
+    uint32_t id = AllocNodeId();
+
+    VersionNode node;
+    node.id        = id;
+    node.parent_id = UINT32_MAX;
+    node.op_desc   = op_desc;
+    node.op_type   = op_type;
+    node.timestamp = NowMs();
+
+    m_nodes[id] = std::move(node);
+    m_root_pools[id] = std::make_shared<GeometryPool>(pool);
     return id;
 }
 
@@ -767,6 +820,55 @@ uint32_t VersionTree::Branch(uint32_t            parent_id,
     return new_id;
 }
 
+uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
+                             const std::vector<uint32_t>&   aux_parent_ids,
+                             const GeometryPool&            new_pool,
+                             PoolDiff&&                     diff,
+                             const std::string&             op_desc,
+                             uint32_t                       op_type)
+{
+    assert(m_nodes.count(primary_parent_id));
+    if (primary_parent_id != m_current_id) { NavigateTo(primary_parent_id); }
+
+    uint32_t new_id = AllocNodeId();
+
+    VersionNode node;
+    node.id             = new_id;
+    node.parent_id      = primary_parent_id;
+    node.aux_parent_ids = aux_parent_ids;
+    node.op_desc        = op_desc;
+    node.op_type        = op_type;
+    node.timestamp      = NowMs();
+    node.diff           = std::move(diff);
+
+    m_nodes[primary_parent_id].children.push_back(new_id);
+    for (uint32_t aux_id : aux_parent_ids)
+    {
+        assert(m_nodes.count(aux_id));
+        m_nodes[aux_id].children.push_back(new_id);
+    }
+    m_nodes[new_id] = std::move(node);
+
+    m_current_id   = new_id;
+    m_current_pool = std::make_shared<GeometryPool>(new_pool);
+
+    return new_id;
+}
+
+uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
+                             const std::vector<uint32_t>&   aux_parent_ids,
+                             const GeometryPool&            new_pool,
+                             const PidMapping&              pid_map,
+                             const std::string&             op_desc,
+                             uint32_t                       op_type)
+{
+    assert(m_nodes.count(primary_parent_id));
+    if (primary_parent_id != m_current_id) { NavigateTo(primary_parent_id); }
+
+    PoolDiff diff = BuildDiffFromPidMapping(*m_current_pool, new_pool, pid_map);
+    return Merge(primary_parent_id, aux_parent_ids, new_pool, std::move(diff), op_desc, op_type);
+}
+
 // ============================================================
 // VersionTree — navigation
 // ============================================================
@@ -802,6 +904,16 @@ PoolPtr VersionTree::Redo(int child_index)
 // ============================================================
 // VersionTree — query
 // ============================================================
+
+std::vector<uint32_t> VersionTree::GetRoots() const
+{
+    std::vector<uint32_t> roots;
+    for (const auto& [id, node] : m_nodes)
+    {
+        if (node.parent_id == UINT32_MAX) { roots.push_back(id); }
+    }
+    return roots;
+}
 
 const VersionNode* VersionTree::GetNode(uint32_t id) const
 {
@@ -852,10 +964,19 @@ std::vector<uint32_t> VersionTree::GetLeaves() const
 
 void VersionTree::TraverseAll(const std::function<void(const VersionNode&)>& visitor) const
 {
-    if (m_root_id == UINT32_MAX) { return; }
+    if (m_nodes.empty()) { return; }
 
+    std::set<uint32_t> visited;
     std::queue<uint32_t> bfs;
-    bfs.push(m_root_id);
+
+    for (const auto& [id, node] : m_nodes)
+    {
+        if (node.parent_id == UINT32_MAX)
+        {
+            bfs.push(id);
+            visited.insert(id);
+        }
+    }
 
     while (!bfs.empty())
     {
@@ -866,7 +987,10 @@ void VersionTree::TraverseAll(const std::function<void(const VersionNode&)>& vis
         if (it == m_nodes.end()) { continue; }
 
         visitor(it->second);
-        for (uint32_t c : it->second.children) { bfs.push(c); }
+        for (uint32_t c : it->second.children)
+        {
+            if (visited.insert(c).second) { bfs.push(c); }
+        }
     }
 }
 
@@ -1148,28 +1272,49 @@ void VersionTree::NavigateTo(uint32_t target_id)
 {
     if (m_current_id == target_id) { return; }
 
-    uint32_t lca = FindLCA(m_current_id, target_id);
+    auto cur_path = GetPathFromRoot(m_current_id);
+    auto tgt_path = GetPathFromRoot(target_id);
 
-    // Walk up from current to LCA, applying reverse diffs
-    uint32_t cur = m_current_id;
-    while (cur != lca)
+    uint32_t cur_root = cur_path.front();
+    uint32_t tgt_root = tgt_path.front();
+
+    if (cur_root == tgt_root)
     {
-        auto it = m_nodes.find(cur);
-        m_current_pool = std::make_shared<GeometryPool>(
-            ApplyReverse(*m_current_pool, it->second.diff));
-        cur = it->second.parent_id;
+        // Same root chain — LCA-based navigation
+        uint32_t lca = FindLCA(m_current_id, target_id);
+
+        uint32_t cur = m_current_id;
+        while (cur != lca)
+        {
+            auto it = m_nodes.find(cur);
+            m_current_pool = std::make_shared<GeometryPool>(
+                ApplyReverse(*m_current_pool, it->second.diff));
+            cur = it->second.parent_id;
+        }
+
+        auto lca_it = std::find(tgt_path.begin(), tgt_path.end(), lca);
+        assert(lca_it != tgt_path.end());
+
+        for (auto it = lca_it + 1; it != tgt_path.end(); ++it)
+        {
+            auto node_it = m_nodes.find(*it);
+            m_current_pool = std::make_shared<GeometryPool>(
+                ApplyForward(*m_current_pool, node_it->second.diff));
+        }
     }
-
-    // Walk down from LCA to target, applying forward diffs
-    auto path  = GetPathFromRoot(target_id);
-    auto lca_it = std::find(path.begin(), path.end(), lca);
-    assert(lca_it != path.end());
-
-    for (auto it = lca_it + 1; it != path.end(); ++it)
+    else
     {
-        auto node_it = m_nodes.find(*it);
-        m_current_pool = std::make_shared<GeometryPool>(
-            ApplyForward(*m_current_pool, node_it->second.diff));
+        // Cross-root navigation — start from target's root pool
+        auto rp = m_root_pools.find(tgt_root);
+        assert(rp != m_root_pools.end());
+        m_current_pool = rp->second;
+
+        for (size_t i = 1; i < tgt_path.size(); ++i)
+        {
+            auto node_it = m_nodes.find(tgt_path[i]);
+            m_current_pool = std::make_shared<GeometryPool>(
+                ApplyForward(*m_current_pool, node_it->second.diff));
+        }
     }
 
     m_current_id = target_id;
@@ -1201,14 +1346,7 @@ bool VersionTree::SaveToFile(const std::string& filepath) const
     std::ofstream os(filepath, std::ios::binary);
     if (!os) { return false; }
 
-    // Reconstruct root pool by reversing all diffs from current back to root
-    GeometryPool root_pool = *m_current_pool;
-    auto path = GetPathFromRoot(m_current_id);
-    for (int i = static_cast<int>(path.size()) - 1; i > 0; --i)
-    {
-        auto it = m_nodes.find(path[i]);
-        root_pool = ApplyReverse(root_pool, it->second.diff);
-    }
+    auto roots = GetRoots();
 
     FileHeader fh;
     fh.magic      = FILE_MAGIC;
@@ -1216,12 +1354,33 @@ bool VersionTree::SaveToFile(const std::string& filepath) const
     fh.node_count = static_cast<uint32_t>(m_nodes.size());
     fh.root_id    = m_root_id;
     fh.current_id = m_current_id;
-    fh.reserved0  = 0;
+    fh.reserved0  = static_cast<uint32_t>(roots.size());
     fh.reserved1  = 0;
 
     os.write(reinterpret_cast<const char*>(&fh), sizeof(fh));
-    WrPool(os, root_pool);
-    WriteNodesBfs(os, m_nodes, m_root_id, true);
+
+    // Write root count and each root's id + pool
+    Wr32(os, static_cast<uint32_t>(roots.size()));
+    for (uint32_t rid : roots)
+    {
+        Wr32(os, rid);
+        auto rp_it = m_root_pools.find(rid);
+        if (rp_it != m_root_pools.end()) {
+            WrPool(os, *rp_it->second);
+        } else {
+            // Reconstruct primary root pool from current position
+            GeometryPool root_pool = *m_current_pool;
+            auto path = GetPathFromRoot(m_current_id);
+            for (int i = static_cast<int>(path.size()) - 1; i > 0; --i)
+            {
+                auto it = m_nodes.find(path[i]);
+                root_pool = ApplyReverse(root_pool, it->second.diff);
+            }
+            WrPool(os, root_pool);
+        }
+    }
+
+    WriteNodesBfs(os, m_nodes, roots, true);
 
     return true;
 }
@@ -1239,12 +1398,23 @@ bool VersionTree::LoadFromFile(const std::string& filepath)
     m_root_id    = fh.root_id;
     m_current_id = fh.root_id;
 
-    GeometryPool root_pool = RdPool(is);
+    // Read all root pools
+    uint32_t root_count = Rd32(is);
+    for (uint32_t i = 0; i < root_count; ++i)
+    {
+        uint32_t rid = Rd32(is);
+        GeometryPool pool = RdPool(is);
+        m_root_pools[rid] = std::make_shared<GeometryPool>(std::move(pool));
+    }
 
     uint32_t max_id = ReadNodes(is, fh.node_count, m_nodes, true);
     m_next_id       = max_id + 1;
 
-    m_current_pool = std::make_shared<GeometryPool>(std::move(root_pool));
+    // Set current pool to primary root
+    auto rp_it = m_root_pools.find(m_root_id);
+    if (rp_it != m_root_pools.end()) {
+        m_current_pool = rp_it->second;
+    }
 
     if (fh.current_id != m_root_id)
     {
@@ -1263,17 +1433,19 @@ void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 {
     MemWriter w;
 
+    auto roots = GetRoots();
+
     // Header
     w.W32(FILE_MAGIC);
     w.W32(FILE_VERSION);
     w.W32(static_cast<uint32_t>(m_nodes.size()));
     w.W32(m_root_id);
     w.W32(m_current_id);
-    w.W32(0);  // reserved
+    w.W32(static_cast<uint32_t>(roots.size()));
     w.W32(0);  // reserved
 
     // Nodes — no root pool snapshot; entity data lives in the RTree
-    WriteNodesBfs(w, m_nodes, m_root_id);
+    WriteNodesBfs(w, m_nodes, roots);
 
     len  = static_cast<uint32_t>(w.buf.size());
     *buf = new uint8_t[len];
@@ -1312,6 +1484,7 @@ void VersionTree::LoadFromByteArray(const uint8_t*      buf,
 void VersionTree::Clear()
 {
     m_nodes.clear();
+    m_root_pools.clear();
     m_current_pool = {};
     m_current_id   = UINT32_MAX;
     m_root_id      = UINT32_MAX;

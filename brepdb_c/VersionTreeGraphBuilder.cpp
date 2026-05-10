@@ -7,6 +7,7 @@
 #include <graph/GraphLayout.h>
 
 #include <queue>
+#include <set>
 #include <unordered_map>
 
 namespace brepdb
@@ -20,12 +21,17 @@ VersionTreeGraphBuilder::BuildGraph(const VersionTree& tree)
 
     if (tree.GetNodeCount() == 0) { return graph; }
 
-    // BFS to collect nodes in order and build version_id -> graph_index map
+    // BFS from all roots (DAG-safe with visited set)
     std::unordered_map<uint32_t, size_t> id_to_idx;
     std::vector<uint32_t> bfs_order;
+    std::set<uint32_t> visited;
 
     std::queue<uint32_t> q;
-    q.push(tree.GetRootId());
+    for (uint32_t root : tree.GetRoots())
+    {
+        q.push(root);
+        visited.insert(root);
+    }
 
     while (!q.empty())
     {
@@ -39,7 +45,10 @@ VersionTreeGraphBuilder::BuildGraph(const VersionTree& tree)
         id_to_idx[vid] = idx;
         bfs_order.push_back(vid);
 
-        for (uint32_t child : vnode->children) { q.push(child); }
+        for (uint32_t child : vnode->children)
+        {
+            if (visited.insert(child).second) { q.push(child); }
+        }
     }
 
     // Create graph nodes

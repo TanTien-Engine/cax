@@ -115,7 +115,7 @@ class VersionGraph is Node
 			if (version_id != nil) {
 				var ir = vt.checkout(version_id)
 				this.v_ir = Variant(VAR_TYPE_BREP_IR, ir)
-				break
+				return
 			}
 		}
 	}

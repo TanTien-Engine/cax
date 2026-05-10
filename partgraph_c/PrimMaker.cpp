@@ -54,7 +54,7 @@ std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "plane");
+            shape->SetVersionId(vt->AddRoot(new_pool, "plane"));
         }
     }
     catch (Standard_Failure& e) {
@@ -83,7 +83,7 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint3
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "box");
+            shape->SetVersionId(vt->AddRoot(new_pool, "box"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build box fail: %s", e.GetMessageString());
@@ -111,7 +111,7 @@ std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length, uin
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "cylinder");
+            shape->SetVersionId(vt->AddRoot(new_pool, "cylinder"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build cylinder fail: %s", e.GetMessageString());
@@ -139,7 +139,7 @@ std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height, 
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "cone");
+            shape->SetVersionId(vt->AddRoot(new_pool, "cone"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build cone fail: %s", e.GetMessageString());
@@ -167,7 +167,7 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, uint32_t op_id,
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "sphere");
+            shape->SetVersionId(vt->AddRoot(new_pool, "sphere"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build sphere fail: %s", e.GetMessageString());
@@ -195,7 +195,7 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle, uint32
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "sphere");
+            shape->SetVersionId(vt->AddRoot(new_pool, "sphere"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build sphere fail: %s", e.GetMessageString());
@@ -223,7 +223,7 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, uint32_t op_id
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "torus");
+            shape->SetVersionId(vt->AddRoot(new_pool, "torus"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build torus fail: %s", e.GetMessageString());
@@ -251,7 +251,7 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle, 
             brepdb::GeomSender sender(tn);
             brepdb::GeometryPool new_pool;
             sender.Serialize(shape->GetShape(), new_pool);
-            vt->Commit(new_pool, pid_map, "torus");
+            shape->SetVersionId(vt->AddRoot(new_pool, "torus"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build torus fail: %s", e.GetMessageString());
@@ -319,7 +319,7 @@ std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height,
         brepdb::GeomSender sender(tn);
         brepdb::GeometryPool new_pool;
         sender.Serialize(shape->GetShape(), new_pool);
-        vt->Commit(new_pool, pid_map, "threading");
+        shape->SetVersionId(vt->AddRoot(new_pool, "threading"));
     }
     return shape;
 }

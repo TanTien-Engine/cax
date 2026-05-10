@@ -55,19 +55,42 @@ _editor.add_node(node8, -221.36614702984, 223.19765254884)
 var node9 = ::blueprint::nodes::cache::Cache()
 node9.query_param("disable").value = false
 
-_editor.add_node(node9, 5.121942669678, 245.89416310358)
+_editor.add_node(node9, 167.69043452517, 184.36650472772)
 
 var node10 = ::brepdb::nodes::deserialize::Deserialize()
 
-_editor.add_node(node10, 448.04449728672, -216.51396352708)
+_editor.add_node(node10, 450.86686693699, -158.37314873154)
 
-Blueprint.connect(node10, "shape", node6, "shape")
+var node11 = ::partgraph::nodes::box::Box()
+node11.query_param("length").value = 0.2
+node11.query_param("width").value = 2
+node11.query_param("height").value = 2
+
+_editor.add_node(node11, -400.29147401642, -77.796020007216)
+
+var node12 = ::partgraph::nodes::translate::Translate()
+node12.query_param("offset").value.set(0.5, -0.5, -0.5)
+
+_editor.add_node(node12, -245.9252937226, -68.060266929916)
+
+var node13 = ::partgraph::nodes::cut::Cut()
+
+_editor.add_node(node13, -11.147977317495, 130.60872749328)
+
+var node14 = ::brepdb::nodes::version_graph::VersionGraph()
+
+_editor.add_node(node14, 301.80463169618, -174.31131026496)
+
+Blueprint.connect(node14, "ir", node10, "ir")
+Blueprint.connect(node11, "shape", node12, "shape")
 Blueprint.connect(node0, "shape", node5, "var")
 Blueprint.connect(node5, "var", node7, "shape")
 Blueprint.connect(node2, "this", node7, "camera")
 Blueprint.connect(node5, "var", node8, "shape")
 Blueprint.connect(node7, "objs", node8, "edges")
-Blueprint.connect(node8, "shape", node9, "var")
+Blueprint.connect(node8, "shape", node13, "a")
+Blueprint.connect(node12, "shape", node13, "b")
+Blueprint.connect(node13, "shape", node9, "var")
 Blueprint.connect(node9, "var", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
 Blueprint.connect(node3, "var", node4, "geos")
