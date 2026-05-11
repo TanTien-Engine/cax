@@ -70,11 +70,6 @@ var node12 = ::brepdb::nodes::serialize::Serialize()
 
 _editor.add_node(node12, 103.64482333694, 423.50875116485)
 
-var node13 = ::brepdb::nodes::save_i_r::SaveIR()
-node13.query_param("filename").value = "test_ir"
-
-_editor.add_node(node13, 252.04502057161, 424.75060742053)
-
 var node15 = ::brepdb::nodes::deserialize::Deserialize()
 
 _editor.add_node(node15, 403.96875172696, 317.19117347548)
@@ -95,7 +90,6 @@ _editor.add_node(node18, -21.147005661666, 263.29382953867)
 
 Blueprint.connect(node15, "shape", node1, "shape")
 Blueprint.connect(node1, "va", node3, "var")
-Blueprint.connect(node12, "ir", node13, "ir")
 Blueprint.connect(node11, "selected", node7, "shape")
 Blueprint.connect(node3, "var", node4, "geos")
 Blueprint.connect(node2, "this", node4, "view_cam")
