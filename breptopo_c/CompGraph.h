@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ShapeCache.h"
+
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -122,7 +124,8 @@ struct IRNode
 	bool        dead = false;
 	uint64_t    version      = 1;
 	uint64_t    eval_version = 0;
-	Val         cached       = {};
+	Val         cached       = {};         // non-shape values only
+	uint32_t    vt_node_id   = UINT32_MAX; // VersionTree node for shape restore
 };
 
 class IRGraph
@@ -216,6 +219,14 @@ private:
 //  Evaluator
 // ---------------------------------------------------------------
 
+// Callback: persist a shape result, return a version-tree node id.
+//   (nref_id, val) -> vt_node_id   (UINT32_MAX = not stored)
+using CommitFn  = std::function<uint32_t(uint32_t nref_id, const Val& val)>;
+
+// Callback: restore a shape from version-tree node id.
+//   (vt_node_id) -> Val            (monostate = restore failed)
+using RestoreFn = std::function<Val(uint32_t vt_node_id)>;
+
 class Evaluator
 {
 public:
@@ -224,13 +235,26 @@ public:
 	Val Run(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn);
 	void Invalidate(IRGraph& g, NRef ref);
 
-	size_t CacheHits()   const { return m_hits; }
-	size_t CacheMisses() const { return m_misses; }
-	void ResetStats() { m_hits = m_misses = 0; }
+	Val ResolveVal(const IRGraph& g, NRef ref) const;
+
+	LruCache<Val>&       GetShapeCache()       { return m_shape_cache; }
+	const LruCache<Val>& GetShapeCache() const { return m_shape_cache; }
+
+	void SetCommitFn(CommitFn fn)   { m_commit_fn = std::move(fn); }
+	void SetRestoreFn(RestoreFn fn) { m_restore_fn = std::move(fn); }
+
+	size_t CacheHits()    const { return m_hits; }
+	size_t CacheMisses()  const { return m_misses; }
+	size_t CacheRestores() const { return m_restores; }
+	void ResetStats() { m_hits = m_misses = m_restores = 0; }
 
 private:
 	const OpRegistry& m_reg;
+	mutable LruCache<Val> m_shape_cache{64};
+	CommitFn  m_commit_fn;
+	RestoreFn m_restore_fn;
 	size_t m_hits = 0, m_misses = 0;
+	mutable size_t m_restores = 0;
 
 	Val EvalNode(IRGraph& g, NRef ref,
 	             const std::shared_ptr<TopoNaming>& tn,
@@ -320,6 +344,15 @@ public:
 	void Lower(int root_step);
 	void Optimize();
 
+	// --- shape restore (version tree integration) ---
+	//
+	// The external design system manages the VersionTree. After it
+	// commits a shape, it calls SetNodeVersion() to record the mapping.
+	// SetRestoreFn() tells the Evaluator how to recover an evicted shape.
+	//
+	void SetRestoreFn(RestoreFn fn);
+	void SetNodeVersion(int ext_id, uint32_t vt_node_id);
+
 	// --- evaluation ---
 	Val Eval(int ext_id);
 
@@ -347,6 +380,8 @@ private:
 	IRGraph    m_ir;
 	Optimizer  m_opt;
 	Evaluator  m_eval;
+
+	std::shared_ptr<TopoNaming>          m_tn;
 
 	struct NodeMeta
 	{

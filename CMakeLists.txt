@@ -17,9 +17,11 @@ source_group("breptopo" FILES ${breptopo})
 
 set(breptopo__computation
     "breptopo_c/CompGraph.cpp"
+    "breptopo_c/CompGraphCore.cpp"
     "breptopo_c/CompGraph.h"
     "breptopo_c/CompGraphBuilder.cpp"
     "breptopo_c/CompGraphBuilder.h"
+    "breptopo_c/ShapeCache.h"
     "breptopo_c/comp_ops.cpp"
     "breptopo_c/comp_ops.h"
 )
@@ -250,4 +252,5 @@ option(CAX_BUILD_TESTS "Build unit tests" ON)
 if(CAX_BUILD_TESTS)
     enable_testing()
     add_subdirectory(brepdb_test)
+    add_subdirectory(breptopo_test)
 endif()

@@ -15,7 +15,7 @@ namespace
 {
 
 constexpr uint32_t FILE_MAGIC   = 0x56544244; // "VTBD"
-constexpr uint32_t FILE_VERSION = 3;
+constexpr uint32_t FILE_VERSION = 1;
 
 struct FileHeader
 {
