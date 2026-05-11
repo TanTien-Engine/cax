@@ -7,7 +7,6 @@
 
 #include <breptopo_c/TopoNaming.h>
 #include <brepdb_c/WorldSender.h>
-#include <brepdb_c/GeomPool.h>
 #include <brepdb_c/VersionTree.h>
 
 #include <logger/logger.h>
@@ -54,8 +53,7 @@ std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "plane"));
+            shape->SetVersionId(vt->AddRoot(world, "plane"));
         }
     }
     catch (Standard_Failure& e) {
@@ -84,8 +82,7 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint3
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "box"));
+            shape->SetVersionId(vt->AddRoot(world, "box"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build box fail: %s", e.GetMessageString());
@@ -113,8 +110,7 @@ std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length, uin
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "cylinder"));
+            shape->SetVersionId(vt->AddRoot(world, "cylinder"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build cylinder fail: %s", e.GetMessageString());
@@ -142,8 +138,7 @@ std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height, 
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "cone"));
+            shape->SetVersionId(vt->AddRoot(world, "cone"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build cone fail: %s", e.GetMessageString());
@@ -171,8 +166,7 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, uint32_t op_id,
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "sphere"));
+            shape->SetVersionId(vt->AddRoot(world, "sphere"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build sphere fail: %s", e.GetMessageString());
@@ -200,8 +194,7 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle, uint32
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "sphere"));
+            shape->SetVersionId(vt->AddRoot(world, "sphere"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build sphere fail: %s", e.GetMessageString());
@@ -229,8 +222,7 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, uint32_t op_id
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "torus"));
+            shape->SetVersionId(vt->AddRoot(world, "torus"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build torus fail: %s", e.GetMessageString());
@@ -258,8 +250,7 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle, 
             brepdb::WorldSender sender(tn);
             brepdb::BRepWorld world;
             sender.Serialize(shape->GetShape(), world);
-            brepdb::GeometryPool new_pool = world.ExportToPool();
-            shape->SetVersionId(vt->AddRoot(new_pool, "torus"));
+            shape->SetVersionId(vt->AddRoot(world, "torus"));
         }
     } catch (Standard_Failure& e) {
         LOGI("Build torus fail: %s", e.GetMessageString());
@@ -327,8 +318,7 @@ std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height,
         brepdb::WorldSender sender(tn);
         brepdb::BRepWorld world;
         sender.Serialize(shape->GetShape(), world);
-        brepdb::GeometryPool new_pool = world.ExportToPool();
-        shape->SetVersionId(vt->AddRoot(new_pool, "threading"));
+        shape->SetVersionId(vt->AddRoot(world, "threading"));
     }
     return shape;
 }

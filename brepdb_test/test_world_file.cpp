@@ -175,7 +175,7 @@ TEST_CASE("WorldFile load bad magic returns false", "[world_file]")
     std::remove(filepath);
 }
 
-TEST_CASE("BRepWorld ExportToPool produces valid data_pool from typed components", "[world_file]")
+TEST_CASE("BRepWorld ExportEntityParams produces valid params from typed components", "[world_file]")
 {
     BRepWorld world;
 
@@ -200,36 +200,25 @@ TEST_CASE("BRepWorld ExportToPool produces valid data_pool from typed components
     curve.data = {0, 0, 0, 1, 0, 0};
     world.Curves().Set(10, curve);
 
-    GeometryPool pool = world.ExportToPool();
+    auto vparams = world.ExportEntityParams(1);
+    REQUIRE(vparams.size() == 4);  // xyz + tol
+    CHECK(vparams[0] == 1.0);
+    CHECK(vparams[1] == 2.0);
+    CHECK(vparams[2] == 3.0);
+    CHECK(vparams[3] == 0.01);
 
-    REQUIRE(pool.headers.size() == 2);
-    CHECK(pool.headers[0].persistent_id == 1);
-    CHECK(pool.headers[0].type == Type::Vertex);
-    CHECK(pool.headers[0].param_count == 4);  // xyz + tol
-
-    CHECK(pool.headers[1].persistent_id == 10);
-    CHECK(pool.headers[1].type == Type::Edge);
-    CHECK(pool.headers[1].param_count > 0);
-
-    // Vertex data: x, y, z, tolerance
-    uint32_t off = pool.headers[0].param_offset;
-    CHECK(pool.data_pool[off]     == 1.0);
-    CHECK(pool.data_pool[off + 1] == 2.0);
-    CHECK(pool.data_pool[off + 2] == 3.0);
-    CHECK(pool.data_pool[off + 3] == 0.01);
-
-    // Edge data: v_first, v_last, tol, t_first, t_last, curve_type, curve_data...
-    uint32_t eoff = pool.headers[1].param_offset;
-    CHECK(pool.data_pool[eoff]     == 1.0);   // v_first uid
-    CHECK(pool.data_pool[eoff + 1] == -1.0);  // v_last = UINT32_MAX -> -1
-    CHECK(pool.data_pool[eoff + 2] == 0.05);  // tolerance
-    CHECK(pool.data_pool[eoff + 3] == 0.0);   // t_first
-    CHECK(pool.data_pool[eoff + 4] == 1.0);   // t_last
-    CHECK(pool.data_pool[eoff + 5] == static_cast<double>(Type::Line)); // curve type
-    CHECK(pool.data_pool[eoff + 6] == 0.0);   // curve data[0]
+    auto eparams = world.ExportEntityParams(10);
+    REQUIRE(eparams.size() > 0);
+    CHECK(eparams[0] == 1.0);   // v_first uid
+    CHECK(eparams[1] == -1.0);  // v_last = UINT32_MAX -> -1
+    CHECK(eparams[2] == 0.05);  // tolerance
+    CHECK(eparams[3] == 0.0);   // t_first
+    CHECK(eparams[4] == 1.0);   // t_last
+    CHECK(eparams[5] == static_cast<double>(Type::Line)); // curve type
+    CHECK(eparams[6] == 0.0);   // curve data[0]
 }
 
-TEST_CASE("BRepWorld save/load then ExportToPool roundtrip", "[world_file]")
+TEST_CASE("BRepWorld save/load then ExportEntityParams roundtrip", "[world_file]")
 {
     auto world = make_test_world();
     const char* filepath = "/tmp/test_export_roundtrip.cwld";
@@ -239,13 +228,11 @@ TEST_CASE("BRepWorld save/load then ExportToPool roundtrip", "[world_file]")
     BRepWorld loaded;
     REQUIRE(WorldFile::Load(filepath, loaded));
 
-    GeometryPool pool = loaded.ExportToPool();
-    CHECK(pool.headers.size() == loaded.EntityCount());
-    CHECK_FALSE(pool.data_pool.empty());
+    CHECK(loaded.EntityCount() == world.EntityCount());
 
-    // Every entity should have non-zero param_count
-    for (auto& h : pool.headers)
-        CHECK(h.param_count > 0);
+    // Every entity should have non-empty params
+    for (uint32_t id : loaded.AliveEntities())
+        CHECK_FALSE(loaded.ExportEntityParams(id).empty());
 
     std::remove(filepath);
 }

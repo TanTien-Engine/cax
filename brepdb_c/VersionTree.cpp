@@ -15,7 +15,7 @@ namespace
 {
 
 constexpr uint32_t FILE_MAGIC   = 0x56544244; // "VTBD"
-constexpr uint32_t FILE_VERSION = 1;
+constexpr uint32_t FILE_VERSION = 2;
 
 struct FileHeader
 {
@@ -45,6 +45,12 @@ void Wr64(std::ofstream& os, uint64_t v) {
     os.write(reinterpret_cast<const char*>(&v), sizeof(v));
 }
 
+void WrF64(std::ofstream& os, const double* data, size_t count) {
+    if (count > 0)
+        os.write(reinterpret_cast<const char*>(data),
+                 static_cast<std::streamsize>(count * sizeof(double)));
+}
+
 void WrStr(std::ofstream& os, const std::string& s)
 {
     Wr32(os, static_cast<uint32_t>(s.size()));
@@ -55,7 +61,10 @@ void WrStr(std::ofstream& os, const std::string& s)
 
 void WrEnt(std::ofstream& os, const brepdb::EntityEntry& e)
 {
-    os.write(reinterpret_cast<const char*>(&e.header), sizeof(brepdb::GeomHeader));
+    Wr32(os, e.persistent_id);
+    Wr32(os, static_cast<uint32_t>(e.type));
+    WrF64(os, e.min_pt, 3);
+    WrF64(os, e.max_pt, 3);
     Wr32(os, static_cast<uint32_t>(e.params.size()));
     if (!e.params.empty()) {
         os.write(reinterpret_cast<const char*>(e.params.data()),
@@ -90,8 +99,12 @@ void WrDiff(std::ofstream& os, const brepdb::PoolDiff& d)
     {
         Wr32(os, m.old_persistent_id);
         Wr32(os, m.new_persistent_id);
-        os.write(reinterpret_cast<const char*>(&m.old_header), sizeof(brepdb::GeomHeader));
-        os.write(reinterpret_cast<const char*>(&m.new_header), sizeof(brepdb::GeomHeader));
+        Wr32(os, static_cast<uint32_t>(m.old_type));
+        Wr32(os, static_cast<uint32_t>(m.new_type));
+        WrF64(os, m.old_min_pt, 3);
+        WrF64(os, m.old_max_pt, 3);
+        WrF64(os, m.new_min_pt, 3);
+        WrF64(os, m.new_max_pt, 3);
         Wr32(os, m.old_param_count);
         Wr32(os, m.new_param_count);
         WrHunks(os, m.forward_hunks);
@@ -127,6 +140,12 @@ uint64_t Rd64(std::ifstream& is)
     return v;
 }
 
+void RdF64(std::ifstream& is, double* data, size_t count) {
+    if (count > 0)
+        is.read(reinterpret_cast<char*>(data),
+                static_cast<std::streamsize>(count * sizeof(double)));
+}
+
 std::string RdStr(std::ifstream& is)
 {
     uint32_t len = Rd32(is);
@@ -140,7 +159,10 @@ std::string RdStr(std::ifstream& is)
 brepdb::EntityEntry RdEnt(std::ifstream& is)
 {
     brepdb::EntityEntry e;
-    is.read(reinterpret_cast<char*>(&e.header), sizeof(brepdb::GeomHeader));
+    e.persistent_id = Rd32(is);
+    e.type = static_cast<brepdb::Type>(Rd32(is));
+    RdF64(is, e.min_pt, 3);
+    RdF64(is, e.max_pt, 3);
     uint32_t pc = Rd32(is);
     e.params.resize(pc);
     if (pc > 0) {
@@ -186,8 +208,12 @@ brepdb::PoolDiff RdDiff(std::ifstream& is)
         auto& m = d.modified[j];
         m.old_persistent_id = Rd32(is);
         m.new_persistent_id = Rd32(is);
-        is.read(reinterpret_cast<char*>(&m.old_header), sizeof(brepdb::GeomHeader));
-        is.read(reinterpret_cast<char*>(&m.new_header), sizeof(brepdb::GeomHeader));
+        m.old_type = static_cast<brepdb::Type>(Rd32(is));
+        m.new_type = static_cast<brepdb::Type>(Rd32(is));
+        RdF64(is, m.old_min_pt, 3);
+        RdF64(is, m.old_max_pt, 3);
+        RdF64(is, m.new_min_pt, 3);
+        RdF64(is, m.new_max_pt, 3);
         m.old_param_count = Rd32(is);
         m.new_param_count = Rd32(is);
         m.forward_hunks   = RdHunks(is);
@@ -211,36 +237,61 @@ brepdb::PoolDiff RdDiff(std::ifstream& is)
     return d;
 }
 
-void WrPool(std::ofstream& os, const brepdb::GeometryPool& pool)
+void WrWorld(std::ofstream& os, const brepdb::BRepWorld& world)
 {
-    Wr32(os, static_cast<uint32_t>(pool.headers.size()));
-    Wr32(os, static_cast<uint32_t>(pool.data_pool.size()));
-    if (!pool.headers.empty()) {
-        os.write(reinterpret_cast<const char*>(pool.headers.data()),
-                 static_cast<std::streamsize>(pool.headers.size() * sizeof(brepdb::GeomHeader)));
-    }
-    if (!pool.data_pool.empty()) {
-        os.write(reinterpret_cast<const char*>(pool.data_pool.data()),
-                 static_cast<std::streamsize>(pool.data_pool.size() * sizeof(double)));
+    const auto& alive = world.AliveEntities();
+    Wr32(os, static_cast<uint32_t>(alive.size()));
+    for (uint32_t id : alive)
+    {
+        Wr32(os, id);
+        const brepdb::Type* t = world.Types().Get(id);
+        Wr32(os, static_cast<uint32_t>(t ? *t : brepdb::Type::Empty));
+        const brepdb::AabbComp* aabb = world.Aabbs().Get(id);
+        double min_pt[3] = {0,0,0}, max_pt[3] = {0,0,0};
+        if (aabb) {
+            std::memcpy(min_pt, aabb->min_pt, sizeof(min_pt));
+            std::memcpy(max_pt, aabb->max_pt, sizeof(max_pt));
+        }
+        os.write(reinterpret_cast<const char*>(min_pt), sizeof(min_pt));
+        os.write(reinterpret_cast<const char*>(max_pt), sizeof(max_pt));
+        auto params = world.ExportEntityParams(id);
+        Wr32(os, static_cast<uint32_t>(params.size()));
+        if (!params.empty())
+            os.write(reinterpret_cast<const char*>(params.data()),
+                     static_cast<std::streamsize>(params.size() * sizeof(double)));
     }
 }
 
-brepdb::GeometryPool RdPool(std::ifstream& is)
+brepdb::WorldPtr RdWorld(std::ifstream& is)
 {
-    brepdb::GeometryPool pool;
-    uint32_t hc = Rd32(is);
-    uint32_t dc = Rd32(is);
-    pool.headers.resize(hc);
-    pool.data_pool.resize(dc);
-    if (hc > 0) {
-        is.read(reinterpret_cast<char*>(pool.headers.data()),
-                static_cast<std::streamsize>(hc * sizeof(brepdb::GeomHeader)));
+    auto w = std::make_shared<brepdb::BRepWorld>();
+    uint32_t count = Rd32(is);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        uint32_t id = Rd32(is);
+        brepdb::Type type = static_cast<brepdb::Type>(Rd32(is));
+        double min_pt[3], max_pt[3];
+        is.read(reinterpret_cast<char*>(min_pt), sizeof(min_pt));
+        is.read(reinterpret_cast<char*>(max_pt), sizeof(max_pt));
+        uint32_t pc = Rd32(is);
+        std::vector<double> params(pc);
+        if (pc > 0)
+            is.read(reinterpret_cast<char*>(params.data()),
+                    static_cast<std::streamsize>(pc * sizeof(double)));
+
+        w->RegisterEntity(id);
+        w->Types().Set(id, type);
+        brepdb::AabbComp aabb;
+        std::memcpy(aabb.min_pt, min_pt, sizeof(aabb.min_pt));
+        std::memcpy(aabb.max_pt, max_pt, sizeof(aabb.max_pt));
+        w->Aabbs().Set(id, aabb);
+        if (!params.empty()) {
+            brepdb::ParamsComp p;
+            p.data = std::move(params);
+            w->Params().Set(id, p);
+        }
     }
-    if (dc > 0) {
-        is.read(reinterpret_cast<char*>(pool.data_pool.data()),
-                static_cast<std::streamsize>(dc * sizeof(double)));
-    }
-    return pool;
+    return w;
 }
 
 // ---- memory buffer write helpers (for byte-array serialization) ----
@@ -266,7 +317,10 @@ struct MemWriter
 
     void WEnt(const brepdb::EntityEntry& e)
     {
-        Write(&e.header, sizeof(brepdb::GeomHeader));
+        W32(e.persistent_id);
+        W32(static_cast<uint32_t>(e.type));
+        Write(e.min_pt, 3 * sizeof(double));
+        Write(e.max_pt, 3 * sizeof(double));
         W32(static_cast<uint32_t>(e.params.size()));
         if (!e.params.empty()) { Write(e.params.data(), e.params.size() * sizeof(double)); }
     }
@@ -295,8 +349,12 @@ struct MemWriter
         {
             W32(m.old_persistent_id);
             W32(m.new_persistent_id);
-            Write(&m.old_header, sizeof(brepdb::GeomHeader));
-            Write(&m.new_header, sizeof(brepdb::GeomHeader));
+            W32(static_cast<uint32_t>(m.old_type));
+            W32(static_cast<uint32_t>(m.new_type));
+            Write(m.old_min_pt, 3 * sizeof(double));
+            Write(m.old_max_pt, 3 * sizeof(double));
+            Write(m.new_min_pt, 3 * sizeof(double));
+            Write(m.new_max_pt, 3 * sizeof(double));
             W32(m.old_param_count);
             W32(m.new_param_count);
             WHunks(m.forward_hunks);
@@ -340,7 +398,10 @@ struct MemReader
     brepdb::EntityEntry REnt()
     {
         brepdb::EntityEntry e;
-        Read(&e.header, sizeof(brepdb::GeomHeader));
+        e.persistent_id = R32();
+        e.type = static_cast<brepdb::Type>(R32());
+        Read(e.min_pt, 3 * sizeof(double));
+        Read(e.max_pt, 3 * sizeof(double));
         uint32_t pc = R32();
         e.params.resize(pc);
         if (pc > 0) { Read(e.params.data(), pc * sizeof(double)); }
@@ -380,8 +441,12 @@ struct MemReader
             auto& m = d.modified[j];
             m.old_persistent_id = R32();
             m.new_persistent_id = R32();
-            Read(&m.old_header, sizeof(brepdb::GeomHeader));
-            Read(&m.new_header, sizeof(brepdb::GeomHeader));
+            m.old_type = static_cast<brepdb::Type>(R32());
+            m.new_type = static_cast<brepdb::Type>(R32());
+            Read(m.old_min_pt, 3 * sizeof(double));
+            Read(m.old_max_pt, 3 * sizeof(double));
+            Read(m.new_min_pt, 3 * sizeof(double));
+            Read(m.new_max_pt, 3 * sizeof(double));
             m.old_param_count = R32();
             m.new_param_count = R32();
             m.forward_hunks   = RHunks();
@@ -563,14 +628,13 @@ namespace brepdb
 
 bool EntityEntry::operator==(const EntityEntry& rhs) const
 {
-    if (header.type != rhs.header.type)                     { return false; }
-    if (header.persistent_id != rhs.header.persistent_id)  { return false; }
-    if (header.param_count != rhs.header.param_count)       { return false; }
+    if (persistent_id != rhs.persistent_id) { return false; }
+    if (type != rhs.type)                   { return false; }
 
     for (int i = 0; i < 3; ++i)
     {
-        if (header.min_pt[i] != rhs.header.min_pt[i]) { return false; }
-        if (header.max_pt[i] != rhs.header.max_pt[i]) { return false; }
+        if (min_pt[i] != rhs.min_pt[i]) { return false; }
+        if (max_pt[i] != rhs.max_pt[i]) { return false; }
     }
 
     if (params.size() != rhs.params.size()) { return false; }
@@ -582,7 +646,6 @@ bool EntityEntry::operator==(const EntityEntry& rhs) const
         }
     }
 
-    // param_offset is ignored - it is a pool-layout detail, not entity identity
     return true;
 }
 
@@ -599,7 +662,7 @@ void VersionTree::ComputeParamHunks(const std::vector<double>& old_params,
     reverse_hunks.clear();
 
     const size_t   common       = std::min(old_params.size(), new_params.size());
-    constexpr size_t COALESCE_GAP = 4;  // merge hunks closer than this many doubles
+    constexpr size_t COALESCE_GAP = 4;
 
     size_t i = 0;
     while (i < common)
@@ -609,7 +672,6 @@ void VersionTree::ComputeParamHunks(const std::vector<double>& old_params,
             continue;
         }
 
-        // Found a difference - extend the hunk, coalescing nearby changes
         size_t start = i;
         while (i < common)
         {
@@ -617,7 +679,6 @@ void VersionTree::ComputeParamHunks(const std::vector<double>& old_params,
                 ++i;
                 continue;
             }
-            // Check whether a further change appears within COALESCE_GAP
             size_t gap_end = std::min(i + COALESCE_GAP, common);
             bool   more    = false;
             for (size_t j = i; j < gap_end; ++j)
@@ -642,7 +703,6 @@ void VersionTree::ComputeParamHunks(const std::vector<double>& old_params,
         reverse_hunks.push_back(std::move(rh));
     }
 
-    // New params are longer: forward hunk appends the tail
     if (new_params.size() > old_params.size())
     {
         ParamHunk fh;
@@ -651,7 +711,6 @@ void VersionTree::ComputeParamHunks(const std::vector<double>& old_params,
         forward_hunks.push_back(std::move(fh));
     }
 
-    // Old params are longer: reverse hunk appends the tail
     if (old_params.size() > new_params.size())
     {
         ParamHunk rh;
@@ -693,8 +752,12 @@ PoolDiff::ModifiedEntry VersionTree::BuildModifiedEntry(uint32_t           old_p
     PoolDiff::ModifiedEntry m;
     m.old_persistent_id = old_pid;
     m.new_persistent_id = new_pid;
-    m.old_header        = old_entry.header;
-    m.new_header        = new_entry.header;
+    m.old_type          = old_entry.type;
+    m.new_type          = new_entry.type;
+    std::memcpy(m.old_min_pt, old_entry.min_pt, sizeof(m.old_min_pt));
+    std::memcpy(m.old_max_pt, old_entry.max_pt, sizeof(m.old_max_pt));
+    std::memcpy(m.new_min_pt, new_entry.min_pt, sizeof(m.new_min_pt));
+    std::memcpy(m.new_max_pt, new_entry.max_pt, sizeof(m.new_max_pt));
     m.old_param_count   = static_cast<uint32_t>(old_entry.params.size());
     m.new_param_count   = static_cast<uint32_t>(new_entry.params.size());
 
@@ -709,7 +772,7 @@ PoolDiff::ModifiedEntry VersionTree::BuildModifiedEntry(uint32_t           old_p
 
 VersionTree::VersionTree() {}
 
-uint32_t VersionTree::InitRoot(const GeometryPool& pool, const std::string& desc, uint32_t op_type)
+uint32_t VersionTree::InitRoot(const BRepWorld& world, const std::string& desc, uint32_t op_type)
 {
     Clear();
 
@@ -725,18 +788,18 @@ uint32_t VersionTree::InitRoot(const GeometryPool& pool, const std::string& desc
     node.timestamp = NowMs();
 
     m_nodes[id] = std::move(node);
-    m_current_pool = std::make_shared<GeometryPool>(pool);
-    m_root_pools[id] = m_current_pool;
+    m_current_world = std::make_shared<BRepWorld>(world);
+    m_root_worlds[id] = m_current_world;
 
     return id;
 }
 
-uint32_t VersionTree::AddRoot(const GeometryPool& pool,
-                               const std::string&  op_desc,
-                               uint32_t            op_type)
+uint32_t VersionTree::AddRoot(const BRepWorld&   world,
+                               const std::string& op_desc,
+                               uint32_t           op_type)
 {
     if (m_root_id == UINT32_MAX) {
-        return InitRoot(pool, op_desc, op_type);
+        return InitRoot(world, op_desc, op_type);
     }
 
     uint32_t id = AllocNodeId();
@@ -749,51 +812,46 @@ uint32_t VersionTree::AddRoot(const GeometryPool& pool,
     node.timestamp = NowMs();
 
     m_nodes[id] = std::move(node);
-    m_root_pools[id] = std::make_shared<GeometryPool>(pool);
+    m_root_worlds[id] = std::make_shared<BRepWorld>(world);
     return id;
 }
 
-uint32_t VersionTree::Commit(const GeometryPool& new_pool,
+uint32_t VersionTree::Commit(const BRepWorld&    new_world,
                               PoolDiff&&          diff,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    // First call: create root node, diff is irrelevant
-    if (m_root_id == UINT32_MAX) { 
-        return InitRoot(new_pool, op_desc, op_type); 
+    if (m_root_id == UINT32_MAX) {
+        return InitRoot(new_world, op_desc, op_type);
     }
-    return Branch(m_current_id, new_pool, std::move(diff), op_desc, op_type);
+    return Branch(m_current_id, new_world, std::move(diff), op_desc, op_type);
 }
 
-uint32_t VersionTree::Commit(const GeometryPool& new_pool,
+uint32_t VersionTree::Commit(const BRepWorld&    new_world,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    // First call: create root node, no diff needed
-    if (m_root_id == UINT32_MAX) { 
-        return InitRoot(new_pool, op_desc, op_type); 
+    if (m_root_id == UINT32_MAX) {
+        return InitRoot(new_world, op_desc, op_type);
     }
-    PoolDiff diff = ComputeDiff(*m_current_pool, new_pool);
-    return Branch(m_current_id, new_pool, std::move(diff), op_desc, op_type);
+    PoolDiff diff = ComputeDiff(*m_current_world, new_world);
+    return Branch(m_current_id, new_world, std::move(diff), op_desc, op_type);
 }
 
-uint32_t VersionTree::Commit(const GeometryPool& new_pool,
+uint32_t VersionTree::Commit(const BRepWorld&    new_world,
                               const PidMapping&   pid_map,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    // First call: no current pool yet, pid_map carries no useful information
-    // (there is nothing to map _from_). Install new_pool as the root snapshot.
     if (m_root_id == UINT32_MAX) {
-        return InitRoot(new_pool, op_desc, op_type);
+        return InitRoot(new_world, op_desc, op_type);
     }
-
-    PoolDiff diff = BuildDiffFromPidMapping(*m_current_pool, new_pool, pid_map);
-    return Branch(m_current_id, new_pool, std::move(diff), op_desc, op_type);
+    PoolDiff diff = BuildDiffFromPidMapping(*m_current_world, new_world, pid_map);
+    return Branch(m_current_id, new_world, std::move(diff), op_desc, op_type);
 }
 
 uint32_t VersionTree::Branch(uint32_t            parent_id,
-                              const GeometryPool& new_pool,
+                              const BRepWorld&    new_world,
                               PoolDiff&&          diff,
                               const std::string&  op_desc,
                               uint32_t            op_type)
@@ -814,15 +872,15 @@ uint32_t VersionTree::Branch(uint32_t            parent_id,
     m_nodes[parent_id].children.push_back(new_id);
     m_nodes[new_id] = std::move(node);
 
-    m_current_id   = new_id;
-    m_current_pool = std::make_shared<GeometryPool>(new_pool);
+    m_current_id    = new_id;
+    m_current_world = std::make_shared<BRepWorld>(new_world);
 
     return new_id;
 }
 
 uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
                              const std::vector<uint32_t>&   aux_parent_ids,
-                             const GeometryPool&            new_pool,
+                             const BRepWorld&               new_world,
                              PoolDiff&&                     diff,
                              const std::string&             op_desc,
                              uint32_t                       op_type)
@@ -849,15 +907,15 @@ uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
     }
     m_nodes[new_id] = std::move(node);
 
-    m_current_id   = new_id;
-    m_current_pool = std::make_shared<GeometryPool>(new_pool);
+    m_current_id    = new_id;
+    m_current_world = std::make_shared<BRepWorld>(new_world);
 
     return new_id;
 }
 
 uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
                              const std::vector<uint32_t>&   aux_parent_ids,
-                             const GeometryPool&            new_pool,
+                             const BRepWorld&               new_world,
                              const PidMapping&              pid_map,
                              const std::string&             op_desc,
                              uint32_t                       op_type)
@@ -865,28 +923,28 @@ uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
     assert(m_nodes.count(primary_parent_id));
     if (primary_parent_id != m_current_id) { NavigateTo(primary_parent_id); }
 
-    PoolDiff diff = BuildDiffFromPidMapping(*m_current_pool, new_pool, pid_map);
-    return Merge(primary_parent_id, aux_parent_ids, new_pool, std::move(diff), op_desc, op_type);
+    PoolDiff diff = BuildDiffFromPidMapping(*m_current_world, new_world, pid_map);
+    return Merge(primary_parent_id, aux_parent_ids, new_world, std::move(diff), op_desc, op_type);
 }
 
 // ============================================================
 // VersionTree - navigation
 // ============================================================
 
-PoolPtr VersionTree::Checkout(uint32_t node_id)
+WorldPtr VersionTree::Checkout(uint32_t node_id)
 {
     assert(m_nodes.count(node_id));
     if (node_id != m_current_id) { NavigateTo(node_id); }
-    return m_current_pool;
+    return m_current_world;
 }
 
-PoolPtr VersionTree::Undo()
+WorldPtr VersionTree::Undo()
 {
     assert(CanUndo());
     return Checkout(m_nodes[m_current_id].parent_id);
 }
 
-PoolPtr VersionTree::Redo(int child_index)
+WorldPtr VersionTree::Redo(int child_index)
 {
     assert(CanRedo());
     const auto& children = m_nodes[m_current_id].children;
@@ -998,163 +1056,135 @@ void VersionTree::TraverseAll(const std::function<void(const VersionNode&)>& vis
 // VersionTree - entity helpers
 // ============================================================
 
-EntityEntry VersionTree::ExtractEntity(const GeometryPool& pool, uint32_t idx)
+EntityEntry VersionTree::ExtractEntity(const BRepWorld& world, uint32_t entity_id)
 {
-    assert(idx < pool.headers.size());
-    const auto& h = pool.headers[idx];
-
     EntityEntry e;
-    e.header = h;
+    e.persistent_id = entity_id;
 
-    if (h.param_count > 0 && h.param_offset + h.param_count <= pool.data_pool.size()) {
-        e.params.assign(pool.data_pool.begin() + h.param_offset,
-                        pool.data_pool.begin() + h.param_offset + h.param_count);
+    const Type* t = world.Types().Get(entity_id);
+    if (t) e.type = *t;
+
+    const AabbComp* aabb = world.Aabbs().Get(entity_id);
+    if (aabb) {
+        std::memcpy(e.min_pt, aabb->min_pt, sizeof(e.min_pt));
+        std::memcpy(e.max_pt, aabb->max_pt, sizeof(e.max_pt));
     }
 
-    e.header.param_offset = 0;  // normalize: offset is meaningless outside pool
+    e.params = world.ExportEntityParams(entity_id);
+
     return e;
-}
-
-std::unordered_map<uint32_t, uint32_t> VersionTree::BuildIdIndex(const GeometryPool& pool)
-{
-    std::unordered_map<uint32_t, uint32_t> idx;
-    idx.reserve(pool.headers.size());
-    for (uint32_t i = 0; i < static_cast<uint32_t>(pool.headers.size()); ++i) {
-        idx[pool.headers[i].persistent_id] = i;
-    }
-    return idx;
 }
 
 // ============================================================
 // VersionTree - diff building
 // ============================================================
 
-PoolDiff VersionTree::BuildDiffFromPidMapping(const GeometryPool& old_pool,
-                                               const GeometryPool& new_pool,
-                                               const PidMapping&   pid_map)
+PoolDiff VersionTree::BuildDiffFromPidMapping(const BRepWorld& old_world,
+                                               const BRepWorld& new_world,
+                                               const PidMapping& pid_map)
 {
     PoolDiff diff;
 
-    auto old_idx = BuildIdIndex(old_pool);
-    auto new_idx = BuildIdIndex(new_pool);
+    const auto& old_alive = old_world.AliveEntities();
+    const auto& new_alive = new_world.AliveEntities();
 
-    for (const auto& h : old_pool.headers) { diff.old_order.push_back(h.persistent_id); }
-    for (const auto& h : new_pool.headers) { diff.new_order.push_back(h.persistent_id); }
+    std::set<uint32_t> old_set(old_alive.begin(), old_alive.end());
+    std::set<uint32_t> new_set(new_alive.begin(), new_alive.end());
 
-    // Track which new pids are accounted for by the mapping
+    for (uint32_t id : old_alive) { diff.old_order.push_back(id); }
+    for (uint32_t id : new_alive) { diff.new_order.push_back(id); }
+
     std::set<uint32_t> accounted_new;
 
     for (const auto& [old_pid, new_pids] : pid_map)
     {
-        auto old_it = old_idx.find(old_pid);
-        bool has_old = (old_it != old_idx.end());
+        bool has_old = old_set.count(old_pid) > 0;
 
         if (new_pids.empty())
         {
-            // Entity deleted
             if (has_old) {
-                diff.removed.push_back(ExtractEntity(old_pool, old_it->second));
+                diff.removed.push_back(ExtractEntity(old_world, old_pid));
             }
             continue;
         }
 
-        // k==0 with has_old: modified; k>0 or !has_old: added.
-        // The !has_old case covers the initial commit (empty old_pool) and
-        // any pid_map entry whose old_pid was never in old_pool - without
-        // this, the primary new pid would be marked accounted but never
-        // pushed into diff, silently disappearing.
         for (size_t k = 0; k < new_pids.size(); ++k)
         {
             uint32_t new_pid = new_pids[k];
             accounted_new.insert(new_pid);
 
-            auto new_it = new_idx.find(new_pid);
-            if (new_it == new_idx.end()) { continue; }
+            if (!new_set.count(new_pid)) { continue; }
 
             if (k == 0 && has_old) {
                 diff.modified.push_back(
                     BuildModifiedEntry(old_pid, new_pid,
-                                       ExtractEntity(old_pool, old_it->second),
-                                       ExtractEntity(new_pool, new_it->second)));
+                                       ExtractEntity(old_world, old_pid),
+                                       ExtractEntity(new_world, new_pid)));
             } else {
-                diff.added.push_back(ExtractEntity(new_pool, new_it->second));
+                diff.added.push_back(ExtractEntity(new_world, new_pid));
             }
         }
     }
 
-    // Entities in new_pool not referenced by the mapping:
-    //   if the same pid exists in old_pool -> fallback modification check
-    //   otherwise -> genuinely added
-    for (const auto& h : new_pool.headers)
+    for (uint32_t pid : new_alive)
     {
-        uint32_t pid = h.persistent_id;
         if (accounted_new.count(pid)) { continue; }
 
-        auto old_it = old_idx.find(pid);
-        if (old_it == old_idx.end())
+        if (!old_set.count(pid))
         {
-            // Pid not in old pool -> added
-            auto new_it = new_idx.find(pid);
-            if (new_it != new_idx.end()) {
-                diff.added.push_back(ExtractEntity(new_pool, new_it->second));
-            }
+            diff.added.push_back(ExtractEntity(new_world, pid));
         }
         else
         {
-            // Same pid survives; check if data changed
-            auto oe = ExtractEntity(old_pool, old_it->second);
-            auto ne = ExtractEntity(new_pool, new_idx.at(pid));
+            auto oe = ExtractEntity(old_world, pid);
+            auto ne = ExtractEntity(new_world, pid);
             if (oe != ne) {
                 diff.modified.push_back(BuildModifiedEntry(pid, pid, oe, ne));
             }
         }
     }
 
-    // Entities in old_pool not in new_pool and not already accounted for -> removed
-    for (const auto& h : old_pool.headers)
+    for (uint32_t pid : old_alive)
     {
-        uint32_t pid = h.persistent_id;
-        if (pid_map.count(pid)) { continue; }  // handled above
-        if (new_idx.count(pid)) { continue; }  // still exists
-
-        auto it = old_idx.find(pid);
-        if (it != old_idx.end()) {
-            diff.removed.push_back(ExtractEntity(old_pool, it->second));
-        }
+        if (pid_map.count(pid)) { continue; }
+        if (new_set.count(pid)) { continue; }
+        diff.removed.push_back(ExtractEntity(old_world, pid));
     }
 
     return diff;
 }
 
-PoolDiff VersionTree::ComputeDiff(const GeometryPool& old_pool,
-                                   const GeometryPool& new_pool)
+PoolDiff VersionTree::ComputeDiff(const BRepWorld& old_world,
+                                   const BRepWorld& new_world)
 {
     PoolDiff diff;
 
-    auto old_idx = BuildIdIndex(old_pool);
-    auto new_idx = BuildIdIndex(new_pool);
+    const auto& old_alive = old_world.AliveEntities();
+    const auto& new_alive = new_world.AliveEntities();
 
-    for (const auto& h : old_pool.headers) { diff.old_order.push_back(h.persistent_id); }
-    for (const auto& h : new_pool.headers) { diff.new_order.push_back(h.persistent_id); }
+    std::set<uint32_t> old_set(old_alive.begin(), old_alive.end());
+    std::set<uint32_t> new_set(new_alive.begin(), new_alive.end());
 
-    for (const auto& [pid, ni] : new_idx)
+    for (uint32_t id : old_alive) { diff.old_order.push_back(id); }
+    for (uint32_t id : new_alive) { diff.new_order.push_back(id); }
+
+    for (uint32_t pid : new_alive)
     {
-        auto it = old_idx.find(pid);
-        if (it == old_idx.end()) {
-            diff.added.push_back(ExtractEntity(new_pool, ni));
+        if (!old_set.count(pid)) {
+            diff.added.push_back(ExtractEntity(new_world, pid));
         } else {
-            auto oe = ExtractEntity(old_pool, it->second);
-            auto ne = ExtractEntity(new_pool, ni);
+            auto oe = ExtractEntity(old_world, pid);
+            auto ne = ExtractEntity(new_world, pid);
             if (oe != ne) {
                 diff.modified.push_back(BuildModifiedEntry(pid, pid, oe, ne));
             }
         }
     }
 
-    for (const auto& [pid, oi] : old_idx)
+    for (uint32_t pid : old_alive)
     {
-        if (!new_idx.count(pid)) {
-            diff.removed.push_back(ExtractEntity(old_pool, oi));
+        if (!new_set.count(pid)) {
+            diff.removed.push_back(ExtractEntity(old_world, pid));
         }
     }
 
@@ -1162,47 +1192,39 @@ PoolDiff VersionTree::ComputeDiff(const GeometryPool& old_pool,
 }
 
 // ============================================================
-// VersionTree - pool rebuild and apply
+// VersionTree - world rebuild and apply
 // ============================================================
 
-GeometryPool VersionTree::RebuildPool(
+WorldPtr VersionTree::RebuildWorld(
     const std::unordered_map<uint32_t, EntityEntry>& entities,
     const std::vector<uint32_t>&                     order)
 {
-    GeometryPool pool;
-    pool.headers.reserve(order.size());
-
-    size_t total = 0;
-    for (uint32_t pid : order)
-    {
-        auto it = entities.find(pid);
-        assert(it != entities.end());
-        total += it->second.params.size();
-    }
-    pool.data_pool.reserve(total);
-
+    auto w = std::make_shared<BRepWorld>();
     for (uint32_t pid : order)
     {
         const EntityEntry& e = entities.at(pid);
-
-        GeomHeader h    = e.header;
-        h.param_offset  = static_cast<uint32_t>(pool.data_pool.size());
-        h.param_count   = static_cast<uint32_t>(e.params.size());
-
-        pool.headers.push_back(h);
-        pool.data_pool.insert(pool.data_pool.end(), e.params.begin(), e.params.end());
+        w->RegisterEntity(pid);
+        w->Types().Set(pid, e.type);
+        AabbComp aabb;
+        std::memcpy(aabb.min_pt, e.min_pt, sizeof(aabb.min_pt));
+        std::memcpy(aabb.max_pt, e.max_pt, sizeof(aabb.max_pt));
+        w->Aabbs().Set(pid, aabb);
+        if (!e.params.empty()) {
+            ParamsComp pc;
+            pc.data = e.params;
+            w->Params().Set(pid, pc);
+        }
     }
-
-    return pool;
+    w->RebuildTypedFromParams();
+    return w;
 }
 
-GeometryPool VersionTree::ApplyForward(const GeometryPool& base, const PoolDiff& diff)
+WorldPtr VersionTree::ApplyForward(const BRepWorld& base, const PoolDiff& diff)
 {
     std::unordered_map<uint32_t, EntityEntry> ents;
-    for (uint32_t i = 0; i < static_cast<uint32_t>(base.headers.size()); ++i)
+    for (uint32_t id : base.AliveEntities())
     {
-        auto e = ExtractEntity(base, i);
-        ents[e.PersistentId()] = std::move(e);
+        ents[id] = ExtractEntity(base, id);
     }
 
     for (const auto& e : diff.removed) { ents.erase(e.PersistentId()); }
@@ -1218,24 +1240,25 @@ GeometryPool VersionTree::ApplyForward(const GeometryPool& base, const PoolDiff&
         ents.erase(it);
 
         EntityEntry ne;
-        ne.header              = m.new_header;
-        ne.header.param_offset = 0;
-        ne.params              = std::move(new_params);
+        ne.persistent_id = m.new_persistent_id;
+        ne.type          = m.new_type;
+        std::memcpy(ne.min_pt, m.new_min_pt, sizeof(ne.min_pt));
+        std::memcpy(ne.max_pt, m.new_max_pt, sizeof(ne.max_pt));
+        ne.params        = std::move(new_params);
         ents[m.new_persistent_id] = std::move(ne);
     }
 
     for (const auto& e : diff.added) { ents[e.PersistentId()] = e; }
 
-    return RebuildPool(ents, diff.new_order);
+    return RebuildWorld(ents, diff.new_order);
 }
 
-GeometryPool VersionTree::ApplyReverse(const GeometryPool& current, const PoolDiff& diff)
+WorldPtr VersionTree::ApplyReverse(const BRepWorld& current, const PoolDiff& diff)
 {
     std::unordered_map<uint32_t, EntityEntry> ents;
-    for (uint32_t i = 0; i < static_cast<uint32_t>(current.headers.size()); ++i)
+    for (uint32_t id : current.AliveEntities())
     {
-        auto e = ExtractEntity(current, i);
-        ents[e.PersistentId()] = std::move(e);
+        ents[id] = ExtractEntity(current, id);
     }
 
     for (const auto& e : diff.added) { ents.erase(e.PersistentId()); }
@@ -1251,15 +1274,17 @@ GeometryPool VersionTree::ApplyReverse(const GeometryPool& current, const PoolDi
         ents.erase(it);
 
         EntityEntry oe;
-        oe.header              = m.old_header;
-        oe.header.param_offset = 0;
-        oe.params              = std::move(old_params);
+        oe.persistent_id = m.old_persistent_id;
+        oe.type          = m.old_type;
+        std::memcpy(oe.min_pt, m.old_min_pt, sizeof(oe.min_pt));
+        std::memcpy(oe.max_pt, m.old_max_pt, sizeof(oe.max_pt));
+        oe.params        = std::move(old_params);
         ents[m.old_persistent_id] = std::move(oe);
     }
 
     for (const auto& e : diff.removed) { ents[e.PersistentId()] = e; }
 
-    return RebuildPool(ents, diff.old_order);
+    return RebuildWorld(ents, diff.old_order);
 }
 
 // ============================================================
@@ -1280,15 +1305,15 @@ void VersionTree::NavigateTo(uint32_t target_id)
 
     if (cur_root == tgt_root)
     {
-        // Same root chain - LCA-based navigation
         uint32_t lca = FindLCA(m_current_id, target_id);
+
+        WorldPtr world = m_current_world;
 
         uint32_t cur = m_current_id;
         while (cur != lca)
         {
             auto it = m_nodes.find(cur);
-            m_current_pool = std::make_shared<GeometryPool>(
-                ApplyReverse(*m_current_pool, it->second.diff));
+            world = ApplyReverse(*world, it->second.diff);
             cur = it->second.parent_id;
         }
 
@@ -1298,23 +1323,24 @@ void VersionTree::NavigateTo(uint32_t target_id)
         for (auto it = lca_it + 1; it != tgt_path.end(); ++it)
         {
             auto node_it = m_nodes.find(*it);
-            m_current_pool = std::make_shared<GeometryPool>(
-                ApplyForward(*m_current_pool, node_it->second.diff));
+            world = ApplyForward(*world, node_it->second.diff);
         }
+
+        m_current_world = world;
     }
     else
     {
-        // Cross-root navigation - start from target's root pool
-        auto rp = m_root_pools.find(tgt_root);
-        assert(rp != m_root_pools.end());
-        m_current_pool = rp->second;
+        auto rw = m_root_worlds.find(tgt_root);
+        assert(rw != m_root_worlds.end());
+        WorldPtr world = rw->second;
 
         for (size_t i = 1; i < tgt_path.size(); ++i)
         {
             auto node_it = m_nodes.find(tgt_path[i]);
-            m_current_pool = std::make_shared<GeometryPool>(
-                ApplyForward(*m_current_pool, node_it->second.diff));
+            world = ApplyForward(*world, node_it->second.diff);
         }
+
+        m_current_world = world;
     }
 
     m_current_id = target_id;
@@ -1359,24 +1385,22 @@ bool VersionTree::SaveToFile(const std::string& filepath) const
 
     os.write(reinterpret_cast<const char*>(&fh), sizeof(fh));
 
-    // Write root count and each root's id + pool
     Wr32(os, static_cast<uint32_t>(roots.size()));
     for (uint32_t rid : roots)
     {
         Wr32(os, rid);
-        auto rp_it = m_root_pools.find(rid);
-        if (rp_it != m_root_pools.end()) {
-            WrPool(os, *rp_it->second);
+        auto rw_it = m_root_worlds.find(rid);
+        if (rw_it != m_root_worlds.end()) {
+            WrWorld(os, *rw_it->second);
         } else {
-            // Reconstruct primary root pool from current position
-            GeometryPool root_pool = *m_current_pool;
+            WorldPtr root_world = m_current_world;
             auto path = GetPathFromRoot(m_current_id);
             for (int i = static_cast<int>(path.size()) - 1; i > 0; --i)
             {
                 auto it = m_nodes.find(path[i]);
-                root_pool = ApplyReverse(root_pool, it->second.diff);
+                root_world = ApplyReverse(*root_world, it->second.diff);
             }
-            WrPool(os, root_pool);
+            WrWorld(os, *root_world);
         }
     }
 
@@ -1398,22 +1422,19 @@ bool VersionTree::LoadFromFile(const std::string& filepath)
     m_root_id    = fh.root_id;
     m_current_id = fh.root_id;
 
-    // Read all root pools
     uint32_t root_count = Rd32(is);
     for (uint32_t i = 0; i < root_count; ++i)
     {
         uint32_t rid = Rd32(is);
-        GeometryPool pool = RdPool(is);
-        m_root_pools[rid] = std::make_shared<GeometryPool>(std::move(pool));
+        m_root_worlds[rid] = RdWorld(is);
     }
 
     uint32_t max_id = ReadNodes(is, fh.node_count, m_nodes, true);
     m_next_id       = max_id + 1;
 
-    // Set current pool to primary root
-    auto rp_it = m_root_pools.find(m_root_id);
-    if (rp_it != m_root_pools.end()) {
-        m_current_pool = rp_it->second;
+    auto rw_it = m_root_worlds.find(m_root_id);
+    if (rw_it != m_root_worlds.end()) {
+        m_current_world = rw_it->second;
     }
 
     if (fh.current_id != m_root_id)
@@ -1435,16 +1456,14 @@ void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 
     auto roots = GetRoots();
 
-    // Header
     w.W32(FILE_MAGIC);
     w.W32(FILE_VERSION);
     w.W32(static_cast<uint32_t>(m_nodes.size()));
     w.W32(m_root_id);
     w.W32(m_current_id);
     w.W32(static_cast<uint32_t>(roots.size()));
-    w.W32(0);  // reserved
+    w.W32(0);
 
-    // Nodes — no root pool snapshot; entity data lives in the RTree
     WriteNodesBfs(w, m_nodes, roots);
 
     len  = static_cast<uint32_t>(w.buf.size());
@@ -1452,9 +1471,9 @@ void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const
     std::memcpy(*buf, w.buf.data(), len);
 }
 
-void VersionTree::LoadFromByteArray(const uint8_t*      buf,
-                                     uint32_t            len,
-                                     const GeometryPool& current_pool)
+void VersionTree::LoadFromByteArray(const uint8_t*  buf,
+                                     uint32_t        len,
+                                     const BRepWorld& current_world)
 {
     MemReader r;
     r.data = buf;
@@ -1467,8 +1486,8 @@ void VersionTree::LoadFromByteArray(const uint8_t*      buf,
     uint32_t node_count = r.R32();
     uint32_t root_id    = r.R32();
     uint32_t current_id = r.R32();
-    r.R32();  // reserved
-    r.R32();  // reserved
+    r.R32();
+    r.R32();
 
     Clear();
     m_root_id    = root_id;
@@ -1477,15 +1496,14 @@ void VersionTree::LoadFromByteArray(const uint8_t*      buf,
     uint32_t max_id = ReadNodes(r, node_count, m_nodes);
     m_next_id       = max_id + 1;
 
-    // Anchor: pool is provided by the caller (exported from BrepDB RTree)
-    m_current_pool = std::make_shared<GeometryPool>(current_pool);
+    m_current_world = std::make_shared<BRepWorld>(current_world);
 }
 
 void VersionTree::Clear()
 {
     m_nodes.clear();
-    m_root_pools.clear();
-    m_current_pool = {};
+    m_root_worlds.clear();
+    m_current_world = {};
     m_current_id   = UINT32_MAX;
     m_root_id      = UINT32_MAX;
     m_next_id      = 0;

@@ -6,7 +6,6 @@
 #include "BRepBuilder.h"
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/WorldSender.h"
-#include "brepdb_c/GeomPool.h"
 #include "brepdb_c/VersionTree.h"
 
 // OCCT
@@ -45,16 +44,14 @@ void commit_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
     brepdb::WorldSender sender(tn);
     brepdb::BRepWorld world;
     sender.Serialize(dst->GetShape(), world);
-    brepdb::GeometryPool new_pool = world.ExportToPool();
 
     uint32_t parent_id = src->GetVersionId();
     uint32_t new_id;
     if (parent_id == partgraph::TopoShape::NO_VERSION) {
-        new_id = vt->Commit(new_pool, pid_map, op_name);
+        new_id = vt->Commit(world, pid_map, op_name);
     } else {
-        auto diff = brepdb::VersionTree::BuildDiffFromPidMapping(
-            *vt->Checkout(parent_id), new_pool, pid_map);
-        new_id = vt->Branch(parent_id, new_pool, std::move(diff), op_name);
+        vt->Checkout(parent_id);
+        new_id = vt->Commit(world, pid_map, op_name);
     }
     dst->SetVersionId(new_id);
 }
@@ -63,14 +60,14 @@ void commit_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
 // primary_parent comes from the main body's version_id,
 // the tool body's version_id becomes an auxiliary parent.
 //
-// tool_pool must be serialized BEFORE tn->Update(), because Update()
+// tool_world must be serialized BEFORE tn->Update(), because Update()
 // unbinds the old shapes (including the tool body) from the HistGraph.
 void merge_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
                  const std::shared_ptr<brepdb::VersionTree>& vt,
                  const std::shared_ptr<partgraph::TopoShape>& main_src,
                  const std::shared_ptr<partgraph::TopoShape>& tool_src,
                  const std::shared_ptr<partgraph::TopoShape>& dst,
-                 brepdb::GeometryPool&& tool_pool,
+                 brepdb::BRepWorld&& tool_world,
                  const breptopo::TopoNaming::PidMap& pid_map,
                  const std::string& op_name)
 {
@@ -78,33 +75,28 @@ void merge_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
         return;
     }
 
-    // If tool body was already committed, use its existing version node.
-    // Otherwise register it as a new independent root.
     uint32_t tool_vid = tool_src->GetVersionId();
     if (tool_vid == partgraph::TopoShape::NO_VERSION) {
-        tool_vid = vt->AddRoot(tool_pool, op_name + "_tool");
+        tool_vid = vt->AddRoot(tool_world, op_name + "_tool");
     }
 
     brepdb::WorldSender sender(tn);
     brepdb::BRepWorld world;
     sender.Serialize(dst->GetShape(), world);
-    brepdb::GeometryPool result_pool = world.ExportToPool();
 
     uint32_t primary_id = main_src->GetVersionId();
     uint32_t new_id = vt->Merge(primary_id, { tool_vid },
-                                result_pool, pid_map, op_name);
+                                world, pid_map, op_name);
     dst->SetVersionId(new_id);
 }
 
-// Serialize a shape into a GeometryPool using the current HistGraph state.
-// Call this BEFORE tn->Update() so the shapes are still bound.
-brepdb::GeometryPool serialize_pool(const std::shared_ptr<breptopo::TopoNaming>& tn,
-                                    const TopoDS_Shape& shape)
+brepdb::BRepWorld serialize_world(const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                  const TopoDS_Shape& shape)
 {
     brepdb::WorldSender sender(tn);
     brepdb::BRepWorld world;
     sender.Serialize(shape, world);
-    return world.ExportToPool();
+    return world;
 }
 
 }
@@ -214,8 +206,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
     }
 
     // Serialize tool BEFORE tn->Update() unbinds its shapes
-    brepdb::GeometryPool tool_pool;
-    if (tn && vt) { tool_pool = serialize_pool(tn, tool->GetShape()); }
+    brepdb::BRepWorld tool_world;
+    if (tn && vt) { tool_world = serialize_world(tn, tool->GetShape()); }
 
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
@@ -225,7 +217,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    merge_to_vt(tn, vt, base, tool, dst, std::move(tool_pool), pid_map, "split");
+    merge_to_vt(tn, vt, base, tool, dst, std::move(tool_world), pid_map, "split");
     return dst;
 }
 
@@ -243,8 +235,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         algo.DumpErrors(std::cout);
     }
 
-    brepdb::GeometryPool tool_pool;
-    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+    brepdb::BRepWorld tool_world;
+    if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
@@ -254,7 +246,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "cut");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "cut");
     return dst;
 }
 
@@ -272,8 +264,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         algo.DumpErrors(std::cout);
     }
 
-    brepdb::GeometryPool tool_pool;
-    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+    brepdb::BRepWorld tool_world;
+    if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
@@ -283,7 +275,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "fuse");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "fuse");
     return dst;
 }
 
@@ -301,8 +293,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
         algo.DumpErrors(std::cout);
     }
 
-    brepdb::GeometryPool tool_pool;
-    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+    brepdb::BRepWorld tool_world;
+    if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
@@ -312,7 +304,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "common");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "common");
     return dst;
 }
 
@@ -333,8 +325,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
         algo.DumpErrors(std::cout);
     }
 
-    brepdb::GeometryPool tool_pool;
-    if (tn && vt) { tool_pool = serialize_pool(tn, s2->GetShape()); }
+    brepdb::BRepWorld tool_world;
+    if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
     breptopo::TopoNaming::PidMap pid_map;
     if (tn)
@@ -344,7 +336,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
         pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<partgraph::TopoShape>(algo.Shape());
-    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_pool), pid_map, "section");
+    merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "section");
     return dst;
 }
 

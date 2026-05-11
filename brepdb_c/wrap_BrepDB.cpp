@@ -1,5 +1,4 @@
 #include "brepdb_c/wrap_BrepDB.h"
-#include "brepdb_c/GeomPool.h"
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/WorldReceiver.h"
 #include "brepdb_c/WorldFile.h"
@@ -115,44 +114,6 @@ int w_BrepDB_finalize(void* data)
     return sizeof(wrapper::Proxy<brepdb::BrepDB>);
 }
 
-void w_BrepDB_insert()
-{
-    auto rtree = ((wrapper::Proxy<spatialdb::RTree>*)ves_toforeign(0))->obj;
-    auto pool = ((wrapper::Proxy<brepdb::GeometryPool>*)ves_toforeign(1))->obj;
-
-    //for (const auto& h : pool->headers)
-    //{
-    //    const spatialdb::Region aabb(h.min_pt, h.max_pt);
-    //    const spatialdb::id_type id = h.persistent_id;
-    //    rtree->InsertData(h.param_count, (uint8_t*)&pool->data_pool[h.param_offset], aabb, id);
-    //}
-
-    size_t len = sizeof(size_t) + sizeof(brepdb::GeomHeader) * pool->headers.size() + sizeof(double) * pool->data_pool.size();
-    uint8_t* data = new uint8_t[len];
-    uint8_t* ptr = data;
-
-    size_t num = pool->headers.size();
-    memcpy(ptr, &num, sizeof(num));
-    ptr += sizeof(num);
-
-    for (const auto& h : pool->headers) 
-    {
-        memcpy(ptr, &h, sizeof(h));
-        ptr += sizeof(h);
-    }
-
-    memcpy(ptr, pool->data_pool.data(), sizeof(double) * pool->data_pool.size());
-
-    spatialdb::Region aabb;
-    for (const auto& h : pool->headers) {
-        aabb.Combine({ h.min_pt, h.max_pt });
-    }
-
-    rtree->InsertData(len, data, aabb, 0);
-
-    delete[] data;
-}
-
 void w_BrepDB_build()
 {
     auto db = ((wrapper::Proxy<brepdb::BrepDB>*)ves_toforeign(0))->obj;
@@ -253,24 +214,23 @@ void w_BrepDB_query()
         uint8_t* data = nullptr;
         item->GetData(len, &data);
 
-        uint8_t* ptr = data;
+        const uint8_t* ptr = data;
 
-        brepdb::GeomHeader header;
-        memcpy(&header, ptr, sizeof(brepdb::GeomHeader));
-        ptr += sizeof(brepdb::GeomHeader);
-
-        uint32_t param_count = header.param_count;
-        std::vector<double> params(param_count);
-        if (param_count > 0)
-            memcpy(params.data(), ptr, param_count * sizeof(double));
-
-        // Import into world from flat blob
-        world->RegisterEntity(entity_id);
-        world->Types().Set(entity_id, header.type);
+        // Blob layout: type(1) + pid(4) + min_pt(24) + max_pt(24) + param_count(4) + params
+        brepdb::Type type = static_cast<brepdb::Type>(*ptr); ptr += 1;
+        uint32_t pid; std::memcpy(&pid, ptr, 4); ptr += 4;
 
         brepdb::AabbComp aabb_comp;
-        std::memcpy(aabb_comp.min_pt, header.min_pt, 24);
-        std::memcpy(aabb_comp.max_pt, header.max_pt, 24);
+        std::memcpy(aabb_comp.min_pt, ptr, 24); ptr += 24;
+        std::memcpy(aabb_comp.max_pt, ptr, 24); ptr += 24;
+
+        uint32_t param_count; std::memcpy(&param_count, ptr, 4); ptr += 4;
+        std::vector<double> params(param_count);
+        if (param_count > 0)
+            std::memcpy(params.data(), ptr, param_count * sizeof(double));
+
+        world->RegisterEntity(entity_id);
+        world->Types().Set(entity_id, type);
         world->Aabbs().Set(entity_id, aabb_comp);
 
         if (!params.empty())
@@ -309,12 +269,8 @@ int w_VersionTree_finalize(void* data)
     return sizeof(wrapper::Proxy<brepdb::VersionTree>);
 }
 
-static void push_world_from_pool(const std::shared_ptr<brepdb::GeometryPool>& pool)
+static void push_world(const brepdb::WorldPtr& world)
 {
-    auto world = std::make_shared<brepdb::BRepWorld>();
-    world->ImportFromPool(*pool);
-    world->RebuildTypedFromParams();
-
     ves_pushnil();
     ves_import_class("brepdb", "BrepWorld");
     auto proxy = reinterpret_cast<wrapper::Proxy<brepdb::BRepWorld>*>(
@@ -327,18 +283,16 @@ void w_VersionTree_init_pool()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(1))->obj;
-    brepdb::GeometryPool pool = world->ExportToPool();
     const char* desc = ves_tostring(2);
-    vt->Commit(pool, desc ? desc : "initial");
+    vt->Commit(*world, desc ? desc : "initial");
 }
 
 void w_VersionTree_commit()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(1))->obj;
-    brepdb::GeometryPool pool = world->ExportToPool();
     const char* desc = ves_tostring(2);
-    uint32_t id = vt->Commit(pool, desc ? desc : "");
+    uint32_t id = vt->Commit(*world, desc ? desc : "");
     ves_set_number(0, id);
 }
 
@@ -346,26 +300,26 @@ void w_VersionTree_undo()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     if (!vt->CanUndo()) { ves_set_nil(0); return; }
-    auto pool = vt->Undo();
+    auto world = vt->Undo();
     ves_pop(ves_argnum());
-    push_world_from_pool(pool);
+    push_world(world);
 }
 
 void w_VersionTree_redo()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     if (!vt->CanRedo()) { ves_set_nil(0); return; }
-    auto pool = vt->Redo();
+    auto world = vt->Redo();
     ves_pop(ves_argnum());
-    push_world_from_pool(pool);
+    push_world(world);
 }
 
 void w_VersionTree_checkout()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    auto pool = vt->Checkout(static_cast<uint32_t>(ves_tonumber(1)));
+    auto world = vt->Checkout(static_cast<uint32_t>(ves_tonumber(1)));
     ves_pop(ves_argnum());
-    push_world_from_pool(pool);
+    push_world(world);
 }
 
 void w_VersionTree_get_current_id() 

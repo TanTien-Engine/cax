@@ -155,33 +155,32 @@ TEST_CASE("BRepWorld destroy removes all components", "[typed_pool]")
 }
 
 // ============================================================
-// Import / Export roundtrip
+// RegisterEntity and component roundtrip
 // ============================================================
 
-static GeomHeader make_header(Type type, uint32_t pid,
-                               uint32_t offset, uint32_t count,
-                               double min_val = 0.0, double max_val = 1.0)
+static void add_entity(BRepWorld& w, uint32_t pid, Type type,
+                       const std::vector<double>& params,
+                       double min_val = 0.0, double max_val = 1.0)
 {
-    GeomHeader h{};
-    h.type          = type;
-    h.persistent_id = pid;
-    h.param_offset  = offset;
-    h.param_count   = count;
-    h.min_pt[0] = h.min_pt[1] = h.min_pt[2] = min_val;
-    h.max_pt[0] = h.max_pt[1] = h.max_pt[2] = max_val;
-    return h;
+    w.RegisterEntity(pid);
+    w.Types().Set(pid, type);
+    AabbComp aabb;
+    aabb.min_pt[0] = aabb.min_pt[1] = aabb.min_pt[2] = min_val;
+    aabb.max_pt[0] = aabb.max_pt[1] = aabb.max_pt[2] = max_val;
+    w.Aabbs().Set(pid, aabb);
+    if (!params.empty()) {
+        ParamsComp pc;
+        pc.data = params;
+        w.Params().Set(pid, pc);
+    }
 }
 
-TEST_CASE("BRepWorld import from GeometryPool", "[typed_pool]")
+TEST_CASE("BRepWorld RegisterEntity with components", "[typed_pool]")
 {
-    GeometryPool pool;
-    pool.headers.push_back(make_header(Type::Vertex, 1, 0, 3, 0.0, 0.1));
-    pool.headers.push_back(make_header(Type::Edge,  10, 3, 5, 0.0, 1.0));
-    pool.headers.push_back(make_header(Type::Face, 100, 8, 4, 0.0, 2.0));
-    pool.data_pool = {0, 0, 0, 1, 2, 3, 4, 5, 10, 20, 30, 40};
-
     BRepWorld world;
-    world.ImportFromPool(pool);
+    add_entity(world, 1,   Type::Vertex, {0, 0, 0},       0.0, 0.1);
+    add_entity(world, 10,  Type::Edge,   {1, 2, 3, 4, 5}, 0.0, 1.0);
+    add_entity(world, 100, Type::Face,   {10, 20, 30, 40}, 0.0, 2.0);
 
     CHECK(world.EntityCount() == 3);
     CHECK(world.IsAlive(1));
@@ -197,61 +196,36 @@ TEST_CASE("BRepWorld import from GeometryPool", "[typed_pool]")
     CHECK(world.Params().Get(10)->data[0] == 1.0);
 }
 
-TEST_CASE("BRepWorld export to GeometryPool roundtrip", "[typed_pool]")
+TEST_CASE("BRepWorld params roundtrip", "[typed_pool]")
 {
-    GeometryPool original;
-    original.headers.push_back(make_header(Type::Face, 10, 0, 3, 0.0, 1.0));
-    original.headers.push_back(make_header(Type::Edge, 20, 3, 2, 1.0, 2.0));
-    original.data_pool = {1.0, 2.0, 3.0, 4.0, 5.0};
-
     BRepWorld world;
-    world.ImportFromPool(original);
+    add_entity(world, 10, Type::Face, {1.0, 2.0, 3.0}, 0.0, 1.0);
+    add_entity(world, 20, Type::Edge, {4.0, 5.0},       1.0, 2.0);
 
-    GeometryPool exported = world.ExportToPool();
-
-    REQUIRE(exported.headers.size() == 2);
-    CHECK(exported.headers[0].persistent_id == 10);
-    CHECK(exported.headers[1].persistent_id == 20);
-    CHECK(*exported.headers[0].min_pt == 0.0);
-    CHECK(*exported.headers[1].max_pt == 2.0);
-
-    // Params preserved
-    uint32_t off0 = exported.headers[0].param_offset;
-    uint32_t off1 = exported.headers[1].param_offset;
-    CHECK(exported.data_pool[off0]     == 1.0);
-    CHECK(exported.data_pool[off0 + 2] == 3.0);
-    CHECK(exported.data_pool[off1]     == 4.0);
-    CHECK(exported.data_pool[off1 + 1] == 5.0);
+    CHECK(world.EntityCount() == 2);
+    CHECK(world.Aabbs().Get(10)->min_pt[0] == 0.0);
+    CHECK(world.Aabbs().Get(20)->max_pt[0] == 2.0);
+    CHECK(world.Params().Get(10)->data[2] == 3.0);
+    CHECK(world.Params().Get(20)->data[1] == 5.0);
 }
 
-TEST_CASE("BRepWorld modify component then export", "[typed_pool]")
+TEST_CASE("BRepWorld modify component", "[typed_pool]")
 {
-    GeometryPool original;
-    original.headers.push_back(make_header(Type::Face, 10, 0, 2, 0.0, 1.0));
-    original.data_pool = {1.0, 2.0};
-
     BRepWorld world;
-    world.ImportFromPool(original);
+    add_entity(world, 10, Type::Face, {1.0, 2.0}, 0.0, 1.0);
 
-    // Modify only the AABB
     AabbComp* aabb = world.Aabbs().Get(10);
     aabb->max_pt[0] = 99.0;
 
-    GeometryPool exported = world.ExportToPool();
-    CHECK(exported.headers[0].max_pt[0] == 99.0);
-    // Params unchanged
-    CHECK(exported.data_pool[0] == 1.0);
-    CHECK(exported.data_pool[1] == 2.0);
+    CHECK(world.Aabbs().Get(10)->max_pt[0] == 99.0);
+    CHECK(world.Params().Get(10)->data[0] == 1.0);
+    CHECK(world.Params().Get(10)->data[1] == 2.0);
 }
 
-TEST_CASE("BRepWorld add entity after import then export", "[typed_pool]")
+TEST_CASE("BRepWorld add entity then verify", "[typed_pool]")
 {
-    GeometryPool original;
-    original.headers.push_back(make_header(Type::Face, 10, 0, 2));
-    original.data_pool = {1.0, 2.0};
-
     BRepWorld world;
-    world.ImportFromPool(original);
+    add_entity(world, 10, Type::Face, {1.0, 2.0});
 
     uint32_t e = world.CreateEntity();
     world.Types().Set(e, Type::Vertex);
@@ -263,38 +237,22 @@ TEST_CASE("BRepWorld add entity after import then export", "[typed_pool]")
     pc.data = {5.0, 5.0, 5.0};
     world.Params().Set(e, pc);
 
-    GeometryPool exported = world.ExportToPool();
-    REQUIRE(exported.headers.size() == 2);
-
-    // Find the new entity
-    bool found = false;
-    for (auto& h : exported.headers)
-    {
-        if (h.persistent_id == e)
-        {
-            found = true;
-            CHECK(h.type == Type::Vertex);
-            CHECK(h.min_pt[0] == 5.0);
-            CHECK(h.param_count == 3);
-        }
-    }
-    CHECK(found);
+    REQUIRE(world.EntityCount() == 2);
+    CHECK(*world.Types().Get(e) == Type::Vertex);
+    CHECK(world.Aabbs().Get(e)->min_pt[0] == 5.0);
+    CHECK(world.Params().Get(e)->data.size() == 3);
 }
 
-TEST_CASE("BRepWorld destroy entity then export", "[typed_pool]")
+TEST_CASE("BRepWorld destroy entity", "[typed_pool]")
 {
-    GeometryPool original;
-    original.headers.push_back(make_header(Type::Face, 10, 0, 2));
-    original.headers.push_back(make_header(Type::Edge, 20, 2, 3));
-    original.data_pool = {1, 2, 3, 4, 5};
-
     BRepWorld world;
-    world.ImportFromPool(original);
+    add_entity(world, 10, Type::Face, {1, 2});
+    add_entity(world, 20, Type::Edge, {3, 4, 5});
     world.DestroyEntity(10);
 
-    GeometryPool exported = world.ExportToPool();
-    REQUIRE(exported.headers.size() == 1);
-    CHECK(exported.headers[0].persistent_id == 20);
+    REQUIRE(world.EntityCount() == 1);
+    CHECK_FALSE(world.IsAlive(10));
+    CHECK(world.IsAlive(20));
 }
 
 // ============================================================

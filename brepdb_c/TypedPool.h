@@ -1,7 +1,5 @@
 #pragma once
 
-#include "GeomPool.h"
-
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -11,6 +9,26 @@
 
 namespace brepdb
 {
+
+enum class Type : uint8_t
+{
+    Empty = 0,
+    Line = 1,
+    Circle = 2,
+    BSplineCurve = 3,
+
+    Plane = 10,
+    Cylinder = 11,
+    BSplineSurface = 12,
+
+    Vertex = 20,
+    Edge = 21,
+    Wire = 22,
+    Face = 23,
+    Shell = 24,
+    Solid = 25,
+    Compound = 26
+};
 
 // Sparse-set backed component pool. O(1) add/remove/lookup.
 // T must be trivially copyable or a POD-like struct.
@@ -259,36 +277,6 @@ public:
     const ComponentPool<FaceTopoComp>&  FaceTopos()   const { return m_face_topos; }
     const ComponentPool<SolidTopoComp>& SolidTopos()  const { return m_solid_topos; }
 
-    // Import from legacy GeometryPool
-    void ImportFromPool(const GeometryPool& pool)
-    {
-        for (size_t i = 0; i < pool.headers.size(); ++i)
-        {
-            const auto& h = pool.headers[i];
-            uint32_t id = h.persistent_id;
-
-            if (!IsAlive(id))
-                m_alive.push_back(id);
-            if (id >= m_next_id)
-                m_next_id = id + 1;
-
-            m_types.Set(id, h.type);
-
-            AabbComp aabb;
-            std::memcpy(aabb.min_pt, h.min_pt, 24);
-            std::memcpy(aabb.max_pt, h.max_pt, 24);
-            m_aabbs.Set(id, aabb);
-
-            if (h.param_count > 0)
-            {
-                ParamsComp pc;
-                pc.data.assign(pool.data_pool.begin() + h.param_offset,
-                               pool.data_pool.begin() + h.param_offset + h.param_count);
-                m_params.Set(id, pc);
-            }
-        }
-    }
-
     // Parse flat ParamsComp data into typed components for each entity.
     void RebuildTypedFromParams()
     {
@@ -382,66 +370,6 @@ public:
                 break;
             }
         }
-    }
-
-    // Export back to legacy GeometryPool.
-    // If typed components (Curves, Surfaces, etc.) are populated,
-    // reconstructs the flat data_pool format.
-    // Falls back to ParamsComp if no typed components exist.
-    GeometryPool ExportToPool() const
-    {
-        GeometryPool pool;
-        for (uint32_t id : m_alive)
-        {
-            GeomHeader h{};
-            h.persistent_id = id;
-
-            const Type* t = m_types.Get(id);
-            if (t) h.type = *t;
-
-            const AabbComp* aabb = m_aabbs.Get(id);
-            if (aabb)
-            {
-                std::memcpy(h.min_pt, aabb->min_pt, 24);
-                std::memcpy(h.max_pt, aabb->max_pt, 24);
-            }
-
-            h.param_offset = static_cast<uint32_t>(pool.data_pool.size());
-
-            // Try typed export first
-            bool has_typed = false;
-            if (t)
-            {
-                switch (*t)
-                {
-                case Type::Vertex:
-                    has_typed = ExportVertex(id, pool.data_pool);
-                    break;
-                case Type::Edge:
-                    has_typed = ExportEdge(id, pool.data_pool);
-                    break;
-                case Type::Face:
-                    has_typed = ExportFace(id, pool.data_pool);
-                    break;
-                case Type::Solid:
-                    has_typed = ExportSolid(id, pool.data_pool);
-                    break;
-                default:
-                    break;
-                }
-            }
-
-            if (!has_typed)
-            {
-                const ParamsComp* pc = m_params.Get(id);
-                if (pc && !pc->data.empty())
-                    pool.data_pool.insert(pool.data_pool.end(), pc->data.begin(), pc->data.end());
-            }
-
-            h.param_count = static_cast<uint32_t>(pool.data_pool.size()) - h.param_offset;
-            pool.headers.push_back(h);
-        }
-        return pool;
     }
 
 private:
@@ -655,6 +583,30 @@ private:
     }
 
 public:
+    std::vector<double> ExportEntityParams(uint32_t id) const
+    {
+        std::vector<double> d;
+        const Type* t = m_types.Get(id);
+        if (t)
+        {
+            switch (*t)
+            {
+            case Type::Vertex:  ExportVertex(id, d);  break;
+            case Type::Edge:    ExportEdge(id, d);    break;
+            case Type::Face:    ExportFace(id, d);    break;
+            case Type::Solid:   ExportSolid(id, d);   break;
+            default: break;
+            }
+        }
+        if (d.empty())
+        {
+            const ParamsComp* pc = m_params.Get(id);
+            if (pc && !pc->data.empty())
+                d = pc->data;
+        }
+        return d;
+    }
+
     void Clear()
     {
         m_alive.clear();

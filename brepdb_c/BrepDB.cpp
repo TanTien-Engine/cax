@@ -150,22 +150,22 @@ void BrepDB::Insert(uint32_t entity_id, const BRepWorld& world)
         break;
     }
 
-    // Build blob: GeomHeader + params
-    GeomHeader header{};
-    header.type = type;
-    header.persistent_id = entity_id;
-    header.param_offset = 0;
-    header.param_count = static_cast<uint32_t>(params.size());
-    std::memcpy(header.min_pt, aabb->min_pt, 24);
-    std::memcpy(header.max_pt, aabb->max_pt, 24);
-
-    uint32_t param_bytes = header.param_count * sizeof(double);
-    uint32_t total = sizeof(GeomHeader) + param_bytes;
+    // Blob layout: type(1) + pid(4) + min_pt(24) + max_pt(24) + param_count(4) + params(N*8)
+    uint32_t param_count = static_cast<uint32_t>(params.size());
+    uint32_t param_bytes = param_count * sizeof(double);
+    constexpr uint32_t HDR = 1 + 4 + 24 + 24 + 4;  // 57 bytes header
+    uint32_t total = HDR + param_bytes;
 
     std::vector<uint8_t> blob(total);
-    memcpy(blob.data(), &header, sizeof(GeomHeader));
+    uint8_t* p = blob.data();
+
+    *p = static_cast<uint8_t>(type); p += 1;
+    std::memcpy(p, &entity_id, 4);   p += 4;
+    std::memcpy(p, aabb->min_pt, 24); p += 24;
+    std::memcpy(p, aabb->max_pt, 24); p += 24;
+    std::memcpy(p, &param_count, 4);  p += 4;
     if (param_bytes > 0)
-        memcpy(blob.data() + sizeof(GeomHeader), params.data(), param_bytes);
+        std::memcpy(p, params.data(), param_bytes);
 
     m_rtree->InsertData(total, blob.data(), mbr, entity_id);
 }

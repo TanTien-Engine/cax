@@ -59,7 +59,7 @@ _editor.add_node(node9, 167.69043452517, 184.36650472772)
 
 var node10 = ::brepdb::nodes::deserialize::Deserialize()
 
-_editor.add_node(node10, 450.86686693699, -158.37314873154)
+_editor.add_node(node10, 449.54988039236, -131.83370470449)
 
 var node11 = ::partgraph::nodes::box::Box()
 node11.query_param("length").value = 0.2
@@ -79,10 +79,10 @@ _editor.add_node(node13, -11.147977317495, 130.60872749328)
 
 var node14 = ::brepdb::nodes::version_graph::VersionGraph()
 
-_editor.add_node(node14, 301.80463169618, -174.31131026496)
+_editor.add_node(node14, 310.00079316056, -137.42858367525)
 
-Blueprint.connect(node14, "ir", node10, "ir")
 Blueprint.connect(node11, "shape", node12, "shape")
+Blueprint.connect(node10, "shape", node6, "shape")
 Blueprint.connect(node0, "shape", node5, "var")
 Blueprint.connect(node5, "var", node7, "shape")
 Blueprint.connect(node2, "this", node7, "camera")

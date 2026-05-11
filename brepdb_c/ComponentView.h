@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GeomPool.h"
+#include "TypedPool.h"
 
 #include <algorithm>
 #include <cassert>
@@ -10,9 +10,9 @@
 namespace brepdb
 {
 
-// SoA views over a GeometryPool.
-// These do NOT own data — they reference a live GeometryPool.
-// Rebuild after pool mutation.
+// SoA views over a BRepWorld.
+// These do NOT own data — they snapshot a live BRepWorld.
+// Rebuild after world mutation.
 
 struct AabbView
 {
@@ -20,27 +20,33 @@ struct AabbView
     std::vector<double>   min_x, min_y, min_z;
     std::vector<double>   max_x, max_y, max_z;
 
-    void Build(const GeometryPool& pool)
+    void Build(const BRepWorld& world)
     {
-        const size_t n = pool.headers.size();
+        const auto& alive = world.AliveEntities();
+        const size_t n = alive.size();
         entity_ids.resize(n);
         min_x.resize(n); min_y.resize(n); min_z.resize(n);
         max_x.resize(n); max_y.resize(n); max_z.resize(n);
 
         for (size_t i = 0; i < n; ++i)
         {
-            const auto& h = pool.headers[i];
-            entity_ids[i] = h.persistent_id;
-            min_x[i] = h.min_pt[0];
-            min_y[i] = h.min_pt[1];
-            min_z[i] = h.min_pt[2];
-            max_x[i] = h.max_pt[0];
-            max_y[i] = h.max_pt[1];
-            max_z[i] = h.max_pt[2];
+            uint32_t id = alive[i];
+            entity_ids[i] = id;
+            const AabbComp* a = world.Aabbs().Get(id);
+            if (a) {
+                min_x[i] = a->min_pt[0];
+                min_y[i] = a->min_pt[1];
+                min_z[i] = a->min_pt[2];
+                max_x[i] = a->max_pt[0];
+                max_y[i] = a->max_pt[1];
+                max_z[i] = a->max_pt[2];
+            } else {
+                min_x[i] = min_y[i] = min_z[i] = 0.0;
+                max_x[i] = max_y[i] = max_z[i] = 0.0;
+            }
         }
     }
 
-    // Query: find all entities whose AABB intersects the given box.
     std::vector<uint32_t> QueryBox(double qmin[3], double qmax[3]) const
     {
         std::vector<uint32_t> result;
@@ -63,19 +69,21 @@ struct TypeView
     std::vector<uint32_t> entity_ids;
     std::vector<Type>     types;
 
-    void Build(const GeometryPool& pool)
+    void Build(const BRepWorld& world)
     {
-        const size_t n = pool.headers.size();
+        const auto& alive = world.AliveEntities();
+        const size_t n = alive.size();
         entity_ids.resize(n);
         types.resize(n);
         for (size_t i = 0; i < n; ++i)
         {
-            entity_ids[i] = pool.headers[i].persistent_id;
-            types[i]      = pool.headers[i].type;
+            uint32_t id = alive[i];
+            entity_ids[i] = id;
+            const Type* t = world.Types().Get(id);
+            types[i] = t ? *t : Type::Empty;
         }
     }
 
-    // Get all entity ids of a given type.
     std::vector<uint32_t> GetByType(Type t) const
     {
         std::vector<uint32_t> result;
@@ -92,36 +100,29 @@ struct TypeView
 
 struct ParamView
 {
-    std::vector<uint32_t> entity_ids;
-    std::vector<uint32_t> offsets;
-    std::vector<uint32_t> counts;
-    const double*         data = nullptr;
-    size_t                data_size = 0;
+    std::vector<uint32_t>            entity_ids;
+    std::vector<std::vector<double>> all_params;
 
-    void Build(const GeometryPool& pool)
+    void Build(const BRepWorld& world)
     {
-        const size_t n = pool.headers.size();
+        const auto& alive = world.AliveEntities();
+        const size_t n = alive.size();
         entity_ids.resize(n);
-        offsets.resize(n);
-        counts.resize(n);
+        all_params.resize(n);
         for (size_t i = 0; i < n; ++i)
         {
-            entity_ids[i] = pool.headers[i].persistent_id;
-            offsets[i]    = pool.headers[i].param_offset;
-            counts[i]     = pool.headers[i].param_count;
+            uint32_t id = alive[i];
+            entity_ids[i] = id;
+            all_params[i] = world.ExportEntityParams(id);
         }
-        data      = pool.data_pool.data();
-        data_size = pool.data_pool.size();
     }
 
-    const double* GetParams(size_t index, uint32_t& out_count) const
+    const std::vector<double>& GetParams(size_t index) const
     {
         assert(index < entity_ids.size());
-        out_count = counts[index];
-        return data + offsets[index];
+        return all_params[index];
     }
 
-    // Find index by entity id (linear scan; for frequent lookups build a map).
     int32_t FindIndex(uint32_t pid) const
     {
         for (size_t i = 0; i < entity_ids.size(); ++i)
@@ -135,18 +136,17 @@ struct ParamView
     size_t Size() const { return entity_ids.size(); }
 };
 
-// Composite: holds all views for a pool, rebuilt together.
-struct PoolViews
+struct WorldViews
 {
     AabbView  aabbs;
     TypeView  types;
     ParamView params;
 
-    void Build(const GeometryPool& pool)
+    void Build(const BRepWorld& world)
     {
-        aabbs.Build(pool);
-        types.Build(pool);
-        params.Build(pool);
+        aabbs.Build(world);
+        types.Build(world);
+        params.Build(world);
     }
 };
 
