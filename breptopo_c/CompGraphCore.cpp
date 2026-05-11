@@ -478,6 +478,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 		if (!std::holds_alternative<std::monostate>(resolved))
 		{
 			m_hits++;
+			op_counter++;
 			return resolved;
 		}
 		// shape was evicted from LRU (and VersionTree restore not yet
