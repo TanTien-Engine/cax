@@ -35,10 +35,13 @@ public:
 		const partgraph::TopoShape& old_shape, uint32_t op_id);
 	PidMap Update(const BRepOffset_MakeSimpleOffset& builder, const partgraph::TopoShape& old_shape, uint32_t op_id);
 
+
 	auto GetVertexGraph() const { return m_vertex_hg; }
 	auto GetEdgeGraph() const { return m_edge_hg; }
 	auto GetFaceGraph() const { return m_face_hg; }
 	auto GetSolidGraph() const { return m_solid_hg; }
+
+	void MergeFrom(const TopoNaming& other);
 
 	uint32_t NextOpId();
 

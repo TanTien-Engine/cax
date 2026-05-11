@@ -670,7 +670,8 @@ void Evaluator::EvalSubtree(IRGraph& g, NRef root,
 }
 
 Val Evaluator::RunParallel(IRGraph& g, NRef root,
-                           const std::shared_ptr<TopoNaming>& tn)
+                           const std::shared_ptr<TopoNaming>& tn,
+                           TnFactory tn_factory, TnMerge tn_merge)
 {
 	auto dep_idx = g.BuildDepIndex();
 	auto order = g.TopoSort();
@@ -731,45 +732,37 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 				if (fp.depsB.count(r.id) && !done.count(r.id)) orderB.push_back(r);
 			}
 
-			if (tn)
 			{
-				// TopoNaming accumulates HistGraph state that the boolean
-				// op needs (m_curr_shapes).  It is not thread-safe, so we
-				// evaluate both subtrees sequentially on the shared tn.
-				// Geometry results are still cached for later re-use.
-				for (auto r : orderA)
-					EvalNode(g, r, tn, op_counter);
-				for (auto r : orderB)
-					EvalNode(g, r, tn, op_counter);
-			}
-			else
-			{
-				// No TopoNaming -- subtrees can run in parallel safely.
+				// each subtree gets its own tn + evaluator, runs in parallel
+				auto tnA = (tn && tn_factory) ? tn_factory() : nullptr;
+				auto tnB = (tn && tn_factory) ? tn_factory() : nullptr;
 				Evaluator evalA(m_reg);
 				Evaluator evalB(m_reg);
 				uint32_t opA = op_counter, opB = op_counter;
 
 				auto futB = std::async(std::launch::async,
-					[&evalB, &g, &orderB, &opB]() {
-						for (auto r : orderB)
-							evalB.EvalNode(g, r, nullptr, opB);
+					[&evalB, &g, &orderB, &tnB, &opB]() {
+						for (auto r : orderB) evalB.EvalNode(g, r, tnB, opB);
 					});
-				for (auto r : orderA)
-					evalA.EvalNode(g, r, nullptr, opA);
+				for (auto r : orderA) evalA.EvalNode(g, r, tnA, opA);
 				futB.get();
 
-				for (auto id : fp.depsA)
-				{
+				// merge shape caches
+				for (auto id : fp.depsA) {
 					auto* v = evalA.GetShapeCache().Get(id);
 					if (v) m_shape_cache.Put(id, *v);
 				}
-				for (auto id : fp.depsB)
-				{
+				for (auto id : fp.depsB) {
 					auto* v = evalB.GetShapeCache().Get(id);
 					if (v) m_shape_cache.Put(id, *v);
 				}
-
 				op_counter = std::max(opA, opB);
+
+				// merge naming state into main tn
+				if (tn && tn_merge) {
+					if (tnA) tn_merge(tn, tnA);
+					if (tnB) tn_merge(tn, tnB);
+				}
 			}
 
 			for (auto id : fp.depsA) done.insert(id);

@@ -339,6 +339,59 @@ HistGraph::UpdateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uin
 	return {};
 }
 
+void HistGraph::MergeFrom(const HistGraph& other)
+{
+	// gid remapping: other_gid -> this_gid
+	std::map<size_t, size_t> remap;
+	remap[other.m_del_node_idx] = m_del_node_idx;
+
+	for (size_t i = 0; i < other.m_graph->GetNodesNum(); ++i)
+	{
+		if (i == other.m_del_node_idx) continue;
+		size_t new_gid = m_graph->GetNodesNum();
+		auto node = other.m_graph->GetNode(i);
+		// Clear stale edge pointers from the source graph before
+		// inserting into this graph; AddEdge will rebuild them.
+		node->ClearEdges();
+		m_graph->AddNode(node);
+		remap[i] = new_gid;
+	}
+
+	for (auto& [key, edge] : other.m_graph->GetEdges())
+	{
+		auto fi = remap.find(key.first);
+		auto ti = remap.find(key.second);
+		if (fi != remap.end() && ti != remap.end())
+			m_graph->AddEdge(fi->second, ti->second);
+	}
+
+	NCollection_DataMap<TopoDS_Shape, size_t, TopTools_ShapeMapHasher>::Iterator it(other.m_curr_shapes);
+	for (; it.More(); it.Next())
+	{
+		auto ri = remap.find(it.Value());
+		if (ri != remap.end())
+			m_curr_shapes.Bind(it.Key(), ri->second);
+	}
+
+	for (auto& [uid, gid] : other.m_uid2gid)
+	{
+		auto ri = remap.find(gid);
+		if (ri != remap.end())
+			m_uid2gid[uid] = ri->second;
+	}
+
+	for (auto& [op_id, gids] : other.m_op2nodes)
+	{
+		auto& dst = m_op2nodes[op_id];
+		for (auto gid : gids)
+		{
+			auto ri = remap.find(gid);
+			if (ri != remap.end())
+				dst.push_back(ri->second);
+		}
+	}
+}
+
 uint32_t HistGraph::CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index)
 {
 	uint32_t uid = ((type_id & 0x07) << 29) |

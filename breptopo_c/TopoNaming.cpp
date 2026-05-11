@@ -70,6 +70,16 @@ TopoNaming::PidMap TopoNaming::Update(const BRepOffset_MakeSimpleOffset& builder
 	return pm;
 }
 
+void TopoNaming::MergeFrom(const TopoNaming& other)
+{
+	m_vertex_hg->MergeFrom(*other.m_vertex_hg);
+	m_edge_hg->MergeFrom(*other.m_edge_hg);
+	m_face_hg->MergeFrom(*other.m_face_hg);
+	m_solid_hg->MergeFrom(*other.m_solid_hg);
+	if (other.m_next_op > m_next_op)
+		m_next_op = other.m_next_op;
+}
+
 uint32_t TopoNaming::NextOpId()
 {
 	return m_next_op++;

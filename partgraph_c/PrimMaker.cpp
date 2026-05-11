@@ -3,7 +3,6 @@
 #include "occt_adapter.h"
 
 #include "BRepBuilder.h"
-#include "BRepHistory.h"
 
 #include <breptopo_c/TopoNaming.h>
 #include <brepdb_c/WorldSender.h>

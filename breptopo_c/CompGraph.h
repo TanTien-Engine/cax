@@ -250,8 +250,13 @@ class Evaluator
 public:
 	Evaluator(const OpRegistry& reg) : m_reg(reg) {}
 
+	using TnFactory = std::function<std::shared_ptr<TopoNaming>()>;
+	using TnMerge   = std::function<void(const std::shared_ptr<TopoNaming>& dst,
+	                                     const std::shared_ptr<TopoNaming>& src)>;
+
 	Val Run(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn);
-	Val RunParallel(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn);
+	Val RunParallel(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn,
+	                TnFactory tn_factory = {}, TnMerge tn_merge = {});
 	void Invalidate(IRGraph& g, NRef ref);
 
 	Val ResolveVal(const IRGraph& g, NRef ref) const;

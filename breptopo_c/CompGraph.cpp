@@ -168,7 +168,10 @@ Val CompGraph::Eval(int ext_id)
 	if (!m_tn) m_tn = std::make_shared<TopoNaming>();
 	NRef ref = m_nodes[ext_id].ref;
 	if (m_parallel)
-		m_eval.RunParallel(m_ir, ref, m_tn);
+		m_eval.RunParallel(m_ir, ref, m_tn,
+			[]() { return std::make_shared<TopoNaming>(); },
+			[](const std::shared_ptr<TopoNaming>& dst,
+			   const std::shared_ptr<TopoNaming>& src) { dst->MergeFrom(*src); });
 	else
 		m_eval.Run(m_ir, ref, m_tn);
 	return m_eval.ResolveVal(m_ir, ref);

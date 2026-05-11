@@ -26,6 +26,8 @@ public:
 
 	PartialPidMap Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id);
 
+	void MergeFrom(const HistGraph& other);
+
 	const std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
 	bool QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const;
 
