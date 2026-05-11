@@ -3,11 +3,16 @@
 #include "VersionTree.h"
 #include "TypedPool.h"
 
+#include <filesystem>
 #include <numeric>
 #include <set>
 #include <string>
 
 using namespace brepdb;
+
+static std::string TmpPath(const char* name) {
+    return (std::filesystem::temp_directory_path() / name).string();
+}
 
 // ============================================================
 // Helpers
@@ -825,7 +830,7 @@ TEST_CASE("VersionTree: TraverseAll visits every node", "[tree][query]")
 
 TEST_CASE("Persistence: SaveToFile / LoadFromFile round-trip", "[persist]")
 {
-    const std::string fp = "/tmp/vt_brepdb_test.vtbd";
+    const std::string fp = TmpPath("vt_brepdb_test.vtbd");
 
     VersionTree t1;
     auto ab_w = make_world_ab();
@@ -861,7 +866,7 @@ TEST_CASE("Persistence: SaveToFile / LoadFromFile round-trip", "[persist]")
 
 TEST_CASE("Persistence: SaveToFile / LoadFromFile multi-root round-trip", "[persist][multi]")
 {
-    const std::string fp = "/tmp/vt_brepdb_test_multi.vtbd";
+    const std::string fp = TmpPath("vt_brepdb_test_multi.vtbd");
 
     VersionTree t1;
 

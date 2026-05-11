@@ -4,9 +4,14 @@
 #include "WorldFile.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 
 using namespace brepdb;
+
+static std::string TmpPath(const char* name) {
+    return (std::filesystem::temp_directory_path() / name).string();
+}
 
 // ============================================================
 // Helpers
@@ -100,7 +105,7 @@ static BRepWorld make_test_world()
 TEST_CASE("WorldFile save and load roundtrip", "[world_file]")
 {
     auto world = make_test_world();
-    const char* filepath = "/tmp/test_brepworld.cwld";
+    const auto filepath = TmpPath("test_brepworld.cwld");
 
     REQUIRE(WorldFile::Save(filepath, world));
 
@@ -153,18 +158,18 @@ TEST_CASE("WorldFile save and load roundtrip", "[world_file]")
     // AABB check
     CHECK(loaded.Aabbs().Get(1000)->max_pt[2] == 2.0);
 
-    std::remove(filepath);
+    std::remove(filepath.c_str());
 }
 
 TEST_CASE("WorldFile load nonexistent file returns false", "[world_file]")
 {
     BRepWorld world;
-    CHECK_FALSE(WorldFile::Load("/tmp/nonexistent_12345.cwld", world));
+    CHECK_FALSE(WorldFile::Load(TmpPath("nonexistent_12345.cwld"), world));
 }
 
 TEST_CASE("WorldFile load bad magic returns false", "[world_file]")
 {
-    const char* filepath = "/tmp/test_bad_magic.cwld";
+    const auto filepath = TmpPath("test_bad_magic.cwld");
     {
         std::ofstream os(filepath, std::ios::binary);
         uint32_t bad = 0xDEADBEEF;
@@ -172,7 +177,7 @@ TEST_CASE("WorldFile load bad magic returns false", "[world_file]")
     }
     BRepWorld world;
     CHECK_FALSE(WorldFile::Load(filepath, world));
-    std::remove(filepath);
+    std::remove(filepath.c_str());
 }
 
 TEST_CASE("BRepWorld ExportEntityParams produces valid params from typed components", "[world_file]")
@@ -221,7 +226,7 @@ TEST_CASE("BRepWorld ExportEntityParams produces valid params from typed compone
 TEST_CASE("BRepWorld save/load then ExportEntityParams roundtrip", "[world_file]")
 {
     auto world = make_test_world();
-    const char* filepath = "/tmp/test_export_roundtrip.cwld";
+    const auto filepath = TmpPath("test_export_roundtrip.cwld");
 
     REQUIRE(WorldFile::Save(filepath, world));
 
@@ -234,13 +239,13 @@ TEST_CASE("BRepWorld save/load then ExportEntityParams roundtrip", "[world_file]
     for (uint32_t id : loaded.AliveEntities())
         CHECK_FALSE(loaded.ExportEntityParams(id).empty());
 
-    std::remove(filepath);
+    std::remove(filepath.c_str());
 }
 
 TEST_CASE("WorldFile empty world roundtrip", "[world_file]")
 {
     BRepWorld world;
-    const char* filepath = "/tmp/test_empty_world.cwld";
+    const auto filepath = TmpPath("test_empty_world.cwld");
 
     REQUIRE(WorldFile::Save(filepath, world));
 
@@ -248,5 +253,5 @@ TEST_CASE("WorldFile empty world roundtrip", "[world_file]")
     REQUIRE(WorldFile::Load(filepath, loaded));
     CHECK(loaded.EntityCount() == 0);
 
-    std::remove(filepath);
+    std::remove(filepath.c_str());
 }
