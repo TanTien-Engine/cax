@@ -110,7 +110,8 @@ class VersionGraph is Node
 		{
 			var version_id = v_sel.value.get_component("version_info")
 			if (version_id != nil) {
-				var world = vt.checkout(version_id)
+				var root_id = vt.find_root_of(version_id)
+				var world = vt.checkout(root_id, version_id)
 				this.v_world = Variant(VAR_TYPE_BREP_WORLD, world)
 				return
 			}

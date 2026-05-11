@@ -279,28 +279,31 @@ static void push_world(const brepdb::WorldPtr& world)
     ves_pop(1);
 }
 
-void w_VersionTree_init_pool()
+void w_VersionTree_add_root()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(1))->obj;
     const char* desc = ves_tostring(2);
-    vt->Commit(*world, desc ? desc : "initial");
+    uint32_t id = vt->AddRoot(*world, desc ? desc : "initial");
+    ves_set_number(0, id);
 }
 
 void w_VersionTree_commit()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(1))->obj;
-    const char* desc = ves_tostring(2);
-    uint32_t id = vt->Commit(*world, desc ? desc : "");
+    uint32_t root_id = static_cast<uint32_t>(ves_tonumber(1));
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(2))->obj;
+    const char* desc = ves_tostring(3);
+    uint32_t id = vt->Commit(root_id, *world, desc ? desc : "");
     ves_set_number(0, id);
 }
 
 void w_VersionTree_undo()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    if (!vt->CanUndo()) { ves_set_nil(0); return; }
-    auto world = vt->Undo();
+    uint32_t root_id = static_cast<uint32_t>(ves_tonumber(1));
+    if (!vt->CanUndo(root_id)) { ves_set_nil(0); return; }
+    auto world = vt->Undo(root_id);
     ves_pop(ves_argnum());
     push_world(world);
 }
@@ -308,8 +311,9 @@ void w_VersionTree_undo()
 void w_VersionTree_redo()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    if (!vt->CanRedo()) { ves_set_nil(0); return; }
-    auto world = vt->Redo();
+    uint32_t root_id = static_cast<uint32_t>(ves_tonumber(1));
+    if (!vt->CanRedo(root_id)) { ves_set_nil(0); return; }
+    auto world = vt->Redo(root_id);
     ves_pop(ves_argnum());
     push_world(world);
 }
@@ -317,33 +321,38 @@ void w_VersionTree_redo()
 void w_VersionTree_checkout()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    auto world = vt->Checkout(static_cast<uint32_t>(ves_tonumber(1)));
+    uint32_t root_id = static_cast<uint32_t>(ves_tonumber(1));
+    uint32_t node_id = static_cast<uint32_t>(ves_tonumber(2));
+    auto world = vt->Checkout(root_id, node_id);
     ves_pop(ves_argnum());
     push_world(world);
 }
 
-void w_VersionTree_get_current_id() 
+void w_VersionTree_get_current_id()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    ves_set_number(0, vt->GetCurrentId());
+    uint32_t root_id = static_cast<uint32_t>(ves_tonumber(1));
+    ves_set_number(0, vt->GetCurrentId(root_id));
 }
 
-void w_VersionTree_get_node_count() 
+void w_VersionTree_get_node_count()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     ves_set_number(0, static_cast<double>(vt->GetNodeCount()));
 }
 
-void w_VersionTree_can_undo() 
+void w_VersionTree_can_undo()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    ves_set_boolean(0, vt->CanUndo());
+    uint32_t root_id = static_cast<uint32_t>(ves_tonumber(1));
+    ves_set_boolean(0, vt->CanUndo(root_id));
 }
 
-void w_VersionTree_can_redo() 
+void w_VersionTree_can_redo()
 {
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
-    ves_set_boolean(0, vt->CanRedo());
+    uint32_t root_id = static_cast<uint32_t>(ves_tonumber(1));
+    ves_set_boolean(0, vt->CanRedo(root_id));
 }
 
 void w_VersionTree_get_node_desc()
@@ -386,6 +395,13 @@ void w_VersionTree_load()
     auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
     const char* fp = ves_tostring(1);
     ves_set_boolean(0, vt->LoadFromFile(fp ? fp : ""));
+}
+
+void w_VersionTree_find_root_of()
+{
+    auto vt = reinterpret_cast<wrapper::Proxy<brepdb::VersionTree>*>(ves_toforeign(0))->obj;
+    uint32_t node_id = static_cast<uint32_t>(ves_tonumber(1));
+    ves_set_number(0, vt->FindRootOf(node_id));
 }
 
 void w_VersionTree_clear() {
@@ -439,17 +455,18 @@ VesselForeignMethodFn BrepDBBindMethod(const char* signature)
     if (strcmp(signature, "BrepDB.build(_)") == 0) return w_BrepDB_build;
     if (strcmp(signature, "BrepDB.query(_)") == 0) return w_BrepDB_query;
 
-    if (strcmp(signature, "VersionTree.init_pool(_,_)") == 0) return w_VersionTree_init_pool;
-    if (strcmp(signature, "VersionTree.commit(_,_)") == 0) return w_VersionTree_commit;
-    if (strcmp(signature, "VersionTree.undo()") == 0) return w_VersionTree_undo;
-    if (strcmp(signature, "VersionTree.redo()") == 0) return w_VersionTree_redo;
-    if (strcmp(signature, "VersionTree.checkout(_)") == 0) return w_VersionTree_checkout;
-    if (strcmp(signature, "VersionTree.get_current_id()") == 0) return w_VersionTree_get_current_id;
+    if (strcmp(signature, "VersionTree.add_root(_,_)") == 0) return w_VersionTree_add_root;
+    if (strcmp(signature, "VersionTree.commit(_,_,_)") == 0) return w_VersionTree_commit;
+    if (strcmp(signature, "VersionTree.undo(_)") == 0) return w_VersionTree_undo;
+    if (strcmp(signature, "VersionTree.redo(_)") == 0) return w_VersionTree_redo;
+    if (strcmp(signature, "VersionTree.checkout(_,_)") == 0) return w_VersionTree_checkout;
+    if (strcmp(signature, "VersionTree.get_current_id(_)") == 0) return w_VersionTree_get_current_id;
     if (strcmp(signature, "VersionTree.get_node_count()") == 0) return w_VersionTree_get_node_count;
-    if (strcmp(signature, "VersionTree.can_undo()") == 0) return w_VersionTree_can_undo;
-    if (strcmp(signature, "VersionTree.can_redo()") == 0) return w_VersionTree_can_redo;
+    if (strcmp(signature, "VersionTree.can_undo(_)") == 0) return w_VersionTree_can_undo;
+    if (strcmp(signature, "VersionTree.can_redo(_)") == 0) return w_VersionTree_can_redo;
     if (strcmp(signature, "VersionTree.get_node_desc(_)") == 0) return w_VersionTree_get_node_desc;
     if (strcmp(signature, "VersionTree.get_children(_)") == 0) return w_VersionTree_get_children;
+    if (strcmp(signature, "VersionTree.find_root_of(_)") == 0) return w_VersionTree_find_root_of;
     if (strcmp(signature, "VersionTree.save(_)") == 0) return w_VersionTree_save;
     if (strcmp(signature, "VersionTree.load(_)") == 0) return w_VersionTree_load;
     if (strcmp(signature, "VersionTree.clear()") == 0) return w_VersionTree_clear;

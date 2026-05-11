@@ -48,10 +48,12 @@ void commit_to_vt(const std::shared_ptr<breptopo::TopoNaming>& tn,
     uint32_t parent_id = src->GetVersionId();
     uint32_t new_id;
     if (parent_id == partgraph::TopoShape::NO_VERSION) {
-        new_id = vt->Commit(world, pid_map, op_name);
+        uint32_t root_id = vt->AddRoot(world, op_name);
+        new_id = root_id;
     } else {
-        vt->Checkout(parent_id);
-        new_id = vt->Commit(world, pid_map, op_name);
+        uint32_t root_id = vt->FindRootOf(parent_id);
+        vt->Checkout(root_id, parent_id);
+        new_id = vt->Commit(root_id, world, pid_map, op_name);
     }
     dst->SetVersionId(new_id);
 }

@@ -79,6 +79,12 @@ struct VersionNode
     PoolDiff diff;
 };
 
+struct RootCursor
+{
+    uint32_t current_id = UINT32_MAX;
+    WorldPtr current_world;
+};
+
 class VersionTree
 {
 public:
@@ -86,23 +92,26 @@ public:
 
     VersionTree();
 
-    uint32_t Commit(const BRepWorld&    new_world,
+    uint32_t AddRoot(const BRepWorld&   world,
+                     const std::string& op_desc,
+                     uint32_t           op_type = 0);
+
+    uint32_t Commit(uint32_t            root_id,
+                    const BRepWorld&    new_world,
                     PoolDiff&&          diff,
                     const std::string&  op_desc,
                     uint32_t            op_type = 0);
 
-    uint32_t Commit(const BRepWorld&    new_world,
+    uint32_t Commit(uint32_t            root_id,
+                    const BRepWorld&    new_world,
                     const std::string&  op_desc,
                     uint32_t            op_type = 0);
 
-    uint32_t Commit(const BRepWorld&    new_world,
+    uint32_t Commit(uint32_t            root_id,
+                    const BRepWorld&    new_world,
                     const PidMapping&   pid_map,
                     const std::string&  op_desc,
                     uint32_t            op_type = 0);
-
-    uint32_t AddRoot(const BRepWorld&   world,
-                     const std::string& op_desc,
-                     uint32_t           op_type = 0);
 
     uint32_t Branch(uint32_t            parent_id,
                     const BRepWorld&    new_world,
@@ -124,26 +133,29 @@ public:
                    const std::string&             op_desc,
                    uint32_t                       op_type = 0);
 
-    // ----- Navigation -----
+    // ----- Navigation (per root) -----
 
-    WorldPtr Checkout(uint32_t node_id);
-    WorldPtr Undo();
-    WorldPtr Redo(int child_index = -1);
+    WorldPtr Checkout(uint32_t root_id, uint32_t node_id);
+    WorldPtr Undo(uint32_t root_id);
+    WorldPtr Redo(uint32_t root_id, int child_index = -1);
 
-    WorldPtr GetCurrentWorld() const { return m_current_world; }
+    WorldPtr GetCurrentWorld(uint32_t root_id) const;
+    uint32_t GetCurrentId(uint32_t root_id) const;
+    bool     CanUndo(uint32_t root_id) const;
+    bool     CanRedo(uint32_t root_id) const;
 
     // ----- Query -----
 
-    uint32_t GetCurrentId() const { return m_current_id; }
-    uint32_t GetRootId()    const { return m_root_id; }
+    uint32_t GetRootId() const { return m_root_id; }
 
     std::vector<uint32_t> GetRoots() const;
+    uint32_t FindRootOf(uint32_t node_id) const;
+    std::vector<uint32_t> GetAllCurrentIds() const;
+
+    const RootCursor* GetCursor(uint32_t root_id) const;
 
     const VersionNode* GetNode(uint32_t id) const;
     size_t             GetNodeCount() const { return m_nodes.size(); }
-
-    bool CanUndo() const;
-    bool CanRedo() const;
 
     std::vector<uint32_t> GetPathFromRoot(uint32_t node_id) const;
     std::vector<uint32_t> GetLeaves() const;
@@ -158,7 +170,7 @@ public:
     void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
     void LoadFromByteArray(const uint8_t*  buf,
                            uint32_t        len,
-                           const BRepWorld& current_world);
+                           const std::unordered_map<uint32_t, WorldPtr>& cursor_worlds);
 
     void Clear();
 
@@ -192,8 +204,7 @@ public:
 
 private:
     uint32_t AllocNodeId();
-    uint32_t InitRoot(const BRepWorld& world, const std::string& desc, uint32_t op_type);
-    void     NavigateTo(uint32_t target_id);
+    void     NavigateTo(uint32_t root_id, uint32_t target_id);
     uint32_t FindLCA(uint32_t a, uint32_t b) const;
 
     static WorldPtr RebuildWorld(
@@ -201,12 +212,10 @@ private:
         const std::vector<uint32_t>&                     order);
 
     std::unordered_map<uint32_t, VersionNode> m_nodes;
+    std::unordered_map<uint32_t, RootCursor>  m_cursors;
 
-    uint32_t m_current_id = UINT32_MAX;
-    uint32_t m_root_id    = UINT32_MAX;
-    uint32_t m_next_id    = 0;
-
-    WorldPtr m_current_world;
+    uint32_t m_root_id = UINT32_MAX;
+    uint32_t m_next_id = 0;
 
     std::unordered_map<uint32_t, WorldPtr> m_root_worlds;
 };

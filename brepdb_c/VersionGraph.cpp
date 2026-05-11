@@ -1,4 +1,6 @@
 #include "VersionGraph.h"
+#include "VersionTree.h"
+#include "NodeVersionInfo.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
@@ -55,7 +57,8 @@ VersionGraph::BuildGraph(const VersionTree& tree)
     }
 
     // Create graph nodes
-    uint32_t current_id = tree.GetCurrentId();
+    auto all_current = tree.GetAllCurrentIds();
+    std::set<uint32_t> current_set(all_current.begin(), all_current.end());
 
     for (uint32_t vid : bfs_order)
     {
@@ -70,7 +73,7 @@ VersionGraph::BuildGraph(const VersionTree& tree)
             vnode->op_desc,
             vnode->op_type,
             vnode->timestamp,
-            vid == current_id);
+            current_set.count(vid) > 0);
 
         graph->AddNode(gnode);
     }

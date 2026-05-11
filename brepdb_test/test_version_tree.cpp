@@ -507,27 +507,22 @@ TEST_CASE("PidMapping: stale old_pid not in old_pool falls back to added", "[pid
 }
 
 // ============================================================
-// VersionTree navigation tests
+// VersionTree navigation tests (per-root cursor)
 // ============================================================
 
-TEST_CASE("VersionTree: Commit(pid_map) auto-installs root on first call", "[tree][pidmap]")
+TEST_CASE("VersionTree: AddRoot creates cursor", "[tree]")
 {
     VersionTree tree;
-    REQUIRE(tree.GetCurrentWorld() == nullptr);
     REQUIRE(tree.GetRootId() == UINT32_MAX);
 
     auto w0 = make_world_ab();
+    uint32_t root_id = tree.AddRoot(w0, "create box", 7);
 
-    VersionTree::PidMapping junk_map;
-    junk_map[999] = { 12345 };
+    REQUIRE(tree.GetRootId()           == root_id);
+    REQUIRE(tree.GetCurrentId(root_id) == root_id);
+    REQUIRE(tree.GetNodeCount()        == 1);
 
-    uint32_t root_id = tree.Commit(w0, junk_map, "create box", /*op_type=*/7);
-
-    REQUIRE(tree.GetRootId()    == root_id);
-    REQUIRE(tree.GetCurrentId() == root_id);
-    REQUIRE(tree.GetNodeCount() == 1);
-
-    auto current = tree.GetCurrentWorld();
+    auto current = tree.GetCurrentWorld(root_id);
     REQUIRE(get_alive(current).size() == 2);
     REQUIRE(current->IsAlive(10));
     REQUIRE(current->IsAlive(20));
@@ -538,13 +533,13 @@ TEST_CASE("VersionTree: Commit(pid_map) auto-installs root on first call", "[tre
     REQUIRE(node->op_type == 7);
 }
 
-TEST_CASE("VersionTree: Commit(pid_map) builds diff for non-first call", "[tree][pidmap]")
+TEST_CASE("VersionTree: Commit(root_id, pid_map) builds diff", "[tree][pidmap]")
 {
     VersionTree tree;
 
     BRepWorld w0;
     add_entity(w0, 10, Type::Compound, { 1, 2 });
-    tree.Commit(w0, VersionTree::PidMapping{}, "init", 0);
+    uint32_t root_id = tree.AddRoot(w0, "init", 0);
 
     BRepWorld w1;
     add_entity(w1, 110, Type::Compound, { 1, 2 });
@@ -553,20 +548,20 @@ TEST_CASE("VersionTree: Commit(pid_map) builds diff for non-first call", "[tree]
     VersionTree::PidMapping pid_map;
     pid_map[10] = { 110, 111 };
 
-    uint32_t commit_id = tree.Commit(w1, pid_map, "split face", 1);
-    REQUIRE(commit_id != tree.GetRootId());
+    uint32_t commit_id = tree.Commit(root_id, w1, pid_map, "split face", 1);
+    REQUIRE(commit_id != root_id);
     REQUIRE(tree.GetNodeCount() == 2);
 
-    auto cur = tree.GetCurrentWorld();
+    auto cur = tree.GetCurrentWorld(root_id);
     REQUIRE(get_alive(cur).size() == 2);
     REQUIRE(cur->IsAlive(110));
     REQUIRE(cur->IsAlive(111));
 
-    auto undone = tree.Undo();
+    auto undone = tree.Undo(root_id);
     REQUIRE(get_alive(undone).size() == 1);
     REQUIRE(undone->IsAlive(10));
 
-    auto redone = tree.Redo();
+    auto redone = tree.Redo(root_id);
     REQUIRE(get_alive(redone).size() == 2);
     REQUIRE(redone->IsAlive(111));
 }
@@ -575,39 +570,39 @@ TEST_CASE("VersionTree: linear undo / redo", "[tree]")
 {
     VersionTree tree;
     auto w0 = make_world_ab();
-    tree.Commit(w0, "create box");
+    uint32_t root_id = tree.AddRoot(w0, "create box");
 
     auto w1 = make_world_cab();
-    tree.Commit(w1, "fillet");
+    tree.Commit(root_id, w1, "fillet");
 
     BRepWorld w2 = w1;
     w2.Params().Get(20)->data[0] = 99.0;
-    tree.Commit(w2, "chamfer");
+    tree.Commit(root_id, w2, "chamfer");
 
     REQUIRE(tree.GetNodeCount() == 3);
 
-    auto u1 = tree.Undo();
+    auto u1 = tree.Undo(root_id);
     REQUIRE(get_alive(u1).size() == 3);
     REQUIRE(get_params(u1, 20)[0] == 4.0);
 
-    auto u0 = tree.Undo();
+    auto u0 = tree.Undo(root_id);
     REQUIRE(get_alive(u0).size() == 2);
     REQUIRE(u0->IsAlive(10));
-    REQUIRE_FALSE(tree.CanUndo());
+    REQUIRE_FALSE(tree.CanUndo(root_id));
 
-    auto r1 = tree.Redo();
+    auto r1 = tree.Redo(root_id);
     REQUIRE(r1->IsAlive(30));
 
-    auto r2 = tree.Redo();
+    auto r2 = tree.Redo(root_id);
     REQUIRE(get_params(r2, 20)[0] == 99.0);
-    REQUIRE_FALSE(tree.CanRedo());
+    REQUIRE_FALSE(tree.CanRedo(root_id));
 }
 
 TEST_CASE("VersionTree: branching and cross-branch checkout", "[tree]")
 {
     VersionTree tree;
     auto w0 = make_world_ab();
-    tree.Commit(w0, "init");
+    uint32_t root_id = tree.AddRoot(w0, "init");
 
     BRepWorld wA;
     add_entity(wA, 50, Type::Compound, { 10, 20 });
@@ -616,7 +611,7 @@ TEST_CASE("VersionTree: branching and cross-branch checkout", "[tree]")
     mapA[10] = { 50 };
     mapA[20] = {};
     auto dA  = VersionTree::BuildDiffFromPidMapping(w0, wA, mapA);
-    uint32_t idA = tree.Commit(wA, std::move(dA), "branch A");
+    uint32_t idA = tree.Commit(root_id, wA, std::move(dA), "branch A");
 
     BRepWorld wB;
     add_entity(wB, 60, Type::Compound, { 30, 40 });
@@ -625,27 +620,27 @@ TEST_CASE("VersionTree: branching and cross-branch checkout", "[tree]")
     mapB[10] = { 60 };
     mapB[20] = {};
     auto dB  = VersionTree::BuildDiffFromPidMapping(w0, wB, mapB);
-    uint32_t idB = tree.Branch(0, wB, std::move(dB), "branch B");
+    uint32_t idB = tree.Branch(root_id, wB, std::move(dB), "branch B");
 
     SECTION("checkout branch A") {
-        auto rA = tree.Checkout(idA);
+        auto rA = tree.Checkout(root_id, idA);
         REQUIRE(rA->IsAlive(50));
         REQUIRE(get_params(rA, 50)[0] == 10.0);
     }
 
     SECTION("checkout branch B") {
-        auto rB = tree.Checkout(idB);
+        auto rB = tree.Checkout(root_id, idB);
         REQUIRE(rB->IsAlive(60));
         REQUIRE(get_params(rB, 60)[0] == 30.0);
     }
 
     SECTION("checkout root") {
-        auto r0 = tree.Checkout(0);
+        auto r0 = tree.Checkout(root_id, root_id);
         REQUIRE(r0->IsAlive(10));
     }
 
     SECTION("root has 2 children") {
-        REQUIRE(tree.GetNode(0)->children.size() == 2);
+        REQUIRE(tree.GetNode(root_id)->children.size() == 2);
     }
 }
 
@@ -653,25 +648,25 @@ TEST_CASE("VersionTree: Redo selects correct child by index", "[tree]")
 {
     VersionTree tree;
     auto ab_w = make_world_ab();
-    tree.Commit(ab_w, "root");
+    uint32_t root_id = tree.AddRoot(ab_w, "root");
 
     auto cab_w = make_world_cab();
-    tree.Commit(cab_w, "branch A");
+    tree.Commit(root_id, cab_w, "branch A");
 
     BRepWorld wB = make_world_ab();
     wB.Params().Get(10)->data[0] = 77.0;
-    tree.Branch(0, wB, VersionTree::ComputeDiff(ab_w, wB), "branch B");
+    tree.Branch(root_id, wB, VersionTree::ComputeDiff(ab_w, wB), "branch B");
 
-    tree.Checkout(0);
+    tree.Checkout(root_id, root_id);
 
-    auto rA = tree.Redo(0);
-    REQUIRE(tree.GetCurrentId() == 1);
+    auto rA = tree.Redo(root_id, 0);
+    REQUIRE(tree.GetCurrentId(root_id) == 1);
     REQUIRE(get_alive(rA).size() == 3);
 
-    tree.Checkout(0);
+    tree.Checkout(root_id, root_id);
 
-    auto rB = tree.Redo(1);
-    REQUIRE(tree.GetCurrentId() == 2);
+    auto rB = tree.Redo(root_id, 1);
+    REQUIRE(tree.GetCurrentId(root_id) == 2);
     REQUIRE(get_params(rB, 10)[0] == 77.0);
 }
 
@@ -681,7 +676,7 @@ TEST_CASE("VersionTree: deep chain of 20 commits — undo all then redo all", "[
 
     BRepWorld w0;
     add_entity(w0, 1, Type::Compound, std::vector<double>(10, 0.0));
-    tree.Commit(w0, "init");
+    uint32_t root_id = tree.AddRoot(w0, "init");
 
     constexpr int DEPTH = 20;
     for (int i = 1; i <= DEPTH; ++i)
@@ -690,17 +685,98 @@ TEST_CASE("VersionTree: deep chain of 20 commits — undo all then redo all", "[
         std::vector<double> p(10, 0.0);
         p[0] = static_cast<double>(i);
         add_entity(wi, 1, Type::Compound, p);
-        tree.Commit(wi, "step " + std::to_string(i));
+        tree.Commit(root_id, wi, "step " + std::to_string(i));
     }
 
     REQUIRE(tree.GetNodeCount() == DEPTH + 1);
 
-    for (int i = 0; i < DEPTH; ++i) { tree.Undo(); }
-    REQUIRE(tree.GetCurrentId() == 0);
-    REQUIRE(get_params(tree.GetCurrentWorld(), 1)[0] == 0.0);
+    for (int i = 0; i < DEPTH; ++i) { tree.Undo(root_id); }
+    REQUIRE(tree.GetCurrentId(root_id) == root_id);
+    REQUIRE(get_params(tree.GetCurrentWorld(root_id), 1)[0] == 0.0);
 
-    for (int i = 0; i < DEPTH; ++i) { tree.Redo(); }
-    REQUIRE(get_params(tree.GetCurrentWorld(), 1)[0] == static_cast<double>(DEPTH));
+    for (int i = 0; i < DEPTH; ++i) { tree.Redo(root_id); }
+    REQUIRE(get_params(tree.GetCurrentWorld(root_id), 1)[0] == static_cast<double>(DEPTH));
+}
+
+// ============================================================
+// Multi-root per-solid tests
+// ============================================================
+
+TEST_CASE("VersionTree: independent per-root undo does not affect other roots", "[tree][multi]")
+{
+    VersionTree tree;
+
+    // Solid A: block → fillet
+    BRepWorld wA0;
+    add_entity(wA0, 10, Type::Compound, { 1, 2, 3 });
+    uint32_t rootA = tree.AddRoot(wA0, "block A");
+
+    BRepWorld wA1;
+    add_entity(wA1, 10, Type::Compound, { 10, 20, 30 });
+    tree.Commit(rootA, wA1, "fillet A");
+
+    // Solid B: block → fillet
+    BRepWorld wB0;
+    add_entity(wB0, 20, Type::Compound, { 4, 5 });
+    uint32_t rootB = tree.AddRoot(wB0, "block B");
+
+    BRepWorld wB1;
+    add_entity(wB1, 20, Type::Compound, { 40, 50 });
+    tree.Commit(rootB, wB1, "fillet B");
+
+    // Undo A — only A reverts, B stays at fillet
+    auto undoneA = tree.Undo(rootA);
+    REQUIRE(get_params(undoneA, 10)[0] == 1.0);
+    REQUIRE(get_params(tree.GetCurrentWorld(rootB), 20)[0] == 40.0);
+
+    // Redo A
+    auto redoneA = tree.Redo(rootA);
+    REQUIRE(get_params(redoneA, 10)[0] == 10.0);
+    REQUIRE(get_params(tree.GetCurrentWorld(rootB), 20)[0] == 40.0);
+}
+
+TEST_CASE("VersionTree: FindRootOf traces parent chain", "[tree][multi]")
+{
+    VersionTree tree;
+
+    BRepWorld wA;
+    add_entity(wA, 10, Type::Compound, { 1 });
+    uint32_t rootA = tree.AddRoot(wA, "root A");
+
+    BRepWorld wA1;
+    add_entity(wA1, 10, Type::Compound, { 2 });
+    uint32_t childA = tree.Commit(rootA, wA1, "step A1");
+
+    BRepWorld wB;
+    add_entity(wB, 20, Type::Compound, { 3 });
+    uint32_t rootB = tree.AddRoot(wB, "root B");
+
+    REQUIRE(tree.FindRootOf(childA) == rootA);
+    REQUIRE(tree.FindRootOf(rootA)  == rootA);
+    REQUIRE(tree.FindRootOf(rootB)  == rootB);
+}
+
+TEST_CASE("VersionTree: GetAllCurrentIds returns all cursor positions", "[tree][multi]")
+{
+    VersionTree tree;
+
+    BRepWorld wA;
+    add_entity(wA, 10, Type::Compound, { 1 });
+    uint32_t rootA = tree.AddRoot(wA, "A");
+
+    BRepWorld wA1;
+    add_entity(wA1, 10, Type::Compound, { 2 });
+    uint32_t nodeA1 = tree.Commit(rootA, wA1, "A1");
+
+    BRepWorld wB;
+    add_entity(wB, 20, Type::Compound, { 3 });
+    uint32_t rootB = tree.AddRoot(wB, "B");
+
+    auto ids = tree.GetAllCurrentIds();
+    std::set<uint32_t> id_set(ids.begin(), ids.end());
+    REQUIRE(id_set.size() == 2);
+    REQUIRE(id_set.count(nodeA1));
+    REQUIRE(id_set.count(rootB));
 }
 
 // ============================================================
@@ -711,16 +787,16 @@ TEST_CASE("VersionTree: GetPathFromRoot and GetLeaves", "[tree][query]")
 {
     VersionTree tree;
     auto ab_w = make_world_ab();
-    tree.Commit(ab_w, "root");
-    tree.Commit(make_world_cab(), "op1");
+    uint32_t root_id = tree.AddRoot(ab_w, "root");
+    tree.Commit(root_id, make_world_cab(), "op1");
 
     BRepWorld w2 = make_world_cab();
     w2.Params().Get(30)->data[0] = 42.0;
-    tree.Commit(w2, "op2");
+    tree.Commit(root_id, w2, "op2");
 
     BRepWorld w3 = make_world_ab();
     w3.Params().Get(10)->data[0] = 99.0;
-    tree.Branch(0, w3, VersionTree::ComputeDiff(ab_w, w3), "op3");
+    tree.Branch(root_id, w3, VersionTree::ComputeDiff(ab_w, w3), "op3");
 
     auto path = tree.GetPathFromRoot(2);
     REQUIRE(path.size() == 3);
@@ -735,8 +811,8 @@ TEST_CASE("VersionTree: GetPathFromRoot and GetLeaves", "[tree][query]")
 TEST_CASE("VersionTree: TraverseAll visits every node", "[tree][query]")
 {
     VersionTree tree;
-    tree.Commit(make_world_ab(), "root");
-    tree.Commit(make_world_cab(), "op1");
+    uint32_t root_id = tree.AddRoot(make_world_ab(), "root");
+    tree.Commit(root_id, make_world_cab(), "op1");
 
     int count = 0;
     tree.TraverseAll([&](const VersionNode&) { ++count; });
@@ -753,14 +829,14 @@ TEST_CASE("Persistence: SaveToFile / LoadFromFile round-trip", "[persist]")
 
     VersionTree t1;
     auto ab_w = make_world_ab();
-    t1.Commit(ab_w, "create box");
+    uint32_t root_id = t1.AddRoot(ab_w, "create box");
 
     auto cab_w = make_world_cab();
-    t1.Commit(cab_w, "fillet");
+    t1.Commit(root_id, cab_w, "fillet");
 
     BRepWorld w2 = make_world_cab();
     w2.Params().Get(10)->data[0] = 77.0;
-    t1.Commit(w2, "chamfer");
+    t1.Commit(root_id, w2, "chamfer");
 
     BRepWorld wb = make_world_cab();
     wb.Params().Get(30)->data[0] = 55.0;
@@ -772,29 +848,70 @@ TEST_CASE("Persistence: SaveToFile / LoadFromFile round-trip", "[persist]")
     REQUIRE(t2.LoadFromFile(fp));
     REQUIRE(t2.GetNodeCount() == t1.GetNodeCount());
 
-    auto r0 = t2.Checkout(0);
+    auto r0 = t2.Checkout(root_id, 0);
     REQUIRE(get_alive(r0).size() == 2);
     REQUIRE(r0->IsAlive(10));
 
-    auto r2 = t2.Checkout(2);
+    auto r2 = t2.Checkout(root_id, 2);
     REQUIRE(get_params(r2, 10)[0] == 77.0);
 
-    auto rb = t2.Checkout(3);
+    auto rb = t2.Checkout(root_id, 3);
     REQUIRE(get_params(rb, 30)[0] == 55.0);
 }
 
-TEST_CASE("Persistence: StoreToByteArray / LoadFromByteArray (BrepDB meta page path)", "[persist]")
+TEST_CASE("Persistence: SaveToFile / LoadFromFile multi-root round-trip", "[persist][multi]")
+{
+    const std::string fp = "/tmp/vt_brepdb_test_multi.vtbd";
+
+    VersionTree t1;
+
+    BRepWorld wA;
+    add_entity(wA, 10, Type::Compound, { 1, 2, 3 });
+    uint32_t rootA = t1.AddRoot(wA, "block A");
+
+    BRepWorld wA1;
+    add_entity(wA1, 10, Type::Compound, { 10, 20, 30 });
+    t1.Commit(rootA, wA1, "fillet A");
+
+    BRepWorld wB;
+    add_entity(wB, 20, Type::Compound, { 4, 5 });
+    uint32_t rootB = t1.AddRoot(wB, "block B");
+
+    BRepWorld wB1;
+    add_entity(wB1, 20, Type::Compound, { 40, 50 });
+    t1.Commit(rootB, wB1, "fillet B");
+
+    REQUIRE(t1.SaveToFile(fp));
+
+    VersionTree t2;
+    REQUIRE(t2.LoadFromFile(fp));
+    REQUIRE(t2.GetNodeCount() == 4);
+
+    // Both cursors should be at their latest commits
+    auto curA = t2.GetCurrentWorld(rootA);
+    REQUIRE(get_params(curA, 10)[0] == 10.0);
+
+    auto curB = t2.GetCurrentWorld(rootB);
+    REQUIRE(get_params(curB, 20)[0] == 40.0);
+
+    // Undo A independently
+    auto undoneA = t2.Undo(rootA);
+    REQUIRE(get_params(undoneA, 10)[0] == 1.0);
+    REQUIRE(get_params(t2.GetCurrentWorld(rootB), 20)[0] == 40.0);
+}
+
+TEST_CASE("Persistence: StoreToByteArray / LoadFromByteArray round-trip", "[persist]")
 {
     VersionTree t1;
     auto w0 = make_world_ab();
-    t1.Commit(w0, "create box");
+    uint32_t root_id = t1.AddRoot(w0, "create box");
 
     auto w1 = make_world_cab();
-    t1.Commit(w1, "fillet");
+    t1.Commit(root_id, w1, "fillet");
 
     BRepWorld w2 = w1;
     w2.Params().Get(30)->data[0] = 42.0;
-    t1.Commit(w2, "chamfer");
+    t1.Commit(root_id, w2, "chamfer");
 
     uint8_t* buf = nullptr;
     uint32_t len = 0;
@@ -802,23 +919,27 @@ TEST_CASE("Persistence: StoreToByteArray / LoadFromByteArray (BrepDB meta page p
     REQUIRE(buf != nullptr);
     REQUIRE(len > 0);
 
+    auto w2_ptr = std::make_shared<BRepWorld>(w2);
+    std::unordered_map<uint32_t, WorldPtr> cursor_worlds;
+    cursor_worlds[root_id] = w2_ptr;
+
     VersionTree t2;
-    t2.LoadFromByteArray(buf, len, w2);
+    t2.LoadFromByteArray(buf, len, cursor_worlds);
     delete[] buf;
 
-    REQUIRE(t2.GetNodeCount()  == 3);
-    REQUIRE(t2.GetCurrentId()  == t1.GetCurrentId());
+    REQUIRE(t2.GetNodeCount()              == 3);
+    REQUIRE(t2.GetCurrentId(root_id)       == t1.GetCurrentId(root_id));
 
-    auto u1 = t2.Undo();
+    auto u1 = t2.Undo(root_id);
     REQUIRE(get_alive(u1).size() == 3);
     REQUIRE(get_params(u1, 30)[0] != 42.0);
 
-    auto u0 = t2.Undo();
+    auto u0 = t2.Undo(root_id);
     REQUIRE(get_alive(u0).size() == 2);
     REQUIRE(u0->IsAlive(10));
 
-    t2.Redo();
-    auto r2 = t2.Redo();
+    t2.Redo(root_id);
+    auto r2 = t2.Redo(root_id);
     REQUIRE(get_params(r2, 30)[0] == 42.0);
 }
 
@@ -826,39 +947,43 @@ TEST_CASE("Persistence: byte-array with branches", "[persist]")
 {
     VersionTree t1;
     auto w0 = make_world_ab();
-    t1.Commit(w0, "init");
+    uint32_t root_id = t1.AddRoot(w0, "init");
 
     BRepWorld wA;
     add_entity(wA, 50, Type::Compound, { 10, 20, 30 });
 
     VersionTree::PidMapping mapA;
     mapA[10] = { 50 };
-    t1.Commit(wA, VersionTree::BuildDiffFromPidMapping(w0, wA, mapA), "branch A");
+    t1.Commit(root_id, wA, VersionTree::BuildDiffFromPidMapping(w0, wA, mapA), "branch A");
 
     BRepWorld wB;
     add_entity(wB, 60, Type::Compound, { 100, 200, 300 });
 
     VersionTree::PidMapping mapB;
     mapB[10] = { 60 };
-    t1.Branch(0, wB, VersionTree::BuildDiffFromPidMapping(w0, wB, mapB), "branch B");
+    t1.Branch(root_id, wB, VersionTree::BuildDiffFromPidMapping(w0, wB, mapB), "branch B");
 
     uint8_t* buf = nullptr;
     uint32_t len = 0;
     t1.StoreToByteArray(&buf, len);
 
+    auto wB_ptr = std::make_shared<BRepWorld>(wB);
+    std::unordered_map<uint32_t, WorldPtr> cursor_worlds;
+    cursor_worlds[root_id] = wB_ptr;
+
     VersionTree t2;
-    t2.LoadFromByteArray(buf, len, wB);
+    t2.LoadFromByteArray(buf, len, cursor_worlds);
     delete[] buf;
 
     REQUIRE(t2.GetNodeCount() == 3);
 
-    auto rA = t2.Checkout(1);
+    auto rA = t2.Checkout(root_id, 1);
     REQUIRE(rA->IsAlive(50));
 
-    auto r0 = t2.Checkout(0);
+    auto r0 = t2.Checkout(root_id, root_id);
     REQUIRE(r0->IsAlive(10));
 
-    auto rB = t2.Checkout(2);
+    auto rB = t2.Checkout(root_id, 2);
     REQUIRE(get_params(rB, 60)[0] == 100.0);
 }
 
@@ -871,29 +996,33 @@ TEST_CASE("Integration: BrepDB open/save/undo/redo cycle", "[integration]")
     auto w0 = make_world_ab();
 
     VersionTree tree;
-    tree.Commit(w0, "create box");
+    uint32_t root_id = tree.AddRoot(w0, "create box");
 
     auto w1 = make_world_cab();
     VersionTree::PidMapping map1;
     map1[10] = { 10 };
     map1[20] = { 20 };
-    tree.Commit(w1, VersionTree::BuildDiffFromPidMapping(w0, w1, map1), "fillet");
+    tree.Commit(root_id, w1, VersionTree::BuildDiffFromPidMapping(w0, w1, map1), "fillet");
 
     uint8_t* save_buf = nullptr;
     uint32_t save_len = 0;
     tree.StoreToByteArray(&save_buf, save_len);
 
+    auto w1_ptr = std::make_shared<BRepWorld>(w1);
+    std::unordered_map<uint32_t, WorldPtr> cursor_worlds;
+    cursor_worlds[root_id] = w1_ptr;
+
     VersionTree loaded;
-    loaded.LoadFromByteArray(save_buf, save_len, w1);
+    loaded.LoadFromByteArray(save_buf, save_len, cursor_worlds);
     delete[] save_buf;
 
     REQUIRE(loaded.GetNodeCount() == 2);
-    REQUIRE(worlds_equal(*loaded.GetCurrentWorld(), w1));
+    REQUIRE(worlds_equal(*loaded.GetCurrentWorld(root_id), w1));
 
-    auto undo_w = loaded.Undo();
+    auto undo_w = loaded.Undo(root_id);
     REQUIRE(get_alive(undo_w).size() == 2);
     REQUIRE(undo_w->IsAlive(10));
 
-    auto redo_w = loaded.Redo();
+    auto redo_w = loaded.Redo(root_id);
     REQUIRE(worlds_equal(*redo_w, w1));
 }

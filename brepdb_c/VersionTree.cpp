@@ -15,7 +15,7 @@ namespace
 {
 
 constexpr uint32_t FILE_MAGIC   = 0x56544244; // "VTBD"
-constexpr uint32_t FILE_VERSION = 2;
+constexpr uint32_t FILE_VERSION = 3;
 
 struct FileHeader
 {
@@ -23,7 +23,7 @@ struct FileHeader
     uint32_t version;
     uint32_t node_count;
     uint32_t root_id;
-    uint32_t current_id;
+    uint32_t cursor_count;
     uint32_t reserved0;
     uint32_t reserved1;
 };
@@ -772,37 +772,13 @@ PoolDiff::ModifiedEntry VersionTree::BuildModifiedEntry(uint32_t           old_p
 
 VersionTree::VersionTree() {}
 
-uint32_t VersionTree::InitRoot(const BRepWorld& world, const std::string& desc, uint32_t op_type)
-{
-    Clear();
-
-    uint32_t id = AllocNodeId();
-    m_root_id = id;
-    m_current_id = id;
-
-    VersionNode node;
-    node.id = id;
-    node.parent_id = UINT32_MAX;
-    node.op_desc = desc;
-    node.op_type = op_type;
-    node.timestamp = NowMs();
-
-    m_nodes[id] = std::move(node);
-    m_current_world = std::make_shared<BRepWorld>(world);
-    m_root_worlds[id] = m_current_world;
-
-    return id;
-}
-
 uint32_t VersionTree::AddRoot(const BRepWorld&   world,
                                const std::string& op_desc,
                                uint32_t           op_type)
 {
-    if (m_root_id == UINT32_MAX) {
-        return InitRoot(world, op_desc, op_type);
-    }
-
     uint32_t id = AllocNodeId();
+
+    if (m_root_id == UINT32_MAX) { m_root_id = id; }
 
     VersionNode node;
     node.id        = id;
@@ -812,42 +788,47 @@ uint32_t VersionTree::AddRoot(const BRepWorld&   world,
     node.timestamp = NowMs();
 
     m_nodes[id] = std::move(node);
-    m_root_worlds[id] = std::make_shared<BRepWorld>(world);
+
+    auto world_ptr = std::make_shared<BRepWorld>(world);
+    m_root_worlds[id] = world_ptr;
+
+    RootCursor cursor;
+    cursor.current_id    = id;
+    cursor.current_world = world_ptr;
+    m_cursors[id] = cursor;
+
     return id;
 }
 
-uint32_t VersionTree::Commit(const BRepWorld&    new_world,
+uint32_t VersionTree::Commit(uint32_t            root_id,
+                              const BRepWorld&    new_world,
                               PoolDiff&&          diff,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    if (m_root_id == UINT32_MAX) {
-        return InitRoot(new_world, op_desc, op_type);
-    }
-    return Branch(m_current_id, new_world, std::move(diff), op_desc, op_type);
+    auto& cursor = m_cursors.at(root_id);
+    return Branch(cursor.current_id, new_world, std::move(diff), op_desc, op_type);
 }
 
-uint32_t VersionTree::Commit(const BRepWorld&    new_world,
+uint32_t VersionTree::Commit(uint32_t            root_id,
+                              const BRepWorld&    new_world,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    if (m_root_id == UINT32_MAX) {
-        return InitRoot(new_world, op_desc, op_type);
-    }
-    PoolDiff diff = ComputeDiff(*m_current_world, new_world);
-    return Branch(m_current_id, new_world, std::move(diff), op_desc, op_type);
+    auto& cursor = m_cursors.at(root_id);
+    PoolDiff diff = ComputeDiff(*cursor.current_world, new_world);
+    return Branch(cursor.current_id, new_world, std::move(diff), op_desc, op_type);
 }
 
-uint32_t VersionTree::Commit(const BRepWorld&    new_world,
+uint32_t VersionTree::Commit(uint32_t            root_id,
+                              const BRepWorld&    new_world,
                               const PidMapping&   pid_map,
                               const std::string&  op_desc,
                               uint32_t            op_type)
 {
-    if (m_root_id == UINT32_MAX) {
-        return InitRoot(new_world, op_desc, op_type);
-    }
-    PoolDiff diff = BuildDiffFromPidMapping(*m_current_world, new_world, pid_map);
-    return Branch(m_current_id, new_world, std::move(diff), op_desc, op_type);
+    auto& cursor = m_cursors.at(root_id);
+    PoolDiff diff = BuildDiffFromPidMapping(*cursor.current_world, new_world, pid_map);
+    return Branch(cursor.current_id, new_world, std::move(diff), op_desc, op_type);
 }
 
 uint32_t VersionTree::Branch(uint32_t            parent_id,
@@ -857,7 +838,10 @@ uint32_t VersionTree::Branch(uint32_t            parent_id,
                               uint32_t            op_type)
 {
     assert(m_nodes.count(parent_id));
-    if (parent_id != m_current_id) { NavigateTo(parent_id); }
+
+    uint32_t root_id = FindRootOf(parent_id);
+    auto& cursor = m_cursors.at(root_id);
+    if (parent_id != cursor.current_id) { NavigateTo(root_id, parent_id); }
 
     uint32_t new_id = AllocNodeId();
 
@@ -872,8 +856,8 @@ uint32_t VersionTree::Branch(uint32_t            parent_id,
     m_nodes[parent_id].children.push_back(new_id);
     m_nodes[new_id] = std::move(node);
 
-    m_current_id    = new_id;
-    m_current_world = std::make_shared<BRepWorld>(new_world);
+    cursor.current_id    = new_id;
+    cursor.current_world = std::make_shared<BRepWorld>(new_world);
 
     return new_id;
 }
@@ -886,7 +870,10 @@ uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
                              uint32_t                       op_type)
 {
     assert(m_nodes.count(primary_parent_id));
-    if (primary_parent_id != m_current_id) { NavigateTo(primary_parent_id); }
+
+    uint32_t root_id = FindRootOf(primary_parent_id);
+    auto& cursor = m_cursors.at(root_id);
+    if (primary_parent_id != cursor.current_id) { NavigateTo(root_id, primary_parent_id); }
 
     uint32_t new_id = AllocNodeId();
 
@@ -907,8 +894,8 @@ uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
     }
     m_nodes[new_id] = std::move(node);
 
-    m_current_id    = new_id;
-    m_current_world = std::make_shared<BRepWorld>(new_world);
+    cursor.current_id    = new_id;
+    cursor.current_world = std::make_shared<BRepWorld>(new_world);
 
     return new_id;
 }
@@ -921,33 +908,39 @@ uint32_t VersionTree::Merge(uint32_t                       primary_parent_id,
                              uint32_t                       op_type)
 {
     assert(m_nodes.count(primary_parent_id));
-    if (primary_parent_id != m_current_id) { NavigateTo(primary_parent_id); }
 
-    PoolDiff diff = BuildDiffFromPidMapping(*m_current_world, new_world, pid_map);
+    uint32_t root_id = FindRootOf(primary_parent_id);
+    auto& cursor = m_cursors.at(root_id);
+    if (primary_parent_id != cursor.current_id) { NavigateTo(root_id, primary_parent_id); }
+
+    PoolDiff diff = BuildDiffFromPidMapping(*cursor.current_world, new_world, pid_map);
     return Merge(primary_parent_id, aux_parent_ids, new_world, std::move(diff), op_desc, op_type);
 }
 
 // ============================================================
-// VersionTree - navigation
+// VersionTree - navigation (per root)
 // ============================================================
 
-WorldPtr VersionTree::Checkout(uint32_t node_id)
+WorldPtr VersionTree::Checkout(uint32_t root_id, uint32_t node_id)
 {
     assert(m_nodes.count(node_id));
-    if (node_id != m_current_id) { NavigateTo(node_id); }
-    return m_current_world;
+    auto& cursor = m_cursors.at(root_id);
+    if (node_id != cursor.current_id) { NavigateTo(root_id, node_id); }
+    return cursor.current_world;
 }
 
-WorldPtr VersionTree::Undo()
+WorldPtr VersionTree::Undo(uint32_t root_id)
 {
-    assert(CanUndo());
-    return Checkout(m_nodes[m_current_id].parent_id);
+    assert(CanUndo(root_id));
+    auto& cursor = m_cursors.at(root_id);
+    return Checkout(root_id, m_nodes.at(cursor.current_id).parent_id);
 }
 
-WorldPtr VersionTree::Redo(int child_index)
+WorldPtr VersionTree::Redo(uint32_t root_id, int child_index)
 {
-    assert(CanRedo());
-    const auto& children = m_nodes[m_current_id].children;
+    assert(CanRedo(root_id));
+    auto& cursor = m_cursors.at(root_id);
+    const auto& children = m_nodes.at(cursor.current_id).children;
 
     uint32_t target;
     if (child_index < 0 || child_index >= static_cast<int>(children.size())) {
@@ -956,12 +949,24 @@ WorldPtr VersionTree::Redo(int child_index)
         target = children[child_index];
     }
 
-    return Checkout(target);
+    return Checkout(root_id, target);
 }
 
 // ============================================================
 // VersionTree - query
 // ============================================================
+
+WorldPtr VersionTree::GetCurrentWorld(uint32_t root_id) const
+{
+    auto it = m_cursors.find(root_id);
+    return it != m_cursors.end() ? it->second.current_world : nullptr;
+}
+
+uint32_t VersionTree::GetCurrentId(uint32_t root_id) const
+{
+    auto it = m_cursors.find(root_id);
+    return it != m_cursors.end() ? it->second.current_id : UINT32_MAX;
+}
 
 std::vector<uint32_t> VersionTree::GetRoots() const
 {
@@ -973,24 +978,54 @@ std::vector<uint32_t> VersionTree::GetRoots() const
     return roots;
 }
 
+uint32_t VersionTree::FindRootOf(uint32_t node_id) const
+{
+    uint32_t cur = node_id;
+    while (true)
+    {
+        auto it = m_nodes.find(cur);
+        if (it == m_nodes.end()) { return UINT32_MAX; }
+        if (it->second.parent_id == UINT32_MAX) { return cur; }
+        cur = it->second.parent_id;
+    }
+}
+
+std::vector<uint32_t> VersionTree::GetAllCurrentIds() const
+{
+    std::vector<uint32_t> ids;
+    for (const auto& [root_id, cursor] : m_cursors)
+    {
+        ids.push_back(cursor.current_id);
+    }
+    return ids;
+}
+
+const RootCursor* VersionTree::GetCursor(uint32_t root_id) const
+{
+    auto it = m_cursors.find(root_id);
+    return it != m_cursors.end() ? &it->second : nullptr;
+}
+
 const VersionNode* VersionTree::GetNode(uint32_t id) const
 {
     auto it = m_nodes.find(id);
     return it != m_nodes.end() ? &it->second : nullptr;
 }
 
-bool VersionTree::CanUndo() const
+bool VersionTree::CanUndo(uint32_t root_id) const
 {
-    if (m_current_id == UINT32_MAX) { return false; }
-    auto it = m_nodes.find(m_current_id);
-    return it != m_nodes.end() && it->second.parent_id != UINT32_MAX;
+    auto cit = m_cursors.find(root_id);
+    if (cit == m_cursors.end()) { return false; }
+    auto nit = m_nodes.find(cit->second.current_id);
+    return nit != m_nodes.end() && nit->second.parent_id != UINT32_MAX;
 }
 
-bool VersionTree::CanRedo() const
+bool VersionTree::CanRedo(uint32_t root_id) const
 {
-    if (m_current_id == UINT32_MAX) { return false; }
-    auto it = m_nodes.find(m_current_id);
-    return it != m_nodes.end() && !it->second.children.empty();
+    auto cit = m_cursors.find(root_id);
+    if (cit == m_cursors.end()) { return false; }
+    auto nit = m_nodes.find(cit->second.current_id);
+    return nit != m_nodes.end() && !nit->second.children.empty();
 }
 
 std::vector<uint32_t> VersionTree::GetPathFromRoot(uint32_t node_id) const
@@ -1293,57 +1328,35 @@ WorldPtr VersionTree::ApplyReverse(const BRepWorld& current, const PoolDiff& dif
 
 uint32_t VersionTree::AllocNodeId() { return m_next_id++; }
 
-void VersionTree::NavigateTo(uint32_t target_id)
+void VersionTree::NavigateTo(uint32_t root_id, uint32_t target_id)
 {
-    if (m_current_id == target_id) { return; }
+    auto& cursor = m_cursors.at(root_id);
+    if (cursor.current_id == target_id) { return; }
 
-    auto cur_path = GetPathFromRoot(m_current_id);
+    uint32_t lca = FindLCA(cursor.current_id, target_id);
+
+    WorldPtr world = cursor.current_world;
+
+    uint32_t cur = cursor.current_id;
+    while (cur != lca)
+    {
+        auto it = m_nodes.find(cur);
+        world = ApplyReverse(*world, it->second.diff);
+        cur = it->second.parent_id;
+    }
+
     auto tgt_path = GetPathFromRoot(target_id);
+    auto lca_it = std::find(tgt_path.begin(), tgt_path.end(), lca);
+    assert(lca_it != tgt_path.end());
 
-    uint32_t cur_root = cur_path.front();
-    uint32_t tgt_root = tgt_path.front();
-
-    if (cur_root == tgt_root)
+    for (auto it = lca_it + 1; it != tgt_path.end(); ++it)
     {
-        uint32_t lca = FindLCA(m_current_id, target_id);
-
-        WorldPtr world = m_current_world;
-
-        uint32_t cur = m_current_id;
-        while (cur != lca)
-        {
-            auto it = m_nodes.find(cur);
-            world = ApplyReverse(*world, it->second.diff);
-            cur = it->second.parent_id;
-        }
-
-        auto lca_it = std::find(tgt_path.begin(), tgt_path.end(), lca);
-        assert(lca_it != tgt_path.end());
-
-        for (auto it = lca_it + 1; it != tgt_path.end(); ++it)
-        {
-            auto node_it = m_nodes.find(*it);
-            world = ApplyForward(*world, node_it->second.diff);
-        }
-
-        m_current_world = world;
-    }
-    else
-    {
-        auto rw = m_root_worlds.find(tgt_root);
-        assert(rw != m_root_worlds.end());
-        WorldPtr world = rw->second;
-
-        for (size_t i = 1; i < tgt_path.size(); ++i)
-        {
-            auto node_it = m_nodes.find(tgt_path[i]);
-            world = ApplyForward(*world, node_it->second.diff);
-        }
-
-        m_current_world = world;
+        auto node_it = m_nodes.find(*it);
+        world = ApplyForward(*world, node_it->second.diff);
     }
 
-    m_current_id = target_id;
+    cursor.current_world = world;
+    cursor.current_id    = target_id;
 }
 
 uint32_t VersionTree::FindLCA(uint32_t a, uint32_t b) const
@@ -1375,16 +1388,17 @@ bool VersionTree::SaveToFile(const std::string& filepath) const
     auto roots = GetRoots();
 
     FileHeader fh;
-    fh.magic      = FILE_MAGIC;
-    fh.version    = FILE_VERSION;
-    fh.node_count = static_cast<uint32_t>(m_nodes.size());
-    fh.root_id    = m_root_id;
-    fh.current_id = m_current_id;
-    fh.reserved0  = static_cast<uint32_t>(roots.size());
-    fh.reserved1  = 0;
+    fh.magic        = FILE_MAGIC;
+    fh.version      = FILE_VERSION;
+    fh.node_count   = static_cast<uint32_t>(m_nodes.size());
+    fh.root_id      = m_root_id;
+    fh.cursor_count = static_cast<uint32_t>(m_cursors.size());
+    fh.reserved0    = static_cast<uint32_t>(roots.size());
+    fh.reserved1    = 0;
 
     os.write(reinterpret_cast<const char*>(&fh), sizeof(fh));
 
+    // Root worlds
     Wr32(os, static_cast<uint32_t>(roots.size()));
     for (uint32_t rid : roots)
     {
@@ -1393,8 +1407,10 @@ bool VersionTree::SaveToFile(const std::string& filepath) const
         if (rw_it != m_root_worlds.end()) {
             WrWorld(os, *rw_it->second);
         } else {
-            WorldPtr root_world = m_current_world;
-            auto path = GetPathFromRoot(m_current_id);
+            auto cit = m_cursors.find(rid);
+            assert(cit != m_cursors.end());
+            WorldPtr root_world = cit->second.current_world;
+            auto path = GetPathFromRoot(cit->second.current_id);
             for (int i = static_cast<int>(path.size()) - 1; i > 0; --i)
             {
                 auto it = m_nodes.find(path[i]);
@@ -1402,6 +1418,14 @@ bool VersionTree::SaveToFile(const std::string& filepath) const
             }
             WrWorld(os, *root_world);
         }
+    }
+
+    // Cursor map
+    Wr32(os, static_cast<uint32_t>(m_cursors.size()));
+    for (const auto& [rid, cursor] : m_cursors)
+    {
+        Wr32(os, rid);
+        Wr32(os, cursor.current_id);
     }
 
     WriteNodesBfs(os, m_nodes, roots, true);
@@ -1419,9 +1443,9 @@ bool VersionTree::LoadFromFile(const std::string& filepath)
     if (fh.magic != FILE_MAGIC || fh.version != FILE_VERSION) { return false; }
 
     Clear();
-    m_root_id    = fh.root_id;
-    m_current_id = fh.root_id;
+    m_root_id = fh.root_id;
 
+    // Root worlds
     uint32_t root_count = Rd32(is);
     for (uint32_t i = 0; i < root_count; ++i)
     {
@@ -1429,18 +1453,34 @@ bool VersionTree::LoadFromFile(const std::string& filepath)
         m_root_worlds[rid] = RdWorld(is);
     }
 
+    // Cursor map
+    uint32_t cursor_count = Rd32(is);
+    for (uint32_t i = 0; i < cursor_count; ++i)
+    {
+        uint32_t rid = Rd32(is);
+        uint32_t cid = Rd32(is);
+        RootCursor cursor;
+        cursor.current_id = cid;
+        m_cursors[rid] = cursor;
+    }
+
     uint32_t max_id = ReadNodes(is, fh.node_count, m_nodes, true);
     m_next_id       = max_id + 1;
 
-    auto rw_it = m_root_worlds.find(m_root_id);
-    if (rw_it != m_root_worlds.end()) {
-        m_current_world = rw_it->second;
-    }
-
-    if (fh.current_id != m_root_id)
+    // Reconstruct each cursor's world from root world + forward diffs
+    for (auto& [rid, cursor] : m_cursors)
     {
-        m_current_id = m_root_id;
-        NavigateTo(fh.current_id);
+        auto rw_it = m_root_worlds.find(rid);
+        if (rw_it == m_root_worlds.end()) { continue; }
+
+        WorldPtr world = rw_it->second;
+        auto path = GetPathFromRoot(cursor.current_id);
+        for (size_t j = 1; j < path.size(); ++j)
+        {
+            auto node_it = m_nodes.find(path[j]);
+            world = ApplyForward(*world, node_it->second.diff);
+        }
+        cursor.current_world = world;
     }
 
     return true;
@@ -1460,9 +1500,16 @@ void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const
     w.W32(FILE_VERSION);
     w.W32(static_cast<uint32_t>(m_nodes.size()));
     w.W32(m_root_id);
-    w.W32(m_current_id);
+    w.W32(static_cast<uint32_t>(m_cursors.size()));
     w.W32(static_cast<uint32_t>(roots.size()));
     w.W32(0);
+
+    // Cursor map
+    for (const auto& [rid, cursor] : m_cursors)
+    {
+        w.W32(rid);
+        w.W32(cursor.current_id);
+    }
 
     WriteNodesBfs(w, m_nodes, roots);
 
@@ -1473,40 +1520,50 @@ void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 
 void VersionTree::LoadFromByteArray(const uint8_t*  buf,
                                      uint32_t        len,
-                                     const BRepWorld& current_world)
+                                     const std::unordered_map<uint32_t, WorldPtr>& cursor_worlds)
 {
     MemReader r;
     r.data = buf;
     r.size = len;
 
-    uint32_t magic   = r.R32();
-    uint32_t version = r.R32();
+    uint32_t magic        = r.R32();
+    uint32_t version      = r.R32();
     if (magic != FILE_MAGIC || version != FILE_VERSION) { return; }
 
-    uint32_t node_count = r.R32();
-    uint32_t root_id    = r.R32();
-    uint32_t current_id = r.R32();
+    uint32_t node_count   = r.R32();
+    uint32_t root_id      = r.R32();
+    uint32_t cursor_count = r.R32();
     r.R32();
     r.R32();
 
     Clear();
-    m_root_id    = root_id;
-    m_current_id = current_id;
+    m_root_id = root_id;
+
+    // Cursor map
+    for (uint32_t i = 0; i < cursor_count; ++i)
+    {
+        uint32_t rid = r.R32();
+        uint32_t cid = r.R32();
+        RootCursor cursor;
+        cursor.current_id = cid;
+        auto wt = cursor_worlds.find(rid);
+        if (wt != cursor_worlds.end()) {
+            cursor.current_world = wt->second;
+        }
+        m_cursors[rid] = cursor;
+    }
 
     uint32_t max_id = ReadNodes(r, node_count, m_nodes);
     m_next_id       = max_id + 1;
-
-    m_current_world = std::make_shared<BRepWorld>(current_world);
 }
 
 void VersionTree::Clear()
 {
     m_nodes.clear();
+    m_cursors.clear();
     m_root_worlds.clear();
-    m_current_world = {};
-    m_current_id   = UINT32_MAX;
-    m_root_id      = UINT32_MAX;
-    m_next_id      = 0;
+    m_root_id = UINT32_MAX;
+    m_next_id = 0;
 }
 
 } // namespace brepdb
