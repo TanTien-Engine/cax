@@ -216,6 +216,13 @@ void w_CompGraph_get_graph()
     ves_pop(1);
 }
 
+void w_CompGraph_set_parallel()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    bool enabled = ves_toboolean(1);
+    cg->SetParallel(enabled);
+}
+
 void w_CompGraph_eval()
 {
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
@@ -490,6 +497,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
     if (strcmp(signature, "CompGraph.eval(_)") == 0) return w_CompGraph_eval;
+    if (strcmp(signature, "CompGraph.set_parallel(_)") == 0) return w_CompGraph_set_parallel;
     if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
     if (strcmp(signature, "CompGraph.add_number_node(_,_)") == 0) return w_CompGraph_add_number_node;
     if (strcmp(signature, "CompGraph.add_number3_node(_,_,_,_)") == 0) return w_CompGraph_add_number3_node;

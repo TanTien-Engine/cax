@@ -2,6 +2,11 @@
 
 #include "CompGraph.h"
 
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <thread>
+
 using namespace breptopo;
 
 // Dummy ops that don't depend on OCCT.
@@ -518,4 +523,631 @@ TEST_CASE("Evaluator: invalidation clears vt_node_id for dirty nodes", "[restore
     eval.Run(g, mk, tn);
     REQUIRE(nd->vt_node_id != UINT32_MAX);
     REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, mk)).tag == 20);
+}
+
+// ---------------------------------------------------------------
+//  CollectDeps / AreIndependent / TopoLevels tests
+// ---------------------------------------------------------------
+
+TEST_CASE("IRGraph: CollectDeps returns full transitive closure", "[graph]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    //  c1 -> add_nums -> transform
+    //  c2 ----^             ^
+    //  c3 (offset) ---------+
+    auto c1 = g.Const(1.0);
+    auto c2 = g.Const(2.0);
+    auto add = g.Add("add_nums", {c1, c2});
+    auto c3 = g.Const(3.0);
+    auto mk = g.Add("make_shape", {add});
+    auto tr = g.Add("transform", {mk, c3});
+
+    auto deps = g.CollectDeps(tr);
+    REQUIRE(deps.size() == 6);  // tr, mk, add, c1, c2, c3
+    REQUIRE(deps.count(tr.id));
+    REQUIRE(deps.count(mk.id));
+    REQUIRE(deps.count(add.id));
+    REQUIRE(deps.count(c1.id));
+    REQUIRE(deps.count(c2.id));
+    REQUIRE(deps.count(c3.id));
+
+    auto deps_add = g.CollectDeps(add);
+    REQUIRE(deps_add.size() == 3);  // add, c1, c2
+    REQUIRE(deps_add.count(add.id));
+    REQUIRE(deps_add.count(c1.id));
+    REQUIRE(deps_add.count(c2.id));
+
+    auto deps_c1 = g.CollectDeps(c1);
+    REQUIRE(deps_c1.size() == 1);
+    REQUIRE(deps_c1.count(c1.id));
+}
+
+TEST_CASE("IRGraph: AreIndependent detects independent subtrees", "[graph]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    // subtree A: c1 -> make_shape -> transform(c2)
+    auto c1 = g.Const(10.0);
+    auto mkA = g.Add("make_shape", {c1});
+    auto offA = g.Const(5.0);
+    auto trA = g.Add("transform", {mkA, offA});
+
+    // subtree B: c3 -> make_shape -> transform(c4)
+    auto c3 = g.Const(20.0);
+    auto mkB = g.Add("make_shape", {c3});
+    auto offB = g.Const(7.0);
+    auto trB = g.Add("transform", {mkB, offB});
+
+    REQUIRE(g.AreIndependent(trA, trB));
+    REQUIRE(g.AreIndependent(mkA, mkB));
+    REQUIRE(g.AreIndependent(trA, mkB));
+}
+
+TEST_CASE("IRGraph: AreIndependent detects shared nodes", "[graph]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    // shared root
+    auto shared = g.Const(10.0);
+    auto mkA = g.Add("make_shape", {shared});
+    auto mkB = g.Add("make_shape", {shared});
+
+    REQUIRE_FALSE(g.AreIndependent(mkA, mkB));
+
+    // deeper sharing
+    auto offA = g.Const(1.0);
+    auto trA = g.Add("transform", {mkA, offA});
+    auto offB = g.Const(2.0);
+    auto trB = g.Add("transform", {mkB, offB});
+
+    REQUIRE_FALSE(g.AreIndependent(trA, trB));
+}
+
+TEST_CASE("DepIndex: O(1) independence check matches brute-force", "[graph]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    // independent subtrees
+    auto c1 = g.Const(10.0);
+    auto mkA = g.Add("make_shape", {c1});
+    auto offA = g.Const(5.0);
+    auto trA = g.Add("transform", {mkA, offA});
+
+    auto c3 = g.Const(20.0);
+    auto mkB = g.Add("make_shape", {c3});
+    auto offB = g.Const(7.0);
+    auto trB = g.Add("transform", {mkB, offB});
+
+    auto idx = g.BuildDepIndex();
+    REQUIRE(idx.AreIndependent(trA, trB));
+    REQUIRE(idx.AreIndependent(mkA, mkB));
+    REQUIRE(g.AreIndependent(trA, trB));  // cross-check
+
+    // shared root -> not independent
+    auto shared = g.Const(99.0);
+    auto mkC = g.Add("make_shape", {shared});
+    auto mkD = g.Add("make_shape", {shared});
+    auto idx2 = g.BuildDepIndex();
+    REQUIRE_FALSE(idx2.AreIndependent(mkC, mkD));
+    REQUIRE_FALSE(g.AreIndependent(mkC, mkD));  // cross-check
+}
+
+TEST_CASE("DepIndex: wide graph with many leaves", "[graph]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    // 100 independent branches — tests bitset > 64 bits
+    std::vector<NRef> branches;
+    for (int i = 0; i < 100; ++i)
+    {
+        auto c = g.Const(static_cast<double>(i));
+        branches.push_back(g.Add("make_shape", {c}));
+    }
+
+    auto idx = g.BuildDepIndex();
+    for (int i = 0; i < 100; ++i)
+        for (int j = i + 1; j < 100; j += 17)
+            REQUIRE(idx.AreIndependent(branches[i], branches[j]));
+}
+
+TEST_CASE("IRGraph: TopoLevels groups nodes by level", "[graph]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    // level 0: c1, c2, c3
+    // level 1: mkA(c1), mkB(c2)
+    // level 2: trA(mkA, c3)
+    auto c1 = g.Const(10.0);
+    auto c2 = g.Const(20.0);
+    auto c3 = g.Const(5.0);
+    auto mkA = g.Add("make_shape", {c1});
+    auto mkB = g.Add("make_shape", {c2});
+    auto trA = g.Add("transform", {mkA, c3});
+
+    auto levels = g.TopoLevels();
+    REQUIRE(levels.size() == 3);
+
+    // level 0: all constants
+    std::unordered_set<uint32_t> lv0;
+    for (auto& r : levels[0]) lv0.insert(r.id);
+    REQUIRE(lv0.count(c1.id));
+    REQUIRE(lv0.count(c2.id));
+    REQUIRE(lv0.count(c3.id));
+
+    // level 1: mkA and mkB
+    std::unordered_set<uint32_t> lv1;
+    for (auto& r : levels[1]) lv1.insert(r.id);
+    REQUIRE(lv1.count(mkA.id));
+    REQUIRE(lv1.count(mkB.id));
+
+    // level 2: trA
+    REQUIRE(levels[2].size() == 1);
+    REQUIRE(levels[2][0].id == trA.id);
+}
+
+// ---------------------------------------------------------------
+//  RunParallel tests
+// ---------------------------------------------------------------
+
+static void RegisterSlowTestOps(OpRegistry& reg)
+{
+    reg.Define("slow_shape", {"size"}, {},
+        [](EvalCtx& ctx) -> Val {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            ShapeVal sv;
+            sv.shape = nullptr;
+            sv.tag = static_cast<uint32_t>(ctx.Num(0));
+            return sv;
+        });
+
+    reg.Define("slow_combine", {"shape1", "shape2"}, {},
+        [](EvalCtx& ctx) -> Val {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            auto s1 = ctx.GetShape(0);
+            auto s2 = ctx.GetShape(1);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = s1.tag + s2.tag;
+            return out;
+        },
+        {false, false, true, false});  // is_boolean
+}
+
+TEST_CASE("RunParallel: produces correct results for independent subtrees", "[parallel]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    // two independent subtrees joined by add_nums
+    auto c1 = g.Const(10.0);
+    auto c2 = g.Const(20.0);
+    auto mkA = g.Add("make_shape", {c1});
+    auto mkB = g.Add("make_shape", {c2});
+    auto offA = g.Const(3.0);
+    auto offB = g.Const(7.0);
+    auto trA = g.Add("transform", {mkA, offA});
+    auto trB = g.Add("transform", {mkB, offB});
+
+    // verify independence
+    REQUIRE(g.AreIndependent(trA, trB));
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    Val rA = eval.RunParallel(g,trA, tn);
+    REQUIRE(std::holds_alternative<ShapeVal>(rA));
+    REQUIRE(std::get<ShapeVal>(rA).tag == 13);
+
+    Val rB = eval.ResolveVal(g, trB);
+    REQUIRE(std::holds_alternative<ShapeVal>(rB));
+    REQUIRE(std::get<ShapeVal>(rB).tag == 27);
+}
+
+TEST_CASE("RunParallel: matches sequential Run results", "[parallel]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    auto c1 = g.Const(10.0);
+    auto mk = g.Add("make_shape", {c1});
+    auto off = g.Const(5.0);
+    auto tr = g.Add("transform", {mk, off});
+
+    Evaluator eval_seq(reg);
+    Evaluator eval_par(reg);
+    std::shared_ptr<TopoNaming> tn;
+
+    Val seq_result = eval_seq.Run(g, tr, tn);
+    Val par_result = eval_par.RunParallel(g,tr, tn);
+
+    REQUIRE(std::get<ShapeVal>(seq_result).tag == std::get<ShapeVal>(par_result).tag);
+}
+
+TEST_CASE("RunParallel: actually runs in parallel (timing)", "[parallel]")
+{
+    OpRegistry reg;
+    RegisterSlowTestOps(reg);
+    IRGraph g(reg);
+
+    // two independent slow_shape nodes at the same topo level
+    auto c1 = g.Const(10.0);
+    auto c2 = g.Const(20.0);
+    auto mkA = g.Add("slow_shape", {c1});
+    auto mkB = g.Add("slow_shape", {c2});
+    auto combine = g.Add("slow_combine", {mkA, mkB});
+
+    REQUIRE(g.AreIndependent(mkA, mkB));
+
+    // sequential: 3 * 100ms = ~300ms
+    {
+        Evaluator eval(reg);
+        std::shared_ptr<TopoNaming> tn;
+        auto t0 = std::chrono::steady_clock::now();
+        eval.Run(g, combine, tn);
+        auto t1 = std::chrono::steady_clock::now();
+        auto seq_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+        REQUIRE(seq_ms >= 280);
+    }
+
+    // parallel: max(100,100) + 100 = ~200ms
+    {
+        Evaluator eval(reg);
+        std::shared_ptr<TopoNaming> tn;
+        auto t0 = std::chrono::steady_clock::now();
+        eval.RunParallel(g,combine, tn);
+        auto t1 = std::chrono::steady_clock::now();
+        auto par_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+        REQUIRE(par_ms < 280);
+    }
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    Val result = eval.RunParallel(g,combine, tn);
+    REQUIRE(std::holds_alternative<ShapeVal>(result));
+    REQUIRE(std::get<ShapeVal>(result).tag == 30);
+}
+
+TEST_CASE("RunParallel: handles cache hits correctly", "[parallel]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    auto c1 = g.Const(10.0);
+    auto c2 = g.Const(20.0);
+    auto mkA = g.Add("make_shape", {c1});
+    auto mkB = g.Add("make_shape", {c2});
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+
+    // first run populates caches
+    eval.RunParallel(g,mkB, tn);
+    REQUIRE(eval.CacheMisses() == 2);
+
+    // second run should hit caches
+    eval.ResetStats();
+    eval.RunParallel(g,mkB, tn);
+    REQUIRE(eval.CacheHits() == 2);
+    REQUIRE(eval.CacheMisses() == 0);
+}
+
+TEST_CASE("RunParallel: invalidation then re-eval", "[parallel]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    auto c1 = g.Const(10.0);
+    auto mk = g.Add("make_shape", {c1});
+    auto off = g.Const(5.0);
+    auto tr = g.Add("transform", {mk, off});
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    eval.RunParallel(g,tr, tn);
+    REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, tr)).tag == 15);
+
+    g.UpdateImmediate(c1, Val(20.0));
+    eval.Invalidate(g, c1);
+
+    eval.RunParallel(g,tr, tn);
+    REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, tr)).tag == 25);
+}
+
+TEST_CASE("RunParallel: wide graph with many independent branches", "[parallel]")
+{
+    OpRegistry reg;
+    RegisterTestOps(reg);
+    IRGraph g(reg);
+
+    std::vector<NRef> branches;
+    for (int i = 1; i <= 8; ++i)
+    {
+        auto c = g.Const(static_cast<double>(i));
+        auto mk = g.Add("make_shape", {c});
+        branches.push_back(mk);
+    }
+
+    // all branches should be pairwise independent
+    for (size_t i = 0; i < branches.size(); ++i)
+        for (size_t j = i + 1; j < branches.size(); ++j)
+            REQUIRE(g.AreIndependent(branches[i], branches[j]));
+
+    auto levels = g.TopoLevels();
+    REQUIRE(levels.size() == 2);
+    REQUIRE(levels[0].size() == 8);  // all constants
+    REQUIRE(levels[1].size() == 8);  // all make_shape
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    eval.RunParallel(g,branches.back(), tn);
+
+    for (int i = 0; i < 8; ++i)
+    {
+        Val v = eval.ResolveVal(g, branches[i]);
+        REQUIRE(std::holds_alternative<ShapeVal>(v));
+        REQUIRE(std::get<ShapeVal>(v).tag == static_cast<uint32_t>(i + 1));
+    }
+}
+
+// ---------------------------------------------------------------
+//  CompGraph facade integration tests (real modeling scenarios)
+// ---------------------------------------------------------------
+
+// Register CAD-like ops that simulate real boolean modeling workloads
+static void RegisterCADTestOps(OpRegistry& reg)
+{
+    reg.Define("box", {"length", "width", "height"}, {},
+        [](EvalCtx& ctx) -> Val {
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            ShapeVal sv;
+            sv.shape = nullptr;
+            sv.tag = static_cast<uint32_t>(ctx.Num(0) * 100 + ctx.Num(1) * 10 + ctx.Num(2));
+            return sv;
+        });
+
+    reg.Define("translate", {"shape", "offset"}, {},
+        [](EvalCtx& ctx) -> Val {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            auto sv = ctx.GetShape(0);
+            auto off = ctx.GetVec3(1);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = sv.tag + static_cast<uint32_t>(off[0]);
+            return out;
+        });
+
+    reg.Define("cut", {"shape1", "shape2"}, {},
+        [](EvalCtx& ctx) -> Val {
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            auto s1 = ctx.GetShape(0);
+            auto s2 = ctx.GetShape(1);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = s1.tag * 1000 + s2.tag;
+            return out;
+        },
+        {false, false, true, false});
+
+    reg.Define("fuse", {"shape1", "shape2"}, {},
+        [](EvalCtx& ctx) -> Val {
+            std::this_thread::sleep_for(std::chrono::milliseconds(30));
+            auto s1 = ctx.GetShape(0);
+            auto s2 = ctx.GetShape(1);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = s1.tag + s2.tag;
+            return out;
+        },
+        {false, false, true, false});
+
+    reg.Define("fillet", {"shape", "radius"}, {"edges"},
+        [](EvalCtx& ctx) -> Val {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            auto sv = ctx.GetShape(0);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = sv.tag + static_cast<uint32_t>(ctx.Num(1));
+            return out;
+        },
+        {true, false, false, false});
+}
+
+TEST_CASE("CAD: boolean cut with two independent box subtrees", "[integration]")
+{
+    // Mirrors test/breptopo/nodes/rollback.ves:
+    //   boxA -> cut(_, boxB->translate) via CompGraph
+    OpRegistry reg;
+    RegisterCADTestOps(reg);
+    IRGraph g(reg);
+
+    // subtree A: box(1,2,3) -> translate(offset=(10,0,0))
+    auto lenA = g.Const(1.0);
+    auto widA = g.Const(2.0);
+    auto htA  = g.Const(3.0);
+    auto boxA = g.Add("box", {lenA, widA, htA});
+    auto offA = g.Const(Vec3{10, 0, 0});
+    auto trA  = g.Add("translate", {boxA, offA});
+
+    // subtree B: box(4,5,6)
+    auto lenB = g.Const(4.0);
+    auto widB = g.Const(5.0);
+    auto htB  = g.Const(6.0);
+    auto boxB = g.Add("box", {lenB, widB, htB});
+
+    auto cut  = g.Add("cut", {trA, boxB});
+
+    REQUIRE(g.AreIndependent(trA, boxB));
+
+    // sequential
+    Evaluator eval_seq(reg);
+    std::shared_ptr<TopoNaming> tn;
+    Val seq_result = eval_seq.Run(g, cut, tn);
+    REQUIRE(std::holds_alternative<ShapeVal>(seq_result));
+    uint32_t seq_tag = std::get<ShapeVal>(seq_result).tag;
+
+    // parallel
+    Evaluator eval_par(reg);
+    Val par_result = eval_par.RunParallel(g,cut, tn);
+    REQUIRE(std::holds_alternative<ShapeVal>(par_result));
+    REQUIRE(std::get<ShapeVal>(par_result).tag == seq_tag);
+}
+
+TEST_CASE("CAD: parallel boolean is faster than sequential", "[integration]")
+{
+    // boxA(30ms) + translate(20ms) -> cut(30ms) <- boxB(30ms)
+    // Sequential: 30+20+30+30 = 110ms
+    // Parallel:   max(30+20, 30) + 30 = 80ms
+    OpRegistry reg;
+    RegisterCADTestOps(reg);
+
+    auto build_graph = [&](IRGraph& g) -> NRef {
+        auto lenA = g.Const(1.0);
+        auto widA = g.Const(2.0);
+        auto htA  = g.Const(3.0);
+        auto boxA = g.Add("box", {lenA, widA, htA});
+        auto offA = g.Const(Vec3{5, 0, 0});
+        auto trA  = g.Add("translate", {boxA, offA});
+
+        auto lenB = g.Const(4.0);
+        auto widB = g.Const(5.0);
+        auto htB  = g.Const(6.0);
+        auto boxB = g.Add("box", {lenB, widB, htB});
+
+        return g.Add("cut", {trA, boxB});
+    };
+
+    long seq_ms, par_ms;
+
+    {
+        IRGraph g(reg);
+        auto root = build_graph(g);
+        Evaluator eval(reg);
+        std::shared_ptr<TopoNaming> tn;
+        auto t0 = std::chrono::steady_clock::now();
+        eval.Run(g, root, tn);
+        auto t1 = std::chrono::steady_clock::now();
+        seq_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    }
+
+    {
+        IRGraph g(reg);
+        auto root = build_graph(g);
+        Evaluator eval(reg);
+        std::shared_ptr<TopoNaming> tn;
+        auto t0 = std::chrono::steady_clock::now();
+        eval.RunParallel(g,root, tn);
+        auto t1 = std::chrono::steady_clock::now();
+        par_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    }
+
+    REQUIRE(seq_ms >= 100);
+    REQUIRE(par_ms < seq_ms);
+}
+
+TEST_CASE("CAD: parallel param update + re-eval (fuse)", "[integration]")
+{
+    // fuse(boxA, boxB), then change boxA param and re-eval in parallel
+    OpRegistry reg;
+    RegisterCADTestOps(reg);
+    IRGraph g(reg);
+
+    auto lenA = g.Const(1.0);
+    auto widA = g.Const(2.0);
+    auto htA  = g.Const(3.0);
+    auto boxA = g.Add("box", {lenA, widA, htA});
+
+    auto lenB = g.Const(4.0);
+    auto widB = g.Const(5.0);
+    auto htB  = g.Const(6.0);
+    auto boxB = g.Add("box", {lenB, widB, htB});
+
+    auto fuse = g.Add("fuse", {boxA, boxB});
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    Val r1 = eval.RunParallel(g,fuse, tn);
+    REQUIRE(std::holds_alternative<ShapeVal>(r1));
+    uint32_t tag1 = std::get<ShapeVal>(r1).tag;
+
+    // change lenA: 1 -> 9
+    g.UpdateImmediate(lenA, Val(9.0));
+    eval.Invalidate(g, lenA);
+
+    Val r2 = eval.RunParallel(g,fuse, tn);
+    REQUIRE(std::holds_alternative<ShapeVal>(r2));
+    uint32_t tag2 = std::get<ShapeVal>(r2).tag;
+
+    REQUIRE(tag2 != tag1);
+    // boxA: 9*100+2*10+3=923, boxB: 4*100+5*10+6=456, fuse = 923+456 = 1379
+    REQUIRE(tag2 == 1379);
+}
+
+TEST_CASE("CAD: complex multi-boolean pipeline (cut + fuse + fillet)", "[integration]")
+{
+    // Mirrors test/breptopo/nodes/compute.ves:
+    //   boxA -> fillet -> cut(_, boxB->translate) via CompGraph
+    // Extended with fuse:
+    //
+    //   boxA -> trA --+
+    //                 +--> cut --+
+    //   boxB ---------+         +--> fuse --> fillet
+    //                           |
+    //   boxC -> trC ------------+
+
+    OpRegistry reg;
+    RegisterCADTestOps(reg);
+    IRGraph g(reg);
+
+    auto la = g.Const(1.0); auto wa = g.Const(1.0); auto ha = g.Const(1.0);
+    auto boxA = g.Add("box", {la, wa, ha});
+    auto offA = g.Const(Vec3{5, 0, 0});
+    auto trA  = g.Add("translate", {boxA, offA});
+
+    auto lb = g.Const(2.0); auto wb = g.Const(2.0); auto hb = g.Const(2.0);
+    auto boxB = g.Add("box", {lb, wb, hb});
+
+    auto cut = g.Add("cut", {trA, boxB});
+
+    auto lc = g.Const(3.0); auto wc = g.Const(3.0); auto hc = g.Const(3.0);
+    auto boxC = g.Add("box", {lc, wc, hc});
+    auto offC = g.Const(Vec3{1, 0, 0});
+    auto trC  = g.Add("translate", {boxC, offC});
+
+    auto fuse = g.Add("fuse", {cut, trC});
+
+    auto rad = g.Const(2.0);
+    auto fillet = g.Add("fillet", {fuse, rad});
+
+    // verify independence
+    REQUIRE(g.AreIndependent(trA, boxB));
+    REQUIRE(g.AreIndependent(cut, trC));
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    Val result = eval.RunParallel(g,fillet, tn);
+    REQUIRE(std::holds_alternative<ShapeVal>(result));
+
+    // boxA: 1*100+1*10+1=111, trA: 111+5=116
+    // boxB: 2*100+2*10+2=222
+    // cut: 116*1000+222=116222
+    // boxC: 3*100+3*10+3=333, trC: 333+1=334
+    // fuse: 116222+334=116556
+    // fillet: 116556+2=116558
+    REQUIRE(std::get<ShapeVal>(result).tag == 116558);
 }

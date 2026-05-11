@@ -166,8 +166,12 @@ Val CompGraph::Eval(int ext_id)
 	if (!m_lowered) Lower();
 	if (ext_id < 0 || ext_id >= (int)m_nodes.size()) return {};
 	if (!m_tn) m_tn = std::make_shared<TopoNaming>();
-	m_eval.Run(m_ir, m_nodes[ext_id].ref, m_tn);
-	return m_eval.ResolveVal(m_ir, m_nodes[ext_id].ref);
+	NRef ref = m_nodes[ext_id].ref;
+	if (m_parallel)
+		m_eval.RunParallel(m_ir, ref, m_tn);
+	else
+		m_eval.Run(m_ir, ref, m_tn);
+	return m_eval.ResolveVal(m_ir, ref);
 }
 
 size_t CompGraph::NodeCount() const

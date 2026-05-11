@@ -152,6 +152,24 @@ public:
 	size_t        LiveCount() const;
 	std::vector<NRef> TopoSort() const;
 	std::vector<NRef> UsersOf(NRef ref) const;
+	std::unordered_set<uint32_t> CollectDeps(NRef ref) const;
+	bool AreIndependent(NRef a, NRef b) const;
+	std::vector<std::vector<NRef>> TopoLevels() const;
+
+	// O(n) precompute, O(leaves/64) per query alternative to AreIndependent.
+	// Each node stores a bitset of which leaves it transitively depends on.
+	// Two nodes are independent iff their bitsets AND to zero.
+	class DepIndex
+	{
+	public:
+		void Build(const IRGraph& g);
+		bool AreIndependent(NRef a, NRef b) const;
+	private:
+		using Word = uint64_t;
+		size_t m_words = 0;
+		std::unordered_map<uint32_t, std::vector<Word>> m_bits;
+	};
+	DepIndex BuildDepIndex() const;
 	void Clear() { m_nodes.clear(); m_next_id = 1; }
 	const OpRegistry& Registry() const { return m_reg; }
 	std::string Dump() const;
@@ -233,6 +251,7 @@ public:
 	Evaluator(const OpRegistry& reg) : m_reg(reg) {}
 
 	Val Run(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn);
+	Val RunParallel(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn);
 	void Invalidate(IRGraph& g, NRef ref);
 
 	Val ResolveVal(const IRGraph& g, NRef ref) const;
@@ -259,6 +278,9 @@ private:
 	Val EvalNode(IRGraph& g, NRef ref,
 	             const std::shared_ptr<TopoNaming>& tn,
 	             uint32_t& op_counter);
+	void EvalSubtree(IRGraph& g, NRef root,
+	                 const std::shared_ptr<TopoNaming>& tn,
+	                 uint32_t& op_counter);
 	uint64_t InputHash(const IRGraph& g, const IRNode& node) const;
 };
 
@@ -315,7 +337,7 @@ private:
 //
 //  Wraps OpHistory + IRGraph + Optimizer + Evaluator.
 //  OpHistory records the user's design intent.
-//  Lower() converts OpHistory → IRGraph (the optimisable IR).
+//  Lower() converts OpHistory -> IRGraph (the optimisable IR).
 //  Optimize() rewrites the IR.
 //  Eval() executes.
 // ---------------------------------------------------------------
@@ -354,6 +376,8 @@ public:
 	void SetNodeVersion(int ext_id, uint32_t vt_node_id);
 
 	// --- evaluation ---
+	void SetParallel(bool enabled) { m_parallel = enabled; }
+	bool IsParallel() const { return m_parallel; }
 	Val Eval(int ext_id);
 
 	// --- query ---
@@ -394,6 +418,7 @@ private:
 	mutable std::map<std::pair<int,int>, uint32_t> m_op_id_map;
 
 	bool m_lowered = false;
+	bool m_parallel = false;
 
 	int Register(NRef ref, const std::string& desc);
 	void RebuildIR();

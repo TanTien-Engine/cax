@@ -1,6 +1,7 @@
 #include "CompGraph.h"
 
 #include <algorithm>
+#include <future>
 #include <queue>
 #include <sstream>
 
@@ -203,6 +204,138 @@ std::vector<NRef> IRGraph::TopoSort() const
 			if (--in_deg[s] == 0) q.push(s);
 	}
 	return order;
+}
+
+std::unordered_set<uint32_t> IRGraph::CollectDeps(NRef ref) const
+{
+	std::unordered_set<uint32_t> deps;
+	std::vector<uint32_t> stack;
+	stack.push_back(ref.id);
+	while (!stack.empty())
+	{
+		uint32_t cur = stack.back(); stack.pop_back();
+		if (!deps.insert(cur).second) continue;
+		auto it = m_nodes.find(cur);
+		if (it == m_nodes.end() || it->second.dead) continue;
+		for (auto& inp : it->second.inputs)
+			if (inp.valid()) stack.push_back(inp.id);
+		for (auto& inp : it->second.var_inputs)
+			if (inp.valid()) stack.push_back(inp.id);
+	}
+	return deps;
+}
+
+bool IRGraph::AreIndependent(NRef a, NRef b) const
+{
+	auto deps_a = CollectDeps(a);
+	auto deps_b = CollectDeps(b);
+	for (auto id : deps_a)
+		if (deps_b.count(id)) return false;
+	return true;
+}
+
+void IRGraph::DepIndex::Build(const IRGraph& g)
+{
+	auto order = g.TopoSort();
+
+	// assign each leaf a unique bit index
+	std::unordered_map<uint32_t, size_t> leaf_idx;
+	for (auto ref : order)
+	{
+		auto* nd = g.Get(ref);
+		if (!nd) continue;
+		if (nd->inputs.empty() && nd->var_inputs.empty())
+			leaf_idx[ref.id] = leaf_idx.size();
+	}
+
+	m_words = (leaf_idx.size() + 63) / 64;
+	if (m_words == 0) m_words = 1;
+
+	for (auto ref : order)
+	{
+		auto* nd = g.Get(ref);
+		if (!nd) continue;
+
+		auto& bits = m_bits[ref.id];
+		bits.assign(m_words, 0);
+
+		auto it = leaf_idx.find(ref.id);
+		if (it != leaf_idx.end())
+		{
+			bits[it->second / 64] |= Word(1) << (it->second % 64);
+		}
+
+		// OR in all inputs' bitsets
+		auto merge = [&](NRef inp) {
+			auto jt = m_bits.find(inp.id);
+			if (jt == m_bits.end()) return;
+			for (size_t w = 0; w < m_words; ++w)
+				bits[w] |= jt->second[w];
+		};
+		for (auto& inp : nd->inputs)     merge(inp);
+		for (auto& inp : nd->var_inputs) merge(inp);
+	}
+}
+
+bool IRGraph::DepIndex::AreIndependent(NRef a, NRef b) const
+{
+	auto ia = m_bits.find(a.id);
+	auto ib = m_bits.find(b.id);
+	if (ia == m_bits.end() || ib == m_bits.end()) return true;
+	for (size_t w = 0; w < m_words; ++w)
+		if (ia->second[w] & ib->second[w]) return false;
+	return true;
+}
+
+IRGraph::DepIndex IRGraph::BuildDepIndex() const
+{
+	DepIndex idx;
+	idx.Build(*this);
+	return idx;
+}
+
+std::vector<std::vector<NRef>> IRGraph::TopoLevels() const
+{
+	std::unordered_map<uint32_t, int> in_deg;
+	std::unordered_map<uint32_t, std::vector<uint32_t>> succs;
+
+	for (auto& kv : m_nodes)
+	{
+		uint32_t id = kv.first;
+		auto& nd = kv.second;
+		if (nd.dead) continue;
+		if (in_deg.find(id) == in_deg.end()) in_deg[id] = 0;
+
+		auto add = [&](NRef src) {
+			if (!src.valid()) return;
+			auto sit = m_nodes.find(src.id);
+			if (sit == m_nodes.end() || sit->second.dead) return;
+			succs[src.id].push_back(id);
+			in_deg[id]++;
+			if (in_deg.find(src.id) == in_deg.end()) in_deg[src.id] = 0;
+		};
+		for (auto& inp : nd.inputs)     add(inp);
+		for (auto& inp : nd.var_inputs) add(inp);
+	}
+
+	std::vector<std::vector<NRef>> levels;
+	std::vector<uint32_t> frontier;
+	for (auto& [id, deg] : in_deg)
+		if (deg == 0) frontier.push_back(id);
+
+	while (!frontier.empty())
+	{
+		std::vector<NRef> level;
+		for (auto id : frontier) level.push_back(NRef{id});
+		levels.push_back(std::move(level));
+
+		std::vector<uint32_t> next;
+		for (auto id : frontier)
+			for (auto s : succs[id])
+				if (--in_deg[s] == 0) next.push_back(s);
+		frontier = std::move(next);
+	}
+	return levels;
 }
 
 std::string IRGraph::Dump() const
@@ -522,6 +655,131 @@ Val Evaluator::Run(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn)
 	uint32_t op_counter = 0;
 	for (auto ref : g.TopoSort())
 		EvalNode(g, ref, tn, op_counter);
+	return ResolveVal(g, root);
+}
+
+void Evaluator::EvalSubtree(IRGraph& g, NRef root,
+                            const std::shared_ptr<TopoNaming>& tn,
+                            uint32_t& op_counter)
+{
+	auto deps = g.CollectDeps(root);
+	auto order = g.TopoSort();
+	for (auto ref : order)
+		if (deps.count(ref.id))
+			EvalNode(g, ref, tn, op_counter);
+}
+
+Val Evaluator::RunParallel(IRGraph& g, NRef root,
+                           const std::shared_ptr<TopoNaming>& tn)
+{
+	auto dep_idx = g.BuildDepIndex();
+	auto order = g.TopoSort();
+	uint32_t op_counter = 0;
+
+	struct ForkPoint {
+		NRef bool_ref;
+		NRef inA, inB;
+		std::unordered_set<uint32_t> depsA, depsB;
+	};
+	std::vector<ForkPoint> forks;
+	std::unordered_set<uint32_t> deferred;
+
+	// pre-scan: find boolean ops with independent inputs, defer their subtrees
+	for (auto ref : order)
+	{
+		auto* nd = g.Get(ref);
+		if (!nd) continue;
+		auto* desc = m_reg.Find(nd->op_name);
+		if (!desc || !desc->flags.is_boolean) continue;
+		if (nd->inputs.size() != 2) continue;
+		if (!dep_idx.AreIndependent(nd->inputs[0], nd->inputs[1])) continue;
+
+		ForkPoint fp;
+		fp.bool_ref = ref;
+		fp.inA = nd->inputs[0];
+		fp.inB = nd->inputs[1];
+		fp.depsA = g.CollectDeps(fp.inA);
+		fp.depsB = g.CollectDeps(fp.inB);
+		for (auto id : fp.depsA) deferred.insert(id);
+		for (auto id : fp.depsB) deferred.insert(id);
+		forks.push_back(std::move(fp));
+	}
+
+	// map boolean node id -> fork index
+	std::unordered_map<uint32_t, size_t> fork_map;
+	for (size_t i = 0; i < forks.size(); ++i)
+		fork_map[forks[i].bool_ref.id] = i;
+
+	std::unordered_set<uint32_t> done;
+
+	for (auto ref : order)
+	{
+		if (done.count(ref.id)) continue;
+
+		// skip nodes belonging to a fork's subtree -- they'll be evaluated in parallel
+		if (deferred.count(ref.id) && !fork_map.count(ref.id)) continue;
+
+		auto fit = fork_map.find(ref.id);
+		if (fit != fork_map.end())
+		{
+			auto& fp = forks[fit->second];
+
+			std::vector<NRef> orderA, orderB;
+			for (auto r : order)
+			{
+				if (fp.depsA.count(r.id) && !done.count(r.id)) orderA.push_back(r);
+				if (fp.depsB.count(r.id) && !done.count(r.id)) orderB.push_back(r);
+			}
+
+			if (tn)
+			{
+				// TopoNaming accumulates HistGraph state that the boolean
+				// op needs (m_curr_shapes).  It is not thread-safe, so we
+				// evaluate both subtrees sequentially on the shared tn.
+				// Geometry results are still cached for later re-use.
+				for (auto r : orderA)
+					EvalNode(g, r, tn, op_counter);
+				for (auto r : orderB)
+					EvalNode(g, r, tn, op_counter);
+			}
+			else
+			{
+				// No TopoNaming -- subtrees can run in parallel safely.
+				Evaluator evalA(m_reg);
+				Evaluator evalB(m_reg);
+				uint32_t opA = op_counter, opB = op_counter;
+
+				auto futB = std::async(std::launch::async,
+					[&evalB, &g, &orderB, &opB]() {
+						for (auto r : orderB)
+							evalB.EvalNode(g, r, nullptr, opB);
+					});
+				for (auto r : orderA)
+					evalA.EvalNode(g, r, nullptr, opA);
+				futB.get();
+
+				for (auto id : fp.depsA)
+				{
+					auto* v = evalA.GetShapeCache().Get(id);
+					if (v) m_shape_cache.Put(id, *v);
+				}
+				for (auto id : fp.depsB)
+				{
+					auto* v = evalB.GetShapeCache().Get(id);
+					if (v) m_shape_cache.Put(id, *v);
+				}
+
+				op_counter = std::max(opA, opB);
+			}
+
+			for (auto id : fp.depsA) done.insert(id);
+			for (auto id : fp.depsB) done.insert(id);
+		}
+
+		EvalNode(g, ref, tn, op_counter);
+		done.insert(ref.id);
+	}
+
 	return ResolveVal(g, root);
 }
 

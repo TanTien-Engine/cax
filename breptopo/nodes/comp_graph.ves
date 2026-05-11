@@ -67,6 +67,7 @@ class CompGraph is Node
 			return nil
 		}
 
+		this.graph.set_parallel(true)
 		var val = this.graph.eval(this.node_idx)
 
 		return this.return_value(val)
