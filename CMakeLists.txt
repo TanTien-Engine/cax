@@ -148,7 +148,6 @@ set(brepdb
 source_group("brepdb" FILES ${brepdb})
 
 set(brepdb__geom
-    "brepdb_c/GeomPool.h"
     "brepdb_c/WorldSender.cpp"
     "brepdb_c/WorldSender.h"
     "brepdb_c/WorldReceiver.cpp"
