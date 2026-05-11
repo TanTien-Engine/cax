@@ -175,8 +175,6 @@ source_group("brepdb\\index" FILES ${brepdb__index})
 set(brepdb__version
     "brepdb_c/VersionTree.cpp"
     "brepdb_c/VersionTree.h"
-    "brepdb_c/VersionTreeGraphBuilder.cpp"
-    "brepdb_c/VersionTreeGraphBuilder.h"
     "brepdb_c/NodeVersionInfo.h"
     "brepdb_c/VersionGraph.cpp"
     "brepdb_c/VersionGraph.h"
