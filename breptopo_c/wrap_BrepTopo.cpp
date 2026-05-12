@@ -499,6 +499,56 @@ void w_CompGraph_truncate()
     cg->Truncate(static_cast<size_t>(keep));
 }
 
+void w_CompGraph_get_history_size()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    ves_set_number(0, static_cast<double>(cg->GetHistorySize()));
+}
+
+void w_CompGraph_get_step_op_name()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    int step_id = (int)ves_tonumber(1);
+    auto& name = cg->GetStepOpName(step_id);
+    ves_set_string(0, name.c_str(), name.size());
+}
+
+void w_CompGraph_get_step_inputs()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    int step_id = (int)ves_tonumber(1);
+    auto inputs = cg->GetStepInputs(step_id);
+
+    ves_pop(ves_argnum());
+    ves_newlist(static_cast<int>(inputs.size()));
+    for (int i = 0; i < (int)inputs.size(); ++i)
+    {
+        ves_pushnumber(inputs[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
+void w_CompGraph_claim_step()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    int step_id = (int)ves_tonumber(1);
+    cg->ClaimStep(step_id);
+}
+
+void w_CompGraph_is_step_claimed()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    int step_id = (int)ves_tonumber(1);
+    ves_set_boolean(0, cg->IsStepClaimed(step_id));
+}
+
+void w_CompGraph_has_preloaded_history()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    ves_set_boolean(0, cg->HasPreloadedHistory());
+}
+
 }
 
 namespace breptopo
@@ -543,6 +593,13 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "CompGraph.add_op_v(_,_,_)") == 0) return w_CompGraph_add_op_v;
     if (strcmp(signature, "CompGraph.update_const(_,_)") == 0) return w_CompGraph_update_const;
     if (strcmp(signature, "CompGraph.truncate(_)") == 0) return w_CompGraph_truncate;
+
+    if (strcmp(signature, "CompGraph.get_history_size()") == 0) return w_CompGraph_get_history_size;
+    if (strcmp(signature, "CompGraph.get_step_op_name(_)") == 0) return w_CompGraph_get_step_op_name;
+    if (strcmp(signature, "CompGraph.get_step_inputs(_)") == 0) return w_CompGraph_get_step_inputs;
+    if (strcmp(signature, "CompGraph.claim_step(_)") == 0) return w_CompGraph_claim_step;
+    if (strcmp(signature, "CompGraph.is_step_claimed(_)") == 0) return w_CompGraph_is_step_claimed;
+    if (strcmp(signature, "CompGraph.has_preloaded_history()") == 0) return w_CompGraph_has_preloaded_history;
 
     return nullptr;
 }

@@ -234,6 +234,24 @@ NRef CompGraph::Ref(int ext_id) const
 }
 
 // ---------------------------------------------------------------
+//  CompGraph reconnection support
+// ---------------------------------------------------------------
+
+static const std::string s_empty_str;
+
+const std::string& CompGraph::GetStepOpName(int step_id) const
+{
+	auto* s = m_history.Get(step_id);
+	return s ? s->op_name : s_empty_str;
+}
+
+std::vector<int> CompGraph::GetStepInputs(int step_id) const
+{
+	auto* s = m_history.Get(step_id);
+	return s ? s->inputs : std::vector<int>{};
+}
+
+// ---------------------------------------------------------------
 //  CompGraph persistence
 // ---------------------------------------------------------------
 
@@ -246,11 +264,13 @@ bool CompGraph::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 {
 	m_history.Clear();
 	m_lowered = false;
+	m_preloaded = false;
 
 	if (!m_history.LoadFromByteArray(buf, len))
 		return false;
 
 	Lower();
+	m_preloaded = true;
 	return true;
 }
 

@@ -152,6 +152,118 @@ class Compiler
 
 	}
 
+	static reconnect_graph(node)
+	{
+		var curr = Compiler.find_modeling_node(node)
+		if (!curr) {
+			return
+		}
+
+		var step = curr["comp_step_id"]
+		if (step and step >= 0) {
+			return
+		}
+
+		for (var pin in curr.imports) {
+			if (pin and !pin.conns.isEmpty) {
+				Compiler.reconnect_graph(pin.conns.front().from.node)
+			}
+		}
+
+		if (curr["comp_info"]) {
+			Compiler.reconnect_node(curr)
+		}
+	}
+
+	static reconnect_node(node)
+	{
+		if (!node.comp_info) {
+			return
+		}
+
+		if (node.comp_step_id and node.comp_step_id >= 0) {
+			return
+		}
+
+		var cg = GlobalConfig.get_comp_graph()
+		var info = node.comp_info
+		var shape_input_ids = []
+
+		if (info.containsKey("inputs")) {
+			for (var pin_idx in info["inputs"]) {
+				var pin = Blueprint.query_pin(node.imports, pin_idx)
+				if (pin and !pin.conns.isEmpty) {
+					var f_node = pin.conns.front().from.node
+					var step_id = Compiler.find_comp_source(f_node)
+					if (step_id >= 0) {
+						shape_input_ids.add(step_id)
+					}
+				}
+			}
+		}
+
+		var op_name = info["op"]
+		var found_step_id = -1
+		var history_size = cg.get_history_size()
+
+		for (var i = 0; i < history_size; i = i + 1) {
+			var step_op = cg.get_step_op_name(i)
+			if (step_op != op_name) {
+				continue
+			}
+			if (cg.is_step_claimed(i)) {
+				continue
+			}
+
+			var step_inputs = cg.get_step_inputs(i)
+			var n_shape = shape_input_ids.count
+			if (step_inputs.count < n_shape) {
+				continue
+			}
+
+			var prefix_match = true
+			for (var j = 0; j < n_shape; j = j + 1) {
+				if (step_inputs[j] != shape_input_ids[j]) {
+					prefix_match = false
+					break
+				}
+			}
+			if (!prefix_match) {
+				continue
+			}
+
+			found_step_id = i
+			break
+		}
+
+		if (found_step_id < 0) {
+			return
+		}
+
+		cg.claim_step(found_step_id)
+		node.comp_step_id = found_step_id
+		node.comp_graph_ref = cg
+
+		var step_inputs = cg.get_step_inputs(found_step_id)
+		var n_shape = shape_input_ids.count
+		var const_refs = {}
+
+		if (info.containsKey("params")) {
+			var param_idx = 0
+			for (var p in info["params"]) {
+				var name = p["name"]
+				var input_pos = n_shape + param_idx
+				if (input_pos < step_inputs.count) {
+					const_refs[name] = step_inputs[input_pos]
+					cg.claim_step(step_inputs[input_pos])
+				}
+				param_idx = param_idx + 1
+			}
+		}
+
+		node.comp_const_refs = const_refs
+	}
+
 	// Generic compilation: reads comp_info from the node and builds IR.
 	//
 	// comp_info is a map:

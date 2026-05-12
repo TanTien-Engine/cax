@@ -396,6 +396,15 @@ public:
 	uint32_t CalcOpId(int ext_id, int sub_op_id) const;
 	NRef     Ref(int ext_id) const;
 
+	// --- reconnection support ---
+	size_t GetHistorySize() const { return m_history.Size(); }
+	const std::string& GetStepOpName(int step_id) const;
+	std::vector<int> GetStepInputs(int step_id) const;
+	void ClaimStep(int step_id) { m_claimed_steps.insert(step_id); }
+	bool IsStepClaimed(int step_id) const { return m_claimed_steps.count(step_id) > 0; }
+	void ClearClaims() { m_claimed_steps.clear(); }
+	bool HasPreloadedHistory() const { return m_preloaded; }
+
 	// --- access internals ---
 	OpHistory&           GetHistory()        { return m_history; }
 	const OpHistory&     GetHistory()  const { return m_history; }
@@ -427,8 +436,10 @@ private:
 	std::unordered_map<uint32_t, int> m_ref2ext;
 
 	mutable std::map<std::pair<int,int>, uint32_t> m_op_id_map;
+	std::unordered_set<int> m_claimed_steps;
 
 	bool m_lowered = false;
+	bool m_preloaded = false;
 	bool m_parallel = false;
 	size_t m_lowered_count = 0;
 

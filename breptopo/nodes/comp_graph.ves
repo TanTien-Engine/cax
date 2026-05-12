@@ -51,7 +51,11 @@ class CompGraph is Node
 
 		var t_node = Blueprint.get_input_node(this, 0)
 		if (t_node) {
-			Compiler.register_graph(t_node)
+			if (this.graph.has_preloaded_history()) {
+				Compiler.reconnect_graph(t_node)
+			} else {
+				Compiler.register_graph(t_node)
+			}
 			var step_id = Compiler.find_comp_source(t_node)
 			if (step_id >= 0) {
 				this.node_idx = step_id

@@ -64,6 +64,14 @@ foreign class CompGraph
 	foreign add_op_v(op_name, inputs, var_inputs)
 	foreign update_const(node_idx, value)
 	foreign truncate(keep)
+
+	// reconnection
+	foreign get_history_size()
+	foreign get_step_op_name(step_id)
+	foreign get_step_inputs(step_id)
+	foreign claim_step(step_id)
+	foreign is_step_claimed(step_id)
+	foreign has_preloaded_history()
 }
 
 );

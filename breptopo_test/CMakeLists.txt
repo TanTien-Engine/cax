@@ -18,6 +18,7 @@ add_executable(${PROJECT_NAME}
     test_evaluator.cpp
     test_incremental_lower.cpp
     test_comp_persist.cpp
+    test_reconnect.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../breptopo_c/CompGraphCore.cpp
 )
 
