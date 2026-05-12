@@ -953,25 +953,26 @@ struct HistReader
 	const uint8_t* data = nullptr;
 	uint32_t size = 0;
 	uint32_t pos  = 0;
+	bool     ok   = true;
 
-	void Read(void* dst, size_t n)
+	bool Read(void* dst, size_t n)
 	{
-		if (pos + n > size)
-			throw std::runtime_error("HistReader: out of bounds");
+		if (!ok || pos + n > size) { ok = false; return false; }
 		std::memcpy(dst, data + pos, n);
 		pos += static_cast<uint32_t>(n);
+		return true;
 	}
 
 	uint8_t R8()
 	{
-		uint8_t v;
+		uint8_t v = 0;
 		Read(&v, 1);
 		return v;
 	}
 
 	uint32_t R32()
 	{
-		uint32_t v;
+		uint32_t v = 0;
 		Read(&v, 4);
 		return v;
 	}
@@ -979,7 +980,7 @@ struct HistReader
 	std::string RStr()
 	{
 		uint32_t len = R32();
-		if (len == 0)
+		if (!ok || len == 0)
 			return {};
 		std::string s(len, '\0');
 		Read(s.data(), len);
@@ -989,6 +990,7 @@ struct HistReader
 	Val RVal()
 	{
 		uint8_t idx = R8();
+		if (!ok) return Val{};
 
 		switch (idx)
 		{
@@ -1059,10 +1061,12 @@ bool OpHistory::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 
 	uint32_t magic   = r.R32();
 	uint32_t version = r.R32();
-	if (magic != HIST_MAGIC || version != HIST_VERSION)
+	if (!r.ok || magic != HIST_MAGIC || version != HIST_VERSION)
 		return false;
 
 	uint32_t count = r.R32();
+	if (!r.ok) return false;
+
 	m_steps.clear();
 	m_steps.reserve(count);
 
@@ -1084,6 +1088,13 @@ bool OpHistory::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 			step.var_inputs[j] = static_cast<int>(r.R32());
 
 		step.desc = r.RStr();
+
+		if (!r.ok)
+		{
+			m_steps.clear();
+			return false;
+		}
+
 		m_steps.push_back(std::move(step));
 	}
 

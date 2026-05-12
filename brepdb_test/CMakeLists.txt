@@ -19,18 +19,25 @@ add_executable(${PROJECT_NAME}
     test_component_diff.cpp
     test_typed_pool.cpp
     test_world_file.cpp
+    test_shape_index.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/VersionTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/WorldFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/ShapeIndex.cpp
 )
+
+if(NOT TARGET spatialdb)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/spatialdb spatialdb_build)
+endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/spatialdb/include
 )
 
 # Link Catch2::Catch2 (no main), we supply our own in catch_main.cpp.
 # This avoids the MSVC LNK2019 / MSVCRTD conflict with Catch2WithMain.
-target_link_libraries(${PROJECT_NAME} PRIVATE Catch2::Catch2)
+target_link_libraries(${PROJECT_NAME} PRIVATE Catch2::Catch2 spatialdb)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 
