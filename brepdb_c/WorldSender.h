@@ -11,6 +11,7 @@
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shell.hxx>
 #include <TopoDS_Solid.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
 
 namespace breptopo { class TopoNaming; }
 
@@ -30,6 +31,7 @@ public:
     void SerializeSolid(const TopoDS_Solid& solid, uint32_t uid, BRepWorld& world);
 
     uint32_t GetUID(const TopoDS_Shape& shape) const;
+    uint32_t ResolveUID(const TopoDS_Shape& shape);
 
 private:
     CurveComp   SerializeCurve(const Handle(Geom_Curve)& curve);
@@ -42,6 +44,9 @@ private:
 
 private:
     std::shared_ptr<breptopo::TopoNaming> m_tn;
+
+    uint32_t m_next_auto_uid = 1;
+    TopTools_IndexedMapOfShape m_auto_uid_map;
 
 }; // WorldSender
 

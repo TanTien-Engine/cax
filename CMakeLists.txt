@@ -156,6 +156,8 @@ set(brepdb__geom
     "brepdb_c/WorldReceiver.h"
     "brepdb_c/WorldFile.cpp"
     "brepdb_c/WorldFile.h"
+    "brepdb_c/StepFile.cpp"
+    "brepdb_c/StepFile.h"
     "brepdb_c/TypedPool.h"
     "brepdb_c/ComponentView.h"
     "brepdb_c/ComponentDiff.h"
@@ -319,5 +321,6 @@ option(CAX_BUILD_TESTS "Build unit tests" ON)
 if(CAX_BUILD_TESTS)
     enable_testing()
     add_subdirectory(brepdb_test)
+    add_subdirectory(brepdb_occt_test)
     add_subdirectory(breptopo_test)
 endif()

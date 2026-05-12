@@ -82,18 +82,29 @@ void WorldSender::Serialize(const TopoDS_Shape& shape, BRepWorld& world)
     TopTools_IndexedMapOfShape all_shapes;
     TopExp::MapShapes(shape, all_shapes);
 
+    // First pass: build auto-uid map for shapes that have no TopoNaming record
     for (int i = 1; i <= all_shapes.Extent(); ++i)
     {
         const TopoDS_Shape& s = all_shapes(i);
+        TopAbs_ShapeEnum type = s.ShapeType();
+        if (type != TopAbs_VERTEX && type != TopAbs_EDGE &&
+            type != TopAbs_FACE && type != TopAbs_SOLID)
+            continue;
 
-        uint32_t uid = GetUID(s);
+        uint32_t uid = 0xffffffff;
+        if (m_tn) uid = GetUID(s);
         if (uid == 0xffffffff)
         {
-            TopAbs_ShapeEnum type = s.ShapeType();
-            assert(type != TopAbs_VERTEX && type != TopAbs_EDGE &&
-                   type != TopAbs_FACE && type != TopAbs_SOLID);
-            continue;
+            m_auto_uid_map.Add(s);
         }
+    }
+
+    for (int i = 1; i <= all_shapes.Extent(); ++i)
+    {
+        const TopoDS_Shape& s = all_shapes(i);
+        uint32_t uid = ResolveUID(s);
+        if (uid == 0xffffffff)
+            continue;
 
         switch (s.ShapeType())
         {
@@ -137,8 +148,8 @@ void WorldSender::SerializeEdge(const TopoDS_Edge& edge, uint32_t uid, BRepWorld
     EdgeTopoComp topo;
     TopoDS_Vertex vFirst, vLast;
     TopExp::Vertices(edge, vFirst, vLast);
-    topo.v_first = vFirst.IsNull() ? UINT32_MAX : GetUID(vFirst);
-    topo.v_last  = vLast.IsNull()  ? UINT32_MAX : GetUID(vLast);
+    topo.v_first = vFirst.IsNull() ? UINT32_MAX : ResolveUID(vFirst);
+    topo.v_last  = vLast.IsNull()  ? UINT32_MAX : ResolveUID(vLast);
 
     Standard_Real first, last;
     Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, first, last);
@@ -202,12 +213,28 @@ void WorldSender::SerializeSolid(const TopoDS_Solid& solid, uint32_t uid, BRepWo
         sc.orientation = static_cast<uint8_t>(shell.Orientation());
 
         for (TopExp_Explorer fexp(shell, TopAbs_FACE); fexp.More(); fexp.Next())
-            sc.face_uids.push_back(GetUID(fexp.Current()));
+            sc.face_uids.push_back(ResolveUID(fexp.Current()));
 
         stopo.shells.push_back(std::move(sc));
     }
 
     world.SolidTopos().Set(uid, std::move(stopo));
+}
+
+uint32_t WorldSender::ResolveUID(const TopoDS_Shape& shape)
+{
+    if (m_tn)
+    {
+        uint32_t uid = GetUID(shape);
+        if (uid != 0xffffffff)
+            return uid;
+    }
+
+    int idx = m_auto_uid_map.FindIndex(shape);
+    if (idx >= 1)
+        return static_cast<uint32_t>(idx);
+
+    return 0xffffffff;
 }
 
 uint32_t WorldSender::GetUID(const TopoDS_Shape& shape) const
@@ -411,7 +438,7 @@ FaceTopoComp::WireComp WorldSender::SerializeWire(const TopoDS_Wire& wire,
         const TopoDS_Edge& edge = TopoDS::Edge(exp.Current());
 
         FaceTopoComp::WireEdgeRef ref;
-        ref.edge_uid    = GetUID(edge);
+        ref.edge_uid    = ResolveUID(edge);
         ref.orientation = static_cast<uint8_t>(edge.Orientation());
 
         TopoDS_Edge fwd_edge = TopoDS::Edge(edge.Oriented(TopAbs_FORWARD));

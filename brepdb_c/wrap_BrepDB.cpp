@@ -2,6 +2,7 @@
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/WorldReceiver.h"
 #include "brepdb_c/WorldFile.h"
+#include "brepdb_c/StepFile.h"
 #include "brepdb_c/BrepDB.h"
 #include "brepdb_c/VersionTree.h"
 #include "brepdb_c/VersionGraph.h"
@@ -86,6 +87,23 @@ void w_BrepWorld_entity_count()
 {
     auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
     ves_set_number(0, static_cast<double>(world->EntityCount()));
+}
+
+void w_BrepWorld_export_step()
+{
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
+    std::string filepath = ves_tostring(1);
+    bool ok = brepdb::StepFile::Export(filepath, *world);
+    ves_set_boolean(0, ok);
+}
+
+void w_BrepWorld_import_step()
+{
+    auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
+    std::string filepath = ves_tostring(1);
+    auto tn = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    bool ok = brepdb::StepFile::Import(filepath, *world, tn);
+    ves_set_boolean(0, ok);
 }
 
 // ============================================================
@@ -451,6 +469,8 @@ VesselForeignMethodFn BrepDBBindMethod(const char* signature)
     if (strcmp(signature, "BrepWorld.save(_)") == 0) return w_BrepWorld_save;
     if (strcmp(signature, "BrepWorld.load(_)") == 0) return w_BrepWorld_load;
     if (strcmp(signature, "BrepWorld.entity_count()") == 0) return w_BrepWorld_entity_count;
+    if (strcmp(signature, "BrepWorld.export_step(_)") == 0) return w_BrepWorld_export_step;
+    if (strcmp(signature, "BrepWorld.import_step(_)") == 0) return w_BrepWorld_import_step;
 
     if (strcmp(signature, "BrepDB.build(_)") == 0) return w_BrepDB_build;
     if (strcmp(signature, "BrepDB.query(_)") == 0) return w_BrepDB_query;

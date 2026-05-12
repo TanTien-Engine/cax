@@ -10,6 +10,8 @@ foreign class BrepWorld
 	foreign save(filepath)
 	foreign load(filepath)
 	foreign entity_count()
+	foreign export_step(filepath)
+	foreign import_step(filepath)
 }
 
 foreign class BrepDB

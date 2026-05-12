@@ -510,7 +510,7 @@ void w_CompGraph_get_step_op_name()
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
     int step_id = (int)ves_tonumber(1);
     auto& name = cg->GetStepOpName(step_id);
-    ves_set_string(0, name.c_str(), name.size());
+    ves_set_lstring(0, name.c_str(), name.size());
 }
 
 void w_CompGraph_get_step_inputs()
