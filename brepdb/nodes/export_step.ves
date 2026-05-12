@@ -1,0 +1,37 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "brepdb.variant" for VAR_TYPE_BREP_WORLD
+
+class ExportStep is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "world", VAR_TYPE_BREP_WORLD),
+		]
+		this.exports = [
+			Pin(this, "world", VAR_TYPE_BREP_WORLD),
+		]
+
+		this.params.add(NodeParam("filename", ""))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_world = Blueprint.calc_input_value(this, 0)
+		if (!v_world) {
+			return nil
+		}
+
+		var filename = this.query_param("filename").value
+		v_world.value.export_step(filename)
+
+		return v_world
+	}
+}

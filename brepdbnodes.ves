@@ -1,5 +1,5 @@
 import "brepdb.nodes.*"
 
 var BREP_DB_NODES = [
-Serialize, Deserialize, SaveWorld, LoadWorld, Brepdb, Insert, Query, Build, VersionGraph,
+Serialize, Deserialize, SaveWorld, LoadWorld, ImportStep, ExportStep, Brepdb, Insert, Query, Build, VersionGraph,
 ]

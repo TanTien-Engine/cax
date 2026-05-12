@@ -1,0 +1,113 @@
+var node0 = ::partgraph::nodes::box::Box()
+node0.query_param("length").value = 1
+node0.query_param("width").value = 1
+node0.query_param("height").value = 1
+
+_editor.add_node(node0, -704.9582512405, 165.27431859497)
+
+var node1 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node1, 434.87696886651, 237.35230437091)
+
+var node2 = ::blueprint::nodes::camera3d::Camera3d()
+
+node2.cam.position.set(4.2374458504483, 2.7346023865288, 3.1412794835912)
+node2.cam.yaw = -146
+node2.cam.pitch = -26.4
+node2.cam.zoom = 45
+node2.cam.update_vectors()
+node2.speed = 0.30111083388329
+
+_editor.add_node(node2, 587.11287331174, 44.768841848253)
+
+var node3 = ::blueprint::nodes::cache::Cache()
+node3.query_param("disable").value = false
+
+_editor.add_node(node3, 586.5696320322, 182.36533806161)
+
+var node4 = ::blueprint::nodes::subgraph::Subgraph()
+node4.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node4.set_prop_value("no_bg", false)
+
+_editor.add_node(node4, 781.75739548213, 130.07227839696)
+
+var node5 = ::blueprint::nodes::cache::Cache()
+node5.query_param("disable").value = false
+
+_editor.add_node(node5, -504.56675756827, 227.03525516485)
+
+var node6 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node6, 592.94741470939, -134.97772466121)
+
+var node7 = ::partgraph::nodes::selector::Selector()
+node7.query_param("type").value = "edge"
+
+node7.selected_uids = [ 3221225483 ]
+
+_editor.add_node(node7, -368.03073134194, 126.55461670988)
+
+var node8 = ::partgraph::nodes::fillet::Fillet()
+node8.query_param("radius").value = 0.4
+
+_editor.add_node(node8, -221.36614702984, 223.19765254884)
+
+var node9 = ::blueprint::nodes::cache::Cache()
+node9.query_param("disable").value = false
+
+_editor.add_node(node9, 435.30752476367, 337.73407152333)
+
+var node10 = ::brepdb::nodes::deserialize::Deserialize()
+
+_editor.add_node(node10, 449.54988039236, -131.83370470449)
+
+var node11 = ::partgraph::nodes::box::Box()
+node11.query_param("length").value = 0.2
+node11.query_param("width").value = 2
+node11.query_param("height").value = 2
+
+_editor.add_node(node11, -400.29147401642, -77.796020007216)
+
+var node12 = ::partgraph::nodes::translate::Translate()
+node12.query_param("offset").value.set(0.5, -0.5, -0.5)
+
+_editor.add_node(node12, -245.9252937226, -68.060266929916)
+
+var node13 = ::partgraph::nodes::cut::Cut()
+
+_editor.add_node(node13, -11.147977317495, 130.60872749328)
+
+var node14 = ::brepdb::nodes::version_graph::VersionGraph()
+
+_editor.add_node(node14, 310.00079316056, -137.42858367525)
+
+var node15 = ::brepdb::nodes::export_step::ExportStep()
+node15.query_param("filename").value = "test_step"
+
+_editor.add_node(node15, 290.63378324875, 347.39627143431)
+
+var node16 = ::brepdb::nodes::serialize::Serialize()
+
+_editor.add_node(node16, 146.65312945954, 347.25880623296)
+
+var node17 = ::blueprint::nodes::print::Print()
+
+_editor.add_node(node17, 585.02359861855, 349.12158548717)
+
+Blueprint.connect(node11, "shape", node12, "shape")
+Blueprint.connect(node10, "shape", node6, "shape")
+Blueprint.connect(node1, "va", node3, "var")
+Blueprint.connect(node3, "var", node4, "geos")
+Blueprint.connect(node2, "this", node4, "view_cam")
+Blueprint.connect(node6, "va", node4, "selected")
+Blueprint.connect(node0, "shape", node5, "var")
+Blueprint.connect(node5, "var", node7, "shape")
+Blueprint.connect(node2, "this", node7, "camera")
+Blueprint.connect(node5, "var", node8, "shape")
+Blueprint.connect(node7, "objs", node8, "edges")
+Blueprint.connect(node8, "shape", node13, "a")
+Blueprint.connect(node12, "shape", node13, "b")
+Blueprint.connect(node13, "shape", node16, "shape")
+Blueprint.connect(node16, "world", node15, "world")
+Blueprint.connect(node15, "world", node9, "var")
+Blueprint.connect(node9, "var", node17, "value")
