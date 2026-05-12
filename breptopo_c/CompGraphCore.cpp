@@ -574,13 +574,10 @@ Val Evaluator::ResolveVal(const IRGraph& g, NRef ref) const
 {
 	auto* nd = g.Get(ref);
 	if (!nd) return {};
-	// non-shape values live in IRNode::cached
 	if (!std::holds_alternative<std::monostate>(nd->cached))
 		return nd->cached;
-	// shape values: try in-memory LRU first
 	auto* v = m_shape_cache.Get(ref.id);
 	if (v) return *v;
-	// LRU miss: try restoring from VersionTree
 	if (nd->vt_node_id != UINT32_MAX && m_restore_fn)
 	{
 		Val restored = m_restore_fn(nd->vt_node_id);
@@ -591,6 +588,9 @@ Val Evaluator::ResolveVal(const IRGraph& g, NRef ref) const
 			return restored;
 		}
 	}
+	// fallback for constants
+	if (!nd->op_name.empty() && nd->op_name[0] == '$')
+		return nd->imm;
 	return {};
 }
 
@@ -652,7 +652,6 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	{
 		nd->cached = result;
 	}
-
 	nd->eval_version = nd->version;
 	m_misses++;
 	return result;
@@ -740,10 +739,30 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 			}
 
 			{
+				// each subtree gets its own tn + evaluator, runs in parallel
 				auto tnA = (tn && tn_factory) ? tn_factory() : nullptr;
 				auto tnB = (tn && tn_factory) ? tn_factory() : nullptr;
 				Evaluator evalA(m_reg);
 				Evaluator evalB(m_reg);
+
+				// Seed sub-evaluator caches for fully-clean branches
+				// so that unchanged ops are not re-evaluated.
+				// Branches with any dirty node are left un-seeded:
+				// every op re-runs and registers with the branch tn.
+				auto seed_if_clean = [&](const std::unordered_set<uint32_t>& deps,
+				                         Evaluator& eval) {
+					for (auto id : deps) {
+						auto* nd = g.Get(NRef{id});
+						if (nd && nd->eval_version != nd->version)
+							return;  // dirty node found -- don't seed
+					}
+					for (auto id : deps) {
+						auto* v = m_shape_cache.Get(id);
+						if (v) eval.GetShapeCache().Put(id, *v);
+					}
+				};
+				seed_if_clean(fp.depsA, evalA);
+				seed_if_clean(fp.depsB, evalB);
 
 				auto futB = std::async(std::launch::async,
 					[&evalB, &g, &orderB, &tnB]() {
@@ -752,6 +771,7 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 				for (auto r : orderA) evalA.EvalNode(g, r, tnA);
 				futB.get();
 
+				// merge shape caches
 				for (auto id : fp.depsA) {
 					auto* v = evalA.GetShapeCache().Get(id);
 					if (v) m_shape_cache.Put(id, *v);
@@ -761,6 +781,7 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 					if (v) m_shape_cache.Put(id, *v);
 				}
 
+				// merge naming state into main tn
 				if (tn && tn_merge) {
 					if (tnA) tn_merge(tn, tnA);
 					if (tnB) tn_merge(tn, tnB);

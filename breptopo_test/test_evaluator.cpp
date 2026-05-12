@@ -1153,6 +1153,94 @@ TEST_CASE("CAD: complex multi-boolean pipeline (cut + fuse + fillet)", "[integra
     REQUIRE(std::get<ShapeVal>(result).tag == 116558);
 }
 
+TEST_CASE("RunParallel: clean nodes in fork subtree are not re-evaluated", "[parallel]")
+{
+    // Mirrors the compute.ves scenario:
+    //   box0 -> fillet -> cut <- translate(box1)
+    // When only translate's offset changes, fillet must NOT be re-evaluated.
+    OpRegistry reg;
+
+    std::atomic<int> fillet_eval_count{0};
+
+    reg.Define("box", {"size"}, {},
+        [](EvalCtx& ctx) -> Val {
+            ShapeVal sv;
+            sv.shape = nullptr;
+            sv.tag = static_cast<uint32_t>(ctx.Num(0));
+            return sv;
+        });
+
+    reg.Define("fillet_counted", {"shape", "radius"}, {},
+        [&fillet_eval_count](EvalCtx& ctx) -> Val {
+            fillet_eval_count++;
+            auto sv = ctx.GetShape(0);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = sv.tag + static_cast<uint32_t>(ctx.Num(1));
+            return out;
+        },
+        {true, false, false, false});  // is_dressup
+
+    reg.Define("translate", {"shape", "offset"}, {},
+        [](EvalCtx& ctx) -> Val {
+            auto sv = ctx.GetShape(0);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = sv.tag + static_cast<uint32_t>(ctx.Num(1));
+            return out;
+        });
+
+    reg.Define("cut", {"a", "b"}, {},
+        [](EvalCtx& ctx) -> Val {
+            auto a = ctx.GetShape(0);
+            auto b = ctx.GetShape(1);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = a.tag * 1000 + b.tag;
+            return out;
+        },
+        {false, false, true, false});  // is_boolean
+
+    IRGraph g(reg);
+
+    // branch A: box0 -> fillet
+    auto sz0 = g.Const(10.0);
+    auto box0 = g.Add("box", {sz0});
+    auto rad = g.Const(2.0);
+    auto fillet = g.Add("fillet_counted", {box0, rad});
+
+    // branch B: box1 -> translate
+    auto sz1 = g.Const(20.0);
+    auto box1 = g.Add("box", {sz1});
+    auto offset = g.Const(5.0);
+    auto tr = g.Add("translate", {box1, offset});
+
+    auto cut = g.Add("cut", {fillet, tr});
+
+    REQUIRE(g.AreIndependent(fillet, tr));
+
+    // first eval: everything computed
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    eval.RunParallel(g, cut, tn);
+    REQUIRE(fillet_eval_count == 1);
+
+    // fillet: 10+2=12, translate: 20+5=25, cut: 12*1000+25=12025
+    REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, cut)).tag == 12025);
+
+    // change only the translate offset: 5 -> 8
+    g.UpdateImmediate(offset, Val(8.0));
+    eval.Invalidate(g, offset);
+
+    // re-eval: fillet should NOT be re-evaluated
+    fillet_eval_count = 0;
+    eval.RunParallel(g, cut, tn);
+    REQUIRE(fillet_eval_count == 0);
+
+    // fillet: 12 (unchanged), translate: 20+8=28, cut: 12*1000+28=12028
+    REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, cut)).tag == 12028);
+}
+
 // ---------------------------------------------------------------
 //  op_id stability tests
 // ---------------------------------------------------------------
