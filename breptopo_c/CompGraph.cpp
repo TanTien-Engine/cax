@@ -233,4 +233,25 @@ NRef CompGraph::Ref(int ext_id) const
 	return m_nodes[ext_id].ref;
 }
 
+// ---------------------------------------------------------------
+//  CompGraph persistence
+// ---------------------------------------------------------------
+
+void CompGraph::StoreToByteArray(uint8_t** buf, uint32_t& len) const
+{
+	m_history.StoreToByteArray(buf, len);
+}
+
+bool CompGraph::LoadFromByteArray(const uint8_t* buf, uint32_t len)
+{
+	m_history.Clear();
+	m_lowered = false;
+
+	if (!m_history.LoadFromByteArray(buf, len))
+		return false;
+
+	Lower();
+	return true;
+}
+
 } // namespace breptopo

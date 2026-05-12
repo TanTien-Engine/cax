@@ -1,5 +1,7 @@
 #pragma once
 
+namespace breptopo { class CompGraph; }
+
 #include "brepdb_c/ShapeIndex.h"
 #include "brepdb_c/TopoGraph.h"
 #include "brepdb_c/TypedPool.h"
@@ -24,6 +26,9 @@ public:
     const TopoGraph& GetTopoGraph() const { return m_topo_graph; }
 
     void Flush();
+
+    void StoreCompGraph(const breptopo::CompGraph& cg);
+    bool LoadCompGraph(breptopo::CompGraph& cg);
 
 private:
     void StoreShapeIndex();

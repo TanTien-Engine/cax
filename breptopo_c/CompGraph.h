@@ -334,6 +334,9 @@ public:
 
 	void Clear() { m_steps.clear(); }
 
+	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
+	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);
+
 private:
 	std::vector<OpStep> m_steps;
 	int Append(OpStep step);
@@ -400,6 +403,9 @@ public:
 	const IRGraph& GetIR() const { return m_ir; }
 	OpRegistry&    GetRegistry() { return m_reg; }
 	Optimizer&     GetOptimizer(){ return m_opt; }
+
+	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
+	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);
 
 	std::string Dump() const { return m_ir.Dump(); }
 

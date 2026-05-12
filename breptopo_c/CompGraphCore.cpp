@@ -877,4 +877,217 @@ const OpStep* OpHistory::Get(int step_id) const
 	return nullptr;
 }
 
+// ---------------------------------------------------------------
+//  OpHistory serialization
+// ---------------------------------------------------------------
+
+static constexpr uint8_t VAL_MONO   = 0;
+static constexpr uint8_t VAL_INT    = 1;
+static constexpr uint8_t VAL_DOUBLE = 2;
+static constexpr uint8_t VAL_BOOL   = 3;
+static constexpr uint8_t VAL_VEC3   = 4;
+static constexpr uint8_t VAL_SHAPE  = 5;
+
+static constexpr uint32_t HIST_MAGIC   = 0x48495354;  // "HIST"
+static constexpr uint32_t HIST_VERSION = 1;
+
+struct HistWriter
+{
+	std::vector<uint8_t> buf;
+
+	void Write(const void* data, size_t size)
+	{
+		const auto* p = reinterpret_cast<const uint8_t*>(data);
+		buf.insert(buf.end(), p, p + size);
+	}
+
+	void W8(uint8_t v) { Write(&v, 1); }
+	void W32(uint32_t v) { Write(&v, 4); }
+
+	void WStr(const std::string& s)
+	{
+		W32(static_cast<uint32_t>(s.size()));
+		if (!s.empty())
+			Write(s.data(), s.size());
+	}
+
+	void WVal(const Val& v)
+	{
+		uint8_t idx = static_cast<uint8_t>(v.index());
+		W8(idx);
+
+		switch (idx)
+		{
+		case VAL_INT:
+		{
+			int32_t iv = std::get<int>(v);
+			Write(&iv, 4);
+			break;
+		}
+		case VAL_DOUBLE:
+		{
+			double dv = std::get<double>(v);
+			Write(&dv, 8);
+			break;
+		}
+		case VAL_BOOL:
+		{
+			uint8_t bv = std::get<bool>(v) ? 1 : 0;
+			W8(bv);
+			break;
+		}
+		case VAL_VEC3:
+		{
+			auto& vec = std::get<Vec3>(v);
+			Write(vec.data(), 3 * sizeof(double));
+			break;
+		}
+		default:
+			break;
+		}
+	}
+};
+
+struct HistReader
+{
+	const uint8_t* data = nullptr;
+	uint32_t size = 0;
+	uint32_t pos  = 0;
+
+	void Read(void* dst, size_t n)
+	{
+		if (pos + n > size)
+			throw std::runtime_error("HistReader: out of bounds");
+		std::memcpy(dst, data + pos, n);
+		pos += static_cast<uint32_t>(n);
+	}
+
+	uint8_t R8()
+	{
+		uint8_t v;
+		Read(&v, 1);
+		return v;
+	}
+
+	uint32_t R32()
+	{
+		uint32_t v;
+		Read(&v, 4);
+		return v;
+	}
+
+	std::string RStr()
+	{
+		uint32_t len = R32();
+		if (len == 0)
+			return {};
+		std::string s(len, '\0');
+		Read(s.data(), len);
+		return s;
+	}
+
+	Val RVal()
+	{
+		uint8_t idx = R8();
+
+		switch (idx)
+		{
+		case VAL_INT:
+		{
+			int32_t iv;
+			Read(&iv, 4);
+			return Val(static_cast<int>(iv));
+		}
+		case VAL_DOUBLE:
+		{
+			double dv;
+			Read(&dv, 8);
+			return Val(dv);
+		}
+		case VAL_BOOL:
+		{
+			uint8_t bv = R8();
+			return Val(static_cast<bool>(bv));
+		}
+		case VAL_VEC3:
+		{
+			Vec3 vec;
+			Read(vec.data(), 3 * sizeof(double));
+			return Val(vec);
+		}
+		default:
+			return Val{};
+		}
+	}
+};
+
+void OpHistory::StoreToByteArray(uint8_t** buf, uint32_t& len) const
+{
+	HistWriter w;
+
+	w.W32(HIST_MAGIC);
+	w.W32(HIST_VERSION);
+	w.W32(static_cast<uint32_t>(m_steps.size()));
+
+	for (const auto& step : m_steps)
+	{
+		w.W32(static_cast<uint32_t>(step.step_id));
+		w.WStr(step.op_name);
+		w.WVal(step.imm);
+
+		w.W32(static_cast<uint32_t>(step.inputs.size()));
+		for (int inp : step.inputs)
+			w.W32(static_cast<uint32_t>(inp));
+
+		w.W32(static_cast<uint32_t>(step.var_inputs.size()));
+		for (int inp : step.var_inputs)
+			w.W32(static_cast<uint32_t>(inp));
+
+		w.WStr(step.desc);
+	}
+
+	len  = static_cast<uint32_t>(w.buf.size());
+	*buf = new uint8_t[len];
+	std::memcpy(*buf, w.buf.data(), len);
+}
+
+bool OpHistory::LoadFromByteArray(const uint8_t* buf, uint32_t len)
+{
+	HistReader r;
+	r.data = buf;
+	r.size = len;
+
+	uint32_t magic   = r.R32();
+	uint32_t version = r.R32();
+	if (magic != HIST_MAGIC || version != HIST_VERSION)
+		return false;
+
+	uint32_t count = r.R32();
+	m_steps.clear();
+	m_steps.reserve(count);
+
+	for (uint32_t i = 0; i < count; ++i)
+	{
+		OpStep step;
+		step.step_id = static_cast<int>(r.R32());
+		step.op_name = r.RStr();
+		step.imm     = r.RVal();
+
+		uint32_t inp_count = r.R32();
+		step.inputs.resize(inp_count);
+		for (uint32_t j = 0; j < inp_count; ++j)
+			step.inputs[j] = static_cast<int>(r.R32());
+
+		uint32_t var_count = r.R32();
+		step.var_inputs.resize(var_count);
+		for (uint32_t j = 0; j < var_count; ++j)
+			step.var_inputs[j] = static_cast<int>(r.R32());
+
+		step.desc = r.RStr();
+		m_steps.push_back(std::move(step));
+	}
+
+	return true;
+}
+
 } // namespace breptopo
