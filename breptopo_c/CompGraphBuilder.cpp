@@ -8,6 +8,7 @@
 
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace breptopo
 {
@@ -32,18 +33,38 @@ static std::string FormatStepVal(const Val& v)
 	return s;
 }
 
+static void CollectReachable(const std::vector<OpStep>& steps, int step_id,
+                             std::unordered_set<int>& reachable)
+{
+	if (step_id < 0 || step_id >= (int)steps.size()) return;
+	if (reachable.count(step_id)) return;
+	reachable.insert(step_id);
+	auto& step = steps[step_id];
+	for (int inp : step.inputs)
+		CollectReachable(steps, inp, reachable);
+	for (int inp : step.var_inputs)
+		CollectReachable(steps, inp, reachable);
+}
+
 std::shared_ptr<graph::Graph>
-CompGraphBuilder::BuildGraph(const CompGraph& cg)
+CompGraphBuilder::BuildGraph(const CompGraph& cg, int root_step)
 {
 	auto g = std::make_shared<graph::Graph>();
 
 	auto& history = cg.GetHistory();
 	auto& steps = history.Steps();
 
+	std::unordered_set<int> reachable;
+	if (root_step >= 0)
+		CollectReachable(steps, root_step, reachable);
+
 	std::unordered_map<int, size_t> step2gid;
 
 	for (auto& step : steps)
 	{
+		if (root_step >= 0 && !reachable.count(step.step_id))
+			continue;
+
 		size_t gid = g->GetNodesNum();
 		step2gid[step.step_id] = gid;
 

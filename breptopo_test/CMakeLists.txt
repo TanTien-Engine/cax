@@ -16,6 +16,7 @@ add_executable(${PROJECT_NAME}
     catch_main.cpp
     test_shape_cache.cpp
     test_evaluator.cpp
+    test_incremental_lower.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../breptopo_c/CompGraphCore.cpp
 )
 

@@ -216,6 +216,20 @@ void w_CompGraph_get_graph()
     ves_pop(1);
 }
 
+void w_CompGraph_get_graph_filtered()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+    int root_step = (int)ves_tonumber(1);
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("graph", "Graph");
+    auto proxy = (wrapper::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>));
+    proxy->obj = breptopo::CompGraphBuilder::BuildGraph(*cg, root_step);
+    ves_pop(1);
+}
+
 void w_CompGraph_set_parallel()
 {
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
@@ -476,6 +490,15 @@ void w_CompGraph_update_const()
     }
 }
 
+void w_CompGraph_truncate()
+{
+    auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
+
+    int keep = (int)ves_tonumber(1);
+    if (keep < 0) keep = 0;
+    cg->Truncate(static_cast<size_t>(keep));
+}
+
 }
 
 namespace breptopo
@@ -496,6 +519,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 
     if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
+    if (strcmp(signature, "CompGraph.get_graph(_)") == 0) return w_CompGraph_get_graph_filtered;
     if (strcmp(signature, "CompGraph.eval(_)") == 0) return w_CompGraph_eval;
     if (strcmp(signature, "CompGraph.set_parallel(_)") == 0) return w_CompGraph_set_parallel;
     if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
@@ -518,6 +542,7 @@ VesselForeignMethodFn BrepTopoBindMethod(const char* signature)
     if (strcmp(signature, "CompGraph.add_op(_,_)") == 0) return w_CompGraph_add_op;
     if (strcmp(signature, "CompGraph.add_op_v(_,_,_)") == 0) return w_CompGraph_add_op_v;
     if (strcmp(signature, "CompGraph.update_const(_,_)") == 0) return w_CompGraph_update_const;
+    if (strcmp(signature, "CompGraph.truncate(_)") == 0) return w_CompGraph_truncate;
 
     return nullptr;
 }

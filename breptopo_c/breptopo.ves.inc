@@ -34,6 +34,7 @@ foreign class CompGraph
 	init() {}
 
 	foreign get_graph()
+	foreign get_graph(root_step)
 
 	foreign eval(node_idx)
 	foreign set_parallel(enabled)
@@ -62,6 +63,7 @@ foreign class CompGraph
 	foreign add_op(op_name, inputs)
 	foreign add_op_v(op_name, inputs, var_inputs)
 	foreign update_const(node_idx, value)
+	foreign truncate(keep)
 }
 
 );

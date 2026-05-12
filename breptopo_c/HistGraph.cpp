@@ -152,7 +152,26 @@ HistGraph::CreateGraph(const partgraph::BRepHistory& hist, uint32_t type_id, uin
 		OutputDebugStringA(s.c_str());
 #endif // DEBUG_PRINT
 
-		size_t gid = m_curr_shapes.Find(old_map(i));
+		const size_t* pgid = m_curr_shapes.Seek(old_map(i));
+		size_t gid;
+		if (pgid) {
+			gid = *pgid;
+		} else {
+			// Shape not yet tracked (e.g. a previous op already consumed it).
+			// Create a new root node so the history graph stays connected.
+			gid = m_graph->GetNodesNum();
+
+			auto node = std::make_shared<graph::Node>();
+			node->SetValue(static_cast<int>(gid));
+
+			auto shape = std::make_shared<partgraph::TopoShape>(old_map(i));
+			node->AddComponent<NodeShape>(shape);
+			node->AddComponent<NodeId>(0, gid);
+			node->AddComponent<NodeFlags>();
+
+			m_graph->AddNode(node);
+			m_curr_shapes.Bind(old_map(i), gid);
+		}
 		old_gid.push_back(gid);
 	}
 

@@ -77,6 +77,34 @@ void CompGraph::SetNodeVersion(int ext_id, uint32_t vt_node_id)
 	if (nd) nd->vt_node_id = vt_node_id;
 }
 
+void CompGraph::Truncate(size_t keep)
+{
+	if (keep >= m_history.Size()) return;
+
+	if (m_lowered && keep <= m_lowered_count)
+	{
+		for (size_t i = keep; i < m_nodes.size(); ++i)
+		{
+			NRef ref = m_nodes[i].ref;
+			m_eval.GetShapeCache().Remove(ref.id);
+			m_ir.Erase(ref);
+			m_ref2ext.erase(ref.id);
+		}
+		m_nodes.resize(keep);
+		m_lowered_count = keep;
+	}
+	else
+	{
+		m_lowered = false;
+		m_lowered_count = 0;
+	}
+
+	m_history.Truncate(keep);
+	m_op_id_map.clear();
+	m_tn.reset();
+	m_lowered = false;
+}
+
 void CompGraph::UpdateConst(int ext_id, Val v)
 {
 	m_history.UpdateConst(ext_id, v);
@@ -99,9 +127,17 @@ void CompGraph::RebuildIR()
 	m_nodes.clear();
 	m_ref2ext.clear();
 	m_op_id_map.clear();
+	m_tn.reset();
+	m_lowered_count = 0;
+	AppendNewSteps();
+}
 
-	for (auto& step : m_history.Steps())
+void CompGraph::AppendNewSteps()
+{
+	auto& steps = m_history.Steps();
+	for (size_t i = m_lowered_count; i < steps.size(); ++i)
 	{
+		auto& step = steps[i];
 		if (!step.op_name.empty() && step.op_name[0] == '$')
 		{
 			NRef ref = NREF_NULL;
@@ -133,12 +169,16 @@ void CompGraph::RebuildIR()
 			Register(m_ir.Add(step.op_name, refs, var_refs), step.desc);
 		}
 	}
+	m_lowered_count = steps.size();
 }
 
 void CompGraph::Lower()
 {
 	if (m_lowered) return;
-	RebuildIR();
+	if (m_lowered_count > 0)
+		AppendNewSteps();
+	else
+		RebuildIR();
 	m_lowered = true;
 }
 

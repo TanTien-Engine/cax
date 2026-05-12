@@ -145,6 +145,7 @@ public:
 
 	void UpdateImmediate(NRef ref, Val v);
 	void Kill(NRef ref);
+	void Erase(NRef ref);
 	void ReplaceAllUses(NRef old_ref, NRef new_ref);
 	void Compact();
 
@@ -325,6 +326,7 @@ public:
 	          const std::string& desc = "");
 
 	void UpdateConst(int step_id, Val v);
+	void Truncate(size_t keep);
 
 	const OpStep* Get(int step_id) const;
 	size_t Size() const { return m_steps.size(); }
@@ -365,6 +367,7 @@ public:
 
 	// --- mutation ---
 	void UpdateConst(int ext_id, Val v);
+	void Truncate(size_t keep);
 
 	// --- lowering + optimisation ---
 	void Lower();
@@ -421,9 +424,11 @@ private:
 
 	bool m_lowered = false;
 	bool m_parallel = false;
+	size_t m_lowered_count = 0;
 
 	int Register(NRef ref, const std::string& desc);
 	void RebuildIR();
+	void AppendNewSteps();
 };
 
 } // namespace breptopo

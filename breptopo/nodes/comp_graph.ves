@@ -104,7 +104,7 @@ class CompGraph is Node
 			return
 		}
 
-		var graph = this.graph.get_graph()
+		var graph = this.graph.get_graph(this.node_idx)
 		GraphTools.layout(graph, "hierarchy")
 
 		Blueprint.connect(VariantProxy(Variant(VAR_COMP_GRAPH, graph)), "out", this.n_draw, "graph")

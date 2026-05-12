@@ -106,6 +106,11 @@ void IRGraph::Kill(NRef ref)
 	if (it != m_nodes.end()) it->second.dead = true;
 }
 
+void IRGraph::Erase(NRef ref)
+{
+	m_nodes.erase(ref.id);
+}
+
 void IRGraph::ReplaceAllUses(NRef old_ref, NRef new_ref)
 {
 	for (auto& [id, nd] : m_nodes)
@@ -857,6 +862,12 @@ void OpHistory::UpdateConst(int step_id, Val v)
 {
 	if (step_id >= 0 && step_id < (int)m_steps.size())
 		m_steps[step_id].imm = std::move(v);
+}
+
+void OpHistory::Truncate(size_t keep)
+{
+	if (keep < m_steps.size())
+		m_steps.resize(keep);
 }
 
 const OpStep* OpHistory::Get(int step_id) const
