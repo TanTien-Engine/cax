@@ -126,6 +126,7 @@ struct IRNode
 	uint64_t    eval_version = 0;
 	Val         cached       = {};         // non-shape values only
 	uint32_t    vt_node_id   = UINT32_MAX; // VersionTree node for shape restore
+	uint32_t    op_id        = UINT32_MAX; // deterministic, assigned by AssignOpIds
 };
 
 class IRGraph
@@ -155,6 +156,7 @@ public:
 	std::unordered_set<uint32_t> CollectDeps(NRef ref) const;
 	bool AreIndependent(NRef a, NRef b) const;
 	std::vector<std::vector<NRef>> TopoLevels() const;
+	void AssignOpIds();
 
 	// O(n) precompute, O(leaves/64) per query alternative to AreIndependent.
 	// Each node stores a bitset of which leaves it transitively depends on.
@@ -281,11 +283,9 @@ private:
 	mutable size_t m_restores = 0;
 
 	Val EvalNode(IRGraph& g, NRef ref,
-	             const std::shared_ptr<TopoNaming>& tn,
-	             uint32_t& op_counter);
+	             const std::shared_ptr<TopoNaming>& tn);
 	void EvalSubtree(IRGraph& g, NRef root,
-	                 const std::shared_ptr<TopoNaming>& tn,
-	                 uint32_t& op_counter);
+	                 const std::shared_ptr<TopoNaming>& tn);
 	uint64_t InputHash(const IRGraph& g, const IRNode& node) const;
 };
 

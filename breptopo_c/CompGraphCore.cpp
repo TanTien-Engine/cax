@@ -368,6 +368,19 @@ std::string IRGraph::Dump() const
 	return os.str();
 }
 
+void IRGraph::AssignOpIds()
+{
+	uint32_t counter = 0;
+	for (auto ref : TopoSort()) {
+		auto* nd = Get(ref);
+		if (!nd || nd->dead) continue;
+		if (!nd->op_name.empty() && nd->op_name[0] == '$') continue;
+		auto* desc = m_reg.Find(nd->op_name);
+		if (desc && desc->eval)
+			nd->op_id = counter++;
+	}
+}
+
 // ---------------------------------------------------------------
 //  Predicate builders
 // ---------------------------------------------------------------
@@ -582,8 +595,7 @@ Val Evaluator::ResolveVal(const IRGraph& g, NRef ref) const
 }
 
 Val Evaluator::EvalNode(IRGraph& g, NRef ref,
-                        const std::shared_ptr<TopoNaming>& tn,
-                        uint32_t& op_counter)
+                        const std::shared_ptr<TopoNaming>& tn)
 {
 	auto* nd = g.Get(ref);
 	if (!nd) return {};
@@ -611,11 +623,8 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 		if (!std::holds_alternative<std::monostate>(resolved))
 		{
 			m_hits++;
-			op_counter++;
 			return resolved;
 		}
-		// shape was evicted from LRU (and VersionTree restore not yet
-		// available) -- fall through to re-evaluate
 	}
 
 	std::vector<Val> resolved;
@@ -629,14 +638,13 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	Val result;
 	if (desc && desc->eval)
 	{
-		EvalCtx ctx{resolved, var_resolved, tn, op_counter++};
+		EvalCtx ctx{resolved, var_resolved, tn, nd->op_id};
 		result = desc->eval(ctx);
 	}
 
 	if (std::holds_alternative<ShapeVal>(result))
 	{
 		m_shape_cache.Put(ref.id, result);
-		// optional: persist for future restore (e.g. to VersionTree)
 		if (m_commit_fn)
 			nd->vt_node_id = m_commit_fn(ref.id, result);
 	}
@@ -652,30 +660,29 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 
 Val Evaluator::Run(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn)
 {
-	uint32_t op_counter = 0;
+	g.AssignOpIds();
 	for (auto ref : g.TopoSort())
-		EvalNode(g, ref, tn, op_counter);
+		EvalNode(g, ref, tn);
 	return ResolveVal(g, root);
 }
 
 void Evaluator::EvalSubtree(IRGraph& g, NRef root,
-                            const std::shared_ptr<TopoNaming>& tn,
-                            uint32_t& op_counter)
+                            const std::shared_ptr<TopoNaming>& tn)
 {
 	auto deps = g.CollectDeps(root);
 	auto order = g.TopoSort();
 	for (auto ref : order)
 		if (deps.count(ref.id))
-			EvalNode(g, ref, tn, op_counter);
+			EvalNode(g, ref, tn);
 }
 
 Val Evaluator::RunParallel(IRGraph& g, NRef root,
                            const std::shared_ptr<TopoNaming>& tn,
                            TnFactory tn_factory, TnMerge tn_merge)
 {
+	g.AssignOpIds();
 	auto dep_idx = g.BuildDepIndex();
 	auto order = g.TopoSort();
-	uint32_t op_counter = 0;
 
 	struct ForkPoint {
 		NRef bool_ref;
@@ -733,21 +740,18 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 			}
 
 			{
-				// each subtree gets its own tn + evaluator, runs in parallel
 				auto tnA = (tn && tn_factory) ? tn_factory() : nullptr;
 				auto tnB = (tn && tn_factory) ? tn_factory() : nullptr;
 				Evaluator evalA(m_reg);
 				Evaluator evalB(m_reg);
-				uint32_t opA = op_counter, opB = op_counter;
 
 				auto futB = std::async(std::launch::async,
-					[&evalB, &g, &orderB, &tnB, &opB]() {
-						for (auto r : orderB) evalB.EvalNode(g, r, tnB, opB);
+					[&evalB, &g, &orderB, &tnB]() {
+						for (auto r : orderB) evalB.EvalNode(g, r, tnB);
 					});
-				for (auto r : orderA) evalA.EvalNode(g, r, tnA, opA);
+				for (auto r : orderA) evalA.EvalNode(g, r, tnA);
 				futB.get();
 
-				// merge shape caches
 				for (auto id : fp.depsA) {
 					auto* v = evalA.GetShapeCache().Get(id);
 					if (v) m_shape_cache.Put(id, *v);
@@ -756,9 +760,7 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 					auto* v = evalB.GetShapeCache().Get(id);
 					if (v) m_shape_cache.Put(id, *v);
 				}
-				op_counter = std::max(opA, opB);
 
-				// merge naming state into main tn
 				if (tn && tn_merge) {
 					if (tnA) tn_merge(tn, tnA);
 					if (tnB) tn_merge(tn, tnB);
@@ -769,7 +771,7 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 			for (auto id : fp.depsB) done.insert(id);
 		}
 
-		EvalNode(g, ref, tn, op_counter);
+		EvalNode(g, ref, tn);
 		done.insert(ref.id);
 	}
 

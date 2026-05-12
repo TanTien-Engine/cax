@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <set>
 #include <thread>
 
 using namespace breptopo;
@@ -1150,4 +1151,193 @@ TEST_CASE("CAD: complex multi-boolean pipeline (cut + fuse + fillet)", "[integra
     // fuse: 116222+334=116556
     // fillet: 116556+2=116558
     REQUIRE(std::get<ShapeVal>(result).tag == 116558);
+}
+
+// ---------------------------------------------------------------
+//  op_id stability tests
+// ---------------------------------------------------------------
+
+TEST_CASE("op_id: serial and parallel assign identical op_ids", "[op_id]")
+{
+    // Record which op_id each node gets via a custom op that captures it.
+    // Build a diamond graph with two independent branches joined by a boolean.
+    OpRegistry reg;
+
+    reg.Define("record_shape", {"size"}, {},
+        [](EvalCtx& ctx) -> Val {
+            ShapeVal sv;
+            sv.shape = nullptr;
+            sv.tag = ctx.op_id;
+            return sv;
+        });
+
+    reg.Define("record_transform", {"shape", "offset"}, {},
+        [](EvalCtx& ctx) -> Val {
+            auto sv = ctx.GetShape(0);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = ctx.op_id;
+            return out;
+        });
+
+    reg.Define("record_combine", {"shape1", "shape2"}, {},
+        [](EvalCtx& ctx) -> Val {
+            auto s1 = ctx.GetShape(0);
+            auto s2 = ctx.GetShape(1);
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = ctx.op_id;
+            return out;
+        },
+        {false, false, true, false});  // is_boolean
+
+    // Graph:
+    //   c1 -> mkA -> trA --+
+    //                       +--> combine
+    //   c2 -> mkB -> trB --+
+    IRGraph g(reg);
+    auto c1 = g.Const(10.0);
+    auto mkA = g.Add("record_shape", {c1});
+    auto offA = g.Const(3.0);
+    auto trA = g.Add("record_transform", {mkA, offA});
+
+    auto c2 = g.Const(20.0);
+    auto mkB = g.Add("record_shape", {c2});
+    auto offB = g.Const(7.0);
+    auto trB = g.Add("record_transform", {mkB, offB});
+
+    auto combine = g.Add("record_combine", {trA, trB});
+
+    REQUIRE(g.AreIndependent(trA, trB));
+
+    // serial run
+    Evaluator eval_seq(reg);
+    std::shared_ptr<TopoNaming> tn;
+    eval_seq.Run(g, combine, tn);
+
+    uint32_t seq_mkA = std::get<ShapeVal>(eval_seq.ResolveVal(g, mkA)).tag;
+    uint32_t seq_trA = std::get<ShapeVal>(eval_seq.ResolveVal(g, trA)).tag;
+    uint32_t seq_mkB = std::get<ShapeVal>(eval_seq.ResolveVal(g, mkB)).tag;
+    uint32_t seq_trB = std::get<ShapeVal>(eval_seq.ResolveVal(g, trB)).tag;
+    uint32_t seq_cmb = std::get<ShapeVal>(eval_seq.ResolveVal(g, combine)).tag;
+
+    // all op_ids should be distinct
+    std::set<uint32_t> seq_ids{seq_mkA, seq_trA, seq_mkB, seq_trB, seq_cmb};
+    REQUIRE(seq_ids.size() == 5);
+
+    // parallel run — invalidate first so nodes re-eval
+    for (auto ref : g.TopoSort()) {
+        auto* nd = g.Get(ref);
+        if (nd) { nd->eval_version = 0; nd->cached = {}; }
+    }
+
+    Evaluator eval_par(reg);
+    eval_par.RunParallel(g, combine, tn);
+
+    uint32_t par_mkA = std::get<ShapeVal>(eval_par.ResolveVal(g, mkA)).tag;
+    uint32_t par_trA = std::get<ShapeVal>(eval_par.ResolveVal(g, trA)).tag;
+    uint32_t par_mkB = std::get<ShapeVal>(eval_par.ResolveVal(g, mkB)).tag;
+    uint32_t par_trB = std::get<ShapeVal>(eval_par.ResolveVal(g, trB)).tag;
+    uint32_t par_cmb = std::get<ShapeVal>(eval_par.ResolveVal(g, combine)).tag;
+
+    // serial and parallel must produce identical op_ids
+    REQUIRE(par_mkA == seq_mkA);
+    REQUIRE(par_trA == seq_trA);
+    REQUIRE(par_mkB == seq_mkB);
+    REQUIRE(par_trB == seq_trB);
+    REQUIRE(par_cmb == seq_cmb);
+}
+
+TEST_CASE("op_id: parallel branches never collide", "[op_id]")
+{
+    OpRegistry reg;
+
+    reg.Define("id_shape", {"size"}, {},
+        [](EvalCtx& ctx) -> Val {
+            ShapeVal sv;
+            sv.shape = nullptr;
+            sv.tag = ctx.op_id;
+            return sv;
+        });
+
+    reg.Define("id_combine", {"shape1", "shape2"}, {},
+        [](EvalCtx& ctx) -> Val {
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = ctx.op_id;
+            return out;
+        },
+        {false, false, true, false});
+
+    // 4 independent branches feeding into a boolean
+    IRGraph g(reg);
+    auto c1 = g.Const(1.0);  auto m1 = g.Add("id_shape", {c1});
+    auto c2 = g.Const(2.0);  auto m2 = g.Add("id_shape", {c2});
+    auto c3 = g.Const(3.0);  auto m3 = g.Add("id_shape", {c3});
+    auto c4 = g.Const(4.0);  auto m4 = g.Add("id_shape", {c4});
+
+    // combine pairs, then combine results
+    auto comb1 = g.Add("id_combine", {m1, m2});
+    auto comb2 = g.Add("id_combine", {m3, m4});
+    auto root  = g.Add("id_combine", {comb1, comb2});
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    eval.RunParallel(g, root, tn);
+
+    std::set<uint32_t> ids;
+    for (auto ref : {m1, m2, m3, m4, comb1, comb2, root}) {
+        auto val = eval.ResolveVal(g, ref);
+        REQUIRE(std::holds_alternative<ShapeVal>(val));
+        uint32_t id = std::get<ShapeVal>(val).tag;
+        REQUIRE(ids.count(id) == 0);
+        ids.insert(id);
+    }
+    REQUIRE(ids.size() == 7);
+}
+
+TEST_CASE("op_id: stable across re-evaluation after invalidation", "[op_id]")
+{
+    OpRegistry reg;
+
+    reg.Define("id_shape", {"size"}, {},
+        [](EvalCtx& ctx) -> Val {
+            ShapeVal sv;
+            sv.shape = nullptr;
+            sv.tag = ctx.op_id;
+            return sv;
+        });
+
+    reg.Define("id_transform", {"shape", "offset"}, {},
+        [](EvalCtx& ctx) -> Val {
+            ShapeVal out;
+            out.shape = nullptr;
+            out.tag = ctx.op_id;
+            return out;
+        });
+
+    IRGraph g(reg);
+    auto c1 = g.Const(10.0);
+    auto mk = g.Add("id_shape", {c1});
+    auto off = g.Const(5.0);
+    auto tr = g.Add("id_transform", {mk, off});
+
+    Evaluator eval(reg);
+    std::shared_ptr<TopoNaming> tn;
+    eval.Run(g, tr, tn);
+
+    uint32_t first_mk = std::get<ShapeVal>(eval.ResolveVal(g, mk)).tag;
+    uint32_t first_tr = std::get<ShapeVal>(eval.ResolveVal(g, tr)).tag;
+
+    // change param and re-eval
+    g.UpdateImmediate(c1, Val(20.0));
+    eval.Invalidate(g, c1);
+    eval.Run(g, tr, tn);
+
+    uint32_t second_mk = std::get<ShapeVal>(eval.ResolveVal(g, mk)).tag;
+    uint32_t second_tr = std::get<ShapeVal>(eval.ResolveVal(g, tr)).tag;
+
+    // op_ids are deterministic from graph structure, not param values
+    REQUIRE(second_mk == first_mk);
+    REQUIRE(second_tr == first_tr);
 }
