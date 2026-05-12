@@ -16,10 +16,14 @@ enum class Type : uint8_t
     Line = 1,
     Circle = 2,
     BSplineCurve = 3,
+    Ellipse = 4,
 
     Plane = 10,
     Cylinder = 11,
     BSplineSurface = 12,
+    Sphere = 13,
+    Torus = 14,
+    Cone = 15,
 
     Vertex = 20,
     Edge = 21,
@@ -142,7 +146,7 @@ struct ParamsComp
 // Curve geometry (for edges)
 struct CurveComp
 {
-    Type curve_type = Type::Empty;  // Line, Circle, BSplineCurve, or Empty
+    Type curve_type = Type::Empty;
     std::vector<double> data;       // serialized curve params
 };
 
@@ -157,7 +161,7 @@ struct Curve2dComp
 // Surface geometry (for faces)
 struct SurfaceComp
 {
-    Type surface_type = Type::Empty;  // Plane, Cylinder, BSplineSurface
+    Type surface_type = Type::Empty;
     std::vector<double> data;         // serialized surface params
 };
 
@@ -432,6 +436,8 @@ private:
             offset += 6; // point(3) + dir(3)
         } else if (curve_type == Type::Circle) {
             offset += 10; // point(3) + dir(3) + xdir(3) + radius(1)
+        } else if (curve_type == Type::Ellipse) {
+            offset += 11; // point(3) + dir(3) + xdir(3) + majorR(1) + minorR(1)
         } else if (curve_type == Type::BSplineCurve) {
             int degree = static_cast<int>(d[offset++]); (void)degree;
             int nbPoles = static_cast<int>(d[offset++]);
@@ -451,6 +457,8 @@ private:
             offset += 4; // lx, ly, dx, dy
         } else if (curve_type == Type::Circle) {
             offset += 5; // cx, cy, xx, xy, r
+        } else if (curve_type == Type::Ellipse) {
+            offset += 6; // cx, cy, xx, xy, majorR, minorR
         } else if (curve_type == Type::BSplineCurve) {
             int degree = static_cast<int>(d[offset++]); (void)degree;
             int nbPoles = static_cast<int>(d[offset++]);
@@ -470,6 +478,12 @@ private:
             offset += 9; // point(3) + axisDir(3) + xDir(3)
         } else if (surf_type == Type::Cylinder) {
             offset += 10; // point(3) + axisDir(3) + xDir(3) + radius(1)
+        } else if (surf_type == Type::Sphere) {
+            offset += 10; // point(3) + axisDir(3) + xDir(3) + radius(1)
+        } else if (surf_type == Type::Torus) {
+            offset += 11; // point(3) + axisDir(3) + xDir(3) + majorR(1) + minorR(1)
+        } else if (surf_type == Type::Cone) {
+            offset += 11; // point(3) + axisDir(3) + xDir(3) + refR(1) + semiAngle(1)
         } else if (surf_type == Type::BSplineSurface) {
             int uDeg = static_cast<int>(d[offset++]); (void)uDeg;
             int vDeg = static_cast<int>(d[offset++]); (void)vDeg;

@@ -9,19 +9,29 @@
 
 #include <Geom_Line.hxx>
 #include <Geom_Circle.hxx>
+#include <Geom_Ellipse.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_Plane.hxx>
 #include <Geom_CylindricalSurface.hxx>
+#include <Geom_SphericalSurface.hxx>
+#include <Geom_ToroidalSurface.hxx>
+#include <Geom_ConicalSurface.hxx>
 #include <Geom_BSplineSurface.hxx>
 #include <Geom2d_Line.hxx>
 #include <Geom2d_Circle.hxx>
+#include <Geom2d_Ellipse.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <gp_Lin.hxx>
 #include <gp_Circ.hxx>
+#include <gp_Elips.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Cylinder.hxx>
+#include <gp_Sphere.hxx>
+#include <gp_Torus.hxx>
+#include <gp_Cone.hxx>
 #include <gp_Lin2d.hxx>
 #include <gp_Circ2d.hxx>
+#include <gp_Elips2d.hxx>
 #include <BRep_Tool.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopExp.hxx>
@@ -280,6 +290,16 @@ CurveComp WorldSender::SerializeCurve(const Handle(Geom_Curve)& curve)
         PushDir(comp.data, g.Position().XDirection());
         comp.data.push_back(g.Radius());
     }
+    else if (curve->IsKind(STANDARD_TYPE(Geom_Ellipse)))
+    {
+        comp.curve_type = Type::Ellipse;
+        auto g = Handle(Geom_Ellipse)::DownCast(curve)->Elips();
+        PushPoint(comp.data, g.Position().Location());
+        PushDir(comp.data, g.Position().Direction());
+        PushDir(comp.data, g.Position().XDirection());
+        comp.data.push_back(g.MajorRadius());
+        comp.data.push_back(g.MinorRadius());
+    }
     else if (curve->IsKind(STANDARD_TYPE(Geom_BSplineCurve)))
     {
         comp.curve_type = Type::BSplineCurve;
@@ -337,6 +357,17 @@ Curve2dComp WorldSender::SerializeCurve2d(const Handle(Geom2d_Curve)& curve,
         comp.data.push_back(g.XAxis().Direction().Y());
         comp.data.push_back(g.Radius());
     }
+    else if (curve->IsKind(STANDARD_TYPE(Geom2d_Ellipse)))
+    {
+        comp.curve_type = Type::Ellipse;
+        auto g = Handle(Geom2d_Ellipse)::DownCast(curve)->Elips2d();
+        comp.data.push_back(g.Location().X());
+        comp.data.push_back(g.Location().Y());
+        comp.data.push_back(g.XAxis().Direction().X());
+        comp.data.push_back(g.XAxis().Direction().Y());
+        comp.data.push_back(g.MajorRadius());
+        comp.data.push_back(g.MinorRadius());
+    }
     else if (curve->IsKind(STANDARD_TYPE(Geom2d_BSplineCurve)))
     {
         comp.curve_type = Type::BSplineCurve;
@@ -387,6 +418,35 @@ SurfaceComp WorldSender::SerializeSurface(const Handle(Geom_Surface)& surf)
         PushDir(comp.data, g.Axis().Direction());
         PushDir(comp.data, g.XAxis().Direction());
         comp.data.push_back(g.Radius());
+    }
+    else if (surf->IsKind(STANDARD_TYPE(Geom_SphericalSurface)))
+    {
+        comp.surface_type = Type::Sphere;
+        gp_Sphere g = Handle(Geom_SphericalSurface)::DownCast(surf)->Sphere();
+        PushPoint(comp.data, g.Location());
+        PushDir(comp.data, g.Position().Direction());
+        PushDir(comp.data, g.Position().XDirection());
+        comp.data.push_back(g.Radius());
+    }
+    else if (surf->IsKind(STANDARD_TYPE(Geom_ToroidalSurface)))
+    {
+        comp.surface_type = Type::Torus;
+        gp_Torus g = Handle(Geom_ToroidalSurface)::DownCast(surf)->Torus();
+        PushPoint(comp.data, g.Location());
+        PushDir(comp.data, g.Axis().Direction());
+        PushDir(comp.data, g.XAxis().Direction());
+        comp.data.push_back(g.MajorRadius());
+        comp.data.push_back(g.MinorRadius());
+    }
+    else if (surf->IsKind(STANDARD_TYPE(Geom_ConicalSurface)))
+    {
+        comp.surface_type = Type::Cone;
+        gp_Cone g = Handle(Geom_ConicalSurface)::DownCast(surf)->Cone();
+        PushPoint(comp.data, g.Location());
+        PushDir(comp.data, g.Axis().Direction());
+        PushDir(comp.data, g.XAxis().Direction());
+        comp.data.push_back(g.RefRadius());
+        comp.data.push_back(g.SemiAngle());
     }
     else if (surf->IsKind(STANDARD_TYPE(Geom_BSplineSurface)))
     {

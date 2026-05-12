@@ -43,12 +43,23 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
     if (!mesh.IsNull())
         return mesh;
 
-    // If no triangulation exists then the shape is probably infinite
+    // Try meshing the original face (preserves wire trimming)
+    BRepMesh_IncrementalMesh(face, 0.01, Standard_False, 0.1);
+    mesh = BRep_Tool::Triangulation(face, loc);
+    if (!mesh.IsNull())
+        return mesh;
+
+    // Fallback for infinite or degenerate surfaces
     BRepAdaptor_Surface adapt(face);
     double u1 = adapt.FirstUParameter();
     double u2 = adapt.LastUParameter();
     double v1 = adapt.FirstVParameter();
     double v2 = adapt.LastVParameter();
+
+    bool hasInfinite = Precision::IsInfinite(u1) || Precision::IsInfinite(u2) ||
+                       Precision::IsInfinite(v1) || Precision::IsInfinite(v2);
+    if (!hasInfinite)
+        return mesh;
 
     auto selectRange = [](double& p1, double& p2) {
         if (Precision::IsInfinite(p1) && Precision::IsInfinite(p2)) {
@@ -63,7 +74,6 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
         }
     };
 
-    // recreate a face with a clear boundary in case it's infinite
     selectRange(u1, u2);
     selectRange(v1, v2);
 

@@ -15,12 +15,17 @@
 
 #include <Geom_Line.hxx>
 #include <Geom_Circle.hxx>
+#include <Geom_Ellipse.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_Plane.hxx>
 #include <Geom_CylindricalSurface.hxx>
+#include <Geom_SphericalSurface.hxx>
+#include <Geom_ToroidalSurface.hxx>
+#include <Geom_ConicalSurface.hxx>
 #include <Geom_BSplineSurface.hxx>
 #include <Geom2d_Line.hxx>
 #include <Geom2d_Circle.hxx>
+#include <Geom2d_Ellipse.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 
 #include <TColgp_Array1OfPnt.hxx>
@@ -292,6 +297,15 @@ Handle(Geom_Curve) WorldReceiver::DeserializeCurve(const CurveComp& comp)
         double r = d[offset++];
         return new Geom_Circle(gp_Ax2(loc, dir, xdir), r);
     }
+    else if (comp.curve_type == Type::Ellipse)
+    {
+        gp_Pnt loc = PopPoint(d, offset);
+        gp_Dir dir = PopDir(d, offset);
+        gp_Dir xdir = PopDir(d, offset);
+        double majorR = d[offset++];
+        double minorR = d[offset++];
+        return new Geom_Ellipse(gp_Ax2(loc, dir, xdir), majorR, minorR);
+    }
     else if (comp.curve_type == Type::BSplineCurve)
     {
         int degree  = static_cast<int>(d[offset++]);
@@ -342,6 +356,14 @@ Handle(Geom2d_Curve) WorldReceiver::DeserializeCurve2d(const Curve2dComp& comp)
         double xx = d[offset++], xy = d[offset++];
         double r = d[offset++];
         return new Geom2d_Circle(gp_Ax22d(gp_Pnt2d(cx, cy), gp_Dir2d(xx, xy)), r);
+    }
+    else if (comp.curve_type == Type::Ellipse)
+    {
+        double cx = d[offset++], cy = d[offset++];
+        double xx = d[offset++], xy = d[offset++];
+        double majorR = d[offset++];
+        double minorR = d[offset++];
+        return new Geom2d_Ellipse(gp_Ax22d(gp_Pnt2d(cx, cy), gp_Dir2d(xx, xy)), majorR, minorR);
     }
     else if (comp.curve_type == Type::BSplineCurve)
     {
@@ -398,6 +420,32 @@ Handle(Geom_Surface) WorldReceiver::DeserializeSurface(const SurfaceComp& comp)
         gp_Dir xAxisDir = PopDir(d, offset);
         double r = d[offset++];
         return new Geom_CylindricalSurface(gp_Ax3(loc, axisDir, xAxisDir), r);
+    }
+    else if (comp.surface_type == Type::Sphere)
+    {
+        gp_Pnt loc = PopPoint(d, offset);
+        gp_Dir axisDir = PopDir(d, offset);
+        gp_Dir xAxisDir = PopDir(d, offset);
+        double r = d[offset++];
+        return new Geom_SphericalSurface(gp_Ax3(loc, axisDir, xAxisDir), r);
+    }
+    else if (comp.surface_type == Type::Torus)
+    {
+        gp_Pnt loc = PopPoint(d, offset);
+        gp_Dir axisDir = PopDir(d, offset);
+        gp_Dir xAxisDir = PopDir(d, offset);
+        double majorR = d[offset++];
+        double minorR = d[offset++];
+        return new Geom_ToroidalSurface(gp_Ax3(loc, axisDir, xAxisDir), majorR, minorR);
+    }
+    else if (comp.surface_type == Type::Cone)
+    {
+        gp_Pnt loc = PopPoint(d, offset);
+        gp_Dir axisDir = PopDir(d, offset);
+        gp_Dir xAxisDir = PopDir(d, offset);
+        double refR = d[offset++];
+        double semiAngle = d[offset++];
+        return new Geom_ConicalSurface(gp_Ax3(loc, axisDir, xAxisDir), semiAngle, refR);
     }
     else if (comp.surface_type == Type::BSplineSurface)
     {
