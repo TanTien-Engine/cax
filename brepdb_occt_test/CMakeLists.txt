@@ -17,10 +17,24 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(${PROJECT_NAME}
     catch_main.cpp
     test_step_file.cpp
+    test_world_roundtrip.cpp
+    test_prim_maker.cpp
+    test_brep_selector.cpp
+    test_brep_tools.cpp
+    test_topo_algo.cpp
+    test_topo_graph_builder.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/sm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/graph/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/guard/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/geoshape/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/objcomp/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/vessel/src/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/wrapper/include
     ${OpenCASCADE_INCLUDE_DIR}
 )
 
