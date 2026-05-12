@@ -48,6 +48,11 @@ class Selector is Node
 		this.selected_objs.clear()
 	}
 
+
+	on_connection_dirty() {
+		this.comp_step_id = -1
+	}
+
 	calc_value(idx)
 	{
 		if (this.selected_objs.isEmpty and !this.selected_uids.isEmpty)

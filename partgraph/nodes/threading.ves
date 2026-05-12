@@ -36,6 +36,11 @@ class Threading is Node
 		this.op_id = -1
 	}
 
+
+	on_connection_dirty() {
+		this.comp_step_id = -1
+	}
+
 	calc_value(idx)
 	{
 		var v_thickness = Blueprint.calc_input_value(this, 0)

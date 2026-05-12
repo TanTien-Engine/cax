@@ -52,6 +52,11 @@ class Torus is Node
 		Compiler.update_params(this)
 	}
 
+
+	on_connection_dirty() {
+		this.comp_step_id = -1
+	}
+
 	calc_value(idx)
 	{
 		var r1 = NodeHelper.calc_prop_value(this, "r1")
