@@ -390,9 +390,6 @@ public:
 	uint32_t CalcOpId(int ext_id, int sub_op_id) const;
 	NRef     Ref(int ext_id) const;
 
-	// --- visualisation graph ---
-	std::shared_ptr<graph::Graph> BuildVisGraph() const;
-
 	// --- access internals ---
 	OpHistory&           GetHistory()        { return m_history; }
 	const OpHistory&     GetHistory()  const { return m_history; }

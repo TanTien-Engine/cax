@@ -1,14 +1,6 @@
 #include "CompGraph.h"
 #include "comp_ops.h"
-#include "NodeInfo.h"
 #include "TopoNaming.h"
-
-#include <graph/Graph.h>
-#include <graph/Node.h>
-#include <graph/Edge.h>
-#include <graph/GraphLayout.h>
-
-#include <sstream>
 
 namespace breptopo
 {
@@ -199,81 +191,6 @@ NRef CompGraph::Ref(int ext_id) const
 {
 	if (ext_id < 0 || ext_id >= (int)m_nodes.size()) return NREF_NULL;
 	return m_nodes[ext_id].ref;
-}
-
-static std::string FormatVal(const Val& v)
-{
-	std::string s;
-	std::visit([&](auto&& val) {
-		using T = std::decay_t<decltype(val)>;
-		if constexpr (std::is_same_v<T, int>)      s = std::to_string(val);
-		else if constexpr (std::is_same_v<T, double>) {
-			std::ostringstream os; os << val; s = os.str();
-		}
-		else if constexpr (std::is_same_v<T, bool>)    s = val ? "true" : "false";
-		else if constexpr (std::is_same_v<T, Vec3>) {
-			std::ostringstream os;
-			os << "(" << val[0] << ", " << val[1] << ", " << val[2] << ")";
-			s = os.str();
-		}
-		else if constexpr (std::is_same_v<T, ShapeVal>) s = "[shape]";
-	}, v);
-	return s;
-}
-
-static std::string BuildNodeDesc(const IRNode& nd)
-{
-	std::ostringstream os;
-	os << nd.op_name;
-	auto val_str = FormatVal(nd.imm);
-	if (!val_str.empty()) {
-		os << " = " << val_str;
-	}
-	return os.str();
-}
-
-std::shared_ptr<graph::Graph> CompGraph::BuildVisGraph() const
-{
-	auto g = std::make_shared<graph::Graph>();
-
-	auto order = m_ir.TopoSort();
-	std::unordered_map<uint32_t, size_t> ref2gid;
-
-	for (auto ref : order)
-	{
-		auto* nd = m_ir.Get(ref);
-		if (!nd) continue;
-		size_t gid = g->GetNodesNum();
-		ref2gid[ref.id] = gid;
-
-		auto node = std::make_shared<graph::Node>();
-		node->SetValue(static_cast<int>(gid));
-		node->SetName(nd->op_name);
-		node->AddComponent<NodeInfo>(BuildNodeDesc(*nd));
-		g->AddNode(node);
-	}
-
-	for (auto ref : order)
-	{
-		auto* nd = m_ir.Get(ref);
-		if (!nd) continue;
-		size_t to_gid = ref2gid[ref.id];
-		for (auto& inp : nd->inputs)
-		{
-			auto it = ref2gid.find(inp.id);
-			if (it != ref2gid.end())
-				g->AddEdge(it->second, to_gid);
-		}
-		for (auto& inp : nd->var_inputs)
-		{
-			auto it = ref2gid.find(inp.id);
-			if (it != ref2gid.end())
-				g->AddEdge(it->second, to_gid);
-		}
-	}
-
-	graph::GraphLayout::OptimalHierarchy(*g);
-	return g;
 }
 
 } // namespace breptopo
