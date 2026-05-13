@@ -168,9 +168,7 @@ public:
     bool LoadFromFile(const std::string& filepath);
 
     void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
-    void LoadFromByteArray(const uint8_t*  buf,
-                           uint32_t        len,
-                           const std::unordered_map<uint32_t, WorldPtr>& cursor_worlds);
+    void LoadFromByteArray(const uint8_t* buf, uint32_t len);
 
     void Clear();
 

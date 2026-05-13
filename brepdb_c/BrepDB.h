@@ -5,6 +5,7 @@ namespace breptopo { class CompGraph; }
 #include "brepdb_c/ShapeIndex.h"
 #include "brepdb_c/TopoGraph.h"
 #include "brepdb_c/TypedPool.h"
+#include "brepdb_c/VersionTree.h"
 
 #include <spatialdb/RTree.h>
 
@@ -29,6 +30,9 @@ public:
 
     void StoreCompGraph(const breptopo::CompGraph& cg);
     bool LoadCompGraph(breptopo::CompGraph& cg);
+
+    void StoreVersionTree(const VersionTree& vt);
+    bool LoadVersionTree(VersionTree& vt);
 
 private:
     void StoreShapeIndex();

@@ -14,9 +14,10 @@
 namespace
 {
 
-static constexpr const char* META_SHAPE_INDEX = "shape_index";
-static constexpr const char* META_TOPO_GRAPH  = "topo_graph";
-static constexpr const char* META_COMP_GRAPH  = "comp_graph";
+static constexpr const char* META_SHAPE_INDEX  = "shape_index";
+static constexpr const char* META_TOPO_GRAPH   = "topo_graph";
+static constexpr const char* META_COMP_GRAPH   = "comp_graph";
+static constexpr const char* META_VERSION_TREE = "version_tree";
 
 void SerializeWire(uint8_t orientation,
                    const std::vector<brepdb::FaceTopoComp::WireEdgeRef>& edges,
@@ -187,6 +188,8 @@ void BrepDB::Flush()
     auto gc = partgraph::GlobalConfig::Instance();
     if (gc->GetCompGraph())
         StoreCompGraph(*gc->GetCompGraph());
+    if (gc->GetVersionTree())
+        StoreVersionTree(*gc->GetVersionTree());
 
     m_rtree->Flush();
     m_sm->Flush();
@@ -280,6 +283,44 @@ bool BrepDB::LoadCompGraph(breptopo::CompGraph& cg)
     bool ok = cg.LoadFromByteArray(buf, len);
     delete[] buf;
     return ok;
+}
+
+void BrepDB::StoreVersionTree(const VersionTree& vt)
+{
+    uint8_t* buf = nullptr;
+    uint32_t len = 0;
+    vt.StoreToByteArray(&buf, len);
+
+    if (len == 0) { delete[] buf; return; }
+
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_VERSION_TREE);
+    try {
+        m_sm->StoreByteArray(page, len, buf);
+        m_rtree->SetMetaPage(META_VERSION_TREE, page);
+    } catch (...) {
+        delete[] buf;
+        throw;
+    }
+    delete[] buf;
+}
+
+bool BrepDB::LoadVersionTree(VersionTree& vt)
+{
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_VERSION_TREE);
+    if (page == spatialdb::NewPage)
+        return false;
+
+    uint32_t len = 0;
+    uint8_t* buf = nullptr;
+    try {
+        m_sm->LoadByteArray(page, len, &buf);
+    } catch (spatialdb::InvalidPageException&) {
+        return false;
+    }
+
+    vt.LoadFromByteArray(buf, len);
+    delete[] buf;
+    return true;
 }
 
 }

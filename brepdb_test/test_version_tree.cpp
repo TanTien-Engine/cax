@@ -924,12 +924,8 @@ TEST_CASE("Persistence: StoreToByteArray / LoadFromByteArray round-trip", "[pers
     REQUIRE(buf != nullptr);
     REQUIRE(len > 0);
 
-    auto w2_ptr = std::make_shared<BRepWorld>(w2);
-    std::unordered_map<uint32_t, WorldPtr> cursor_worlds;
-    cursor_worlds[root_id] = w2_ptr;
-
     VersionTree t2;
-    t2.LoadFromByteArray(buf, len, cursor_worlds);
+    t2.LoadFromByteArray(buf, len);
     delete[] buf;
 
     REQUIRE(t2.GetNodeCount()              == 3);
@@ -972,12 +968,8 @@ TEST_CASE("Persistence: byte-array with branches", "[persist]")
     uint32_t len = 0;
     t1.StoreToByteArray(&buf, len);
 
-    auto wB_ptr = std::make_shared<BRepWorld>(wB);
-    std::unordered_map<uint32_t, WorldPtr> cursor_worlds;
-    cursor_worlds[root_id] = wB_ptr;
-
     VersionTree t2;
-    t2.LoadFromByteArray(buf, len, cursor_worlds);
+    t2.LoadFromByteArray(buf, len);
     delete[] buf;
 
     REQUIRE(t2.GetNodeCount() == 3);
@@ -1013,12 +1005,8 @@ TEST_CASE("Integration: BrepDB open/save/undo/redo cycle", "[integration]")
     uint32_t save_len = 0;
     tree.StoreToByteArray(&save_buf, save_len);
 
-    auto w1_ptr = std::make_shared<BRepWorld>(w1);
-    std::unordered_map<uint32_t, WorldPtr> cursor_worlds;
-    cursor_worlds[root_id] = w1_ptr;
-
     VersionTree loaded;
-    loaded.LoadFromByteArray(save_buf, save_len, cursor_worlds);
+    loaded.LoadFromByteArray(save_buf, save_len);
     delete[] save_buf;
 
     REQUIRE(loaded.GetNodeCount() == 2);

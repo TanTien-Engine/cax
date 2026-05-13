@@ -119,6 +119,8 @@ void w_BrepDB_allocate()
 
     auto gc = partgraph::GlobalConfig::Instance();
     proxy->obj->LoadCompGraph(*gc->GetCompGraph());
+    if (gc->GetVersionTree())
+        proxy->obj->LoadVersionTree(*gc->GetVersionTree());
 }
 
 int w_BrepDB_finalize(void* data)

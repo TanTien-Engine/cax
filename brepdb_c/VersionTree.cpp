@@ -309,6 +309,29 @@ struct MemWriter
     void W32(uint32_t v) { Write(&v, 4); }
     void W64(uint64_t v) { Write(&v, 8); }
 
+    void WWorld(const brepdb::BRepWorld& world)
+    {
+        const auto& alive = world.AliveEntities();
+        W32(static_cast<uint32_t>(alive.size()));
+        for (uint32_t id : alive)
+        {
+            W32(id);
+            const brepdb::Type* t = world.Types().Get(id);
+            W32(static_cast<uint32_t>(t ? *t : brepdb::Type::Empty));
+            const brepdb::AabbComp* aabb = world.Aabbs().Get(id);
+            double min_pt[3] = {0,0,0}, max_pt[3] = {0,0,0};
+            if (aabb) {
+                std::memcpy(min_pt, aabb->min_pt, sizeof(min_pt));
+                std::memcpy(max_pt, aabb->max_pt, sizeof(max_pt));
+            }
+            Write(min_pt, sizeof(min_pt));
+            Write(max_pt, sizeof(max_pt));
+            auto params = world.ExportEntityParams(id);
+            W32(static_cast<uint32_t>(params.size()));
+            if (!params.empty()) { Write(params.data(), params.size() * sizeof(double)); }
+        }
+    }
+
     void WStr(const std::string& s)
     {
         W32(static_cast<uint32_t>(s.size()));
@@ -386,6 +409,36 @@ struct MemReader
 
     uint32_t R32() { uint32_t v; Read(&v, 4); return v; }
     uint64_t R64() { uint64_t v; Read(&v, 8); return v; }
+
+    brepdb::WorldPtr RWorld()
+    {
+        auto w = std::make_shared<brepdb::BRepWorld>();
+        uint32_t count = R32();
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            uint32_t id = R32();
+            brepdb::Type type = static_cast<brepdb::Type>(R32());
+            double min_pt[3], max_pt[3];
+            Read(min_pt, sizeof(min_pt));
+            Read(max_pt, sizeof(max_pt));
+            uint32_t pc = R32();
+            std::vector<double> params(pc);
+            if (pc > 0) { Read(params.data(), pc * sizeof(double)); }
+
+            w->RegisterEntity(id);
+            w->Types().Set(id, type);
+            brepdb::AabbComp aabb;
+            std::memcpy(aabb.min_pt, min_pt, sizeof(aabb.min_pt));
+            std::memcpy(aabb.max_pt, max_pt, sizeof(aabb.max_pt));
+            w->Aabbs().Set(id, aabb);
+            if (!params.empty()) {
+                brepdb::ParamsComp p;
+                p.data = std::move(params);
+                w->Params().Set(id, p);
+            }
+        }
+        return w;
+    }
 
     std::string RStr()
     {
@@ -1504,6 +1557,28 @@ void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const
     w.W32(static_cast<uint32_t>(roots.size()));
     w.W32(0);
 
+    // Root worlds
+    w.W32(static_cast<uint32_t>(roots.size()));
+    for (uint32_t rid : roots)
+    {
+        w.W32(rid);
+        auto rw_it = m_root_worlds.find(rid);
+        if (rw_it != m_root_worlds.end()) {
+            w.WWorld(*rw_it->second);
+        } else {
+            auto cit = m_cursors.find(rid);
+            assert(cit != m_cursors.end());
+            WorldPtr root_world = cit->second.current_world;
+            auto path = GetPathFromRoot(cit->second.current_id);
+            for (int i = static_cast<int>(path.size()) - 1; i > 0; --i)
+            {
+                auto it = m_nodes.find(path[i]);
+                root_world = ApplyReverse(*root_world, it->second.diff);
+            }
+            w.WWorld(*root_world);
+        }
+    }
+
     // Cursor map
     for (const auto& [rid, cursor] : m_cursors)
     {
@@ -1518,9 +1593,7 @@ void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const
     std::memcpy(*buf, w.buf.data(), len);
 }
 
-void VersionTree::LoadFromByteArray(const uint8_t*  buf,
-                                     uint32_t        len,
-                                     const std::unordered_map<uint32_t, WorldPtr>& cursor_worlds)
+void VersionTree::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 {
     MemReader r;
     r.data = buf;
@@ -1539,6 +1612,14 @@ void VersionTree::LoadFromByteArray(const uint8_t*  buf,
     Clear();
     m_root_id = root_id;
 
+    // Root worlds
+    uint32_t root_count = r.R32();
+    for (uint32_t i = 0; i < root_count; ++i)
+    {
+        uint32_t rid = r.R32();
+        m_root_worlds[rid] = r.RWorld();
+    }
+
     // Cursor map
     for (uint32_t i = 0; i < cursor_count; ++i)
     {
@@ -1546,15 +1627,27 @@ void VersionTree::LoadFromByteArray(const uint8_t*  buf,
         uint32_t cid = r.R32();
         RootCursor cursor;
         cursor.current_id = cid;
-        auto wt = cursor_worlds.find(rid);
-        if (wt != cursor_worlds.end()) {
-            cursor.current_world = wt->second;
-        }
         m_cursors[rid] = cursor;
     }
 
     uint32_t max_id = ReadNodes(r, node_count, m_nodes);
     m_next_id       = max_id + 1;
+
+    // Reconstruct each cursor's world from root world + forward diffs
+    for (auto& [rid, cursor] : m_cursors)
+    {
+        auto rw_it = m_root_worlds.find(rid);
+        if (rw_it == m_root_worlds.end()) { continue; }
+
+        WorldPtr world = rw_it->second;
+        auto path = GetPathFromRoot(cursor.current_id);
+        for (size_t j = 1; j < path.size(); ++j)
+        {
+            auto node_it = m_nodes.find(path[j]);
+            world = ApplyForward(*world, node_it->second.diff);
+        }
+        cursor.current_world = world;
+    }
 }
 
 void VersionTree::Clear()
