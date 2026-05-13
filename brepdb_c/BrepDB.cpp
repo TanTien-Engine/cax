@@ -2,6 +2,7 @@
 #include "breptopo_c/CompGraph.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
+#include "partgraph_c/GlobalConfig.h"
 
 #include <graph/Node.h>
 #include <vessel.h>
