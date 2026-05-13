@@ -116,6 +116,9 @@ void w_BrepDB_allocate()
     bool overwrite = ves_toboolean(2);
     auto sm = std::make_shared<spatialdb::DiskStorageManager>(filename, overwrite);
     proxy->obj = std::make_shared<brepdb::BrepDB>(sm, overwrite);
+
+    auto gc = partgraph::GlobalConfig::Instance();
+    proxy->obj->LoadCompGraph(*gc->GetCompGraph());
 }
 
 int w_BrepDB_finalize(void* data)

@@ -6,7 +6,6 @@ import "logger.logger" for Logger
 import "filesystem" for Filesystem
 import "brepdb" for BrepDB
 import "brepdb.variant" for VAR_TYPE_BREP_DB
-import "db" for RFile
 
 class Brepdb is Node
 {

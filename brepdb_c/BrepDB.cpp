@@ -182,6 +182,11 @@ void BrepDB::Flush()
 {
     StoreShapeIndex();
     StoreTopoGraph();
+
+    auto gc = partgraph::GlobalConfig::Instance();
+    if (gc->GetCompGraph())
+        StoreCompGraph(*gc->GetCompGraph());
+
     m_rtree->Flush();
     m_sm->Flush();
 }
