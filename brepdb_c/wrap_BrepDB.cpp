@@ -15,6 +15,7 @@
 #include <spatialdb/ObjVisitor.h>
 #include <partgraph_c/TopoShape.h>
 #include <partgraph_c/GlobalConfig.h>
+#include <breptopo_c/CompGraph.h>
 #include <partgraph_c/TransHelper.h>
 #include <wrapper/TransHelper.h>
 #include <SM_Cube.h>
@@ -111,18 +112,10 @@ void w_BrepWorld_import_step()
 void w_BrepDB_allocate()
 {
     auto proxy = (wrapper::Proxy<brepdb::BrepDB>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<brepdb::BrepDB>));
-
-    auto num = ves_argnum();
-    if (num < 2)
-    {
-        auto sm = std::make_shared<spatialdb::DiskStorageManager>("test_db");
-        proxy->obj = std::make_shared<brepdb::BrepDB>(sm, true);
-    }
-    else
-    {
-        auto sm = ((wrapper::Proxy<spatialdb::DiskStorageManager>*)ves_toforeign(1))->obj;
-        proxy->obj = std::make_shared<brepdb::BrepDB>(sm, false);
-    }
+    std::string filename = ves_tostring(1);
+    bool overwrite = ves_toboolean(2);
+    auto sm = std::make_shared<spatialdb::DiskStorageManager>(filename, overwrite);
+    proxy->obj = std::make_shared<brepdb::BrepDB>(sm, overwrite);
 }
 
 int w_BrepDB_finalize(void* data)
@@ -138,7 +131,10 @@ void w_BrepDB_build()
     auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
     auto root = shape->GetShape();
 
-    brepdb::WorldSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
+    auto gc = partgraph::GlobalConfig::Instance();
+    auto tn = gc->GetCompGraph() ? gc->GetCompGraph()->GetTopoNaming() : nullptr;
+    if (!tn) tn = gc->GetTopoNaming();
+    brepdb::WorldSender sender(tn);
     brepdb::BRepWorld world;
     sender.Serialize(root, world);
 

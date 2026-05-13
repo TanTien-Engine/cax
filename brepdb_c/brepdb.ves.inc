@@ -16,8 +16,7 @@ foreign class BrepWorld
 
 foreign class BrepDB
 {
-	init() {}
-	init(db) {}
+	init(filename, overwrite) {}
 
 	foreign build(shape)
 	foreign query(aabb)

@@ -412,6 +412,7 @@ public:
 	const IRGraph& GetIR() const { return m_ir; }
 	OpRegistry&    GetRegistry() { return m_reg; }
 	Optimizer&     GetOptimizer(){ return m_opt; }
+	auto           GetTopoNaming() const { return m_tn; }
 
 	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
 	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);

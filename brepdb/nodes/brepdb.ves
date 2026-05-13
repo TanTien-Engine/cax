@@ -39,11 +39,10 @@ class Brepdb is Node
 		Logger.info("init db")
 
 		var filename = this.query_param("filename").value
-		if (!Filesystem.is_file_exists(filename + ".idx")) {
-			return BrepDB.init()
+		if (Filesystem.is_file_exists(filename + ".idx")) {
+			return BrepDB.init(filename, false)
 		} else {
-			var db = RFile.init(filename)
-			return BrepDB.init(db)
+			return BrepDB.init(filename, true)
 		}
 	}
 }
