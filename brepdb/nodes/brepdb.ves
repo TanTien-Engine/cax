@@ -24,6 +24,13 @@ class Brepdb is Node
 		this.db = nil
 	}
 
+	on_scene_add(editor)
+	{
+		if (!this.db) {
+			this.db = this.calc_rtree_impl(0)
+		}
+	}
+
 	calc_value(idx)
 	{
 		if (!this.db) {

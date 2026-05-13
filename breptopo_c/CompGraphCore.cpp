@@ -749,6 +749,10 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 				auto tnB = (tn && tn_factory) ? tn_factory() : nullptr;
 				Evaluator evalA(m_reg);
 				Evaluator evalB(m_reg);
+				evalA.SetCommitFn(m_commit_fn);
+				evalA.SetRestoreFn(m_restore_fn);
+				evalB.SetCommitFn(m_commit_fn);
+				evalB.SetRestoreFn(m_restore_fn);
 
 				// Seed sub-evaluator caches for fully-clean branches
 				// so that unchanged ops are not re-evaluated.
@@ -862,6 +866,12 @@ void OpHistory::UpdateConst(int step_id, Val v)
 {
 	if (step_id >= 0 && step_id < (int)m_steps.size())
 		m_steps[step_id].imm = std::move(v);
+}
+
+void OpHistory::SetStepVtNodeId(int step_id, uint32_t vt_node_id)
+{
+	if (step_id >= 0 && step_id < (int)m_steps.size())
+		m_steps[step_id].vt_node_id = vt_node_id;
 }
 
 void OpHistory::Truncate(size_t keep)
@@ -1046,6 +1056,7 @@ void OpHistory::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 			w.W32(static_cast<uint32_t>(inp));
 
 		w.WStr(step.desc);
+		w.W32(step.vt_node_id);
 	}
 
 	len  = static_cast<uint32_t>(w.buf.size());
@@ -1061,7 +1072,7 @@ bool OpHistory::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 
 	uint32_t magic   = r.R32();
 	uint32_t version = r.R32();
-	if (!r.ok || magic != HIST_MAGIC || version != HIST_VERSION)
+	if (!r.ok || magic != HIST_MAGIC || version > HIST_VERSION)
 		return false;
 
 	uint32_t count = r.R32();
@@ -1088,6 +1099,10 @@ bool OpHistory::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 			step.var_inputs[j] = static_cast<int>(r.R32());
 
 		step.desc = r.RStr();
+		if (version >= 2)
+			step.vt_node_id = r.R32();
+		else
+			step.vt_node_id = UINT32_MAX;
 
 		if (!r.ok)
 		{

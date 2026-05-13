@@ -291,6 +291,7 @@ brepdb::WorldPtr RdWorld(std::ifstream& is)
             w->Params().Set(id, p);
         }
     }
+    w->RebuildTypedFromParams();
     return w;
 }
 
@@ -437,6 +438,7 @@ struct MemReader
                 w->Params().Set(id, p);
             }
         }
+        w->RebuildTypedFromParams();
         return w;
     }
 

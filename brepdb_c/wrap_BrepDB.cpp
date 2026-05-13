@@ -118,9 +118,10 @@ void w_BrepDB_allocate()
     proxy->obj = std::make_shared<brepdb::BrepDB>(sm, overwrite);
 
     auto gc = partgraph::GlobalConfig::Instance();
+    auto vt = gc->GetVersionTree();
+    if (vt)
+        proxy->obj->LoadVersionTree(*vt);
     proxy->obj->LoadCompGraph(*gc->GetCompGraph());
-    if (gc->GetVersionTree())
-        proxy->obj->LoadVersionTree(*gc->GetVersionTree());
 }
 
 int w_BrepDB_finalize(void* data)

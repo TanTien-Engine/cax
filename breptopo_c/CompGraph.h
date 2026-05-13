@@ -302,6 +302,7 @@ struct OpStep
 	std::vector<int>   inputs;
 	std::vector<int>   var_inputs;
 	std::string        desc;
+	uint32_t           vt_node_id = UINT32_MAX;
 };
 
 // ---------------------------------------------------------------
@@ -326,6 +327,7 @@ public:
 	          const std::string& desc = "");
 
 	void UpdateConst(int step_id, Val v);
+	void SetStepVtNodeId(int step_id, uint32_t vt_node_id);
 	void Truncate(size_t keep);
 
 	const OpStep* Get(int step_id) const;
@@ -384,6 +386,7 @@ public:
 	// SetRestoreFn() tells the Evaluator how to recover an evicted shape.
 	//
 	void SetRestoreFn(RestoreFn fn);
+	void SetCommitFn(CommitFn fn);
 	void SetNodeVersion(int ext_id, uint32_t vt_node_id);
 
 	// --- evaluation ---

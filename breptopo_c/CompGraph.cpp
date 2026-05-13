@@ -2,6 +2,8 @@
 #include "comp_ops.h"
 #include "TopoNaming.h"
 
+#include <cstring>
+
 namespace breptopo
 {
 
@@ -69,12 +71,20 @@ void CompGraph::SetRestoreFn(RestoreFn fn)
 	m_eval.SetRestoreFn(std::move(fn));
 }
 
+void CompGraph::SetCommitFn(CommitFn fn)
+{
+	m_eval.SetCommitFn(std::move(fn));
+}
+
 void CompGraph::SetNodeVersion(int ext_id, uint32_t vt_node_id)
 {
 	if (!m_lowered) Lower();
 	if (ext_id < 0 || ext_id >= (int)m_nodes.size()) return;
 	auto* nd = m_ir.Get(m_nodes[ext_id].ref);
-	if (nd) nd->vt_node_id = vt_node_id;
+	if (nd) {
+		nd->vt_node_id   = vt_node_id;
+		nd->eval_version = nd->version;
+	}
 }
 
 void CompGraph::Truncate(size_t keep)
@@ -138,9 +148,9 @@ void CompGraph::AppendNewSteps()
 	for (size_t i = m_lowered_count; i < steps.size(); ++i)
 	{
 		auto& step = steps[i];
+		NRef ref = NREF_NULL;
 		if (!step.op_name.empty() && step.op_name[0] == '$')
 		{
-			NRef ref = NREF_NULL;
 			if (step.op_name == "$int")        ref = m_ir.Const(std::get<int>(step.imm));
 			else if (step.op_name == "$num")    ref = m_ir.Const(std::get<double>(step.imm));
 			else if (step.op_name == "$bool")   ref = m_ir.Const(std::get<bool>(step.imm));
@@ -166,7 +176,17 @@ void CompGraph::AppendNewSteps()
 				else
 					var_refs.push_back(NREF_NULL);
 			}
-			Register(m_ir.Add(step.op_name, refs, var_refs), step.desc);
+			ref = m_ir.Add(step.op_name, refs, var_refs);
+			Register(ref, step.desc);
+		}
+
+		if (step.vt_node_id != UINT32_MAX)
+		{
+			auto* nd = m_ir.Get(ref);
+			if (nd) {
+				nd->vt_node_id   = step.vt_node_id;
+				nd->eval_version = nd->version;
+			}
 		}
 	}
 	m_lowered_count = steps.size();
@@ -253,10 +273,21 @@ std::vector<int> CompGraph::GetStepInputs(int step_id) const
 
 // ---------------------------------------------------------------
 //  CompGraph persistence
+//
+//  vt_node_id is stored on OpStep (persistent) rather than IRNode
+//  (rebuilt on every Lower). StoreToByteArray syncs IR vt_node_ids
+//  back to history steps before serializing.
 // ---------------------------------------------------------------
 
 void CompGraph::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 {
+	auto& hist = const_cast<OpHistory&>(m_history);
+	for (size_t ext = 0; ext < m_nodes.size(); ++ext)
+	{
+		auto* nd = m_ir.Get(m_nodes[ext].ref);
+		if (nd)
+			hist.SetStepVtNodeId(static_cast<int>(ext), nd->vt_node_id);
+	}
 	m_history.StoreToByteArray(buf, len);
 }
 
