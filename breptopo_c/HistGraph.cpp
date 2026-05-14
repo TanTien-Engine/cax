@@ -10,6 +10,7 @@
 #include <graph/Edge.h>
 #include <graph/GraphLayout.h>
 
+#include <cstring>
 #include <utility>
 
 #include <set>
@@ -417,6 +418,218 @@ uint32_t HistGraph::CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index)
 		((op_id & 0x3FFF) << 15) |
 		(index & 0x7FFF);
 	return uid;
+}
+
+void HistGraph::BindShape(uint32_t uid, const TopoDS_Shape& shape)
+{
+	auto itr = m_uid2gid.find(uid);
+	if (itr == m_uid2gid.end()) return;
+
+	size_t gid = itr->second;
+	m_curr_shapes.Bind(shape, gid);
+
+	auto node = m_graph->GetNode(gid);
+	if (!node) return;
+
+	auto topo_shape = std::make_shared<partgraph::TopoShape>(shape);
+	if (node->HasComponent<NodeShape>())
+		node->GetComponent<NodeShape>().SetShape(topo_shape);
+	else
+		node->AddComponent<NodeShape>(topo_shape);
+}
+
+// ---------------------------------------------------------------
+//  Binary persistence
+//
+//  Layout:
+//    magic        4 bytes  "HGRF"
+//    version      4 bytes  = 1
+//    num_nodes    4 bytes
+//    for each node:
+//      value      4 bytes (int)
+//      uid        4 bytes
+//      active     1 byte
+//    del_node_idx 4 bytes
+//    num_edges    4 bytes
+//    for each edge:
+//      from       4 bytes
+//      to         4 bytes
+//    num_uid2gid  4 bytes
+//    for each:
+//      uid        4 bytes
+//      gid        4 bytes
+//    num_op2nodes 4 bytes
+//    for each:
+//      op_id      4 bytes
+//      num_gids   4 bytes
+//      gids       4*n bytes
+// ---------------------------------------------------------------
+
+void HistGraph::StoreToByteArray(uint8_t** buf, uint32_t& len) const
+{
+	// Calculate total size
+	uint32_t num_nodes = static_cast<uint32_t>(m_graph->GetNodesNum());
+	uint32_t num_edges = static_cast<uint32_t>(m_graph->GetEdges().size());
+	uint32_t num_uid2gid = static_cast<uint32_t>(m_uid2gid.size());
+	uint32_t num_op2nodes = static_cast<uint32_t>(m_op2nodes.size());
+
+	uint32_t op2nodes_gids_total = 0;
+	for (auto& kv : m_op2nodes)
+		op2nodes_gids_total += static_cast<uint32_t>(kv.second.size());
+
+	uint32_t total = 4 + 4                                // magic + version
+		+ 4 + num_nodes * (4 + 4 + 1)                     // nodes
+		+ 4                                                // del_node_idx
+		+ 4 + num_edges * 8                                // edges
+		+ 4 + num_uid2gid * 8                              // uid2gid
+		+ 4 + num_op2nodes * 8 + op2nodes_gids_total * 4;  // op2nodes
+
+	*buf = new uint8_t[total];
+	uint8_t* p = *buf;
+	len = total;
+
+	auto write32 = [&](uint32_t v) { std::memcpy(p, &v, 4); p += 4; };
+	auto write8  = [&](uint8_t v)  { *p = v; p += 1; };
+
+	// magic + version
+	std::memcpy(p, "HGRF", 4); p += 4;
+	write32(1);
+
+	// nodes
+	write32(num_nodes);
+	for (uint32_t i = 0; i < num_nodes; ++i)
+	{
+		auto node = m_graph->GetNode(i);
+		write32(static_cast<uint32_t>(node->GetValue()));
+
+		uint32_t uid = 0;
+		uint8_t active = 1;
+		if (node->HasComponent<NodeId>())
+			uid = node->GetComponent<NodeId>().GetUID();
+		if (node->HasComponent<NodeFlags>())
+			active = node->GetComponent<NodeFlags>().IsActive() ? 1 : 0;
+
+		write32(uid);
+		write8(active);
+	}
+
+	// del_node_idx
+	write32(static_cast<uint32_t>(m_del_node_idx));
+
+	// edges
+	write32(num_edges);
+	for (auto& [key, edge] : m_graph->GetEdges())
+	{
+		write32(static_cast<uint32_t>(key.first));
+		write32(static_cast<uint32_t>(key.second));
+	}
+
+	// uid2gid
+	write32(num_uid2gid);
+	for (auto& [uid, gid] : m_uid2gid)
+	{
+		write32(uid);
+		write32(static_cast<uint32_t>(gid));
+	}
+
+	// op2nodes
+	write32(num_op2nodes);
+	for (auto& [op_id, gids] : m_op2nodes)
+	{
+		write32(op_id);
+		write32(static_cast<uint32_t>(gids.size()));
+		for (auto gid : gids)
+			write32(static_cast<uint32_t>(gid));
+	}
+}
+
+bool HistGraph::LoadFromByteArray(const uint8_t* buf, uint32_t len)
+{
+	if (len < 8) return false;
+
+	const uint8_t* p = buf;
+
+	auto read32 = [&]() -> uint32_t {
+		uint32_t v; std::memcpy(&v, p, 4); p += 4; return v;
+	};
+	auto read8 = [&]() -> uint8_t {
+		return *p++;
+	};
+
+	// magic
+	if (std::memcmp(p, "HGRF", 4) != 0) return false;
+	p += 4;
+	uint32_t version = read32();
+	if (version != 1) return false;
+
+	// rebuild graph
+	m_graph = std::make_shared<graph::Graph>();
+	m_curr_shapes.Clear();
+	m_uid2gid.clear();
+	m_op2nodes.clear();
+
+	// nodes
+	uint32_t num_nodes = read32();
+	for (uint32_t i = 0; i < num_nodes; ++i)
+	{
+		int32_t value = static_cast<int32_t>(read32());
+		uint32_t uid  = read32();
+		uint8_t active = read8();
+
+		auto node = std::make_shared<graph::Node>();
+		node->SetValue(value);
+
+		if (value == -1)
+		{
+			// del node
+			m_del_node_idx = i;
+			m_del_node = node.get();
+		}
+		else
+		{
+			node->AddComponent<NodeId>(uid, i);
+			auto& flags = node->AddComponent<NodeFlags>();
+			flags.SetActive(active != 0);
+		}
+
+		m_graph->AddNode(node);
+	}
+
+	// del_node_idx (from file, overrides the detected one above)
+	m_del_node_idx = read32();
+	m_del_node = m_graph->GetNode(m_del_node_idx).get();
+
+	// edges
+	uint32_t num_edges = read32();
+	for (uint32_t i = 0; i < num_edges; ++i)
+	{
+		uint32_t from = read32();
+		uint32_t to   = read32();
+		m_graph->AddEdge(from, to);
+	}
+
+	// uid2gid
+	uint32_t num_uid2gid = read32();
+	for (uint32_t i = 0; i < num_uid2gid; ++i)
+	{
+		uint32_t uid = read32();
+		uint32_t gid = read32();
+		m_uid2gid[uid] = gid;
+	}
+
+	// op2nodes
+	uint32_t num_op2nodes = read32();
+	for (uint32_t i = 0; i < num_op2nodes; ++i)
+	{
+		uint32_t op_id = read32();
+		uint32_t num_gids = read32();
+		std::vector<size_t> gids(num_gids);
+		for (uint32_t j = 0; j < num_gids; ++j)
+			gids[j] = read32();
+		m_op2nodes[op_id] = std::move(gids);
+	}
+
+	return true;
 }
 
 }

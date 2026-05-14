@@ -575,7 +575,8 @@ uint64_t Evaluator::InputHash(const IRGraph& g, const IRNode& node) const
 	return h;
 }
 
-Val Evaluator::ResolveVal(const IRGraph& g, NRef ref) const
+Val Evaluator::ResolveVal(const IRGraph& g, NRef ref,
+                          const std::shared_ptr<TopoNaming>& tn) const
 {
 	auto* nd = g.Get(ref);
 	if (!nd) return {};
@@ -585,7 +586,7 @@ Val Evaluator::ResolveVal(const IRGraph& g, NRef ref) const
 	if (v) return *v;
 	if (nd->vt_node_id != UINT32_MAX && m_restore_fn)
 	{
-		Val restored = m_restore_fn(nd->vt_node_id);
+		Val restored = m_restore_fn(nd->vt_node_id, tn);
 		if (!std::holds_alternative<std::monostate>(restored))
 		{
 			m_shape_cache.Put(ref.id, restored);
@@ -624,7 +625,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	uint64_t ih = InputHash(g, *nd);
 	if (nd->eval_version == nd->version && ih != 0)
 	{
-		Val resolved = ResolveVal(g, ref);
+		Val resolved = ResolveVal(g, ref, tn);
 		if (!std::holds_alternative<std::monostate>(resolved))
 		{
 			m_hits++;
@@ -634,10 +635,10 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 
 	std::vector<Val> resolved;
 	for (auto& inp : nd->inputs)
-		resolved.push_back(ResolveVal(g, inp));
+		resolved.push_back(ResolveVal(g, inp, tn));
 	std::vector<Val> var_resolved;
 	for (auto& inp : nd->var_inputs)
-		var_resolved.push_back(ResolveVal(g, inp));
+		var_resolved.push_back(ResolveVal(g, inp, tn));
 
 	auto* desc = m_reg.Find(nd->op_name);
 	Val result;
@@ -647,10 +648,11 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 		result = desc->eval(ctx);
 	}
 
+	bool no_vt_cache = desc && desc->flags.no_vt_cache;
 	if (std::holds_alternative<ShapeVal>(result))
 	{
 		m_shape_cache.Put(ref.id, result);
-		if (m_commit_fn)
+		if (!no_vt_cache && m_commit_fn)
 			nd->vt_node_id = m_commit_fn(ref.id, result);
 	}
 	else
@@ -1099,10 +1101,7 @@ bool OpHistory::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 			step.var_inputs[j] = static_cast<int>(r.R32());
 
 		step.desc = r.RStr();
-		if (version >= 2)
-			step.vt_node_id = r.R32();
-		else
-			step.vt_node_id = UINT32_MAX;
+		step.vt_node_id = r.R32();
 
 		if (!r.ok)
 		{

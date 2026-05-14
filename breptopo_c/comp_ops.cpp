@@ -110,7 +110,8 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (nodes.empty()) return {};
 			auto shp = nodes[0]->GetComponent<NodeShape>().GetShape();
 			return MakeShapeVal(shp);
-		});
+		},
+		{false, false, false, false, true});  // no_vt_cache
 
 	reg.Define("selector_face", {"shape", "uid"}, {},
 		[](EvalCtx& ctx) -> Val {
@@ -121,7 +122,8 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (nodes.empty()) return {};
 			auto shp = nodes[0]->GetComponent<NodeShape>().GetShape();
 			return MakeShapeVal(shp);
-		});
+		},
+		{false, false, false, false, true});  // no_vt_cache
 
 	reg.Define("merge", {}, {"shapes"},
 		[](EvalCtx& ctx) -> Val {

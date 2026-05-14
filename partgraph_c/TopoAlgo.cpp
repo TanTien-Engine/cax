@@ -114,18 +114,18 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
 
     if (edges.empty())
     {
-        TopExp_Explorer edge_explorer(shape->GetShape(), TopAbs_EDGE);
-        while (edge_explorer.More())
-        {
-            TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
-            fillet.Add(radius, edge);
-            edge_explorer.Next();
-        }
+        for (TopExp_Explorer ex(shape->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
+            fillet.Add(radius, TopoDS::Edge(ex.Current()));
     }
     else
     {
         for (auto& edge : edges) {
-            fillet.Add(radius, edge->ToEdge());
+            if (edge->GetShape().ShapeType() == TopAbs_EDGE) {
+                fillet.Add(radius, TopoDS::Edge(edge->GetShape()));
+            } else {
+                for (TopExp_Explorer ex(edge->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
+                    fillet.Add(radius, TopoDS::Edge(ex.Current()));
+            }
         }
     }
 
@@ -147,18 +147,18 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
 
     if (edges.empty())
     {
-        TopExp_Explorer edge_explorer(shape->GetShape(), TopAbs_EDGE);
-        while (edge_explorer.More())
-        {
-            TopoDS_Edge edge = TopoDS::Edge(edge_explorer.Current());
-            chamfer.Add(dist, edge);
-            edge_explorer.Next();
-        }
+        for (TopExp_Explorer ex(shape->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
+            chamfer.Add(dist, TopoDS::Edge(ex.Current()));
     }
     else
     {
         for (auto& edge : edges) {
-            chamfer.Add(dist, edge->ToEdge());
+            if (edge->GetShape().ShapeType() == TopAbs_EDGE) {
+                chamfer.Add(dist, TopoDS::Edge(edge->GetShape()));
+            } else {
+                for (TopExp_Explorer ex(edge->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
+                    chamfer.Add(dist, TopoDS::Edge(ex.Current()));
+            }
         }
     }
 

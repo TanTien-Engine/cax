@@ -28,6 +28,11 @@ public:
 
 	void MergeFrom(const HistGraph& other);
 
+	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
+	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);
+
+	void BindShape(uint32_t uid, const TopoDS_Shape& shape);
+
 	const std::shared_ptr<graph::Node> QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const;
 	bool QueryNodes(uint32_t uid, std::vector<std::shared_ptr<graph::Node>>& results) const;
 

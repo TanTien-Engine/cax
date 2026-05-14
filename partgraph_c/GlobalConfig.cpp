@@ -28,6 +28,10 @@ GlobalConfig::GlobalConfig()
 	m_version_tree = std::make_shared<brepdb::VersionTree>();
 	m_comp_graph = std::make_shared<breptopo::CompGraph>();
 
+	// Share the same TopoNaming so direct .ves code and CompGraph::Eval
+	// see the same naming state.
+	m_comp_graph->SetTopoNaming(m_topo_naming);
+
 	auto vt = m_version_tree;
 	auto cg = m_comp_graph;
 	auto tn = m_topo_naming;
@@ -52,7 +56,8 @@ GlobalConfig::GlobalConfig()
 		});
 
 	cg->SetRestoreFn(
-		[vt, vt_mutex](uint32_t vt_node_id) -> breptopo::Val
+		[vt, vt_mutex](uint32_t vt_node_id,
+		               const std::shared_ptr<breptopo::TopoNaming>& curr_tn) -> breptopo::Val
 		{
 			if (vt_node_id == UINT32_MAX) return {};
 			std::lock_guard<std::mutex> lk(*vt_mutex);
@@ -64,6 +69,14 @@ GlobalConfig::GlobalConfig()
 			brepdb::WorldReceiver receiver(*world);
 			TopoDS_Shape shape = receiver.GetAll();
 			if (shape.IsNull()) return {};
+
+			// Bind to the TopoNaming currently in use by the evaluator (could be
+			// a parallel fork's tn). This ensures selector ops running in the
+			// same evaluator see the sub-shapes of the restored solid.
+			if (curr_tn) {
+				for (auto& kv : receiver.GetCache())
+					curr_tn->BindShape(kv.first, kv.second);
+			}
 
 			auto topo = std::make_shared<partgraph::TopoShape>(shape);
 			return breptopo::ShapeVal{topo, 0};

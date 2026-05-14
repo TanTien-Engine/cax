@@ -16,6 +16,7 @@
 #include <partgraph_c/TopoShape.h>
 #include <partgraph_c/GlobalConfig.h>
 #include <breptopo_c/CompGraph.h>
+#include <breptopo_c/TopoNaming.h>
 #include <partgraph_c/TransHelper.h>
 #include <wrapper/TransHelper.h>
 #include <SM_Cube.h>
@@ -122,6 +123,15 @@ void w_BrepDB_allocate()
     if (vt)
         proxy->obj->LoadVersionTree(*vt);
     proxy->obj->LoadCompGraph(*gc->GetCompGraph());
+
+    auto tn = gc->GetTopoNaming();
+    if (tn) {
+        proxy->obj->LoadTopoNaming(*tn);
+        // RebuildIR() inside LoadCompGraph clears CompGraph::m_tn; restore the
+        // share so .ves selectors (via GlobalConfig) and CompGraph::Eval see
+        // the same TopoNaming.
+        gc->GetCompGraph()->SetTopoNaming(tn);
+    }
 }
 
 int w_BrepDB_finalize(void* data)

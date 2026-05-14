@@ -111,7 +111,8 @@ void CompGraph::Truncate(size_t keep)
 
 	m_history.Truncate(keep);
 	m_op_id_map.clear();
-	m_tn.reset();
+	// Don't reset m_tn — it's shared with GlobalConfig. If a true reset is
+	// needed (e.g., naming is stale after truncate), do it explicitly elsewhere.
 	m_lowered = false;
 }
 
@@ -137,7 +138,10 @@ void CompGraph::RebuildIR()
 	m_nodes.clear();
 	m_ref2ext.clear();
 	m_op_id_map.clear();
-	m_tn.reset();
+	// Keep m_tn intact across IR rebuilds: op_ids are deterministic so the
+	// existing naming data stays valid. Resetting it would create a fresh
+	// empty TopoNaming on the next Eval, diverging from the one used by
+	// .ves direct calls (GlobalConfig) and discarding loaded HistGraph data.
 	m_lowered_count = 0;
 	AppendNewSteps();
 }
@@ -220,10 +224,15 @@ Val CompGraph::Eval(int ext_id)
 	if (!m_tn) m_tn = std::make_shared<TopoNaming>();
 	NRef ref = m_nodes[ext_id].ref;
 	if (m_parallel)
+		// Share the main TopoNaming across forks: forks need to see naming
+		// state from loaded HistGraph (and from ops outside the fork). Using
+		// per-fork TNs starts them empty, so selector ops inside forks can't
+		// resolve UIDs from before the fork. The trade-off is that concurrent
+		// HistGraph::Update calls aren't currently synchronized.
 		m_eval.RunParallel(m_ir, ref, m_tn,
-			[]() { return std::make_shared<TopoNaming>(); },
-			[](const std::shared_ptr<TopoNaming>& dst,
-			   const std::shared_ptr<TopoNaming>& src) { dst->MergeFrom(*src); });
+			[this]() { return m_tn; },
+			[](const std::shared_ptr<TopoNaming>&,
+			   const std::shared_ptr<TopoNaming>&) { /* same object, no merge */ });
 	else
 		m_eval.Run(m_ir, ref, m_tn);
 	return m_eval.ResolveVal(m_ir, ref);

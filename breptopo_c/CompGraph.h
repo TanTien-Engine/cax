@@ -85,6 +85,11 @@ struct OpFlags
 	bool is_pattern  = false;
 	bool is_boolean  = false;
 	bool is_const    = false;
+	// Skip committing the result to the VersionTree. Within a session the
+	// result is still kept in m_shape_cache, so subsequent evals are fast.
+	// After reload, vt_node_id == UINT32_MAX (not stored), so the op is
+	// re-executed once to populate the in-session cache from current state.
+	bool no_vt_cache = false;
 };
 
 struct OpDesc
@@ -245,8 +250,12 @@ private:
 using CommitFn  = std::function<uint32_t(uint32_t nref_id, const Val& val)>;
 
 // Callback: restore a shape from version-tree node id.
-//   (vt_node_id) -> Val            (monostate = restore failed)
-using RestoreFn = std::function<Val(uint32_t vt_node_id)>;
+//   (vt_node_id, tn) -> Val            (monostate = restore failed)
+// The current TopoNaming is passed so the callback can bind the restored
+// shape's sub-shapes (via WorldReceiver's uid cache) into the correct
+// HistGraph — important for parallel eval where each fork has its own tn.
+using RestoreFn = std::function<Val(uint32_t vt_node_id,
+                                    const std::shared_ptr<TopoNaming>& tn)>;
 
 class Evaluator
 {
@@ -262,7 +271,8 @@ public:
 	                TnFactory tn_factory = {}, TnMerge tn_merge = {});
 	void Invalidate(IRGraph& g, NRef ref);
 
-	Val ResolveVal(const IRGraph& g, NRef ref) const;
+	Val ResolveVal(const IRGraph& g, NRef ref,
+	               const std::shared_ptr<TopoNaming>& tn = nullptr) const;
 
 	LruCache<Val>&       GetShapeCache()       { return m_shape_cache; }
 	const LruCache<Val>& GetShapeCache() const { return m_shape_cache; }
@@ -416,6 +426,7 @@ public:
 	OpRegistry&    GetRegistry() { return m_reg; }
 	Optimizer&     GetOptimizer(){ return m_opt; }
 	auto           GetTopoNaming() const { return m_tn; }
+	void           SetTopoNaming(const std::shared_ptr<TopoNaming>& tn) { m_tn = tn; }
 
 	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
 	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);

@@ -27,6 +27,8 @@ public:
     TopoDS_Shape GetShape(uint32_t uid);
     TopoDS_Shape GetAll();
 
+    const std::unordered_map<uint32_t, TopoDS_Shape>& GetCache() const { return m_cache; }
+
 private:
     TopoDS_Vertex DeserializeVertex(uint32_t uid);
     TopoDS_Edge   DeserializeEdge(uint32_t uid);

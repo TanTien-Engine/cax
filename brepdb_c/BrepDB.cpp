@@ -1,5 +1,6 @@
 #include "brepdb_c/BrepDB.h"
 #include "breptopo_c/CompGraph.h"
+#include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
 #include "partgraph_c/GlobalConfig.h"
@@ -18,6 +19,7 @@ static constexpr const char* META_SHAPE_INDEX  = "shape_index";
 static constexpr const char* META_TOPO_GRAPH   = "topo_graph";
 static constexpr const char* META_COMP_GRAPH   = "comp_graph";
 static constexpr const char* META_VERSION_TREE = "version_tree";
+static constexpr const char* META_TOPO_NAMING = "topo_naming";
 
 void SerializeWire(uint8_t orientation,
                    const std::vector<brepdb::FaceTopoComp::WireEdgeRef>& edges,
@@ -188,6 +190,8 @@ void BrepDB::Flush()
     auto gc = partgraph::GlobalConfig::Instance();
     if (gc->GetCompGraph())
         StoreCompGraph(*gc->GetCompGraph());
+    if (gc->GetTopoNaming())
+        StoreTopoNaming(*gc->GetTopoNaming());
     if (gc->GetVersionTree())
         StoreVersionTree(*gc->GetVersionTree());
 
@@ -321,6 +325,44 @@ bool BrepDB::LoadVersionTree(VersionTree& vt)
     vt.LoadFromByteArray(buf, len);
     delete[] buf;
     return true;
+}
+
+void BrepDB::StoreTopoNaming(const breptopo::TopoNaming& tn)
+{
+    uint8_t* buf = nullptr;
+    uint32_t len = 0;
+    tn.StoreToByteArray(&buf, len);
+
+    if (len == 0) { delete[] buf; return; }
+
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_TOPO_NAMING);
+    try {
+        m_sm->StoreByteArray(page, len, buf);
+        m_rtree->SetMetaPage(META_TOPO_NAMING, page);
+    } catch (...) {
+        delete[] buf;
+        throw;
+    }
+    delete[] buf;
+}
+
+bool BrepDB::LoadTopoNaming(breptopo::TopoNaming& tn)
+{
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_TOPO_NAMING);
+    if (page == spatialdb::NewPage)
+        return false;
+
+    uint32_t len = 0;
+    uint8_t* buf = nullptr;
+    try {
+        m_sm->LoadByteArray(page, len, &buf);
+    } catch (spatialdb::InvalidPageException&) {
+        return false;
+    }
+
+    bool ok = tn.LoadFromByteArray(buf, len);
+    delete[] buf;
+    return ok;
 }
 
 }

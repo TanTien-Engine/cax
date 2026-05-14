@@ -13,6 +13,8 @@ class BRepOffset_MakeSimpleOffset;
 
 namespace partgraph { class TopoShape; }
 
+class TopoDS_Shape;
+
 namespace breptopo
 {
 
@@ -42,6 +44,11 @@ public:
 	auto GetSolidGraph() const { return m_solid_hg; }
 
 	void MergeFrom(const TopoNaming& other);
+
+	void BindShape(uint32_t uid, const TopoDS_Shape& shape);
+
+	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
+	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);
 
 	uint32_t NextOpId();
 

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace breptopo { class CompGraph; }
+namespace breptopo { class CompGraph; class TopoNaming; }
 
 #include "brepdb_c/ShapeIndex.h"
 #include "brepdb_c/TopoGraph.h"
@@ -33,6 +33,9 @@ public:
 
     void StoreVersionTree(const VersionTree& vt);
     bool LoadVersionTree(VersionTree& vt);
+
+    void StoreTopoNaming(const breptopo::TopoNaming& tn);
+    bool LoadTopoNaming(breptopo::TopoNaming& tn);
 
 private:
     void StoreShapeIndex();
