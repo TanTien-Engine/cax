@@ -21,6 +21,7 @@ add_executable(${PROJECT_NAME}
     test_world_file.cpp
     test_shape_index.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/VersionTree.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/ComponentDiff.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/WorldFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../brepdb_c/ShapeIndex.cpp
 )

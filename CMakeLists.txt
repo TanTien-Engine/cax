@@ -161,6 +161,7 @@ set(brepdb__geom
     "brepdb_c/TypedPool.h"
     "brepdb_c/ComponentView.h"
     "brepdb_c/ComponentDiff.h"
+    "brepdb_c/ComponentDiff.cpp"
 )
 source_group("brepdb\\geom" FILES ${brepdb__geom})
 

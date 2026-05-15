@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <cstring>
+#include <map>
+#include <memory>
 #include <set>
 #include <unordered_map>
 #include <vector>
@@ -11,243 +13,133 @@
 namespace brepdb
 {
 
+using WorldPtr = std::shared_ptr<BRepWorld>;
+
+// ============================================================
+// Param hunk: stores only changed ranges of a double array
+// ============================================================
+
+struct ParamHunk
+{
+    uint32_t            offset;
+    std::vector<double> data;
+};
+
+void ComputeParamHunks(const std::vector<double>& old_params,
+                       const std::vector<double>& new_params,
+                       std::vector<ParamHunk>&    forward_hunks,
+                       std::vector<ParamHunk>&    reverse_hunks);
+
+std::vector<double> ApplyParamHunks(const std::vector<double>& base,
+                                    const std::vector<ParamHunk>& hunks,
+                                    uint32_t target_size);
+
+// ============================================================
+// Component-level diff types
+// ============================================================
+
 enum class ComponentKind : uint8_t
 {
-    Type       = 0,
-    Aabb       = 1,
-    Params     = 2,
+    Type = 0,
+    Aabb = 1,
+    Params = 2,
+};
+
+struct EntitySnapshot
+{
+    uint32_t id = 0;
+    Type     type = Type::Empty;
+    double   min_pt[3] = {0,0,0};
+    double   max_pt[3] = {0,0,0};
+    std::vector<double> params;
+
+    static EntitySnapshot Extract(const BRepWorld& world, uint32_t entity_id);
 };
 
 struct ComponentPatch
 {
-    uint32_t      entity_id;
-    ComponentKind kind;
+    uint32_t      entity_id = 0;
+    ComponentKind kind = ComponentKind::Type;
+
+    // For Type / Aabb
     std::vector<uint8_t> old_data;
     std::vector<uint8_t> new_data;
+
+    // For Params (hunk-compressed; old_data/new_data left empty)
+    uint32_t old_param_count = 0;
+    uint32_t new_param_count = 0;
+    std::vector<ParamHunk> forward_hunks;
+    std::vector<ParamHunk> reverse_hunks;
 };
 
 struct ComponentDiff
 {
-    std::vector<uint32_t> added_entities;
-    std::vector<uint32_t> removed_entities;
+    std::vector<EntitySnapshot> added;
+    std::vector<EntitySnapshot> removed;
+
+    std::vector<std::pair<uint32_t,uint32_t>> renamed; // old_pid -> new_pid
+
     std::vector<ComponentPatch> patches;
+
+    std::vector<uint32_t> old_order;
+    std::vector<uint32_t> new_order;
 
     bool IsEmpty() const
     {
-        return added_entities.empty() && removed_entities.empty() && patches.empty();
+        return added.empty() && removed.empty() && renamed.empty() && patches.empty();
     }
 
     size_t PatchBytes() const
     {
         size_t total = 0;
         for (auto& p : patches)
+        {
             total += p.old_data.size() + p.new_data.size();
+            for (auto& h : p.forward_hunks) total += h.data.size() * sizeof(double);
+            for (auto& h : p.reverse_hunks) total += h.data.size() * sizeof(double);
+        }
         return total;
     }
+
+    using PidMapping = std::map<uint32_t, std::vector<uint32_t>>;
 
     static ComponentDiff Compute(const BRepWorld& old_world,
                                  const BRepWorld& new_world);
 
-    static BRepWorld ApplyForward(const BRepWorld& base,
-                                  const ComponentDiff& diff);
+    static ComponentDiff ComputeWithPidMapping(const BRepWorld& old_world,
+                                               const BRepWorld& new_world,
+                                               const PidMapping& pid_map);
 
-    static BRepWorld ApplyReverse(const BRepWorld& current,
-                                  const ComponentDiff& diff);
+    static WorldPtr ApplyForward(const BRepWorld& base,
+                                 const ComponentDiff& diff);
+
+    static WorldPtr ApplyReverse(const BRepWorld& current,
+                                 const ComponentDiff& diff);
 };
 
 // ============================================================
-// Inline implementation
+// Inline helpers: pack / unpack component data
 // ============================================================
 
 namespace detail
 {
-    inline std::vector<uint8_t> PackAabb(const AabbComp& aabb)
-    {
-        std::vector<uint8_t> buf(48);
-        std::memcpy(buf.data(),      aabb.min_pt, 24);
-        std::memcpy(buf.data() + 24, aabb.max_pt, 24);
-        return buf;
-    }
 
-    inline AabbComp UnpackAabb(const std::vector<uint8_t>& buf)
-    {
-        AabbComp aabb;
-        std::memcpy(aabb.min_pt, buf.data(),      24);
-        std::memcpy(aabb.max_pt, buf.data() + 24, 24);
-        return aabb;
-    }
+inline std::vector<uint8_t> PackAabb(const AabbComp& aabb)
+{
+    std::vector<uint8_t> buf(48);
+    std::memcpy(buf.data(),      aabb.min_pt, 24);
+    std::memcpy(buf.data() + 24, aabb.max_pt, 24);
+    return buf;
+}
 
-    inline std::vector<uint8_t> PackParams(const ParamsComp& params)
-    {
-        size_t bytes = params.data.size() * sizeof(double);
-        std::vector<uint8_t> buf(bytes);
-        if (bytes > 0)
-            std::memcpy(buf.data(), params.data.data(), bytes);
-        return buf;
-    }
+inline AabbComp UnpackAabb(const std::vector<uint8_t>& buf)
+{
+    AabbComp aabb;
+    std::memcpy(aabb.min_pt, buf.data(),      24);
+    std::memcpy(aabb.max_pt, buf.data() + 24, 24);
+    return aabb;
+}
 
-    inline ParamsComp UnpackParams(const std::vector<uint8_t>& buf)
-    {
-        ParamsComp p;
-        size_t count = buf.size() / sizeof(double);
-        p.data.resize(count);
-        if (count > 0)
-            std::memcpy(p.data.data(), buf.data(), buf.size());
-        return p;
-    }
 } // namespace detail
-
-inline ComponentDiff ComponentDiff::Compute(const BRepWorld& old_world,
-                                             const BRepWorld& new_world)
-{
-    ComponentDiff diff;
-
-    std::set<uint32_t> old_set(old_world.AliveEntities().begin(),
-                                old_world.AliveEntities().end());
-    std::set<uint32_t> new_set(new_world.AliveEntities().begin(),
-                                new_world.AliveEntities().end());
-
-    for (uint32_t id : old_set)
-    {
-        if (new_set.find(id) == new_set.end())
-            diff.removed_entities.push_back(id);
-    }
-
-    for (uint32_t id : new_set)
-    {
-        if (old_set.find(id) == old_set.end())
-            diff.added_entities.push_back(id);
-    }
-
-    for (uint32_t id : new_set)
-    {
-        if (old_set.find(id) == old_set.end()) continue;
-
-        auto* old_type = old_world.Types().Get(id);
-        auto* new_type = new_world.Types().Get(id);
-        if (old_type && new_type && *old_type != *new_type)
-        {
-            ComponentPatch p;
-            p.entity_id = id;
-            p.kind = ComponentKind::Type;
-            p.old_data = { static_cast<uint8_t>(*old_type) };
-            p.new_data = { static_cast<uint8_t>(*new_type) };
-            diff.patches.push_back(std::move(p));
-        }
-
-        auto* old_aabb = old_world.Aabbs().Get(id);
-        auto* new_aabb = new_world.Aabbs().Get(id);
-        if (old_aabb && new_aabb &&
-            (std::memcmp(old_aabb->min_pt, new_aabb->min_pt, 24) != 0 ||
-             std::memcmp(old_aabb->max_pt, new_aabb->max_pt, 24) != 0))
-        {
-            ComponentPatch p;
-            p.entity_id = id;
-            p.kind = ComponentKind::Aabb;
-            p.old_data = detail::PackAabb(*old_aabb);
-            p.new_data = detail::PackAabb(*new_aabb);
-            diff.patches.push_back(std::move(p));
-        }
-
-        auto* old_params = old_world.Params().Get(id);
-        auto* new_params = new_world.Params().Get(id);
-        if (old_params && new_params && old_params->data != new_params->data)
-        {
-            ComponentPatch p;
-            p.entity_id = id;
-            p.kind = ComponentKind::Params;
-            p.old_data = detail::PackParams(*old_params);
-            p.new_data = detail::PackParams(*new_params);
-            diff.patches.push_back(std::move(p));
-        }
-    }
-
-    return diff;
-}
-
-inline BRepWorld ComponentDiff::ApplyForward(const BRepWorld& base,
-                                              const ComponentDiff& diff)
-{
-    std::set<uint32_t> removed_set(diff.removed_entities.begin(),
-                                    diff.removed_entities.end());
-
-    BRepWorld result;
-
-    for (uint32_t id : base.AliveEntities())
-    {
-        if (removed_set.count(id)) continue;
-
-        result.RegisterEntity(id);
-
-        auto* t = base.Types().Get(id);
-        if (t) result.Types().Set(id, *t);
-
-        auto* a = base.Aabbs().Get(id);
-        if (a) result.Aabbs().Set(id, *a);
-
-        auto* pos = base.Positions().Get(id);
-        if (pos) result.Positions().Set(id, *pos);
-
-        auto* tol = base.Tolerances().Get(id);
-        if (tol) result.Tolerances().Set(id, *tol);
-
-        auto* p = base.Params().Get(id);
-        if (p) result.Params().Set(id, *p);
-
-        auto* c = base.Curves().Get(id);
-        if (c) result.Curves().Set(id, *c);
-
-        auto* s = base.Surfaces().Get(id);
-        if (s) result.Surfaces().Set(id, *s);
-
-        auto* et = base.EdgeTopos().Get(id);
-        if (et) result.EdgeTopos().Set(id, *et);
-
-        auto* ft = base.FaceTopos().Get(id);
-        if (ft) result.FaceTopos().Set(id, *ft);
-
-        auto* st = base.SolidTopos().Get(id);
-        if (st) result.SolidTopos().Set(id, *st);
-    }
-
-    for (auto& patch : diff.patches)
-    {
-        if (!result.IsAlive(patch.entity_id)) continue;
-
-        switch (patch.kind)
-        {
-        case ComponentKind::Type:
-            result.Types().Set(patch.entity_id, static_cast<Type>(patch.new_data[0]));
-            break;
-        case ComponentKind::Aabb:
-            result.Aabbs().Set(patch.entity_id, detail::UnpackAabb(patch.new_data));
-            break;
-        case ComponentKind::Params:
-            result.Params().Set(patch.entity_id, detail::UnpackParams(patch.new_data));
-            break;
-        }
-    }
-
-    return result;
-}
-
-inline BRepWorld ComponentDiff::ApplyReverse(const BRepWorld& current,
-                                              const ComponentDiff& diff)
-{
-    ComponentDiff reversed;
-    reversed.added_entities = diff.removed_entities;
-    reversed.removed_entities = diff.added_entities;
-    reversed.patches.reserve(diff.patches.size());
-    for (auto& p : diff.patches)
-    {
-        ComponentPatch rp;
-        rp.entity_id = p.entity_id;
-        rp.kind      = p.kind;
-        rp.old_data  = p.new_data;
-        rp.new_data  = p.old_data;
-        reversed.patches.push_back(std::move(rp));
-    }
-    return ApplyForward(current, reversed);
-}
 
 } // namespace brepdb

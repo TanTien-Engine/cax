@@ -34,7 +34,6 @@ static void add_entity(BRepWorld& w, uint32_t pid, Type type,
     }
 }
 
-// world: [a(pid=10, 3 doubles), b(pid=20, 2 doubles)]
 static BRepWorld make_world_ab()
 {
     BRepWorld w;
@@ -43,7 +42,6 @@ static BRepWorld make_world_ab()
     return w;
 }
 
-// world: [c(pid=30), a(pid=10), b(pid=20)]
 static BRepWorld make_world_cab()
 {
     BRepWorld w;
@@ -83,17 +81,6 @@ static bool worlds_equal(const BRepWorld& a, const BRepWorld& b)
     return true;
 }
 
-static EntityEntry make_entity(uint32_t pid, Type type, const std::vector<double>& params)
-{
-    EntityEntry e;
-    e.persistent_id = pid;
-    e.type = type;
-    e.min_pt[0] = e.min_pt[1] = e.min_pt[2] = 0.0;
-    e.max_pt[0] = e.max_pt[1] = e.max_pt[2] = 1.0;
-    e.params = params;
-    return e;
-}
-
 // ============================================================
 // ParamHunk tests
 // ============================================================
@@ -108,15 +95,15 @@ TEST_CASE("ParamHunk: basic change in the middle of a large array", "[hunk]")
     new_p[101]  = 888.0;
 
     std::vector<ParamHunk> fwd, rev;
-    VersionTree::ComputeParamHunks(old_p, new_p, fwd, rev);
+    ComputeParamHunks(old_p, new_p, fwd, rev);
 
     REQUIRE(fwd.size()     == 1);
     REQUIRE(fwd[0].offset  == 100);
     REQUIRE(fwd[0].data[0] == 999.0);
     REQUIRE(fwd[0].data[1] == 888.0);
 
-    auto rebuilt  = VersionTree::ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
-    auto reverted = VersionTree::ApplyParamHunks(new_p, rev, static_cast<uint32_t>(old_p.size()));
+    auto rebuilt  = ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
+    auto reverted = ApplyParamHunks(new_p, rev, static_cast<uint32_t>(old_p.size()));
     REQUIRE(rebuilt  == new_p);
     REQUIRE(reverted == old_p);
 }
@@ -127,10 +114,10 @@ TEST_CASE("ParamHunk: array grows", "[hunk]")
     std::vector<double> new_p = { 1, 2, 99, 4, 5, 6, 7, 8 };
 
     std::vector<ParamHunk> fwd, rev;
-    VersionTree::ComputeParamHunks(old_p, new_p, fwd, rev);
+    ComputeParamHunks(old_p, new_p, fwd, rev);
 
-    auto rebuilt  = VersionTree::ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
-    auto reverted = VersionTree::ApplyParamHunks(new_p, rev, static_cast<uint32_t>(old_p.size()));
+    auto rebuilt  = ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
+    auto reverted = ApplyParamHunks(new_p, rev, static_cast<uint32_t>(old_p.size()));
     REQUIRE(rebuilt  == new_p);
     REQUIRE(reverted == old_p);
 }
@@ -139,7 +126,7 @@ TEST_CASE("ParamHunk: no change produces empty hunks", "[hunk]")
 {
     std::vector<double> p = { 1, 2, 3, 4, 5 };
     std::vector<ParamHunk> fwd, rev;
-    VersionTree::ComputeParamHunks(p, p, fwd, rev);
+    ComputeParamHunks(p, p, fwd, rev);
     REQUIRE(fwd.empty());
     REQUIRE(rev.empty());
 }
@@ -149,16 +136,16 @@ TEST_CASE("ParamHunk: nearby changes are coalesced", "[hunk]")
     std::vector<double> old_p(100, 0.0);
     auto new_p  = old_p;
     new_p[10]   = 1.0;
-    new_p[13]   = 2.0;  // gap = 2, within COALESCE_GAP = 4
+    new_p[13]   = 2.0;  // gap within COALESCE_GAP
 
     std::vector<ParamHunk> fwd, rev;
-    VersionTree::ComputeParamHunks(old_p, new_p, fwd, rev);
+    ComputeParamHunks(old_p, new_p, fwd, rev);
 
     REQUIRE(fwd.size()       == 1);
     REQUIRE(fwd[0].offset    == 10);
     REQUIRE(fwd[0].data.size() == 4);
 
-    auto rebuilt = VersionTree::ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
+    auto rebuilt = ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
     REQUIRE(rebuilt == new_p);
 }
 
@@ -171,12 +158,12 @@ TEST_CASE("ParamHunk: distant changes stay separate", "[hunk]")
     new_p[90]  = 3.0;
 
     std::vector<ParamHunk> fwd, rev;
-    VersionTree::ComputeParamHunks(old_p, new_p, fwd, rev);
+    ComputeParamHunks(old_p, new_p, fwd, rev);
 
     REQUIRE(fwd.size() == 3);
 
-    auto rebuilt  = VersionTree::ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
-    auto reverted = VersionTree::ApplyParamHunks(new_p, rev, static_cast<uint32_t>(old_p.size()));
+    auto rebuilt  = ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
+    auto reverted = ApplyParamHunks(new_p, rev, static_cast<uint32_t>(old_p.size()));
     REQUIRE(rebuilt  == new_p);
     REQUIRE(reverted == old_p);
 }
@@ -194,50 +181,48 @@ TEST_CASE("ParamHunk: large entity with tiny change stores very few doubles", "[
     new_p[4000]  = -5.0;
     new_p[4001]  = -6.0;
 
-    auto old_e = make_entity(10, Type::Compound, old_p);
-    auto new_e = make_entity(50, Type::Compound, new_p);
-    auto mod   = VersionTree::BuildModifiedEntry(10, 50, old_e, new_e);
+    std::vector<ParamHunk> fwd, rev;
+    ComputeParamHunks(old_p, new_p, fwd, rev);
 
     size_t fwd_doubles = 0;
-    for (const auto& h : mod.forward_hunks) { fwd_doubles += h.data.size(); }
+    for (const auto& h : fwd) fwd_doubles += h.data.size();
     REQUIRE(fwd_doubles < 50);
 
-    auto rebuilt  = VersionTree::ApplyParamHunks(old_p, mod.forward_hunks, mod.new_param_count);
-    auto reverted = VersionTree::ApplyParamHunks(new_p, mod.reverse_hunks, mod.old_param_count);
+    auto rebuilt  = ApplyParamHunks(old_p, fwd, static_cast<uint32_t>(new_p.size()));
+    auto reverted = ApplyParamHunks(new_p, rev, static_cast<uint32_t>(old_p.size()));
     REQUIRE(rebuilt  == new_p);
     REQUIRE(reverted == old_p);
 }
 
 // ============================================================
-// ComputeDiff tests
+// ComponentDiff::Compute tests (high-level shape + round-trip)
 // ============================================================
 
 TEST_CASE("ComputeDiff: insert at front", "[diff]")
 {
     auto old_w = make_world_ab();
     auto new_w = make_world_cab();
-    auto diff  = VersionTree::ComputeDiff(old_w, new_w);
+    auto diff  = ComponentDiff::Compute(old_w, new_w);
 
-    REQUIRE(diff.added.size()          == 1);
-    REQUIRE(diff.added[0].PersistentId() == 30);
+    REQUIRE(diff.added.size() == 1);
+    REQUIRE(diff.added[0].id  == 30);
     REQUIRE(diff.removed.empty());
-    REQUIRE(diff.modified.empty());
 
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
+    auto fwd = ComponentDiff::ApplyForward(old_w, diff);
     REQUIRE(get_alive(fwd).size() == 3);
 
-    auto rev = VersionTree::ApplyReverse(new_w, diff);
+    auto rev = ComponentDiff::ApplyReverse(new_w, diff);
     REQUIRE(get_alive(rev).size() == 2);
     REQUIRE(rev->IsAlive(10));
     REQUIRE(rev->IsAlive(20));
 }
 
-TEST_CASE("ComputeDiff: empty diff when pools are identical", "[diff]")
+TEST_CASE("ComputeDiff: empty diff when worlds are identical", "[diff]")
 {
     auto w = make_world_ab();
-    auto diff = VersionTree::ComputeDiff(w, w);
+    auto diff = ComponentDiff::Compute(w, w);
     REQUIRE(diff.IsEmpty());
-    auto fwd = VersionTree::ApplyForward(w, diff);
+    auto fwd = ComponentDiff::ApplyForward(w, diff);
     REQUIRE(worlds_equal(*fwd, w));
 }
 
@@ -249,12 +234,12 @@ TEST_CASE("ComputeDiff: reorder only — no entities changed", "[diff]")
     add_entity(new_w, 20, Type::Compound, { 4, 5 });
     add_entity(new_w, 10, Type::Compound, { 1, 2, 3 });
 
-    auto diff = VersionTree::ComputeDiff(old_w, new_w);
+    auto diff = ComponentDiff::Compute(old_w, new_w);
     REQUIRE(diff.IsEmpty());
     REQUIRE(diff.new_order[0] == 20);
     REQUIRE(diff.new_order[1] == 10);
 
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
+    auto fwd = ComponentDiff::ApplyForward(old_w, diff);
     auto alive = get_alive(fwd);
     REQUIRE(alive[0] == 20);
     REQUIRE(alive[1] == 10);
@@ -273,54 +258,17 @@ TEST_CASE("ComputeDiff: complex op — add + remove + modify", "[diff]")
     add_entity(new_w, 3, Type::Compound, { 9,9,9,9 });
     add_entity(new_w, 5, Type::Compound, { 7,7,7,7,7,7 });
 
-    auto diff = VersionTree::ComputeDiff(old_w, new_w);
-    REQUIRE(diff.removed.size()  == 2);  // edge(2), face(4)
-    REQUIRE(diff.added.size()    == 1);  // face(5)
-    REQUIRE(diff.modified.size() == 1);  // face(3)
-    REQUIRE(diff.modified[0].old_persistent_id == 3);
+    auto diff = ComponentDiff::Compute(old_w, new_w);
+    REQUIRE(diff.removed.size() == 2);
+    REQUIRE(diff.added.size()   == 1);
 
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
+    auto fwd = ComponentDiff::ApplyForward(old_w, diff);
     REQUIRE(get_alive(fwd).size() == 3);
     REQUIRE(get_params(fwd, 3)[0] == 9.0);
 
-    auto rev = VersionTree::ApplyReverse(*fwd, diff);
+    auto rev = ComponentDiff::ApplyReverse(*fwd, diff);
     REQUIRE(get_alive(rev).size() == 4);
     REQUIRE(get_params(rev, 3)[0] == 2.0);
-}
-
-// ============================================================
-// Pre-built diff with pid change
-// ============================================================
-
-TEST_CASE("Pre-built diff: pid changes after CalcUID re-assigns uids", "[diff][pidmap]")
-{
-    BRepWorld old_w;
-    add_entity(old_w, 100, Type::Compound, { 1, 2, 3 });
-    add_entity(old_w, 200, Type::Compound, { 4, 5 });
-
-    BRepWorld new_w;
-    add_entity(new_w, 300, Type::Compound, { 10, 20, 30 });
-    add_entity(new_w, 400, Type::Compound, { 4, 5 });
-
-    PoolDiff diff;
-    diff.old_order = { 100, 200 };
-    diff.new_order = { 300, 400 };
-    diff.modified.push_back(VersionTree::BuildModifiedEntry(
-        100, 300,
-        VersionTree::ExtractEntity(old_w, 100),
-        VersionTree::ExtractEntity(new_w, 300)));
-    diff.modified.push_back(VersionTree::BuildModifiedEntry(
-        200, 400,
-        VersionTree::ExtractEntity(old_w, 200),
-        VersionTree::ExtractEntity(new_w, 400)));
-
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
-    REQUIRE(fwd->IsAlive(300));
-    REQUIRE(get_params(fwd, 300)[0] == 10.0);
-
-    auto rev = VersionTree::ApplyReverse(new_w, diff);
-    REQUIRE(rev->IsAlive(100));
-    REQUIRE(get_params(rev, 100)[0] == 1.0);
 }
 
 // ============================================================
@@ -341,15 +289,15 @@ TEST_CASE("PidMapping: simple modify — all pids change", "[pidmap]")
     pid_map[10] = { 110 };
     pid_map[20] = { 120 };
 
-    auto diff = VersionTree::BuildDiffFromPidMapping(old_w, new_w, pid_map);
-    REQUIRE(diff.modified.size() == 2);
+    auto diff = ComponentDiff::ComputeWithPidMapping(old_w, new_w, pid_map);
+    REQUIRE(diff.renamed.size() == 2);
     REQUIRE(diff.added.empty());
     REQUIRE(diff.removed.empty());
 
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
+    auto fwd = ComponentDiff::ApplyForward(old_w, diff);
     REQUIRE(fwd->IsAlive(110));
 
-    auto rev = VersionTree::ApplyReverse(*fwd, diff);
+    auto rev = ComponentDiff::ApplyReverse(*fwd, diff);
     REQUIRE(rev->IsAlive(10));
 }
 
@@ -366,17 +314,17 @@ TEST_CASE("PidMapping: entity deleted", "[pidmap]")
 
     VersionTree::PidMapping pid_map;
     pid_map[10] = { 110 };
-    pid_map[20] = {};       // deleted
+    pid_map[20] = {};
     pid_map[30] = { 130 };
 
-    auto diff = VersionTree::BuildDiffFromPidMapping(old_w, new_w, pid_map);
-    REQUIRE(diff.removed.size()              == 1);
-    REQUIRE(diff.removed[0].PersistentId()   == 20);
+    auto diff = ComponentDiff::ComputeWithPidMapping(old_w, new_w, pid_map);
+    REQUIRE(diff.removed.size()    == 1);
+    REQUIRE(diff.removed[0].id     == 20);
 
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
+    auto fwd = ComponentDiff::ApplyForward(old_w, diff);
     REQUIRE(get_alive(fwd).size() == 2);
 
-    auto rev = VersionTree::ApplyReverse(*fwd, diff);
+    auto rev = ComponentDiff::ApplyReverse(*fwd, diff);
     REQUIRE(get_alive(rev).size() == 3);
     REQUIRE(rev->IsAlive(20));
 }
@@ -393,72 +341,21 @@ TEST_CASE("PidMapping: entity split into two", "[pidmap]")
     VersionTree::PidMapping pid_map;
     pid_map[10] = { 50, 51 };
 
-    auto diff = VersionTree::BuildDiffFromPidMapping(old_w, new_w, pid_map);
-    REQUIRE(diff.modified.size()         == 1);
-    REQUIRE(diff.added.size()            == 1);
-    REQUIRE(diff.added[0].PersistentId() == 51);
+    auto diff = ComponentDiff::ComputeWithPidMapping(old_w, new_w, pid_map);
+    REQUIRE(diff.added.size() == 1);
+    REQUIRE(diff.added[0].id  == 51);
 
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
+    auto fwd = ComponentDiff::ApplyForward(old_w, diff);
     REQUIRE(get_alive(fwd).size() == 2);
 
-    auto rev = VersionTree::ApplyReverse(*fwd, diff);
+    auto rev = ComponentDiff::ApplyReverse(*fwd, diff);
     REQUIRE(get_alive(rev).size() == 1);
     REQUIRE(rev->IsAlive(10));
 }
 
-TEST_CASE("PidMapping: unmapped new entity detected as added", "[pidmap]")
+TEST_CASE("PidMapping: empty old_world — initial commit through pid_map", "[pidmap]")
 {
     BRepWorld old_w;
-    add_entity(old_w, 10, Type::Compound, { 1, 2 });
-
-    BRepWorld new_w;
-    add_entity(new_w, 110, Type::Compound, { 1, 2 });
-    add_entity(new_w, 111, Type::Compound, { 5, 6, 7 });
-
-    VersionTree::PidMapping pid_map;
-    pid_map[10] = { 110 };
-
-    auto diff = VersionTree::BuildDiffFromPidMapping(old_w, new_w, pid_map);
-    REQUIRE(diff.added.size()            == 1);
-    REQUIRE(diff.added[0].PersistentId() == 111);
-
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
-    REQUIRE(get_alive(fwd).size() == 2);
-    REQUIRE(fwd->IsAlive(111));
-
-    auto rev = VersionTree::ApplyReverse(*fwd, diff);
-    REQUIRE(get_alive(rev).size() == 1);
-    REQUIRE(rev->IsAlive(10));
-}
-
-TEST_CASE("PidMapping: unlisted entity falls back to pid match", "[pidmap]")
-{
-    BRepWorld old_w;
-    add_entity(old_w, 10, Type::Compound, { 1, 2, 3 });
-    add_entity(old_w, 50, Type::Compound, { 4, 5 });
-
-    BRepWorld new_w;
-    add_entity(new_w, 110, Type::Compound, { 10, 20, 30 });
-    add_entity(new_w, 50,  Type::Compound, { 40, 50 });
-
-    VersionTree::PidMapping pid_map;
-    pid_map[10] = { 110 };
-
-    auto diff = VersionTree::BuildDiffFromPidMapping(old_w, new_w, pid_map);
-    REQUIRE(diff.modified.size() == 2);  // face 10->110 + curve 50->50
-
-    bool curve_modified = false;
-    for (const auto& m : diff.modified) {
-        if (m.old_persistent_id == 50 && m.new_persistent_id == 50) {
-            curve_modified = true;
-        }
-    }
-    REQUIRE(curve_modified);
-}
-
-TEST_CASE("PidMapping: empty old_pool — initial commit through pid_map", "[pidmap]")
-{
-    BRepWorld old_w;  // empty
 
     BRepWorld new_w;
     add_entity(new_w, 110, Type::Compound, { 1, 2 });
@@ -469,46 +366,19 @@ TEST_CASE("PidMapping: empty old_pool — initial commit through pid_map", "[pid
     pid_map[10] = { 110 };
     pid_map[20] = { 120, 121 };
 
-    auto diff = VersionTree::BuildDiffFromPidMapping(old_w, new_w, pid_map);
-
-    REQUIRE(diff.modified.empty());
+    auto diff = ComponentDiff::ComputeWithPidMapping(old_w, new_w, pid_map);
     REQUIRE(diff.removed.empty());
     REQUIRE(diff.added.size() == 3);
 
-    std::set<uint32_t> added_pids;
-    for (const auto& e : diff.added) { added_pids.insert(e.PersistentId()); }
-    REQUIRE(added_pids == std::set<uint32_t>{ 110, 120, 121 });
+    std::set<uint32_t> added_ids;
+    for (const auto& e : diff.added) added_ids.insert(e.id);
+    REQUIRE(added_ids == std::set<uint32_t>{110, 120, 121});
 
-    auto fwd = VersionTree::ApplyForward(old_w, diff);
+    auto fwd = ComponentDiff::ApplyForward(old_w, diff);
     REQUIRE(get_alive(fwd).size() == 3);
 
-    auto rev = VersionTree::ApplyReverse(*fwd, diff);
+    auto rev = ComponentDiff::ApplyReverse(*fwd, diff);
     REQUIRE(get_alive(rev).size() == 0);
-}
-
-TEST_CASE("PidMapping: stale old_pid not in old_pool falls back to added", "[pidmap]")
-{
-    BRepWorld old_w;
-    add_entity(old_w, 10, Type::Compound, { 1, 2 });
-
-    BRepWorld new_w;
-    add_entity(new_w, 110, Type::Compound, { 1, 2 });
-    add_entity(new_w, 210, Type::Compound, { 7, 8 });
-
-    VersionTree::PidMapping pid_map;
-    pid_map[10] = { 110 };
-    pid_map[99] = { 210 };
-
-    auto diff = VersionTree::BuildDiffFromPidMapping(old_w, new_w, pid_map);
-
-    REQUIRE(diff.modified.size() == 1);
-    REQUIRE(diff.modified[0].old_persistent_id == 10);
-    REQUIRE(diff.modified[0].new_persistent_id == 110);
-
-    REQUIRE(diff.added.size()            == 1);
-    REQUIRE(diff.added[0].PersistentId() == 210);
-
-    REQUIRE(diff.removed.empty());
 }
 
 // ============================================================
@@ -615,7 +485,7 @@ TEST_CASE("VersionTree: branching and cross-branch checkout", "[tree]")
     VersionTree::PidMapping mapA;
     mapA[10] = { 50 };
     mapA[20] = {};
-    auto dA  = VersionTree::BuildDiffFromPidMapping(w0, wA, mapA);
+    auto dA  = ComponentDiff::ComputeWithPidMapping(w0, wA, mapA);
     uint32_t idA = tree.Commit(root_id, wA, std::move(dA), "branch A");
 
     BRepWorld wB;
@@ -624,7 +494,7 @@ TEST_CASE("VersionTree: branching and cross-branch checkout", "[tree]")
     VersionTree::PidMapping mapB;
     mapB[10] = { 60 };
     mapB[20] = {};
-    auto dB  = VersionTree::BuildDiffFromPidMapping(w0, wB, mapB);
+    auto dB  = ComponentDiff::ComputeWithPidMapping(w0, wB, mapB);
     uint32_t idB = tree.Branch(root_id, wB, std::move(dB), "branch B");
 
     SECTION("checkout branch A") {
@@ -660,7 +530,7 @@ TEST_CASE("VersionTree: Redo selects correct child by index", "[tree]")
 
     BRepWorld wB = make_world_ab();
     wB.Params().Get(10)->data[0] = 77.0;
-    tree.Branch(root_id, wB, VersionTree::ComputeDiff(ab_w, wB), "branch B");
+    tree.Branch(root_id, wB, ComponentDiff::Compute(ab_w, wB), "branch B");
 
     tree.Checkout(root_id, root_id);
 
@@ -695,11 +565,11 @@ TEST_CASE("VersionTree: deep chain of 20 commits — undo all then redo all", "[
 
     REQUIRE(tree.GetNodeCount() == DEPTH + 1);
 
-    for (int i = 0; i < DEPTH; ++i) { tree.Undo(root_id); }
+    for (int i = 0; i < DEPTH; ++i) tree.Undo(root_id);
     REQUIRE(tree.GetCurrentId(root_id) == root_id);
     REQUIRE(get_params(tree.GetCurrentWorld(root_id), 1)[0] == 0.0);
 
-    for (int i = 0; i < DEPTH; ++i) { tree.Redo(root_id); }
+    for (int i = 0; i < DEPTH; ++i) tree.Redo(root_id);
     REQUIRE(get_params(tree.GetCurrentWorld(root_id), 1)[0] == static_cast<double>(DEPTH));
 }
 
@@ -711,7 +581,6 @@ TEST_CASE("VersionTree: independent per-root undo does not affect other roots", 
 {
     VersionTree tree;
 
-    // Solid A: block → fillet
     BRepWorld wA0;
     add_entity(wA0, 10, Type::Compound, { 1, 2, 3 });
     uint32_t rootA = tree.AddRoot(wA0, "block A");
@@ -720,7 +589,6 @@ TEST_CASE("VersionTree: independent per-root undo does not affect other roots", 
     add_entity(wA1, 10, Type::Compound, { 10, 20, 30 });
     tree.Commit(rootA, wA1, "fillet A");
 
-    // Solid B: block → fillet
     BRepWorld wB0;
     add_entity(wB0, 20, Type::Compound, { 4, 5 });
     uint32_t rootB = tree.AddRoot(wB0, "block B");
@@ -729,12 +597,10 @@ TEST_CASE("VersionTree: independent per-root undo does not affect other roots", 
     add_entity(wB1, 20, Type::Compound, { 40, 50 });
     tree.Commit(rootB, wB1, "fillet B");
 
-    // Undo A — only A reverts, B stays at fillet
     auto undoneA = tree.Undo(rootA);
     REQUIRE(get_params(undoneA, 10)[0] == 1.0);
     REQUIRE(get_params(tree.GetCurrentWorld(rootB), 20)[0] == 40.0);
 
-    // Redo A
     auto redoneA = tree.Redo(rootA);
     REQUIRE(get_params(redoneA, 10)[0] == 10.0);
     REQUIRE(get_params(tree.GetCurrentWorld(rootB), 20)[0] == 40.0);
@@ -801,7 +667,7 @@ TEST_CASE("VersionTree: GetPathFromRoot and GetLeaves", "[tree][query]")
 
     BRepWorld w3 = make_world_ab();
     w3.Params().Get(10)->data[0] = 99.0;
-    tree.Branch(root_id, w3, VersionTree::ComputeDiff(ab_w, w3), "op3");
+    tree.Branch(root_id, w3, ComponentDiff::Compute(ab_w, w3), "op3");
 
     auto path = tree.GetPathFromRoot(2);
     REQUIRE(path.size() == 3);
@@ -845,7 +711,7 @@ TEST_CASE("Persistence: SaveToFile / LoadFromFile round-trip", "[persist]")
 
     BRepWorld wb = make_world_cab();
     wb.Params().Get(30)->data[0] = 55.0;
-    t1.Branch(1, wb, VersionTree::ComputeDiff(cab_w, wb), "branch");
+    t1.Branch(1, wb, ComponentDiff::Compute(cab_w, wb), "branch");
 
     REQUIRE(t1.SaveToFile(fp));
 
@@ -892,14 +758,12 @@ TEST_CASE("Persistence: SaveToFile / LoadFromFile multi-root round-trip", "[pers
     REQUIRE(t2.LoadFromFile(fp));
     REQUIRE(t2.GetNodeCount() == 4);
 
-    // Both cursors should be at their latest commits
     auto curA = t2.GetCurrentWorld(rootA);
     REQUIRE(get_params(curA, 10)[0] == 10.0);
 
     auto curB = t2.GetCurrentWorld(rootB);
     REQUIRE(get_params(curB, 20)[0] == 40.0);
 
-    // Undo A independently
     auto undoneA = t2.Undo(rootA);
     REQUIRE(get_params(undoneA, 10)[0] == 1.0);
     REQUIRE(get_params(t2.GetCurrentWorld(rootB), 20)[0] == 40.0);
@@ -928,8 +792,8 @@ TEST_CASE("Persistence: StoreToByteArray / LoadFromByteArray round-trip", "[pers
     t2.LoadFromByteArray(buf, len);
     delete[] buf;
 
-    REQUIRE(t2.GetNodeCount()              == 3);
-    REQUIRE(t2.GetCurrentId(root_id)       == t1.GetCurrentId(root_id));
+    REQUIRE(t2.GetNodeCount()        == 3);
+    REQUIRE(t2.GetCurrentId(root_id) == t1.GetCurrentId(root_id));
 
     auto u1 = t2.Undo(root_id);
     REQUIRE(get_alive(u1).size() == 3);
@@ -955,14 +819,14 @@ TEST_CASE("Persistence: byte-array with branches", "[persist]")
 
     VersionTree::PidMapping mapA;
     mapA[10] = { 50 };
-    t1.Commit(root_id, wA, VersionTree::BuildDiffFromPidMapping(w0, wA, mapA), "branch A");
+    t1.Commit(root_id, wA, ComponentDiff::ComputeWithPidMapping(w0, wA, mapA), "branch A");
 
     BRepWorld wB;
     add_entity(wB, 60, Type::Compound, { 100, 200, 300 });
 
     VersionTree::PidMapping mapB;
     mapB[10] = { 60 };
-    t1.Branch(root_id, wB, VersionTree::BuildDiffFromPidMapping(w0, wB, mapB), "branch B");
+    t1.Branch(root_id, wB, ComponentDiff::ComputeWithPidMapping(w0, wB, mapB), "branch B");
 
     uint8_t* buf = nullptr;
     uint32_t len = 0;
@@ -988,7 +852,7 @@ TEST_CASE("Persistence: byte-array with branches", "[persist]")
 // BrepDB integration flow
 // ============================================================
 
-TEST_CASE("Integration: BrepDB open/save/undo/redo cycle", "[integration]")
+TEST_CASE("Integration: VersionTree open/save/undo/redo cycle", "[integration]")
 {
     auto w0 = make_world_ab();
 
@@ -999,7 +863,7 @@ TEST_CASE("Integration: BrepDB open/save/undo/redo cycle", "[integration]")
     VersionTree::PidMapping map1;
     map1[10] = { 10 };
     map1[20] = { 20 };
-    tree.Commit(root_id, w1, VersionTree::BuildDiffFromPidMapping(w0, w1, map1), "fillet");
+    tree.Commit(root_id, w1, ComponentDiff::ComputeWithPidMapping(w0, w1, map1), "fillet");
 
     uint8_t* save_buf = nullptr;
     uint32_t save_len = 0;

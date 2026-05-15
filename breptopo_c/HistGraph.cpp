@@ -541,6 +541,9 @@ void HistGraph::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 		for (auto gid : gids)
 			write32(static_cast<uint32_t>(gid));
 	}
+
+	// Sanity check: bytes written must match precomputed total.
+	assert(static_cast<uint32_t>(p - *buf) == total);
 }
 
 bool HistGraph::LoadFromByteArray(const uint8_t* buf, uint32_t len)
