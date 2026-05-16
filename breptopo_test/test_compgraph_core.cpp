@@ -153,8 +153,7 @@ TEST_CASE("OpHistory: step_ids are sequential starting from 0", "[ophistory]")
 TEST_CASE("EvalCtx: type conversions", "[evalctx]")
 {
     std::vector<Val> inputs = {Val(42), Val(3.14), Val(true), Val(Vec3{1,2,3})};
-    std::vector<Val> var_inputs;
-    EvalCtx ctx{inputs, var_inputs, nullptr};
+    EvalCtx ctx{inputs, inputs.size(), nullptr};
 
     CHECK(ctx.Int(0) == 42);
     CHECK(ctx.Num(0) == 42.0);
@@ -170,8 +169,7 @@ TEST_CASE("EvalCtx: type conversions", "[evalctx]")
 TEST_CASE("EvalCtx: out-of-range returns defaults", "[evalctx]")
 {
     std::vector<Val> inputs;
-    std::vector<Val> var_inputs;
-    EvalCtx ctx{inputs, var_inputs, nullptr};
+    EvalCtx ctx{inputs, 0, nullptr};
 
     CHECK(ctx.Num(0) == 0.0);
     CHECK(ctx.Int(0) == 0);
@@ -182,14 +180,15 @@ TEST_CASE("EvalCtx: out-of-range returns defaults", "[evalctx]")
     CHECK(v[2] == 0.0);
 }
 
-TEST_CASE("EvalCtx: VarShapes extracts shapes from var_inputs", "[evalctx]")
+TEST_CASE("EvalCtx: VarShapes extracts shapes from variadic portion", "[evalctx]")
 {
     ShapeVal sv1; sv1.shape = nullptr; sv1.tag = 1;
     ShapeVal sv2; sv2.shape = nullptr; sv2.tag = 2;
 
-    std::vector<Val> inputs;
-    std::vector<Val> var_inputs = {Val(sv1), Val(42), Val(sv2)};
-    EvalCtx ctx{inputs, var_inputs, nullptr};
+    // inputs holds fixed + variadic concatenated; fixed_count = 0 here, so
+    // all three values are part of the variadic slice.
+    std::vector<Val> inputs = {Val(sv1), Val(42), Val(sv2)};
+    EvalCtx ctx{inputs, 0, nullptr};
 
     auto shapes = ctx.VarShapes();
     CHECK(shapes.size() == 2);
@@ -251,10 +250,12 @@ TEST_CASE("IRGraph: Add with var_inputs", "[irgraph]")
     auto nd = g.Add("multi", {c1}, {c2, c3});
 
     auto* node = g.Get(nd);
-    CHECK(node->inputs.size() == 1);
-    CHECK(node->var_inputs.size() == 2);
-    CHECK(node->var_inputs[0] == c2);
-    CHECK(node->var_inputs[1] == c3);
+    // inputs holds fixed followed by variadic, total = 1 + 2 = 3
+    CHECK(node->inputs.size() == 3);
+    CHECK(node->fixed_input_count == 1);
+    CHECK(node->inputs[0] == c1);
+    CHECK(node->inputs[1] == c2);
+    CHECK(node->inputs[2] == c3);
 }
 
 // ---------------------------------------------------------------

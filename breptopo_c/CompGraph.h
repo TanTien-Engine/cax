@@ -60,8 +60,10 @@ using Val = std::variant<std::monostate, int, double, bool, Vec3, ShapeVal>;
 
 struct EvalCtx
 {
+	// inputs[0..fixed_count) are the op's fixed-arity inputs (positional);
+	// inputs[fixed_count..end) are the variadic inputs (accessed via VarShapes()).
 	const std::vector<Val>& inputs;
-	const std::vector<Val>& var_inputs;
+	size_t fixed_count = 0;
 	std::shared_ptr<TopoNaming> tn;
 	uint32_t op_id = 0;
 
@@ -124,8 +126,11 @@ struct IRNode
 	NRef        ref;
 	std::string op_name;
 	Val         imm = {};
+	// inputs[0..fixed_input_count) are the op's fixed-arity inputs;
+	// inputs[fixed_input_count..end) are the variadic inputs. Storing them
+	// in a single vector keeps EvalNode's recursion / staleness loop linear.
 	std::vector<NRef> inputs;
-	std::vector<NRef> var_inputs;
+	uint32_t    fixed_input_count = 0;
 	bool        dead = false;
 	uint64_t    version      = 1;          // bumped by UpdateImmediate / Invalidate
 	uint64_t    eval_version = 0;          // self.version at last successful eval
@@ -134,9 +139,8 @@ struct IRNode
 	uint32_t    vt_node_id   = UINT32_MAX; // VersionTree node for shape restore
 	uint32_t    op_id        = UINT32_MAX; // deterministic, assigned by AssignOpIds
 
-	// Each input's result_rev at last eval. Same length as inputs + var_inputs
-	// (concatenated, in that order). Used by EvalNode's slow path to detect
-	// whether an input's output changed.
+	// Each input's result_rev at last eval. Same length as inputs.
+	// Used by EvalNode's slow path to detect whether an input's output changed.
 	std::vector<uint64_t> input_revs_at_eval;
 
 	// Global eval-epoch this node was last validated under. The evaluator's

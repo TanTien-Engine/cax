@@ -41,8 +41,8 @@ ShapeVal EvalCtx::GetShape(size_t i) const {
 }
 std::vector<ShapeVal> EvalCtx::VarShapes() const {
 	std::vector<ShapeVal> out;
-	for (auto& v : var_inputs)
-		if (auto* s = std::get_if<ShapeVal>(&v)) out.push_back(*s);
+	for (size_t i = fixed_count; i < inputs.size(); ++i)
+		if (auto* s = std::get_if<ShapeVal>(&inputs[i])) out.push_back(*s);
 	return out;
 }
 
@@ -84,10 +84,11 @@ NRef IRGraph::Add(const std::string& op,
 {
 	auto r = Alloc();
 	IRNode nd;
-	nd.ref        = r;
-	nd.op_name    = op;
-	nd.inputs     = inputs;
-	nd.var_inputs = var_inputs;
+	nd.ref               = r;
+	nd.op_name           = op;
+	nd.inputs            = inputs;
+	nd.fixed_input_count = static_cast<uint32_t>(inputs.size());
+	nd.inputs.insert(nd.inputs.end(), var_inputs.begin(), var_inputs.end());
 	m_nodes[r.id] = std::move(nd);
 	return r;
 }
@@ -117,8 +118,6 @@ void IRGraph::ReplaceAllUses(NRef old_ref, NRef new_ref)
 	{
 		if (nd.dead) continue;
 		for (auto& inp : nd.inputs)
-			if (inp == old_ref) inp = new_ref;
-		for (auto& inp : nd.var_inputs)
 			if (inp == old_ref) inp = new_ref;
 	}
 }
@@ -162,11 +161,6 @@ std::vector<NRef> IRGraph::UsersOf(NRef ref) const
 		for (auto& inp : nd.inputs) {
 			if (inp == ref) { found = true; break; }
 		}
-		if (!found) {
-			for (auto& inp : nd.var_inputs) {
-				if (inp == ref) { found = true; break; }
-			}
-		}
 		if (found) result.push_back(nd.ref);
 	}
 	return result;
@@ -192,8 +186,7 @@ std::vector<NRef> IRGraph::TopoSort() const
 			in_deg[id]++;
 			if (in_deg.find(src.id) == in_deg.end()) in_deg[src.id] = 0;
 		};
-		for (auto& inp : nd.inputs)     add(inp);
-		for (auto& inp : nd.var_inputs) add(inp);
+		for (auto& inp : nd.inputs) add(inp);
 	}
 
 	std::queue<uint32_t> q;
@@ -224,8 +217,6 @@ std::unordered_set<uint32_t> IRGraph::CollectDeps(NRef ref) const
 		if (it == m_nodes.end() || it->second.dead) continue;
 		for (auto& inp : it->second.inputs)
 			if (inp.valid()) stack.push_back(inp.id);
-		for (auto& inp : it->second.var_inputs)
-			if (inp.valid()) stack.push_back(inp.id);
 	}
 	return deps;
 }
@@ -249,7 +240,7 @@ void IRGraph::DepIndex::Build(const IRGraph& g)
 	{
 		auto* nd = g.Get(ref);
 		if (!nd) continue;
-		if (nd->inputs.empty() && nd->var_inputs.empty())
+		if (nd->inputs.empty())
 			leaf_idx[ref.id] = leaf_idx.size();
 	}
 
@@ -277,8 +268,7 @@ void IRGraph::DepIndex::Build(const IRGraph& g)
 			for (size_t w = 0; w < m_words; ++w)
 				bits[w] |= jt->second[w];
 		};
-		for (auto& inp : nd->inputs)     merge(inp);
-		for (auto& inp : nd->var_inputs) merge(inp);
+		for (auto& inp : nd->inputs) merge(inp);
 	}
 }
 
@@ -319,8 +309,7 @@ std::vector<std::vector<NRef>> IRGraph::TopoLevels() const
 			in_deg[id]++;
 			if (in_deg.find(src.id) == in_deg.end()) in_deg[src.id] = 0;
 		};
-		for (auto& inp : nd.inputs)     add(inp);
-		for (auto& inp : nd.var_inputs) add(inp);
+		for (auto& inp : nd.inputs) add(inp);
 	}
 
 	std::vector<std::vector<NRef>> levels;
@@ -361,11 +350,14 @@ std::string IRGraph::Dump() const
 			else if constexpr (std::is_same_v<T,Vec3>)   os << " =("<<v[0]<<","<<v[1]<<","<<v[2]<<")";
 			else if constexpr (std::is_same_v<T,ShapeVal>) os << " shp:"<<v.tag;
 		}, nd->imm);
-		if (!nd->inputs.empty() || !nd->var_inputs.empty())
+		if (!nd->inputs.empty())
 		{
+			const size_t fc = nd->fixed_input_count;
 			os << " <- [";
-			for (size_t i=0; i<nd->inputs.size(); ++i) { if(i) os<<","; os<<"#"<<nd->inputs[i].id; }
-			for (size_t i=0; i<nd->var_inputs.size(); ++i) { if(!nd->inputs.empty()||i>0) os<<","; os<<"+"<<nd->var_inputs[i].id; }
+			for (size_t i=0; i<nd->inputs.size(); ++i) {
+				if (i) os << ",";
+				os << (i < fc ? "#" : "+") << nd->inputs[i].id;
+			}
 			os << "]";
 		}
 		os << "\n";
@@ -452,7 +444,9 @@ void Optimizer::AddDefaultRules()
 			auto* du  = g.Get(m["du"]);
 			auto* pat = g.Get(m["pat"]);
 			if (!du || !pat) return false;
-			if (!du->var_inputs.empty()) return false;
+			// Only commute when du has no variadic edges -- those are
+			// selectors that can't be reordered through the pattern.
+			if (du->inputs.size() > du->fixed_input_count) return false;
 			if (g.UsersOf(m["pat"]).size() != 1) return false;
 
 			NRef orig_shape = pat->inputs[0];
@@ -466,7 +460,7 @@ void Optimizer::AddDefaultRules()
 			p->inputs.clear();
 			p->inputs.push_back(orig_shape);
 			for (auto& x : du_params) p->inputs.push_back(x);
-			p->var_inputs.clear();
+			p->fixed_input_count = static_cast<uint32_t>(p->inputs.size());
 			p->version++;
 
 			auto* d = g.Get(m["du"]);
@@ -474,7 +468,7 @@ void Optimizer::AddDefaultRules()
 			d->inputs.clear();
 			d->inputs.push_back(m["pat"]);
 			for (auto& x : pat_params) d->inputs.push_back(x);
-			d->var_inputs.clear();
+			d->fixed_input_count = static_cast<uint32_t>(d->inputs.size());
 			d->version++;
 
 			return true;
@@ -517,8 +511,7 @@ bool Optimizer::DCE(IRGraph& g)
 	{
 		auto* nd = g.Get(ref);
 		if (!nd) continue;
-		for (auto& inp : nd->inputs)     if (inp.valid()) uses[inp.id]++;
-		for (auto& inp : nd->var_inputs) if (inp.valid()) uses[inp.id]++;
+		for (auto& inp : nd->inputs) if (inp.valid()) uses[inp.id]++;
 	}
 	for (auto ref : order)
 	{
@@ -548,8 +541,10 @@ bool Optimizer::CSE(IRGraph& g)
 		auto* nd = g.Get(ref);
 		if (!nd || nd->op_name == "$shape") continue;
 		Key key; key.op = nd->op_name; key.imm_idx = nd->imm.index();
-		for (auto& inp : nd->inputs)     key.ids.push_back(inp.id);
-		for (auto& inp : nd->var_inputs) key.ids.push_back(inp.id);
+		for (auto& inp : nd->inputs) key.ids.push_back(inp.id);
+		// Include fixed/var split in the key so ops with same id list but
+		// different fixed_count don't collide.
+		key.ids.push_back(nd->fixed_input_count);
 		auto it = seen.find(key);
 		if (it != seen.end()) { g.ReplaceAllUses(ref, it->second); g.Kill(ref); changed = true; }
 		else seen[key] = ref;
@@ -614,9 +609,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 		return nd->imm;
 	}
 
-	const size_t n_in    = nd->inputs.size();
-	const size_t n_var   = nd->var_inputs.size();
-	const size_t n_total = n_in + n_var;
+	const size_t n_total = nd->inputs.size();
 
 	// Epoch-based fast path: if this node was validated under the current
 	// global epoch (no Invalidate has fired since), trust the cache without
@@ -638,19 +631,15 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	}
 
 	// Recurse into inputs so the subtree gets a chance to detect staleness.
-	std::vector<Val> resolved;     resolved.reserve(n_in);
-	std::vector<Val> var_resolved; var_resolved.reserve(n_var);
+	// inputs[0..fixed_input_count) are fixed args, the rest are variadic.
+	// The eval lambda slices via EvalCtx::fixed_count; here we walk both in
+	// one pass.
+	std::vector<Val> resolved;     resolved.reserve(n_total);
 	std::vector<uint64_t> in_revs; in_revs.reserve(n_total);
 
 	for (auto& inp : nd->inputs)
 	{
 		resolved.push_back(EvalNode(g, inp, tn));
-		auto* s = g.Get(inp);
-		in_revs.push_back(s ? s->result_rev : 0);
-	}
-	for (auto& inp : nd->var_inputs)
-	{
-		var_resolved.push_back(EvalNode(g, inp, tn));
 		auto* s = g.Get(inp);
 		in_revs.push_back(s ? s->result_rev : 0);
 	}
@@ -689,7 +678,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	Val result;
 	if (desc && desc->eval)
 	{
-		EvalCtx ctx{resolved, var_resolved, tn, nd->op_id};
+		EvalCtx ctx{resolved, nd->fixed_input_count, tn, nd->op_id};
 		result = desc->eval(ctx);
 	}
 

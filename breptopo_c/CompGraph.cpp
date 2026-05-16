@@ -197,15 +197,12 @@ void CompGraph::AppendNewSteps()
 				if (step.vt_node_id != UINT32_MAX)
 					nd->vt_node_id = step.vt_node_id;
 				nd->eval_version = nd->version;
-				const size_t n = nd->inputs.size() + nd->var_inputs.size();
 				nd->input_revs_at_eval.clear();
-				nd->input_revs_at_eval.reserve(n);
-				auto seed = [&](NRef inp) {
+				nd->input_revs_at_eval.reserve(nd->inputs.size());
+				for (auto& inp : nd->inputs) {
 					auto* s = m_ir.Get(inp);
 					nd->input_revs_at_eval.push_back(s ? s->result_rev : 0);
-				};
-				for (auto& inp : nd->inputs)     seed(inp);
-				for (auto& inp : nd->var_inputs) seed(inp);
+				}
 				// Stamp loaded node as validated for the current epoch, so
 				// the first post-load Eval can return its cache without
 				// recursing into the subtree.
