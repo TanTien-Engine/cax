@@ -1,22 +1,18 @@
 #include "HistGraph.h"
-#include "NodeShape.h"
-#include "NodeId.h"
-#include "NodeFlags.h"
-#include "NodeInfo.h"
 #include "partgraph_c/BRepHistory.h"
 #include "partgraph_c/TopoShape.h"
 
 #include <TopAbs_ShapeEnum.hxx>
 
-#include <graph/Graph.h>
-#include <graph/Node.h>
-#include <graph/GraphLayout.h>
+// NOTE: graph/* includes and the methods that use them (QueryNode,
+// QueryNodes, GetGraph + their helpers) now live in HistGraphViz.cpp so
+// headless consumers don't drag in the graph + ogdf libraries through this
+// translation unit.
 
 #include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <queue>
-#include <sstream>
 #include <unordered_set>
 
 namespace breptopo
@@ -184,45 +180,9 @@ HistGraph::QueryCurrentShapes(uint32_t uid) const
 	return out;
 }
 
-// ---------------------------------------------------------------
-//  Backward-compatibility shims: synthesize graph::Node objects on
-//  demand so callers using QueryNode / QueryNodes keep working.
-// ---------------------------------------------------------------
-
-namespace
-{
-
-std::shared_ptr<graph::Node> MakeShimNode(uint32_t uid,
-                                          const std::shared_ptr<partgraph::TopoShape>& shape)
-{
-	auto n = std::make_shared<graph::Node>();
-	n->AddComponent<NodeId>(uid, 0);
-	if (shape) n->AddComponent<NodeShape>(shape);
-	n->AddComponent<NodeFlags>();
-	return n;
-}
-
-} // namespace
-
-std::shared_ptr<graph::Node>
-HistGraph::QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
-{
-	uint32_t uid = GetUID(shape);
-	if (uid == 0xFFFFFFFFu) return nullptr;
-	return MakeShimNode(uid, shape);
-}
-
-bool HistGraph::QueryNodes(uint32_t uid,
-                           std::vector<std::shared_ptr<graph::Node>>& results) const
-{
-	std::vector<std::shared_ptr<partgraph::TopoShape>> shapes;
-	if (!QueryCurrentShapes(uid, shapes))
-		return false;
-	results.reserve(results.size() + shapes.size());
-	for (auto& s : shapes)
-		results.push_back(MakeShimNode(uid, s));
-	return true;
-}
+// QueryNode / QueryNodes moved to HistGraphViz.cpp (they return
+// graph::Node, which would otherwise pull the graph library into this
+// translation unit).
 
 // ---------------------------------------------------------------
 //  Historical predicates
@@ -377,135 +337,7 @@ void HistGraph::AbsorbFork(const HistGraph& fork, const Snapshot& base)
 	}
 }
 
-// ---------------------------------------------------------------
-//  Debug graph (visualization only, rebuilt each call)
-//
-//  Mirrors the spirit of CompGraphBuilder::BuildGraph and
-//  VersionGraph::BuildGraph: walk our persistent state in a
-//  deterministic order (op_id ascending; uid ascending within each op),
-//  attach NodeId / NodeFlags / NodeShape / NodeInfo components for the
-//  UI to read, then run a hierarchical layout. Any UID referenced by
-//  m_forward / m_backward but not in any m_op2uids list (e.g. an
-//  orphan-input shape recorded as a parent in a previous op) is added
-//  as a synthetic node so all lineage edges resolve.
-// ---------------------------------------------------------------
-
-namespace
-{
-
-const char* TypeShortName(uint32_t type_id)
-{
-	switch (type_id) {
-	case TopAbs_SOLID:  return "solid";
-	case TopAbs_FACE:   return "face";
-	case TopAbs_EDGE:   return "edge";
-	case TopAbs_VERTEX: return "vertex";
-	default:            return "shape";
-	}
-}
-
-std::string DescribeUid(uint32_t uid, uint32_t owning_op_id, bool active)
-{
-	uint32_t type_id = HistGraph::TypeOf(uid);
-	uint32_t op_id   = HistGraph::OpOf(uid);
-	uint32_t index   = HistGraph::IndexOf(uid);
-	std::ostringstream os;
-	os << TypeShortName(type_id) << "#" << index
-	   << " @op" << op_id;
-	if (owning_op_id != op_id)
-		os << " (in op" << owning_op_id << ")";
-	if (!active) os << " [dead]";
-	return os.str();
-}
-
-} // namespace
-
-std::shared_ptr<graph::Graph> HistGraph::GetGraph() const
-{
-	auto g = std::make_shared<graph::Graph>();
-	g->SetDirected(true);
-
-	std::unordered_map<uint32_t, size_t> uid2gid;
-
-	auto add_node = [&](uint32_t uid, uint32_t owning_op_id) {
-		if (uid2gid.count(uid)) return;
-		size_t gid = g->GetNodesNum();
-		auto n = std::make_shared<graph::Node>();
-		n->SetValue(static_cast<int>(gid));
-
-		bool active = IsActive(uid);
-		std::string desc = DescribeUid(uid, owning_op_id, active);
-		n->SetName(desc);
-
-		n->AddComponent<NodeId>(uid, gid);
-		auto& flags = n->AddComponent<NodeFlags>();
-		flags.SetActive(active);
-
-		// NodeShape is attached for BOTH alive and historical nodes. Active
-		// nodes carry the current bound shape; dead (consumed) nodes carry
-		// the shape they had at consumption time, so clicking a historical
-		// node in the UI can still preview the original geometry.
-		auto sit = m_uid2shape.find(uid);
-		if (sit != m_uid2shape.end())
-			n->AddComponent<NodeShape>(std::make_shared<partgraph::TopoShape>(sit->second));
-
-		n->AddComponent<NodeInfo>(std::move(desc));
-
-		g->AddNode(n);
-		uid2gid[uid] = gid;
-	};
-
-	// 1) Walk m_op2uids in op_id ascending order -- gives a stable visual
-	//    layout where outputs of earlier ops appear "above" later ones.
-	std::vector<uint32_t> op_ids;
-	op_ids.reserve(m_op2uids.size());
-	for (auto& kv : m_op2uids) op_ids.push_back(kv.first);
-	std::sort(op_ids.begin(), op_ids.end());
-
-	for (uint32_t op_id : op_ids)
-	{
-		auto it = m_op2uids.find(op_id);
-		for (uint32_t uid : it->second)
-			add_node(uid, op_id);
-	}
-
-	// 2) Pick up any uid referenced by lineage but not owned by an op
-	//    (e.g. an external input shape that was never our output). Mark
-	//    its owner op as UINT32_MAX so DescribeUid notes the discrepancy.
-	auto sweep_orphans = [&](const std::unordered_map<uint32_t, std::vector<uint32_t>>& m) {
-		std::vector<uint32_t> keys;
-		keys.reserve(m.size());
-		for (auto& kv : m) keys.push_back(kv.first);
-		std::sort(keys.begin(), keys.end());
-		for (uint32_t k : keys) {
-			add_node(k, (k >> 15) & 0x3FFF);
-			auto& vec = m.find(k)->second;
-			for (uint32_t v : vec) add_node(v, (v >> 15) & 0x3FFF);
-		}
-	};
-	sweep_orphans(m_forward);
-	sweep_orphans(m_backward);
-
-	// 3) Add lineage edges (parent -> child).
-	std::vector<uint32_t> parents;
-	parents.reserve(m_forward.size());
-	for (auto& kv : m_forward) parents.push_back(kv.first);
-	std::sort(parents.begin(), parents.end());
-	for (uint32_t parent : parents)
-	{
-		auto pit = uid2gid.find(parent);
-		if (pit == uid2gid.end()) continue;
-		for (uint32_t child : m_forward.find(parent)->second)
-		{
-			auto cit = uid2gid.find(child);
-			if (cit == uid2gid.end()) continue;
-			g->AddEdge(pit->second, cit->second);
-		}
-	}
-
-	graph::GraphLayout::OptimalHierarchy(*g);
-	return g;
-}
+// GetGraph (debug visualization) moved to HistGraphViz.cpp.
 
 // ---------------------------------------------------------------
 //  Persistence

@@ -35,6 +35,15 @@ set(breptopo__history
 )
 source_group("breptopo\\history" FILES ${breptopo__history})
 
+# Viz-only TUs that pull graph + ogdf. Kept in cax static lib so UI callers
+# transparently get the symbols, but isolated in their own object so headless
+# consumers (data gen, training, recognition) don't drag graph/ogdf via
+# unrelated lineage methods.
+set(breptopo__history__viz
+    "breptopo_c/HistGraphViz.cpp"
+)
+source_group("breptopo\\history\\viz" FILES ${breptopo__history__viz})
+
 set(breptopo__history__comp
     "breptopo_c/NodeFlags.h"
     "breptopo_c/NodeId.h"
@@ -228,6 +237,7 @@ set(ALL_FILES
     ${breptopo}
     ${breptopo__computation}
     ${breptopo__history}
+    ${breptopo__history__viz}
     ${breptopo__history__comp}
     ${breptopo__script}
     ${breptopo__tools__comp}
