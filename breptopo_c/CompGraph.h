@@ -134,10 +134,9 @@ struct IRNode
 	uint32_t    vt_node_id   = UINT32_MAX; // VersionTree node for shape restore
 	uint32_t    op_id        = UINT32_MAX; // deterministic, assigned by AssignOpIds
 
-	// Each input's state at last eval. Same length as inputs + var_inputs
+	// Each input's result_rev at last eval. Same length as inputs + var_inputs
 	// (concatenated, in that order). Used by EvalNode's slow path to detect
 	// whether an input's output changed.
-	std::vector<uint64_t> input_versions_at_eval;
 	std::vector<uint64_t> input_revs_at_eval;
 
 	// Global eval-epoch this node was last validated under. The evaluator's

@@ -641,21 +641,18 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	std::vector<Val> resolved;     resolved.reserve(n_in);
 	std::vector<Val> var_resolved; var_resolved.reserve(n_var);
 	std::vector<uint64_t> in_revs; in_revs.reserve(n_total);
-	std::vector<uint64_t> in_vers; in_vers.reserve(n_total);
 
 	for (auto& inp : nd->inputs)
 	{
 		resolved.push_back(EvalNode(g, inp, tn));
 		auto* s = g.Get(inp);
 		in_revs.push_back(s ? s->result_rev : 0);
-		in_vers.push_back(s ? s->version    : 0);
 	}
 	for (auto& inp : nd->var_inputs)
 	{
 		var_resolved.push_back(EvalNode(g, inp, tn));
 		auto* s = g.Get(inp);
 		in_revs.push_back(s ? s->result_rev : 0);
-		in_vers.push_back(s ? s->version    : 0);
 	}
 
 	bool self_fresh   = (nd->eval_version == nd->version);
@@ -680,9 +677,8 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 		if (!std::holds_alternative<std::monostate>(cached))
 		{
 			m_hits++;
-			nd->input_versions_at_eval = std::move(in_vers);
-			nd->input_revs_at_eval     = std::move(in_revs);
-			nd->last_validated_epoch   = m_eval_epoch;
+			nd->input_revs_at_eval   = std::move(in_revs);
+			nd->last_validated_epoch = m_eval_epoch;
 			return cached;
 		}
 		// Fresh-but-no-cache: re-run lambda for materialization. Don't bump
@@ -708,10 +704,9 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	{
 		nd->cached = result;
 	}
-	nd->eval_version           = nd->version;
-	nd->input_versions_at_eval = std::move(in_vers);
-	nd->input_revs_at_eval     = std::move(in_revs);
-	nd->last_validated_epoch   = m_eval_epoch;
+	nd->eval_version         = nd->version;
+	nd->input_revs_at_eval   = std::move(in_revs);
+	nd->last_validated_epoch = m_eval_epoch;
 	if (stale)
 		nd->result_rev++;   // semantic output may have changed; tell downstream
 	m_misses++;
