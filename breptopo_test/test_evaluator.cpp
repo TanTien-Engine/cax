@@ -155,11 +155,18 @@ TEST_CASE("Evaluator: invalidate clears shape from cache", "[evaluator]")
     REQUIRE(eval.GetShapeCache().Get(mk.id) != nullptr);
     REQUIRE(eval.GetShapeCache().Get(tr.id) != nullptr);
 
-    // invalidate mk -> should also invalidate downstream tr
+    // Invalidate(mk) is O(1): it clears mk's own cache entry only.
+    // Downstream tr's cache is left alone -- the demand-driven EvalNode
+    // catches the staleness lazily on the next Run via per-input result_rev
+    // comparison and refreshes tr then.
     eval.Invalidate(g, mk);
-
     REQUIRE(eval.GetShapeCache().Get(mk.id) == nullptr);
-    REQUIRE(eval.GetShapeCache().Get(tr.id) == nullptr);
+    REQUIRE(eval.GetShapeCache().Get(tr.id) != nullptr);  // still cached, will refresh on next Run
+
+    eval.Run(g, tr, tn);
+    // After re-run both are fresh again.
+    REQUIRE(eval.GetShapeCache().Get(mk.id) != nullptr);
+    REQUIRE(eval.GetShapeCache().Get(tr.id) != nullptr);
 }
 
 TEST_CASE("Evaluator: re-eval after invalidation produces correct result", "[evaluator]")
@@ -234,7 +241,7 @@ TEST_CASE("Evaluator: LRU eviction triggers re-eval on next Run", "[evaluator]")
     RegisterTestOps(reg);
     IRGraph g(reg);
 
-    // build 3 independent shape nodes
+    // build 3 independent shape nodes (each evaluated by its own Run)
     auto s1 = g.Const(1.0);
     auto m1 = g.Add("make_shape", {s1});
     auto s2 = g.Const(2.0);
@@ -247,34 +254,31 @@ TEST_CASE("Evaluator: LRU eviction triggers re-eval on next Run", "[evaluator]")
     eval.GetShapeCache().SetCapacity(2);
 
     std::shared_ptr<TopoNaming> tn;
+    // Demand-driven Run only visits the root's subtree, so evaluate each
+    // independently to populate the cache and trigger LRU eviction.
+    eval.Run(g, m1, tn);
+    eval.Run(g, m2, tn);
     eval.Run(g, m3, tn);
 
-    // m1 was inserted first, should be evicted (capacity 2, m2 & m3 remain)
+    // m1 was the first insert; capacity=2 evicts it when m3 lands.
     REQUIRE(eval.GetShapeCache().Get(m1.id) == nullptr);
     REQUIRE(eval.GetShapeCache().Get(m2.id) != nullptr);
     REQUIRE(eval.GetShapeCache().Get(m3.id) != nullptr);
 
-    // ResolveVal for evicted node returns monostate
+    // ResolveVal for evicted node (without restore_fn) returns monostate.
     Val lost = eval.ResolveVal(g, m1);
     REQUIRE(std::holds_alternative<std::monostate>(lost));
 
-    // re-run: all evicted shapes must be re-evaluated (cache miss)
+    // Re-running m1 re-evaluates it (cache miss) and re-populates the cache.
     eval.ResetStats();
-    eval.Run(g, m3, tn);
-
-    // with capacity=2 and 3 shape nodes, topo-order re-eval causes cascading
-    // evictions (m1 Put evicts old LRU, m2 Put evicts another, ...).
-    // The final result is that the LAST two nodes in topo order stay in cache.
-    // What matters is that all re-evals produced correct results during Run.
+    eval.Run(g, m1, tn);
     REQUIRE(eval.CacheMisses() >= 1);
+    REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, m1)).tag == 1);
 
-    // final value of the root (m3) must still be correct
-    Val root_val = eval.ResolveVal(g, m3);
-    REQUIRE(std::holds_alternative<ShapeVal>(root_val));
-    REQUIRE(std::get<ShapeVal>(root_val).tag == 3);
-
-    // widen capacity so all shapes fit, then re-run and verify all values
+    // widen capacity so all shapes fit, then re-run each and verify values
     eval.GetShapeCache().SetCapacity(4);
+    eval.Run(g, m1, tn);
+    eval.Run(g, m2, tn);
     eval.Run(g, m3, tn);
     REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, m1)).tag == 1);
     REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, m2)).tag == 2);
@@ -345,7 +349,7 @@ TEST_CASE("Evaluator: commit callback stores shapes to version store", "[restore
 
     MockVersionStore vs;
     Evaluator eval(reg);
-    eval.SetCommitFn([&](uint32_t nref_id, const Val& v) {
+    eval.SetCommitFn([&](uint32_t nref_id, const Val& v, const std::shared_ptr<TopoNaming>&) {
         return vs.commit(nref_id, v);
     });
 
@@ -378,10 +382,10 @@ TEST_CASE("Evaluator: restore callback recovers evicted shapes", "[restore]")
 
     MockVersionStore vs;
     Evaluator eval(reg);
-    eval.SetCommitFn([&](uint32_t nref_id, const Val& v) {
+    eval.SetCommitFn([&](uint32_t nref_id, const Val& v, const std::shared_ptr<TopoNaming>&) {
         return vs.commit(nref_id, v);
     });
-    eval.SetRestoreFn([&](uint32_t vt_id) {
+    eval.SetRestoreFn([&](uint32_t vt_id, const std::shared_ptr<TopoNaming>&) {
         return vs.restore(vt_id);
     });
 
@@ -418,7 +422,8 @@ TEST_CASE("Evaluator: restore avoids re-eval when LRU evicts", "[restore]")
     RegisterTestOps(reg);
     IRGraph g(reg);
 
-    // 3 shape nodes, capacity=2
+    // 3 shape nodes, capacity=2. Each is evaluated by its own Run since
+    // demand-driven Run(root) only walks the root's subtree.
     auto s1 = g.Const(1.0);
     auto m1 = g.Add("make_shape", {s1});
     auto s2 = g.Const(2.0);
@@ -429,31 +434,29 @@ TEST_CASE("Evaluator: restore avoids re-eval when LRU evicts", "[restore]")
     MockVersionStore vs;
     Evaluator eval(reg);
     eval.GetShapeCache().SetCapacity(2);
-    eval.SetCommitFn([&](uint32_t nref_id, const Val& v) {
+    eval.SetCommitFn([&](uint32_t nref_id, const Val& v, const std::shared_ptr<TopoNaming>&) {
         return vs.commit(nref_id, v);
     });
-    eval.SetRestoreFn([&](uint32_t vt_id) {
+    eval.SetRestoreFn([&](uint32_t vt_id, const std::shared_ptr<TopoNaming>&) {
         return vs.restore(vt_id);
     });
 
     std::shared_ptr<TopoNaming> tn;
+    eval.Run(g, m1, tn);
+    eval.Run(g, m2, tn);
     eval.Run(g, m3, tn);
 
     // m1 evicted from LRU but committed to version store
     REQUIRE(eval.GetShapeCache().Get(m1.id) == nullptr);
     REQUIRE(vs.store.size() == 3);
 
-    // second run: m1 should be restored from version store, not re-evaluated
+    // re-asking for m1: should restore from VT, not re-evaluate.
     eval.ResetStats();
-    eval.Run(g, m3, tn);
+    eval.Run(g, m1, tn);
 
-    // m1 was restored (not re-evaluated), so cache misses should be 0
-    // All 3 shape nodes hit the cache-hit path; m1 falls through to restore
     REQUIRE(eval.CacheMisses() == 0);
     REQUIRE(eval.CacheRestores() >= 1);
-
-    // all results still correct
-    REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, m3)).tag == 3);
+    REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, m1)).tag == 1);
 }
 
 TEST_CASE("Evaluator: constant shape committed to version store", "[restore]")
@@ -469,10 +472,10 @@ TEST_CASE("Evaluator: constant shape committed to version store", "[restore]")
 
     MockVersionStore vs;
     Evaluator eval(reg);
-    eval.SetCommitFn([&](uint32_t nref_id, const Val& v) {
+    eval.SetCommitFn([&](uint32_t nref_id, const Val& v, const std::shared_ptr<TopoNaming>&) {
         return vs.commit(nref_id, v);
     });
-    eval.SetRestoreFn([&](uint32_t vt_id) {
+    eval.SetRestoreFn([&](uint32_t vt_id, const std::shared_ptr<TopoNaming>&) {
         return vs.restore(vt_id);
     });
 
@@ -500,10 +503,10 @@ TEST_CASE("Evaluator: invalidation clears vt_node_id for dirty nodes", "[restore
 
     MockVersionStore vs;
     Evaluator eval(reg);
-    eval.SetCommitFn([&](uint32_t nref_id, const Val& v) {
+    eval.SetCommitFn([&](uint32_t nref_id, const Val& v, const std::shared_ptr<TopoNaming>&) {
         return vs.commit(nref_id, v);
     });
-    eval.SetRestoreFn([&](uint32_t vt_id) {
+    eval.SetRestoreFn([&](uint32_t vt_id, const std::shared_ptr<TopoNaming>&) {
         return vs.restore(vt_id);
     });
 
@@ -513,16 +516,18 @@ TEST_CASE("Evaluator: invalidation clears vt_node_id for dirty nodes", "[restore
     auto* nd = g.Get(mk);
     REQUIRE(nd->vt_node_id != UINT32_MAX);
 
-    // change the parameter -> invalidate
+    // change the parameter -> invalidate. The new O(1) Invalidate only
+    // clears the invalidated node's own state; downstream `mk` keeps its
+    // old vt_node_id until the next Run picks up sz's bumped result_rev
+    // and re-eval's mk (which assigns a fresh vt_node_id then).
     g.UpdateImmediate(sz, Val(20.0));
     eval.Invalidate(g, sz);
 
-    // mk's vt_node_id should be cleared (old shape is stale)
-    REQUIRE(nd->vt_node_id == UINT32_MAX);
-
-    // re-eval produces new shape with new vt_node_id
+    // re-eval re-commits mk with a new vt_node_id
+    uint32_t old_vt_id = nd->vt_node_id;
     eval.Run(g, mk, tn);
     REQUIRE(nd->vt_node_id != UINT32_MAX);
+    REQUIRE(nd->vt_node_id != old_vt_id);
     REQUIRE(std::get<ShapeVal>(eval.ResolveVal(g, mk)).tag == 20);
 }
 

@@ -184,12 +184,35 @@ void CompGraph::AppendNewSteps()
 			Register(ref, step.desc);
 		}
 
-		if (step.vt_node_id != UINT32_MAX)
+		// Bring this node to a fully "as-if just-evaluated" state so the
+		// demand-driven EvalNode's freshness check passes on the first
+		// post-load Eval. Done for every step (not just those with a
+		// vt_node_id) -- otherwise loaded const-number / non-shape op
+		// nodes would have eval_version=0 vs version=1 on first Eval,
+		// bump their result_rev, and cascade-invalidate everything that
+		// reads from them.
 		{
 			auto* nd = m_ir.Get(ref);
 			if (nd) {
-				nd->vt_node_id   = step.vt_node_id;
+				if (step.vt_node_id != UINT32_MAX)
+					nd->vt_node_id = step.vt_node_id;
 				nd->eval_version = nd->version;
+				const size_t n = nd->inputs.size() + nd->var_inputs.size();
+				nd->input_versions_at_eval.clear();
+				nd->input_revs_at_eval.clear();
+				nd->input_versions_at_eval.reserve(n);
+				nd->input_revs_at_eval.reserve(n);
+				auto seed = [&](NRef inp) {
+					auto* s = m_ir.Get(inp);
+					nd->input_versions_at_eval.push_back(s ? s->version    : 0);
+					nd->input_revs_at_eval.push_back    (s ? s->result_rev : 0);
+				};
+				for (auto& inp : nd->inputs)     seed(inp);
+				for (auto& inp : nd->var_inputs) seed(inp);
+				// Stamp loaded node as validated for the current epoch, so
+				// the first post-load Eval can return its cache without
+				// recursing into the subtree.
+				m_eval.StampValidated(*nd);
 			}
 		}
 	}

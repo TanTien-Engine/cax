@@ -561,20 +561,6 @@ bool Optimizer::CSE(IRGraph& g)
 //  Evaluator
 // ---------------------------------------------------------------
 
-uint64_t Evaluator::InputHash(const IRGraph& g, const IRNode& node) const
-{
-	uint64_t h = 0;
-	for (auto& inp : node.inputs) {
-		auto* s = g.Get(inp);
-		if (s) h ^= s->version * 0x517cc1b727220a95ULL + inp.id;
-	}
-	for (auto& inp : node.var_inputs) {
-		auto* s = g.Get(inp);
-		if (s) h ^= s->version * 0x6c62272e07bb0142ULL + inp.id;
-	}
-	return h;
-}
-
 Val Evaluator::ResolveVal(const IRGraph& g, NRef ref,
                           const std::shared_ptr<TopoNaming>& tn) const
 {
@@ -606,39 +592,102 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	auto* nd = g.Get(ref);
 	if (!nd) return {};
 
+	// Constants: imm is the value. Cache it on first encounter; the imm
+	// itself only changes when version bumps via UpdateImmediate.
 	if (!nd->op_name.empty() && nd->op_name[0] == '$')
 	{
-		if (std::holds_alternative<ShapeVal>(nd->imm))
+		if (nd->eval_version != nd->version)
 		{
-			m_shape_cache.Put(ref.id, nd->imm);
-			if (m_commit_fn && nd->vt_node_id == UINT32_MAX)
-				nd->vt_node_id = m_commit_fn(ref.id, nd->imm, tn);
+			if (std::holds_alternative<ShapeVal>(nd->imm))
+			{
+				m_shape_cache.Put(ref.id, nd->imm);
+				if (m_commit_fn && nd->vt_node_id == UINT32_MAX)
+					nd->vt_node_id = m_commit_fn(ref.id, nd->imm, tn);
+			}
+			else
+			{
+				nd->cached = nd->imm;
+			}
+			nd->eval_version = nd->version;
+			nd->result_rev++;
 		}
-		else
-		{
-			nd->cached = nd->imm;
-		}
-		nd->eval_version = nd->version;
 		return nd->imm;
 	}
 
-	uint64_t ih = InputHash(g, *nd);
-	if (nd->eval_version == nd->version && ih != 0)
+	const size_t n_in    = nd->inputs.size();
+	const size_t n_var   = nd->var_inputs.size();
+	const size_t n_total = n_in + n_var;
+
+	// Epoch-based fast path: if this node was validated under the current
+	// global epoch (no Invalidate has fired since), trust the cache without
+	// touching the subtree. Critical for "load + render" -- after Lower
+	// seeds last_validated_epoch on every loaded node, the very first Eval
+	// of root returns immediately from its restored cache; selectors and
+	// other downstream no_vt_cache ops are never visited.
+	if (nd->last_validated_epoch == m_eval_epoch)
 	{
-		Val resolved = ResolveVal(g, ref, tn);
-		if (!std::holds_alternative<std::monostate>(resolved))
+		Val cached = ResolveVal(g, ref, tn);
+		if (!std::holds_alternative<std::monostate>(cached))
 		{
 			m_hits++;
-			return resolved;
+			return cached;
+		}
+		// Cache absent (eviction or no_vt_cache op): fall through, but
+		// since nothing has been invalidated, the recompute below won't
+		// bump result_rev.
+	}
+
+	// Recurse into inputs so the subtree gets a chance to detect staleness.
+	std::vector<Val> resolved;     resolved.reserve(n_in);
+	std::vector<Val> var_resolved; var_resolved.reserve(n_var);
+	std::vector<uint64_t> in_revs; in_revs.reserve(n_total);
+	std::vector<uint64_t> in_vers; in_vers.reserve(n_total);
+
+	for (auto& inp : nd->inputs)
+	{
+		resolved.push_back(EvalNode(g, inp, tn));
+		auto* s = g.Get(inp);
+		in_revs.push_back(s ? s->result_rev : 0);
+		in_vers.push_back(s ? s->version    : 0);
+	}
+	for (auto& inp : nd->var_inputs)
+	{
+		var_resolved.push_back(EvalNode(g, inp, tn));
+		auto* s = g.Get(inp);
+		in_revs.push_back(s ? s->result_rev : 0);
+		in_vers.push_back(s ? s->version    : 0);
+	}
+
+	bool self_fresh   = (nd->eval_version == nd->version);
+	bool inputs_fresh = (nd->input_revs_at_eval.size() == n_total);
+	if (inputs_fresh)
+	{
+		for (size_t i = 0; i < n_total; ++i)
+		{
+			if (nd->input_revs_at_eval[i] != in_revs[i])
+			{
+				inputs_fresh = false;
+				break;
+			}
 		}
 	}
 
-	std::vector<Val> resolved;
-	for (auto& inp : nd->inputs)
-		resolved.push_back(ResolveVal(g, inp, tn));
-	std::vector<Val> var_resolved;
-	for (auto& inp : nd->var_inputs)
-		var_resolved.push_back(ResolveVal(g, inp, tn));
+	const bool stale = !self_fresh || !inputs_fresh;
+
+	if (!stale)
+	{
+		Val cached = ResolveVal(g, ref, tn);
+		if (!std::holds_alternative<std::monostate>(cached))
+		{
+			m_hits++;
+			nd->input_versions_at_eval = std::move(in_vers);
+			nd->input_revs_at_eval     = std::move(in_revs);
+			nd->last_validated_epoch   = m_eval_epoch;
+			return cached;
+		}
+		// Fresh-but-no-cache: re-run lambda for materialization. Don't bump
+		// result_rev (output is semantically the same as last time).
+	}
 
 	auto* desc = m_reg.Find(nd->op_name);
 	Val result;
@@ -659,17 +708,23 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	{
 		nd->cached = result;
 	}
-	nd->eval_version = nd->version;
+	nd->eval_version           = nd->version;
+	nd->input_versions_at_eval = std::move(in_vers);
+	nd->input_revs_at_eval     = std::move(in_revs);
+	nd->last_validated_epoch   = m_eval_epoch;
+	if (stale)
+		nd->result_rev++;   // semantic output may have changed; tell downstream
 	m_misses++;
 	return result;
 }
 
 Val Evaluator::Run(IRGraph& g, NRef root, const std::shared_ptr<TopoNaming>& tn)
 {
+	// EvalNode is now demand-driven: it recursively pulls inputs and
+	// short-circuits when self + inputs are fresh. Starting from root
+	// is sufficient -- unused branches of the IR aren't visited.
 	g.AssignOpIds();
-	for (auto ref : g.TopoSort())
-		EvalNode(g, ref, tn);
-	return ResolveVal(g, root);
+	return EvalNode(g, root, tn);
 }
 
 void Evaluator::EvalSubtree(IRGraph& g, NRef root,
@@ -738,13 +793,6 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 		{
 			auto& fp = forks[fit->second];
 
-			std::vector<NRef> orderA, orderB;
-			for (auto r : order)
-			{
-				if (fp.depsA.count(r.id) && !done.count(r.id)) orderA.push_back(r);
-				if (fp.depsB.count(r.id) && !done.count(r.id)) orderB.push_back(r);
-			}
-
 			{
 				// each subtree gets its own tn + evaluator, runs in parallel
 				auto tnA = (tn && tn_factory) ? tn_factory() : nullptr;
@@ -775,11 +823,15 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 				seed_if_clean(fp.depsA, evalA);
 				seed_if_clean(fp.depsB, evalB);
 
+				// Demand-driven: just call EvalNode on each branch's root
+				// (fp.inA / fp.inB). EvalNode recurses only into nodes
+				// whose values are actually needed -- clean nodes that
+				// hit the fast path return without visiting their inputs.
 				auto futB = std::async(std::launch::async,
-					[&evalB, &g, &orderB, &tnB]() {
-						for (auto r : orderB) evalB.EvalNode(g, r, tnB);
+					[&evalB, &g, &fp, &tnB]() {
+						evalB.EvalNode(g, fp.inB, tnB);
 					});
-				for (auto r : orderA) evalA.EvalNode(g, r, tnA);
+				evalA.EvalNode(g, fp.inA, tnA);
 				futB.get();
 
 				// merge shape caches
@@ -812,13 +864,16 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 
 void Evaluator::Invalidate(IRGraph& g, NRef ref)
 {
+	// O(1): bump self version + drop self cache + drop vt link. Bumping
+	// the global eval-epoch tells EvalNode it can no longer trust any
+	// node's "validated" stamp -- downstream staleness will be discovered
+	// lazily by the recursive demand-driven path on the next Eval.
 	auto* nd = g.Get(ref);
 	if (!nd) return;
 	nd->version++;
-	nd->vt_node_id = UINT32_MAX;  // stale shape, must re-commit after re-eval
+	nd->vt_node_id = UINT32_MAX;
 	m_shape_cache.Remove(ref.id);
-	for (auto user : g.UsersOf(ref))
-		Invalidate(g, user);
+	m_eval_epoch++;
 }
 
 // ---------------------------------------------------------------

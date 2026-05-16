@@ -171,6 +171,54 @@ class Compiler
 
 		if (curr["comp_info"]) {
 			Compiler.reconnect_node(curr)
+		} else if (curr.has_method("register_selector(_)")) {
+			Compiler.reconnect_selector(curr)
+		}
+	}
+
+	// Selectors don't carry comp_info; they emit a selector_edge / _face op
+	// directly. Match the existing step in history by op name + shape input
+	// + uid immediate, so a re-opened project doesn't duplicate them (and
+	// can reuse the cached IR state for the lazy-eval fast path).
+	static reconnect_selector(node)
+	{
+		if (node.comp_step_id and node.comp_step_id >= 0) {
+			return
+		}
+
+		var cg = GlobalConfig.get_comp_graph()
+
+		var type = node.query_param("type").value
+		var op_name = "selector_edge"
+		if (type == "face") {
+			op_name = "selector_face"
+		}
+
+		var pin = Blueprint.query_pin(node.imports, 0)
+		var shape_step = -1
+		if (pin and !pin.conns.isEmpty) {
+			shape_step = Compiler.find_comp_source(pin.conns.front().from.node)
+		}
+
+		if (node.selected_uids.isEmpty) {
+			return
+		}
+
+		var history_size = cg.get_history_size()
+		for (var i = 0; i < history_size; i = i + 1) {
+			if (cg.get_step_op_name(i) != op_name) continue
+			if (cg.is_step_claimed(i)) continue
+			var step_inputs = cg.get_step_inputs(i)
+			if (step_inputs.count < 2) continue
+			if (step_inputs[0] != shape_step) continue
+			var uid_step = step_inputs[1]
+			if (cg.get_step_op_name(uid_step) != "$num") continue
+			cg.claim_step(i)
+			cg.claim_step(uid_step)
+			node.comp_step_id = i
+			node.comp_graph_ref = cg
+			node.comp_const_refs = {"uid": uid_step}
+			return
 		}
 	}
 

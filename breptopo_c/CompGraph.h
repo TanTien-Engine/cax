@@ -127,11 +127,24 @@ struct IRNode
 	std::vector<NRef> inputs;
 	std::vector<NRef> var_inputs;
 	bool        dead = false;
-	uint64_t    version      = 1;
-	uint64_t    eval_version = 0;
+	uint64_t    version      = 1;          // bumped by UpdateImmediate / Invalidate
+	uint64_t    eval_version = 0;          // self.version at last successful eval
+	uint64_t    result_rev   = 0;          // monotonic; bumps every time the result is (re)computed
 	Val         cached       = {};         // non-shape values only
 	uint32_t    vt_node_id   = UINT32_MAX; // VersionTree node for shape restore
 	uint32_t    op_id        = UINT32_MAX; // deterministic, assigned by AssignOpIds
+
+	// Each input's state at last eval. Same length as inputs + var_inputs
+	// (concatenated, in that order). Used by EvalNode's slow path to detect
+	// whether an input's output changed.
+	std::vector<uint64_t> input_versions_at_eval;
+	std::vector<uint64_t> input_revs_at_eval;
+
+	// Global eval-epoch this node was last validated under. The evaluator's
+	// epoch counter bumps on every Invalidate; if this matches the current
+	// epoch the entire subtree below us is known-clean and EvalNode can
+	// trust our cache without recursing.
+	uint64_t last_validated_epoch = 0;
 };
 
 class IRGraph
@@ -290,6 +303,11 @@ public:
 	size_t CacheRestores() const { return m_restores; }
 	void ResetStats() { m_hits = m_misses = m_restores = 0; }
 
+	uint64_t CurrentEpoch() const { return m_eval_epoch; }
+	// Mark a freshly loaded node as already validated for this epoch, so
+	// the first post-load Eval can return its cache without recursing.
+	void StampValidated(IRNode& nd) const { nd.last_validated_epoch = m_eval_epoch; }
+
 private:
 	const OpRegistry& m_reg;
 	mutable LruCache<Val> m_shape_cache{64};
@@ -298,11 +316,16 @@ private:
 	size_t m_hits = 0, m_misses = 0;
 	mutable size_t m_restores = 0;
 
+	// Bumped on every Invalidate. Nodes record their last validation epoch
+	// and the fast-path of EvalNode trusts the cache without recursing
+	// when they match. After bump, the next Eval rebuilds validation for
+	// the touched subtree.
+	uint64_t m_eval_epoch = 1;
+
 	Val EvalNode(IRGraph& g, NRef ref,
 	             const std::shared_ptr<TopoNaming>& tn);
 	void EvalSubtree(IRGraph& g, NRef root,
 	                 const std::shared_ptr<TopoNaming>& tn);
-	uint64_t InputHash(const IRGraph& g, const IRNode& node) const;
 };
 
 // ---------------------------------------------------------------
