@@ -193,6 +193,37 @@ set(brepdb__script
 )
 source_group("brepdb\\script" FILES ${brepdb__script})
 
+set(deepbrep__core
+    "deepbrep_c/Tensor.cpp"
+    "deepbrep_c/Tensor.h"
+    "deepbrep_c/GraphData.cpp"
+    "deepbrep_c/GraphData.h"
+    "deepbrep_c/Layers.cpp"
+    "deepbrep_c/Layers.h"
+    "deepbrep_c/GNNModel.cpp"
+    "deepbrep_c/GNNModel.h"
+    "deepbrep_c/Trainer.cpp"
+    "deepbrep_c/Trainer.h"
+    "deepbrep_c/FeatureLabels.cpp"
+    "deepbrep_c/FeatureLabels.h"
+    "deepbrep_c/ToyDataset.cpp"
+    "deepbrep_c/ToyDataset.h"
+)
+source_group("deepbrep\\core" FILES ${deepbrep__core})
+
+set(deepbrep__brep
+    "deepbrep_c/BRepGraphBuilder.cpp"
+    "deepbrep_c/BRepGraphBuilder.h"
+)
+source_group("deepbrep\\brep" FILES ${deepbrep__brep})
+
+set(deepbrep__script
+    "deepbrep_c/deepbrep.ves.inc"
+    "deepbrep_c/wrap_DeepBrep.cpp"
+    "deepbrep_c/wrap_DeepBrep.h"
+)
+source_group("deepbrep\\script" FILES ${deepbrep__script})
+
 set(ALL_FILES
     ${breptopo}
     ${breptopo__computation}
@@ -209,12 +240,15 @@ set(ALL_FILES
     ${sketchlib__data}
     ${sketchlib__external__PlaneGCS}
     ${sketchlib__script}
-    ${brepdb}    
+    ${brepdb}
     ${brepdb__geom}
     ${brepdb__topo}
     ${brepdb__index}
-    ${brepdb__version}    
+    ${brepdb__version}
     ${brepdb__script}
+    ${deepbrep__core}
+    ${deepbrep__brep}
+    ${deepbrep__script}
 )
 
 ################################################################################
@@ -324,4 +358,25 @@ if(CAX_BUILD_TESTS)
     add_subdirectory(brepdb_test)
     add_subdirectory(brepdb_occt_test)
     add_subdirectory(breptopo_test)
+    add_subdirectory(deepbrep_test)
+endif()
+
+################################################################################
+# Optional demo executables
+################################################################################
+option(CAX_BUILD_DEEPBREP_DEMO "Build deepbrep toy training demo" ON)
+
+if(CAX_BUILD_DEEPBREP_DEMO)
+    add_executable(deepbrep_demo
+        deepbrep_c/demo_main.cpp
+        deepbrep_c/Tensor.cpp
+        deepbrep_c/GraphData.cpp
+        deepbrep_c/Layers.cpp
+        deepbrep_c/GNNModel.cpp
+        deepbrep_c/Trainer.cpp
+        deepbrep_c/FeatureLabels.cpp
+        deepbrep_c/ToyDataset.cpp
+    )
+    target_include_directories(deepbrep_demo PRIVATE .)
+    target_compile_features(deepbrep_demo PRIVATE cxx_std_17)
 endif()
