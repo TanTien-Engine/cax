@@ -122,18 +122,18 @@ TEST_CASE("IRGraph: Compact removes dead nodes", "[irgraph]")
     CHECK(g.Get(c3) != nullptr);
 }
 
-TEST_CASE("IRGraph: UpdateImmediate changes value and bumps version", "[irgraph]")
+TEST_CASE("IRGraph: UpdateImmediate changes value and marks node dirty", "[irgraph]")
 {
     OpRegistry reg;
     IRGraph g(reg);
 
     auto c = g.Const(10.0);
     auto* nd = g.Get(c);
-    uint64_t v0 = nd->version;
+    nd->dirty = false;  // simulate post-eval clean state
 
     g.UpdateImmediate(c, Val(20.0));
     CHECK(std::get<double>(nd->imm) == 20.0);
-    CHECK(nd->version == v0 + 1);
+    CHECK(nd->dirty);
 }
 
 TEST_CASE("IRGraph: ReplaceAllUses substitutes references", "[irgraph]")

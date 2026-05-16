@@ -98,7 +98,7 @@ void IRGraph::UpdateImmediate(NRef ref, Val v)
 	auto it = m_nodes.find(ref.id);
 	if (it == m_nodes.end()) return;
 	it->second.imm = std::move(v);
-	it->second.version++;
+	it->second.dirty = true;
 }
 
 void IRGraph::Kill(NRef ref)
@@ -450,8 +450,12 @@ void Optimizer::AddDefaultRules()
 			if (g.UsersOf(m["pat"]).size() != 1) return false;
 
 			NRef orig_shape = pat->inputs[0];
+			// du has no variadic edges here (guarded above), so its fixed tail
+			// equals inputs[1..end). pat may have variadic edges that we drop
+			// from the rewrite (they'd be reattached to the wrong op_name).
 			std::vector<NRef> du_params(du->inputs.begin()+1, du->inputs.end());
-			std::vector<NRef> pat_params(pat->inputs.begin()+1, pat->inputs.end());
+			std::vector<NRef> pat_params(pat->inputs.begin()+1,
+			                             pat->inputs.begin()+pat->fixed_input_count);
 			std::string du_op = du->op_name;
 			std::string pat_op = pat->op_name;
 
@@ -461,7 +465,7 @@ void Optimizer::AddDefaultRules()
 			p->inputs.push_back(orig_shape);
 			for (auto& x : du_params) p->inputs.push_back(x);
 			p->fixed_input_count = static_cast<uint32_t>(p->inputs.size());
-			p->version++;
+			p->dirty = true;
 
 			auto* d = g.Get(m["du"]);
 			d->op_name = pat_op;
@@ -469,7 +473,7 @@ void Optimizer::AddDefaultRules()
 			d->inputs.push_back(m["pat"]);
 			for (auto& x : pat_params) d->inputs.push_back(x);
 			d->fixed_input_count = static_cast<uint32_t>(d->inputs.size());
-			d->version++;
+			d->dirty = true;
 
 			return true;
 		},
@@ -588,10 +592,10 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	if (!nd) return {};
 
 	// Constants: imm is the value. Cache it on first encounter; the imm
-	// itself only changes when version bumps via UpdateImmediate.
+	// itself only changes when UpdateImmediate marks the node dirty.
 	if (!nd->op_name.empty() && nd->op_name[0] == '$')
 	{
-		if (nd->eval_version != nd->version)
+		if (nd->dirty)
 		{
 			if (std::holds_alternative<ShapeVal>(nd->imm))
 			{
@@ -603,7 +607,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 			{
 				nd->cached = nd->imm;
 			}
-			nd->eval_version = nd->version;
+			nd->dirty = false;
 			nd->result_rev++;
 		}
 		return nd->imm;
@@ -644,7 +648,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 		in_revs.push_back(s ? s->result_rev : 0);
 	}
 
-	bool self_fresh   = (nd->eval_version == nd->version);
+	bool self_fresh   = !nd->dirty;
 	bool inputs_fresh = (nd->input_revs_at_eval.size() == n_total);
 	if (inputs_fresh)
 	{
@@ -693,7 +697,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	{
 		nd->cached = result;
 	}
-	nd->eval_version         = nd->version;
+	nd->dirty                = false;
 	nd->input_revs_at_eval   = std::move(in_revs);
 	nd->last_validated_epoch = m_eval_epoch;
 	if (stale)
@@ -744,7 +748,9 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 		if (!nd) continue;
 		auto* desc = m_reg.Find(nd->op_name);
 		if (!desc || !desc->flags.is_boolean) continue;
-		if (nd->inputs.size() != 2) continue;
+		// Need exactly 2 fixed args and no variadic edges -- variadic
+		// selectors couldn't be safely partitioned between the two forks.
+		if (nd->fixed_input_count != 2 || nd->inputs.size() != 2) continue;
 		if (!dep_idx.AreIndependent(nd->inputs[0], nd->inputs[1])) continue;
 
 		ForkPoint fp;
@@ -796,7 +802,7 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 				                         Evaluator& eval) {
 					for (auto id : deps) {
 						auto* nd = g.Get(NRef{id});
-						if (nd && nd->eval_version != nd->version)
+						if (nd && nd->dirty)
 							return;  // dirty node found -- don't seed
 					}
 					for (auto id : deps) {
@@ -848,13 +854,13 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
 
 void Evaluator::Invalidate(IRGraph& g, NRef ref)
 {
-	// O(1): bump self version + drop self cache + drop vt link. Bumping
+	// O(1): mark self dirty + drop self cache + drop vt link. Bumping
 	// the global eval-epoch tells EvalNode it can no longer trust any
 	// node's "validated" stamp -- downstream staleness will be discovered
 	// lazily by the recursive demand-driven path on the next Eval.
 	auto* nd = g.Get(ref);
 	if (!nd) return;
-	nd->version++;
+	nd->dirty = true;
 	nd->vt_node_id = UINT32_MAX;
 	m_shape_cache.Remove(ref.id);
 	m_eval_epoch++;

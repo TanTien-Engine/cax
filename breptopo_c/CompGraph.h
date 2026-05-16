@@ -132,8 +132,7 @@ struct IRNode
 	std::vector<NRef> inputs;
 	uint32_t    fixed_input_count = 0;
 	bool        dead = false;
-	uint64_t    version      = 1;          // bumped by UpdateImmediate / Invalidate
-	uint64_t    eval_version = 0;          // self.version at last successful eval
+	bool        dirty = true;              // set by UpdateImmediate / Invalidate; cleared on successful eval
 	uint64_t    result_rev   = 0;          // monotonic; bumps every time the result is (re)computed
 	Val         cached       = {};         // non-shape values only
 	uint32_t    vt_node_id   = UINT32_MAX; // VersionTree node for shape restore
@@ -417,7 +416,6 @@ public:
 
 	// --- lowering + optimisation ---
 	void Lower();
-	void Lower(int root_step);
 	void Optimize();
 
 	// --- shape restore (version tree integration) ---

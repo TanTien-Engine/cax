@@ -82,8 +82,8 @@ void CompGraph::SetNodeVersion(int ext_id, uint32_t vt_node_id)
 	if (ext_id < 0 || ext_id >= (int)m_nodes.size()) return;
 	auto* nd = m_ir.Get(m_nodes[ext_id].ref);
 	if (nd) {
-		nd->vt_node_id   = vt_node_id;
-		nd->eval_version = nd->version;
+		nd->vt_node_id = vt_node_id;
+		nd->dirty      = false;
 	}
 }
 
@@ -188,15 +188,14 @@ void CompGraph::AppendNewSteps()
 		// demand-driven EvalNode's freshness check passes on the first
 		// post-load Eval. Done for every step (not just those with a
 		// vt_node_id) -- otherwise loaded const-number / non-shape op
-		// nodes would have eval_version=0 vs version=1 on first Eval,
-		// bump their result_rev, and cascade-invalidate everything that
-		// reads from them.
+		// nodes would default to dirty=true on first Eval, bump their
+		// result_rev, and cascade-invalidate everything that reads them.
 		{
 			auto* nd = m_ir.Get(ref);
 			if (nd) {
 				if (step.vt_node_id != UINT32_MAX)
 					nd->vt_node_id = step.vt_node_id;
-				nd->eval_version = nd->version;
+				nd->dirty = false;
 				nd->input_revs_at_eval.clear();
 				nd->input_revs_at_eval.reserve(nd->inputs.size());
 				for (auto& inp : nd->inputs) {
@@ -221,11 +220,6 @@ void CompGraph::Lower()
 	else
 		RebuildIR();
 	m_lowered = true;
-}
-
-void CompGraph::Lower(int root_step)
-{
-	Lower();
 }
 
 void CompGraph::Optimize()

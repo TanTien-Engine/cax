@@ -1321,7 +1321,7 @@ TEST_CASE("op_id: serial and parallel assign identical op_ids", "[op_id]")
     // parallel run -- invalidate first so nodes re-eval
     for (auto ref : g.TopoSort()) {
         auto* nd = g.Get(ref);
-        if (nd) { nd->eval_version = 0; nd->cached = {}; }
+        if (nd) { nd->dirty = true; nd->cached = {}; }
     }
 
     Evaluator eval_par(reg);
