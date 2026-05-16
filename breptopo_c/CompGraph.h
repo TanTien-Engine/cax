@@ -447,15 +447,12 @@ public:
 	void ClearClaims() { m_claimed_steps.clear(); }
 	bool HasPreloadedHistory() const { return m_preloaded; }
 
-	// --- access internals ---
-	OpHistory&           GetHistory()        { return m_history; }
-	const OpHistory&     GetHistory()  const { return m_history; }
-	IRGraph&       GetIR()       { return m_ir; }
-	const IRGraph& GetIR() const { return m_ir; }
-	OpRegistry&    GetRegistry() { return m_reg; }
-	Optimizer&     GetOptimizer(){ return m_opt; }
-	auto           GetTopoNaming() const { return m_tn; }
-	void           SetTopoNaming(const std::shared_ptr<TopoNaming>& tn) { m_tn = tn; }
+	// --- TopoNaming wiring (shared with direct .ves callers) ---
+	auto GetTopoNaming() const { return m_tn; }
+	void SetTopoNaming(const std::shared_ptr<TopoNaming>& tn) { m_tn = tn; }
+
+	// --- read-only access to op history (for debug-graph builder only) ---
+	const OpHistory& GetHistory() const { return m_history; }
 
 	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
 	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);

@@ -6,6 +6,7 @@
 
 #include <TopAbs_ShapeEnum.hxx>
 
+#include <cassert>
 #include <cstring>
 
 namespace
@@ -13,11 +14,11 @@ namespace
 
 void Merge(breptopo::TopoNaming::PidMap& dst, const breptopo::HistGraph::PartialPidMap& src)
 {
-	for (const auto& kv : src) {
-		// Each old uid is unique across all 4 types (type bits in the high bits
-		// of CalcUID), so simple insertion is safe.
+	// Each old uid encodes its shape type (see HistGraph::TypeOf), so uids
+	// from different per-type HistGraphs never collide -- a plain emplace
+	// across all 4 sources is unambiguous.
+	for (const auto& kv : src)
 		dst.emplace(kv.first, kv.second);
-	}
 }
 
 }
@@ -119,14 +120,19 @@ void TopoNaming::AbsorbFork(const TopoNaming& fork, const Snapshot& base)
 
 void TopoNaming::BindShape(uint32_t uid, const TopoDS_Shape& shape)
 {
-	uint32_t type_id = (uid >> 29) & 0x07;
-	switch (type_id) {
+	switch (HistGraph::TypeOf(uid)) {
 	case TopAbs_VERTEX: m_vertex_hg->BindShape(uid, shape); break;
 	case TopAbs_EDGE:   m_edge_hg->BindShape(uid, shape);   break;
 	case TopAbs_FACE:   m_face_hg->BindShape(uid, shape);   break;
 	case TopAbs_SOLID:  m_solid_hg->BindShape(uid, shape);  break;
-	default: break;
+	default: assert(false && "uid has unrecognized shape-type bits"); break;
 	}
+}
+
+void TopoNaming::BindShapes(const std::unordered_map<uint32_t, TopoDS_Shape>& uid2shape)
+{
+	for (const auto& kv : uid2shape)
+		BindShape(kv.first, kv.second);
 }
 
 uint32_t TopoNaming::NextOpId()

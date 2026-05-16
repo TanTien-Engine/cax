@@ -41,6 +41,8 @@
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
 
+#include <logger/logger.h>
+
 #include <assert.h>
 
 namespace
@@ -92,7 +94,13 @@ void WorldSender::Serialize(const TopoDS_Shape& shape, BRepWorld& world)
     TopTools_IndexedMapOfShape all_shapes;
     TopExp::MapShapes(shape, all_shapes);
 
-    // First pass: build auto-uid map for shapes that have no TopoNaming record
+    // First pass: build auto-uid map for shapes TopoNaming doesn't know.
+    // Track misses by type so we can warn loudly -- on a healthy save path
+    // the count should be 0. Non-zero means some op forgot to call
+    // TopoNaming::Update for the shape it produced, and the saved world
+    // will lose those sub-shapes' lineage forever (downstream selectors
+    // referencing them will silently miss on reload).
+    int auto_v = 0, auto_e = 0, auto_f = 0, auto_s = 0;
     for (int i = 1; i <= all_shapes.Extent(); ++i)
     {
         const TopoDS_Shape& s = all_shapes(i);
@@ -106,7 +114,24 @@ void WorldSender::Serialize(const TopoDS_Shape& shape, BRepWorld& world)
         if (uid == 0xffffffff)
         {
             m_auto_uid_map.Add(s);
+            switch (type) {
+            case TopAbs_VERTEX: ++auto_v; break;
+            case TopAbs_EDGE:   ++auto_e; break;
+            case TopAbs_FACE:   ++auto_f; break;
+            case TopAbs_SOLID:  ++auto_s; break;
+            default: break;
+            }
         }
+    }
+
+    int auto_total = auto_v + auto_e + auto_f + auto_s;
+    if (auto_total > 0)
+    {
+        LOGW("WorldSender::Serialize: %d sub-shape(s) not in TopoNaming, "
+             "falling back to auto-uid (V:%d E:%d F:%d S:%d). "
+             "Saved lineage incomplete -- root ShapeType=%d.",
+             auto_total, auto_v, auto_e, auto_f, auto_s,
+             (int)shape.ShapeType());
     }
 
     for (int i = 1; i <= all_shapes.Extent(); ++i)

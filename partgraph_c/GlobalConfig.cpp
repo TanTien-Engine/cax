@@ -80,10 +80,8 @@ GlobalConfig::GlobalConfig()
 			// Re-bind every sub-shape uid onto the evaluator-supplied tn so
 			// downstream selector ops can resolve the saved uids without
 			// having to re-run the producing op.
-			if (curr_tn) {
-				for (auto& kv : receiver.GetCache())
-					curr_tn->BindShape(kv.first, kv.second);
-			}
+			if (curr_tn)
+				curr_tn->BindShapes(receiver.GetCache());
 
 			auto topo = std::make_shared<partgraph::TopoShape>(shape);
 			return breptopo::ShapeVal{topo, 0};

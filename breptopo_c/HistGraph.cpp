@@ -28,13 +28,25 @@ namespace breptopo
 
 HistGraph::HistGraph() = default;
 
+namespace
+{
+constexpr uint32_t kTypeShift = 29;
+constexpr uint32_t kOpShift   = 15;
+constexpr uint32_t kTypeMask  = 0x07;    // 3 bits
+constexpr uint32_t kOpMask    = 0x3FFF;  // 14 bits
+constexpr uint32_t kIndexMask = 0x7FFF;  // 15 bits
+}
+
 uint32_t HistGraph::CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index)
 {
-	uint32_t uid = ((type_id & 0x07) << 29) |
-		((op_id & 0x3FFF) << 15) |
-		(index & 0x7FFF);
-	return uid;
+	return ((type_id & kTypeMask)  << kTypeShift) |
+	       ((op_id   & kOpMask)    << kOpShift)   |
+	        (index   & kIndexMask);
 }
+
+uint32_t HistGraph::TypeOf (uint32_t uid) { return (uid >> kTypeShift) & kTypeMask; }
+uint32_t HistGraph::OpOf   (uint32_t uid) { return (uid >> kOpShift)   & kOpMask;   }
+uint32_t HistGraph::IndexOf(uint32_t uid) { return  uid                & kIndexMask; }
 
 // ---------------------------------------------------------------
 //  Update -- record one OCC modeling step's lineage
@@ -394,9 +406,9 @@ const char* TypeShortName(uint32_t type_id)
 
 std::string DescribeUid(uint32_t uid, uint32_t owning_op_id, bool active)
 {
-	uint32_t type_id = (uid >> 29) & 0x07;
-	uint32_t op_id   = (uid >> 15) & 0x3FFF;
-	uint32_t index   = uid & 0x7FFF;
+	uint32_t type_id = HistGraph::TypeOf(uid);
+	uint32_t op_id   = HistGraph::OpOf(uid);
+	uint32_t index   = HistGraph::IndexOf(uid);
 	std::ostringstream os;
 	os << TypeShortName(type_id) << "#" << index
 	   << " @op" << op_id;

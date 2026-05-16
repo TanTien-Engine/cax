@@ -117,6 +117,15 @@ public:
 	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
 	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);
 
+	// UID codec ---------------------------------------------------
+	// Layout: [type:3 | op:14 | index:15]. type is a TopAbs_ShapeEnum value.
+	// All bit twiddling lives here -- callers must not decode uids by hand.
+
+	static uint32_t CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index);
+	static uint32_t TypeOf (uint32_t uid);
+	static uint32_t OpOf   (uint32_t uid);
+	static uint32_t IndexOf(uint32_t uid);
+
 	// Raw accessors (debug / test) --------------------------------
 
 	const std::unordered_map<uint32_t, std::vector<uint32_t>>& Op2Uids()  const { return m_op2uids; }
@@ -125,7 +134,6 @@ public:
 	const std::unordered_map<uint32_t, TopoDS_Shape>&          Uid2Shape() const { return m_uid2shape; }
 
 private:
-	static uint32_t CalcUID(uint32_t type_id, uint32_t op_id, uint32_t index);
 
 	// Persistent state -------------------------------------------
 

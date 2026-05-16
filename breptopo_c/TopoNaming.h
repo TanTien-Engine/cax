@@ -57,6 +57,7 @@ public:
 	void                        AbsorbFork(const TopoNaming& fork, const Snapshot& base);
 
 	void BindShape(uint32_t uid, const TopoDS_Shape& shape);
+	void BindShapes(const std::unordered_map<uint32_t, TopoDS_Shape>& uid2shape);
 
 	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
 	bool LoadFromByteArray(const uint8_t* buf, uint32_t len);
