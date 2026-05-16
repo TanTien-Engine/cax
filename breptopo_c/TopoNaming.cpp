@@ -85,6 +85,38 @@ void TopoNaming::MergeFrom(const TopoNaming& other)
 		m_next_op = other.m_next_op;
 }
 
+std::shared_ptr<TopoNaming> TopoNaming::Clone() const
+{
+	auto out = std::make_shared<TopoNaming>();
+	out->m_vertex_hg = m_vertex_hg->Clone();
+	out->m_edge_hg   = m_edge_hg->Clone();
+	out->m_face_hg   = m_face_hg->Clone();
+	out->m_solid_hg  = m_solid_hg->Clone();
+	out->m_next_op   = m_next_op;
+	return out;
+}
+
+TopoNaming::Snapshot TopoNaming::TakeSnapshot() const
+{
+	Snapshot s;
+	s.vertex  = m_vertex_hg->TakeSnapshot();
+	s.edge    = m_edge_hg->TakeSnapshot();
+	s.face    = m_face_hg->TakeSnapshot();
+	s.solid   = m_solid_hg->TakeSnapshot();
+	s.next_op = m_next_op;
+	return s;
+}
+
+void TopoNaming::AbsorbFork(const TopoNaming& fork, const Snapshot& base)
+{
+	m_vertex_hg->AbsorbFork(*fork.m_vertex_hg, base.vertex);
+	m_edge_hg->AbsorbFork(*fork.m_edge_hg, base.edge);
+	m_face_hg->AbsorbFork(*fork.m_face_hg, base.face);
+	m_solid_hg->AbsorbFork(*fork.m_solid_hg, base.solid);
+	if (fork.m_next_op > m_next_op)
+		m_next_op = fork.m_next_op;
+}
+
 void TopoNaming::BindShape(uint32_t uid, const TopoDS_Shape& shape)
 {
 	uint32_t type_id = (uid >> 29) & 0x07;

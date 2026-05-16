@@ -612,7 +612,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 		{
 			m_shape_cache.Put(ref.id, nd->imm);
 			if (m_commit_fn && nd->vt_node_id == UINT32_MAX)
-				nd->vt_node_id = m_commit_fn(ref.id, nd->imm);
+				nd->vt_node_id = m_commit_fn(ref.id, nd->imm, tn);
 		}
 		else
 		{
@@ -653,7 +653,7 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	{
 		m_shape_cache.Put(ref.id, result);
 		if (!no_vt_cache && m_commit_fn)
-			nd->vt_node_id = m_commit_fn(ref.id, result);
+			nd->vt_node_id = m_commit_fn(ref.id, result, tn);
 	}
 	else
 	{

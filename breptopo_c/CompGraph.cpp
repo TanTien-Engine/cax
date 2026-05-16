@@ -224,15 +224,33 @@ Val CompGraph::Eval(int ext_id)
 	if (!m_tn) m_tn = std::make_shared<TopoNaming>();
 	NRef ref = m_nodes[ext_id].ref;
 	if (m_parallel)
-		// Share the main TopoNaming across forks: forks need to see naming
-		// state from loaded HistGraph (and from ops outside the fork). Using
-		// per-fork TNs starts them empty, so selector ops inside forks can't
-		// resolve UIDs from before the fork. The trade-off is that concurrent
-		// HistGraph::Update calls aren't currently synchronized.
-		m_eval.RunParallel(m_ir, ref, m_tn,
-			[this]() { return m_tn; },
-			[](const std::shared_ptr<TopoNaming>&,
-			   const std::shared_ptr<TopoNaming>&) { /* same object, no merge */ });
+	{
+		// Each fork gets a deep clone of m_tn so concurrent HistGraph::Update
+		// calls don't race on the shared unordered_maps. A snapshot taken
+		// once per fork pattern lets the merge absorb only the fork's
+		// additions back into the main TN at the join.
+		struct ForkState {
+			TopoNaming::Snapshot snap;
+			int clones_issued = 0;
+			int merges_done   = 0;
+		};
+		auto state = std::make_shared<ForkState>();
+		auto tn    = m_tn;
+
+		auto factory = [tn, state]() -> std::shared_ptr<TopoNaming> {
+			if (state->clones_issued == state->merges_done)
+				state->snap = tn->TakeSnapshot();
+			state->clones_issued++;
+			return tn->Clone();
+		};
+		auto merge = [state](const std::shared_ptr<TopoNaming>& dst,
+		                     const std::shared_ptr<TopoNaming>& src) {
+			dst->AbsorbFork(*src, state->snap);
+			state->merges_done++;
+		};
+
+		m_eval.RunParallel(m_ir, ref, m_tn, factory, merge);
+	}
 	else
 		m_eval.Run(m_ir, ref, m_tn);
 	return m_eval.ResolveVal(m_ir, ref);

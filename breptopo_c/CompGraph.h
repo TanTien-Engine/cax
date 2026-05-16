@@ -246,8 +246,13 @@ private:
 // ---------------------------------------------------------------
 
 // Callback: persist a shape result, return a version-tree node id.
-//   (nref_id, val) -> vt_node_id   (UINT32_MAX = not stored)
-using CommitFn  = std::function<uint32_t(uint32_t nref_id, const Val& val)>;
+//   (nref_id, val, tn) -> vt_node_id   (UINT32_MAX = not stored)
+// The current TopoNaming is passed so the callback can serialize the shape
+// using the right HistGraph state -- important for parallel eval where the
+// shape was bound on a fork's TopoNaming clone (the main tn won't have it
+// until AbsorbFork runs at the join, which is after commit).
+using CommitFn  = std::function<uint32_t(uint32_t nref_id, const Val& val,
+                                          const std::shared_ptr<TopoNaming>& tn)>;
 
 // Callback: restore a shape from version-tree node id.
 //   (vt_node_id, tn) -> Val            (monostate = restore failed)

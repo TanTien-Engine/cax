@@ -1,5 +1,7 @@
 #pragma once
 
+#include "HistGraph.h"
+
 #include <Standard_Handle.hxx>
 
 #include <cstdint>
@@ -45,6 +47,15 @@ public:
 
 	void MergeFrom(const TopoNaming& other);
 
+	// Parallel-fork primitives. RunParallel uses these to give each fork
+	// its own clone so concurrent HistGraph::Update calls don't race on
+	// the shared unordered_map, then absorbs each fork's additions back
+	// into the main TN at the join.
+	struct Snapshot;
+	std::shared_ptr<TopoNaming> Clone() const;
+	Snapshot                    TakeSnapshot() const;
+	void                        AbsorbFork(const TopoNaming& fork, const Snapshot& base);
+
 	void BindShape(uint32_t uid, const TopoDS_Shape& shape);
 
 	void StoreToByteArray(uint8_t** buf, uint32_t& len) const;
@@ -61,5 +72,14 @@ private:
 	uint32_t m_next_op = 0;
 
 }; // TopoNaming
+
+struct TopoNaming::Snapshot
+{
+	HistGraph::Snapshot vertex;
+	HistGraph::Snapshot edge;
+	HistGraph::Snapshot face;
+	HistGraph::Snapshot solid;
+	uint32_t            next_op = 0;
+};
 
 }

@@ -38,14 +38,21 @@ GlobalConfig::GlobalConfig()
 	auto vt_mutex = std::make_shared<std::mutex>();
 
 	cg->SetCommitFn(
-		[vt, cg, tn, vt_mutex](uint32_t /*nref_id*/, const breptopo::Val& val) -> uint32_t
+		[vt, cg, tn, vt_mutex](uint32_t /*nref_id*/, const breptopo::Val& val,
+		                       const std::shared_ptr<breptopo::TopoNaming>& curr_tn) -> uint32_t
 		{
 			if (!std::holds_alternative<breptopo::ShapeVal>(val)) return UINT32_MAX;
 			const auto& sv = std::get<breptopo::ShapeVal>(val);
 			if (!sv.shape) return UINT32_MAX;
 
-			auto cg_tn = cg->GetTopoNaming();
-			auto eff_tn = cg_tn ? cg_tn : tn;
+			// Use the evaluator-supplied tn (could be a parallel fork's clone)
+			// so WorldSender::GetUID looks up the correct m_shape2uid -- the
+			// one that was just populated by this op's own tn->Update. Falling
+			// back to cg->GetTopoNaming() or the captured `tn` would race with
+			// a still-pending AbsorbFork and write auto-uids instead.
+			auto eff_tn = curr_tn;
+			if (!eff_tn) eff_tn = cg->GetTopoNaming();
+			if (!eff_tn) eff_tn = tn;
 
 			brepdb::BRepWorld world;
 			brepdb::WorldSender sender(eff_tn);
@@ -70,9 +77,9 @@ GlobalConfig::GlobalConfig()
 			TopoDS_Shape shape = receiver.GetAll();
 			if (shape.IsNull()) return {};
 
-			// Bind to the TopoNaming currently in use by the evaluator (could be
-			// a parallel fork's tn). This ensures selector ops running in the
-			// same evaluator see the sub-shapes of the restored solid.
+			// Re-bind every sub-shape uid onto the evaluator-supplied tn so
+			// downstream selector ops can resolve the saved uids without
+			// having to re-run the producing op.
 			if (curr_tn) {
 				for (auto& kv : receiver.GetCache())
 					curr_tn->BindShape(kv.first, kv.second);

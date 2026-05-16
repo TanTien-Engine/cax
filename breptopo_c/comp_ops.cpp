@@ -108,6 +108,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			std::vector<std::shared_ptr<graph::Node>> nodes;
 			if (!ctx.tn->GetEdgeGraph()->QueryNodes(uid, nodes)) return {};
 			if (nodes.empty()) return {};
+			if (!nodes[0]->HasComponent<NodeShape>()) return {};
 			auto shp = nodes[0]->GetComponent<NodeShape>().GetShape();
 			return MakeShapeVal(shp);
 		},
