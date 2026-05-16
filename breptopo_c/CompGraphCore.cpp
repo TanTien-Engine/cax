@@ -730,6 +730,27 @@ Val Evaluator::RunParallel(IRGraph& g, NRef root,
                            TnFactory tn_factory, TnMerge tn_merge)
 {
 	g.AssignOpIds();
+
+	// Fast path: if root is already validated under the current epoch AND
+	// its value can be served without re-executing any op (cache hit or
+	// VersionTree restore), a single EvalNode is strictly cheaper than
+	// walking the topo order. This covers the post-load "render unchanged"
+	// case -- one Checkout at root and we're done, no orphan history steps
+	// get touched. Falls through to the parallel fork path when actual
+	// re-execution is needed, preserving the throughput win for that case.
+	if (auto* root_nd = g.Get(root))
+	{
+		if (root_nd->last_validated_epoch == m_eval_epoch)
+		{
+			Val v = ResolveVal(g, root, tn);
+			if (!std::holds_alternative<std::monostate>(v))
+			{
+				m_hits++;
+				return v;
+			}
+		}
+	}
+
 	auto dep_idx = g.BuildDepIndex();
 	auto order = g.TopoSort();
 

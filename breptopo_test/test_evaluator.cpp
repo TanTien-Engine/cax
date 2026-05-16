@@ -841,14 +841,17 @@ TEST_CASE("RunParallel: handles cache hits correctly", "[parallel]")
     Evaluator eval(reg);
     std::shared_ptr<TopoNaming> tn;
 
-    // first run populates caches
+    // First run: nodes are unvalidated so RunParallel falls through to the
+    // topo walk, which still touches mkA even though it's orphan.
     eval.RunParallel(g,mkB, tn);
     REQUIRE(eval.CacheMisses() == 2);
 
-    // second run should hit caches
+    // Second run: mkB is already validated, RunParallel's fast-path skips
+    // straight to a demand-driven EvalNode(mkB). The orphan mkA isn't on
+    // mkB's path so it isn't visited -- only mkB scores a cache hit.
     eval.ResetStats();
     eval.RunParallel(g,mkB, tn);
-    REQUIRE(eval.CacheHits() == 2);
+    REQUIRE(eval.CacheHits() == 1);
     REQUIRE(eval.CacheMisses() == 0);
 }
 
