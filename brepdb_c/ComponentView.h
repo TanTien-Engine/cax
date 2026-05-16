@@ -11,7 +11,7 @@ namespace brepdb
 {
 
 // SoA views over a BRepWorld.
-// These do NOT own data — they snapshot a live BRepWorld.
+// These do NOT own data -- they snapshot a live BRepWorld.
 // Rebuild after world mutation.
 
 struct AabbView

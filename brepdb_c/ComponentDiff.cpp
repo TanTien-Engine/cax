@@ -402,7 +402,7 @@ WorldPtr RebuildWorld(const std::unordered_map<uint32_t, EntitySnapshot>& ents,
         if (it == ents.end()) continue;
         RegisterSnapshot(*w, it->second);
     }
-    // Include any entity not in `order` (defensive — should not happen)
+    // Include any entity not in `order` (defensive -- should not happen)
     for (auto& [id, s] : ents)
     {
         if (w->IsAlive(id)) continue;

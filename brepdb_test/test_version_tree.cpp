@@ -226,7 +226,7 @@ TEST_CASE("ComputeDiff: empty diff when worlds are identical", "[diff]")
     REQUIRE(worlds_equal(*fwd, w));
 }
 
-TEST_CASE("ComputeDiff: reorder only — no entities changed", "[diff]")
+TEST_CASE("ComputeDiff: reorder only -- no entities changed", "[diff]")
 {
     auto old_w = make_world_ab();
 
@@ -245,7 +245,7 @@ TEST_CASE("ComputeDiff: reorder only — no entities changed", "[diff]")
     REQUIRE(alive[1] == 10);
 }
 
-TEST_CASE("ComputeDiff: complex op — add + remove + modify", "[diff]")
+TEST_CASE("ComputeDiff: complex op -- add + remove + modify", "[diff]")
 {
     BRepWorld old_w;
     add_entity(old_w, 1, Type::Compound, { 0,0,0 });
@@ -275,7 +275,7 @@ TEST_CASE("ComputeDiff: complex op — add + remove + modify", "[diff]")
 // PidMapping tests
 // ============================================================
 
-TEST_CASE("PidMapping: simple modify — all pids change", "[pidmap]")
+TEST_CASE("PidMapping: simple modify -- all pids change", "[pidmap]")
 {
     BRepWorld old_w;
     add_entity(old_w, 10, Type::Compound, { 1, 2, 3 });
@@ -353,7 +353,7 @@ TEST_CASE("PidMapping: entity split into two", "[pidmap]")
     REQUIRE(rev->IsAlive(10));
 }
 
-TEST_CASE("PidMapping: empty old_world — initial commit through pid_map", "[pidmap]")
+TEST_CASE("PidMapping: empty old_world -- initial commit through pid_map", "[pidmap]")
 {
     BRepWorld old_w;
 
@@ -545,7 +545,7 @@ TEST_CASE("VersionTree: Redo selects correct child by index", "[tree]")
     REQUIRE(get_params(rB, 10)[0] == 77.0);
 }
 
-TEST_CASE("VersionTree: deep chain of 20 commits — undo all then redo all", "[tree]")
+TEST_CASE("VersionTree: deep chain of 20 commits -- undo all then redo all", "[tree]")
 {
     VersionTree tree;
 

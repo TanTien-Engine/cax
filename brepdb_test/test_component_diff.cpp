@@ -108,7 +108,7 @@ TEST_CASE("ComponentDiff detects params-only change via hunks", "[component_diff
     auto diff = ComponentDiff::Compute(old_w, new_w);
     REQUIRE(diff.patches.size() == 1);
     CHECK(diff.patches[0].kind == ComponentKind::Params);
-    // Old/new data buffers should be empty — hunks carry the delta
+    // Old/new data buffers should be empty -- hunks carry the delta
     CHECK(diff.patches[0].old_data.empty());
     CHECK(diff.patches[0].new_data.empty());
     CHECK(diff.patches[0].old_param_count == 3);

@@ -111,7 +111,7 @@ void CompGraph::Truncate(size_t keep)
 
 	m_history.Truncate(keep);
 	m_op_id_map.clear();
-	// Don't reset m_tn — it's shared with GlobalConfig. If a true reset is
+	// Don't reset m_tn -- it's shared with GlobalConfig. If a true reset is
 	// needed (e.g., naming is stale after truncate), do it explicitly elsewhere.
 	m_lowered = false;
 }

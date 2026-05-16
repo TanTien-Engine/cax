@@ -986,7 +986,7 @@ uint32_t VersionTree::FindLCA(uint32_t a, uint32_t b) const
 }
 
 // ============================================================
-// VersionTree — persistence (file)
+// VersionTree -- persistence (file)
 // ============================================================
 
 bool VersionTree::SaveToFile(const std::string& filepath) const
@@ -1093,7 +1093,7 @@ bool VersionTree::LoadFromFile(const std::string& filepath)
 }
 
 // ============================================================
-// VersionTree — persistence (byte array)
+// VersionTree -- persistence (byte array)
 // ============================================================
 
 void VersionTree::StoreToByteArray(uint8_t** buf, uint32_t& len) const

@@ -65,7 +65,7 @@ static ReconnectResult reconnect_op(
 }
 
 // Build a typical modeling graph:
-//   Box(length, width, height) → Offset(offset, is_solid) → Fillet(radius)
+//   Box(length, width, height) -> Offset(offset, is_solid) -> Fillet(radius)
 static void build_box_offset_fillet(OpHistory& h,
 	int& box_step, int& offset_step, int& fillet_step,
 	int& c_len, int& c_wid, int& c_hgt,
@@ -111,7 +111,7 @@ TEST_CASE("Reconnect single op after round-trip", "[reconnect]")
 	CHECK(result.const_refs[2] == std::make_pair(std::string("height"), c2));
 }
 
-TEST_CASE("Reconnect chain: Box → Offset → Fillet", "[reconnect]")
+TEST_CASE("Reconnect chain: Box -> Offset -> Fillet", "[reconnect]")
 {
 	OpHistory h1;
 	int box_step, offset_step, fillet_step;
@@ -152,7 +152,7 @@ TEST_CASE("Reconnect chain: Box → Offset → Fillet", "[reconnect]")
 
 TEST_CASE("Claim prevents duplicate matching", "[reconnect]")
 {
-	// Two identical Box nodes — same op, same param structure
+	// Two identical Box nodes -- same op, same param structure
 	OpHistory h1;
 	int c0 = h1.AddConst(10.0, "length");
 	int c1 = h1.AddConst(20.0, "width");
@@ -225,7 +225,7 @@ TEST_CASE("Structural prefix distinguishes ops with same name", "[reconnect]")
 	auto r_box2 = reconnect_op(h2, claimed, "box", {},
 		{"length", "width", "height"});
 
-	// reconnect fillet on box2 first — prefix match skips fillet1
+	// reconnect fillet on box2 first -- prefix match skips fillet1
 	auto r_f2 = reconnect_op(h2, claimed, "fillet",
 		{r_box2.step_id}, {"radius"});
 	CHECK(r_f2.step_id == fillet2);

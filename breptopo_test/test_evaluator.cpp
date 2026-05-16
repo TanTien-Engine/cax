@@ -648,7 +648,7 @@ TEST_CASE("DepIndex: wide graph with many leaves", "[graph]")
     RegisterTestOps(reg);
     IRGraph g(reg);
 
-    // 100 independent branches — tests bitset > 64 bits
+    // 100 independent branches -- tests bitset > 64 bits
     std::vector<NRef> branches;
     for (int i = 0; i < 100; ++i)
     {
@@ -1313,7 +1313,7 @@ TEST_CASE("op_id: serial and parallel assign identical op_ids", "[op_id]")
     std::set<uint32_t> seq_ids{seq_mkA, seq_trA, seq_mkB, seq_trB, seq_cmb};
     REQUIRE(seq_ids.size() == 5);
 
-    // parallel run — invalidate first so nodes re-eval
+    // parallel run -- invalidate first so nodes re-eval
     for (auto ref : g.TopoSort()) {
         auto* nd = g.Get(ref);
         if (nd) { nd->eval_version = 0; nd->cached = {}; }

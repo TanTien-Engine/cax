@@ -253,7 +253,7 @@ using CommitFn  = std::function<uint32_t(uint32_t nref_id, const Val& val)>;
 //   (vt_node_id, tn) -> Val            (monostate = restore failed)
 // The current TopoNaming is passed so the callback can bind the restored
 // shape's sub-shapes (via WorldReceiver's uid cache) into the correct
-// HistGraph — important for parallel eval where each fork has its own tn.
+// HistGraph -- important for parallel eval where each fork has its own tn.
 using RestoreFn = std::function<Val(uint32_t vt_node_id,
                                     const std::shared_ptr<TopoNaming>& tn)>;
 
