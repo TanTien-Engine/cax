@@ -167,7 +167,7 @@ int convexity_at_edge(const TopoDS_Edge& edge,
     if (edge_tan.Magnitude() < 1e-12) {
         return static_cast<int>(Convexity::Smooth);
     }
-    gp_Vec cross(na.Crossed(nb));
+    gp_Vec cross(gp_Vec(na.X(), na.Y(), na.Z()).Crossed(gp_Vec(nb.X(), nb.Y(), nb.Z())));
     if (cross.Magnitude() < 1e-6) {
         // Normals (anti-)parallel -- tangent plane continuous.
         return static_cast<int>(Convexity::Smooth);

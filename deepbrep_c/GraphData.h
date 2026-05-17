@@ -2,6 +2,8 @@
 
 #include "Tensor.h"
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 namespace deepbrep
@@ -27,7 +29,11 @@ struct GraphData
     std::vector<int>      adj_offset;   // [num_nodes + 1]
     std::vector<AdjEntry> adj_list;     // [num_edges]
 
-    std::vector<int>      labels;       // [num_nodes], optional (training only)
+    // Optional per-node training labels. labels[i] = semantic class id;
+    // instance_ids[i] = which feature instance face i belongs to (faces of
+    // the same hole / fillet share an id). 0 / empty means "not labeled".
+    std::vector<int>      labels;
+    std::vector<uint32_t> instance_ids;
 };
 
 // Builds CSR `adj_offset`/`adj_list` and copies edge feature rows from a flat
@@ -40,5 +46,24 @@ struct GraphData
 void build_csr_from_directed_edges(
     GraphData& g,
     const std::vector<std::pair<int, int>>& from_to);
+
+// Binary serialization. Format is private to this module and host-native --
+// the dataset on-disk format is meant for the same machine that produced it.
+//
+// Layout: magic 'DGD0', uint32 of num_nodes/num_edges/node_dim/edge_dim, then
+// node_features, edge_features, adj_offset, adj_list (interleaved), labels,
+// instance_ids. Optional fields are length-prefixed (0 = absent).
+bool write_graph_data(const std::string& path, const GraphData& g);
+bool read_graph_data (const std::string& path,       GraphData& g);
+
+// Multi-sample dataset: one file holding N graphs back-to-back, prefixed by
+// a small header. Used by the trainer for streaming.
+struct DatasetHeader
+{
+    uint32_t num_samples = 0;
+    uint32_t node_feat_dim = 0;
+    uint32_t edge_feat_dim = 0;
+    uint32_t num_classes = 0;     // 0 if labels are heterogeneous / unset
+};
 
 }

@@ -217,6 +217,8 @@ set(deepbrep__core
     "deepbrep_c/FeatureLabels.h"
     "deepbrep_c/ToyDataset.cpp"
     "deepbrep_c/ToyDataset.h"
+    "deepbrep_c/DatasetReader.cpp"
+    "deepbrep_c/DatasetReader.h"
 )
 source_group("deepbrep\\core" FILES ${deepbrep__core})
 
@@ -232,6 +234,17 @@ set(deepbrep__script
     "deepbrep_c/wrap_DeepBrep.h"
 )
 source_group("deepbrep\\script" FILES ${deepbrep__script})
+
+set(deepbrep__datagen
+    "deepbrep_data_gen/OpNameVocabulary.cpp"
+    "deepbrep_data_gen/OpNameVocabulary.h"
+    "deepbrep_data_gen/HistoryGraphLabeler.cpp"
+    "deepbrep_data_gen/HistoryGraphLabeler.h"
+    "deepbrep_data_gen/DatasetWriter.cpp"
+    "deepbrep_data_gen/DatasetWriter.h"
+)
+source_group("deepbrep\\datagen" FILES ${deepbrep__datagen})
+
 
 set(ALL_FILES
     ${breptopo}
@@ -259,6 +272,7 @@ set(ALL_FILES
     ${deepbrep__core}
     ${deepbrep__brep}
     ${deepbrep__script}
+    ${deepbrep__datagen}
 )
 
 ################################################################################
@@ -389,4 +403,53 @@ if(CAX_BUILD_DEEPBREP_DEMO)
     )
     target_include_directories(deepbrep_demo PRIVATE .)
     target_compile_features(deepbrep_demo PRIVATE cxx_std_17)
+endif()
+
+option(CAX_BUILD_DEEPBREP_TRAIN "Build deepbrep training tool" ON)
+
+if(CAX_BUILD_DEEPBREP_TRAIN)
+    add_executable(deepbrep_train
+        deepbrep_c/train_main.cpp
+        deepbrep_c/DatasetReader.cpp
+        deepbrep_c/Tensor.cpp
+        deepbrep_c/GraphData.cpp
+        deepbrep_c/Layers.cpp
+        deepbrep_c/GNNModel.cpp
+        deepbrep_c/Trainer.cpp
+        deepbrep_c/FeatureLabels.cpp
+    )
+    target_include_directories(deepbrep_train PRIVATE .)
+    target_compile_features(deepbrep_train PRIVATE cxx_std_17)
+endif()
+
+option(CAX_BUILD_DEEPBREP_DATAGEN "Build deepbrep dataset-generation tool" ON)
+
+if(CAX_BUILD_DEEPBREP_DATAGEN)
+    # Links against the main cax static lib so it can reuse OCCT/Boost wiring
+    # already set up there (PrimMaker, TopoNaming, BRepGraphBuilder, ...).
+    add_executable(deepbrep_data_gen
+        deepbrep_data_gen/gen_dataset_main.cpp
+    )
+    target_include_directories(deepbrep_data_gen PRIVATE
+        .
+        ${OpenCASCADE_INCLUDE_DIR}
+    )
+    target_link_libraries(deepbrep_data_gen PRIVATE
+        ${PROJECT_NAME}
+        ${OpenCASCADE_LIBRARIES}
+    )
+    # cax propagates `graph` as a PRIVATE dep, and graph in turn has
+    # unresolved ogdf symbols at its TUs. Even though this tool's own code
+    # doesn't use graph or ogdf, PrimMaker.obj references WorldSender, which
+    # references graph, which references ogdf -- so the static-archive walk
+    # pulls them all into the link line. Until cax is restructured to peel
+    # viz/io off the core, just link both here.
+    if(TARGET graph)
+        target_link_libraries(deepbrep_data_gen PRIVATE graph)
+    endif()
+    # OGDF is a vcpkg-installed lib (not a CMake target in this scope) --
+    # link by raw name and let the linker find it via configured search
+    # paths. Matches brepdb_occt_test/CMakeLists.txt:47.
+    target_link_libraries(deepbrep_data_gen PRIVATE OGDF)
+    target_compile_features(deepbrep_data_gen PRIVATE cxx_std_17)
 endif()

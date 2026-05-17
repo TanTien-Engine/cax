@@ -1,0 +1,54 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "deepbrep" for DataExporter
+
+class ExportData is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("filepath", "deepbrep_export.bin"))
+		this.params.add(NodeParam("graph_only", false))
+		this.params.add(NodeParam("num_samples", 1))
+		this.params.add(NodeParam("noise_ratio", 0.1))
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
+			return nil
+		}
+
+		var filepath = this.query_param("filepath").value
+		var graph_only = this.query_param("graph_only").value
+		var num_samples = this.query_param("num_samples").value
+		var noise_ratio = this.query_param("noise_ratio").value
+
+		var exporter = DataExporter.init()
+		if (num_samples > 1) {
+			// Augmented export: perturb CompGraph params and export N samples.
+			exporter.export_augmented(filepath, num_samples, noise_ratio)
+		} else if (graph_only) {
+			exporter.export_graph_only(v_shape.value, filepath)
+		} else {
+			exporter.do_export(v_shape.value, filepath)
+		}
+
+		return v_shape
+	}
+}

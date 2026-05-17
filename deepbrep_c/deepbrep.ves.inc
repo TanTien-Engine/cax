@@ -22,4 +22,13 @@ foreign class FeatureRecognizer
 	foreign is_loaded()
 }
 
+foreign class DataExporter
+{
+	init() {}
+
+	foreign do_export(shape, filepath)
+	foreign export_graph_only(shape, filepath)
+	foreign export_augmented(filepath, num_samples, noise_ratio)
+}
+
 );
