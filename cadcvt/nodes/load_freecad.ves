@@ -1,0 +1,102 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_STRING, VAR_TYPE_NUMBER, VAR_TYPE_BOOLEAN
+import "blueprint.node_helper" for NodeHelper
+import "partgraph.variant" for VAR_TOPO_SHAPE
+import "cadcvt" for FreeCadLoader
+
+// ============================================================
+// partgraph::nodes::load_freecad::LoadFreeCad
+//
+// Pulls a .FCStd (or extracted Document.xml) through
+// cadcvt::FreeCadReader + Replayer and exposes the resulting
+// OCCT shape as a TopoShape output.
+//
+// Heavy load is cached on (path, unit_scale, strict). The node
+// only re-runs the loader when one of those changes.
+//
+// Inputs:
+//   path       string  - file path
+//   unit_scale number  - FreeCAD mm -> project units factor
+//   strict     boolean - fail on unknown FreeCAD types
+//
+// Outputs:
+//   shape      TopoShape (or nil + error message in last_error)
+// ============================================================
+
+class LoadFreecad is Node
+{
+    init()
+    {
+        super.init()
+
+        this.imports = [
+            Pin(this, "path",       VAR_TYPE_STRING),
+            Pin(this, "unit_scale", VAR_TYPE_NUMBER),
+            Pin(this, "strict",     VAR_TYPE_BOOLEAN),
+        ]
+        this.exports = [
+            Pin(this, "shape", VAR_TOPO_SHAPE),
+        ]
+
+        this.params.add(NodeParam("path", ""))
+        this.params.add(NodeParam("unit_scale", 0.001))
+        this.params.add(NodeParam("strict", false))
+
+        this.layout()
+
+        // Loader holds one (reader + replayer + last_error). The
+        // backing C++ object is reused across calc_value() invokes
+        // so options stick.
+        this.loader = FreeCadLoader.init()
+
+        // Cache key + cached shape; only re-load when one of the
+        // inputs changes.
+        this.cached_key   = nil
+        this.cached_shape = nil
+        this.last_error   = nil
+    }
+
+    calc_value(idx)
+    {
+        var path       = NodeHelper.calc_prop_value(this, "path")
+        var unit_scale = NodeHelper.calc_prop_value(this, "unit_scale")
+        var strict     = NodeHelper.calc_prop_value(this, "strict")
+
+        System.print("++ %(path)")
+
+        if (!path or path == "") {
+            this.last_error = "path is empty"
+            return nil
+        }
+
+        var key = "%(path)|%(unit_scale)|%(strict)"
+        if (key == this.cached_key and this.cached_shape) {
+            return Variant(VAR_TOPO_SHAPE, this.cached_shape)
+        }
+
+        this.loader.set_unit_scale(unit_scale)
+        this.loader.set_strict(strict)
+
+        System.print("++ load 0")
+
+        var shape = this.loader.load(path)
+        if (!shape) {
+            this.last_error   = this.loader.last_error()
+            this.cached_key   = key
+            this.cached_shape = nil
+            return nil
+        }
+
+        // Replayer may still have produced a shape while collecting
+        // diagnostics for skipped features; surface the message
+        // anyway.
+        this.last_error   = this.loader.last_error()
+        this.cached_key   = key
+        this.cached_shape = shape
+
+        return Variant(VAR_TOPO_SHAPE, shape)
+    }
+}

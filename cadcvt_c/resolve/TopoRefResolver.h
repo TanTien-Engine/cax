@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cadcvt/ir/TopoRefIR.h"
+#include "cadcvt_c/ir/TopoRefIR.h"
 
 #include <cstdint>
 #include <vector>

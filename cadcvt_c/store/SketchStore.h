@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cadcvt/ir/SketchIR.h"
+#include "cadcvt_c/ir/SketchIR.h"
 
 #include <cstdint>
 #include <string>

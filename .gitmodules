@@ -34,3 +34,9 @@
 [submodule "thirdparty/brepdb"]
 	path = thirdparty/spatialdb
 	url = git@github.com:xzrunner/spatialdb.git
+[submodule "thirdparty/miniz"]
+	path = thirdparty/miniz
+	url = git@github.com:richgel999/miniz.git
+[submodule "thirdparty/pugixml"]
+	path = thirdparty/pugixml
+	url = git@github.com:zeux/pugixml.git

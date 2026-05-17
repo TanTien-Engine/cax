@@ -1,8 +1,8 @@
 #pragma once
 
-#include "cadcvt/ir/Enums.h"
-#include "cadcvt/ir/SketchIR.h"
-#include "cadcvt/ir/TopoRefIR.h"
+#include "cadcvt_c/ir/Enums.h"
+#include "cadcvt_c/ir/SketchIR.h"
+#include "cadcvt_c/ir/TopoRefIR.h"
 
 #include <cstdint>
 #include <map>

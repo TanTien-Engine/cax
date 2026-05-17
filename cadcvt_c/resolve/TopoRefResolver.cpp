@@ -1,4 +1,4 @@
-#include "cadcvt/resolve/TopoRefResolver.h"
+#include "cadcvt_c/resolve/TopoRefResolver.h"
 
 #include "breptopo_c/TopoNaming.h"
 #include "breptopo_c/HistGraph.h"

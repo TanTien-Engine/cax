@@ -3,8 +3,8 @@
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
-#include "cadcvt/store/SketchStore.h"
-#include "cadcvt/store/FeatureStore.h"
+#include "cadcvt_c/store/SketchStore.h"
+#include "cadcvt_c/store/FeatureStore.h"
 #include "partgraph_c/GlobalConfig.h"
 
 #include <graph/Node.h>

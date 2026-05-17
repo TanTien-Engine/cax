@@ -1,0 +1,37 @@
+var node0 = ::blueprint::nodes::camera3d::Camera3d()
+
+node0.cam.position.set(0.29478091988816, 0.084993172524285, -0.56557526007367)
+node0.cam.yaw = -243.1
+node0.cam.pitch = -6.5
+node0.cam.zoom = 33
+node0.cam.update_vectors()
+node0.speed = 0.30111083388329
+
+_editor.add_node(node0, 593.32208654233, 55.324504340259)
+
+var node1 = ::blueprint::nodes::subgraph::Subgraph()
+node1.load_from_file(_editor, "../../assets/blueprints/render/draw_mesh.ves")
+node1.set_prop_value("no_bg", false)
+
+_editor.add_node(node1, 781.75739548213, 130.07227839696)
+
+var node2 = ::partgraph::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node2, 391.1260556368, 207.29643135148)
+
+var node3 = ::blueprint::nodes::cache::Cache()
+node3.query_param("disable").value = false
+
+_editor.add_node(node3, 586.40382653733, 204.35289244306)
+
+var node4 = ::cadcvt::nodes::load_freecad::LoadFreecad()
+node4.query_param("path").value = "PartDesignExample.FCStd"
+node4.query_param("unit_scale").value = 0.001
+node4.query_param("strict").value = false
+
+_editor.add_node(node4, 210.21983471074, 171.99090909091)
+
+Blueprint.connect(node4, "shape", node2, "shape")
+Blueprint.connect(node2, "va", node3, "var")
+Blueprint.connect(node3, "var", node1, "geos")
+Blueprint.connect(node0, "this", node1, "view_cam")

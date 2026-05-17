@@ -1,0 +1,5 @@
+import "cadcvt.nodes.*"
+
+var CAD_CVT_NODES = [
+LoadFreecad,
+]

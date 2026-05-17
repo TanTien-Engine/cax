@@ -1,6 +1,6 @@
-#include "cadcvt/emitter/Replayer.h"
-#include "cadcvt/store/SketchBridge.h"
-#include "cadcvt/resolve/TopoRefResolver.h"
+#include "cadcvt_c/emitter/Replayer.h"
+#include "cadcvt_c/store/SketchBridge.h"
+#include "cadcvt_c/resolve/TopoRefResolver.h"
 
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"

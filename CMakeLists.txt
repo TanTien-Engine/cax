@@ -202,41 +202,6 @@ set(brepdb__script
 )
 source_group("brepdb\\script" FILES ${brepdb__script})
 
-set(cadcvt__ir
-    "cadcvt/ir/Enums.h"
-    "cadcvt/ir/TopoRefIR.h"
-    "cadcvt/ir/SketchIR.h"
-    "cadcvt/ir/FeatureIR.h"
-)
-source_group("cadcvt\\ir" FILES ${cadcvt__ir})
-
-set(cadcvt__store
-    "cadcvt/store/SketchStore.h"
-    "cadcvt/store/SketchStore.cpp"
-    "cadcvt/store/FeatureStore.h"
-    "cadcvt/store/FeatureStore.cpp"
-    "cadcvt/store/SketchBridge.h"
-    "cadcvt/store/SketchBridge.cpp"
-)
-source_group("cadcvt\\store" FILES ${cadcvt__store})
-
-set(cadcvt__resolve
-    "cadcvt/resolve/TopoRefResolver.h"
-    "cadcvt/resolve/TopoRefResolver.cpp"
-)
-source_group("cadcvt\\resolve" FILES ${cadcvt__resolve})
-
-set(cadcvt__reader
-    "cadcvt/reader/Reader.h"
-)
-source_group("cadcvt\\reader" FILES ${cadcvt__reader})
-
-set(cadcvt__emitter
-    "cadcvt/emitter/Replayer.h"
-    "cadcvt/emitter/Replayer.cpp"
-)
-source_group("cadcvt\\emitter" FILES ${cadcvt__emitter})
-
 set(deepbrep__core
     "deepbrep_c/Tensor.cpp"
     "deepbrep_c/Tensor.h"
@@ -281,6 +246,93 @@ set(deepbrep__datagen
 source_group("deepbrep\\datagen" FILES ${deepbrep__datagen})
 
 
+# ---- cadcvt: CAD inter-format converter ----
+
+set(cadcvt__ir
+    "cadcvt_c/ir/Enums.h"
+    "cadcvt_c/ir/SketchIR.h"
+    "cadcvt_c/ir/TopoRefIR.h"
+    "cadcvt_c/ir/FeatureIR.h"
+)
+source_group("cadcvt\\ir" FILES ${cadcvt__ir})
+
+set(cadcvt__store
+    "cadcvt_c/store/SketchStore.cpp"
+    "cadcvt_c/store/SketchStore.h"
+    "cadcvt_c/store/FeatureStore.cpp"
+    "cadcvt_c/store/FeatureStore.h"
+    "cadcvt_c/store/SketchBridge.cpp"
+    "cadcvt_c/store/SketchBridge.h"
+)
+source_group("cadcvt\\store" FILES ${cadcvt__store})
+
+set(cadcvt__resolve
+    "cadcvt_c/resolve/TopoRefResolver.cpp"
+    "cadcvt_c/resolve/TopoRefResolver.h"
+)
+source_group("cadcvt\\resolve" FILES ${cadcvt__resolve})
+
+set(cadcvt__reader
+    "cadcvt_c/reader/Reader.h"
+)
+source_group("cadcvt\\reader" FILES ${cadcvt__reader})
+
+set(cadcvt__emitter
+    "cadcvt_c/emitter/Replayer.cpp"
+    "cadcvt_c/emitter/Replayer.h"
+)
+source_group("cadcvt\\emitter" FILES ${cadcvt__emitter})
+
+set(cadcvt__script
+    "cadcvt_c/cadcvt.ves.inc"
+    "cadcvt_c/wrap_CadCvt.cpp"
+    "cadcvt_c/wrap_CadCvt.h"
+)
+source_group("cadcvt\\script" FILES ${cadcvt__script})
+
+# FreeCadReader needs miniz (zip) + pugixml (xml). Both are git
+# submodules; the gate below catches "user forgot to run
+# git submodule update --init" and skips this reader with a clean
+# status message instead of a compile error.
+set(CADCVT_FREECAD_DEPS_OK FALSE)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/miniz/miniz.h" AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/miniz/miniz.c" AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/pugixml/src/pugixml.hpp" AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/pugixml/src/pugixml.cpp")
+    set(CADCVT_FREECAD_DEPS_OK TRUE)
+endif()
+
+if(CADCVT_FREECAD_DEPS_OK)
+    # miniz.h #include's miniz_export.h, which is normally produced
+    # by miniz's own CMake via generate_export_header(miniz). We
+    # consume miniz.c as raw source inside cax, so the file is
+    # never generated. Write a one-line stub at configure time
+    # (MINIZ_EXPORT is empty for static library builds).
+    set(CADCVT_MINIZ_EXPORT_DIR "${CMAKE_CURRENT_BINARY_DIR}/cadcvt_generated")
+    file(WRITE "${CADCVT_MINIZ_EXPORT_DIR}/miniz_export.h"
+"#ifndef MINIZ_EXPORT_H\n"
+"#define MINIZ_EXPORT_H\n"
+"#define MINIZ_EXPORT\n"
+"#define MINIZ_NO_EXPORT\n"
+"#endif\n")
+
+    set(cadcvt__reader_freecad
+        "cadcvt_c/reader/FreeCadReader.cpp"
+        "cadcvt_c/reader/FreeCadReader.h"
+        "thirdparty/miniz/miniz.c"
+        "thirdparty/miniz/miniz.h"
+        "thirdparty/pugixml/src/pugixml.cpp"
+        "thirdparty/pugixml/src/pugixml.hpp"
+    )
+    source_group("cadcvt\\reader\\freecad" FILES ${cadcvt__reader_freecad})
+    message(STATUS "cadcvt: FreeCadReader enabled")
+else()
+    set(cadcvt__reader_freecad "")
+    set(CADCVT_MINIZ_EXPORT_DIR "")
+    message(STATUS "cadcvt: FreeCadReader disabled (run: git submodule update --init thirdparty/miniz thirdparty/pugixml)")
+endif()
+
+
 set(ALL_FILES
     ${breptopo}
     ${breptopo__computation}
@@ -304,15 +356,17 @@ set(ALL_FILES
     ${brepdb__index}
     ${brepdb__version}
     ${brepdb__script}
+    ${deepbrep__core}
+    ${deepbrep__brep}
+    ${deepbrep__script}
+    ${deepbrep__datagen}
     ${cadcvt__ir}
     ${cadcvt__store}
     ${cadcvt__resolve}
     ${cadcvt__reader}
     ${cadcvt__emitter}
-    ${deepbrep__core}
-    ${deepbrep__brep}
-    ${deepbrep__script}
-    ${deepbrep__datagen}
+    ${cadcvt__script}
+    ${cadcvt__reader_freecad}
 )
 
 ################################################################################
@@ -400,6 +454,12 @@ if(TARGET logger)
     target_link_libraries(${PROJECT_NAME} PRIVATE logger)
 endif()
 target_include_directories(${PROJECT_NAME} PRIVATE thirdparty)
+if(CADCVT_FREECAD_DEPS_OK)
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        thirdparty/miniz
+        thirdparty/pugixml/src
+        "${CADCVT_MINIZ_EXPORT_DIR}")
+endif()
 if(TARGET Eigen3::Eigen)
     target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
 else()

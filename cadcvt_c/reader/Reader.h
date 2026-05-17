@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cadcvt/ir/FeatureIR.h"
+#include "cadcvt_c/ir/FeatureIR.h"
 
 #include <string>
 

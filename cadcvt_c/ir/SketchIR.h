@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cadcvt/ir/Enums.h"
+#include "cadcvt_c/ir/Enums.h"
 
 #include <algorithm>
 #include <cstdint>
