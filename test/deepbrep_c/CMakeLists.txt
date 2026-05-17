@@ -20,18 +20,18 @@ add_executable(${PROJECT_NAME}
     test_gnn_model.cpp
     test_graph_data.cpp
     test_toy_train.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c/Tensor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c/GraphData.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c/Layers.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c/GNNModel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c/Trainer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c/FeatureLabels.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c/ToyDataset.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c/Tensor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c/GraphData.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c/Layers.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c/GNNModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c/Trainer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c/FeatureLabels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c/ToyDataset.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../deepbrep_c
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../deepbrep_c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../..
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Catch2::Catch2)

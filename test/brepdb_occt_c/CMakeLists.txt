@@ -26,15 +26,15 @@ add_executable(${PROJECT_NAME}
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/sm
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/graph/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/guard/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/geoshape/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/objcomp/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/vessel/src/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/wrapper/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/sm
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/graph/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/guard/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/geoshape/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/objcomp/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/vessel/src/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../thirdparty/wrapper/include
     ${OpenCASCADE_INCLUDE_DIR}
 )
 

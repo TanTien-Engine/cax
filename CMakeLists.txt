@@ -379,10 +379,10 @@ option(CAX_BUILD_TESTS "Build unit tests" ON)
 
 if(CAX_BUILD_TESTS)
     enable_testing()
-    add_subdirectory(brepdb_test)
-    add_subdirectory(brepdb_occt_test)
-    add_subdirectory(breptopo_test)
-    add_subdirectory(deepbrep_test)
+    add_subdirectory(test/brepdb_c)
+    add_subdirectory(test/brepdb_occt_c)
+    add_subdirectory(test/breptopo_c)
+    add_subdirectory(test/deepbrep_c)
 endif()
 
 ################################################################################
