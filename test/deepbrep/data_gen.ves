@@ -71,8 +71,8 @@ _editor.add_node(node11, 586.40382653733, 204.35289244306)
 var node12 = ::deepbrep::nodes::export_data::ExportData()
 node12.query_param("filepath").value = "deepbrep_export.bin"
 node12.query_param("graph_only").value = false
-node12.query_param("num_samples").value = 10
-node12.query_param("noise_ratio").value = 0.1
+node12.query_param("num_samples").value = 100
+node12.query_param("noise_ratio").value = 0.2
 
 _editor.add_node(node12, 293.00368755771, 185.58035370659)
 

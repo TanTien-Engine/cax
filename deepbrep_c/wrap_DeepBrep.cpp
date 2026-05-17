@@ -67,6 +67,13 @@ void w_FeatureRecognizer_predict()
         deepbrep::GraphData g = deepbrep::BRepGraphBuilder::Build(s);
         if (g.num_nodes > 0) {
             preds = r->model.predict(g);
+
+            auto& probs = r->model.Probs();
+            for (int i = 0; i < g.num_nodes; ++i) {
+                float conf = probs.at(i, preds[i]);
+                std::printf("  face %d: %s (%.1f%%)\n",
+                            i, deepbrep::face_class_name(preds[i]), conf * 100.0f);
+            }
         }
     }
 
