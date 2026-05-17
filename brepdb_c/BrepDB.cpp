@@ -3,6 +3,8 @@
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
+#include "cadcvt/store/SketchStore.h"
+#include "cadcvt/store/FeatureStore.h"
 #include "partgraph_c/GlobalConfig.h"
 
 #include <graph/Node.h>
@@ -20,6 +22,8 @@ static constexpr const char* META_TOPO_GRAPH   = "topo_graph";
 static constexpr const char* META_COMP_GRAPH   = "comp_graph";
 static constexpr const char* META_VERSION_TREE = "version_tree";
 static constexpr const char* META_TOPO_NAMING = "topo_naming";
+static constexpr const char* META_SKETCH_STORE  = "sketch_store";
+static constexpr const char* META_FEATURE_STORE = "feature_store";
 
 void SerializeWire(uint8_t orientation,
                    const std::vector<brepdb::FaceTopoComp::WireEdgeRef>& edges,
@@ -361,6 +365,104 @@ bool BrepDB::LoadTopoNaming(breptopo::TopoNaming& tn)
     }
 
     bool ok = tn.LoadFromByteArray(buf, len);
+    delete[] buf;
+    return ok;
+}
+
+void BrepDB::StoreSketchStore(const cadcvt::SketchStore& ss)
+{
+    uint8_t* buf = nullptr;
+    uint32_t len = 0;
+    ss.StoreToByteArray(&buf, len);
+
+    if (len == 0)
+    {
+        delete[] buf;
+        return;
+    }
+
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_SKETCH_STORE);
+    try
+    {
+        m_sm->StoreByteArray(page, len, buf);
+        m_rtree->SetMetaPage(META_SKETCH_STORE, page);
+    }
+    catch (...)
+    {
+        delete[] buf;
+        throw;
+    }
+    delete[] buf;
+}
+
+bool BrepDB::LoadSketchStore(cadcvt::SketchStore& ss)
+{
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_SKETCH_STORE);
+    if (page == spatialdb::NewPage) {
+        return false;
+    }
+
+    uint32_t len = 0;
+    uint8_t* buf = nullptr;
+    try
+    {
+        m_sm->LoadByteArray(page, len, &buf);
+    }
+    catch (spatialdb::InvalidPageException&)
+    {
+        return false;
+    }
+
+    bool ok = ss.LoadFromByteArray(buf, len);
+    delete[] buf;
+    return ok;
+}
+
+void BrepDB::StoreFeatureStore(const cadcvt::FeatureStore& fs)
+{
+    uint8_t* buf = nullptr;
+    uint32_t len = 0;
+    fs.StoreToByteArray(&buf, len);
+
+    if (len == 0)
+    {
+        delete[] buf;
+        return;
+    }
+
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_FEATURE_STORE);
+    try
+    {
+        m_sm->StoreByteArray(page, len, buf);
+        m_rtree->SetMetaPage(META_FEATURE_STORE, page);
+    }
+    catch (...)
+    {
+        delete[] buf;
+        throw;
+    }
+    delete[] buf;
+}
+
+bool BrepDB::LoadFeatureStore(cadcvt::FeatureStore& fs)
+{
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_FEATURE_STORE);
+    if (page == spatialdb::NewPage) {
+        return false;
+    }
+
+    uint32_t len = 0;
+    uint8_t* buf = nullptr;
+    try
+    {
+        m_sm->LoadByteArray(page, len, &buf);
+    }
+    catch (spatialdb::InvalidPageException&)
+    {
+        return false;
+    }
+
+    bool ok = fs.LoadFromByteArray(buf, len);
     delete[] buf;
     return ok;
 }

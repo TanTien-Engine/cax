@@ -202,6 +202,41 @@ set(brepdb__script
 )
 source_group("brepdb\\script" FILES ${brepdb__script})
 
+set(cadcvt__ir
+    "cadcvt/ir/Enums.h"
+    "cadcvt/ir/TopoRefIR.h"
+    "cadcvt/ir/SketchIR.h"
+    "cadcvt/ir/FeatureIR.h"
+)
+source_group("cadcvt\\ir" FILES ${cadcvt__ir})
+
+set(cadcvt__store
+    "cadcvt/store/SketchStore.h"
+    "cadcvt/store/SketchStore.cpp"
+    "cadcvt/store/FeatureStore.h"
+    "cadcvt/store/FeatureStore.cpp"
+    "cadcvt/store/SketchBridge.h"
+    "cadcvt/store/SketchBridge.cpp"
+)
+source_group("cadcvt\\store" FILES ${cadcvt__store})
+
+set(cadcvt__resolve
+    "cadcvt/resolve/TopoRefResolver.h"
+    "cadcvt/resolve/TopoRefResolver.cpp"
+)
+source_group("cadcvt\\resolve" FILES ${cadcvt__resolve})
+
+set(cadcvt__reader
+    "cadcvt/reader/Reader.h"
+)
+source_group("cadcvt\\reader" FILES ${cadcvt__reader})
+
+set(cadcvt__emitter
+    "cadcvt/emitter/Replayer.h"
+    "cadcvt/emitter/Replayer.cpp"
+)
+source_group("cadcvt\\emitter" FILES ${cadcvt__emitter})
+
 set(deepbrep__core
     "deepbrep_c/Tensor.cpp"
     "deepbrep_c/Tensor.h"
@@ -269,6 +304,11 @@ set(ALL_FILES
     ${brepdb__index}
     ${brepdb__version}
     ${brepdb__script}
+    ${cadcvt__ir}
+    ${cadcvt__store}
+    ${cadcvt__resolve}
+    ${cadcvt__reader}
+    ${cadcvt__emitter}
     ${deepbrep__core}
     ${deepbrep__brep}
     ${deepbrep__script}

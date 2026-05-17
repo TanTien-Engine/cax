@@ -1,6 +1,15 @@
 #pragma once
 
-namespace breptopo { class CompGraph; class TopoNaming; }
+namespace breptopo
+{
+class CompGraph;
+class TopoNaming;
+}
+namespace cadcvt
+{
+class SketchStore;
+class FeatureStore;
+}
 
 #include "brepdb_c/ShapeIndex.h"
 #include "brepdb_c/TopoGraph.h"
@@ -36,6 +45,12 @@ public:
 
     void StoreTopoNaming(const breptopo::TopoNaming& tn);
     bool LoadTopoNaming(breptopo::TopoNaming& tn);
+
+    // ---- cadcvt meta pages: IR layer for SW / FreeCAD imports ----
+    void StoreSketchStore(const cadcvt::SketchStore& ss);
+    bool LoadSketchStore(cadcvt::SketchStore& ss);
+    void StoreFeatureStore(const cadcvt::FeatureStore& fs);
+    bool LoadFeatureStore(cadcvt::FeatureStore& fs);
 
 private:
     void StoreShapeIndex();
