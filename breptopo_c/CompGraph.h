@@ -438,6 +438,10 @@ public:
 	uint32_t CalcOpId(int ext_id, int sub_op_id) const;
 	NRef     Ref(int ext_id) const;
 
+	// Returns the IR-level op_id -> op_name mapping (assigned by AssignOpIds).
+	// This is the same op_id that HistGraph stores in UIDs.
+	std::unordered_map<uint32_t, std::string> GetIROpIdMap() const;
+
 	// --- reconnection support ---
 	size_t GetHistorySize() const { return m_history.Size(); }
 	const std::string& GetStepOpName(int step_id) const;

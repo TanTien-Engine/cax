@@ -25,23 +25,15 @@ deepbrep::FaceClass class_from_name(const std::string& s)
 
 OpNameVocabulary::OpNameVocabulary()
 {
-    // Physical-level cax operators. Names match what wrap_PartGraph /
-    // wrap_BrepTopo register in the CompGraph OpRegistry.
-    //
-    // Cut is intentionally mapped to Hole (the dominant use); see header
-    // comment for the known bias this introduces.
-    m_table["TopoAlgo.Cut"]     = deepbrep::FaceClass::Hole;
-    m_table["TopoAlgo.Fillet"]  = deepbrep::FaceClass::Fillet;
-    m_table["TopoAlgo.Chamfer"] = deepbrep::FaceClass::Chamfer;
+    // IR-level op_names from comp_ops.cpp (used by AssignOpIds / HistGraph).
+    m_table["cut"]     = deepbrep::FaceClass::Hole;
+    m_table["fillet"]  = deepbrep::FaceClass::Fillet;
+    m_table["chamfer"] = deepbrep::FaceClass::Chamfer;
 
-    // Primitives + fuse/common produce stock material.
-    m_table["PrimMaker.Box"]      = deepbrep::FaceClass::Stock;
-    m_table["PrimMaker.Cylinder"] = deepbrep::FaceClass::Stock;
-    m_table["PrimMaker.Sphere"]   = deepbrep::FaceClass::Stock;
-    m_table["PrimMaker.Cone"]     = deepbrep::FaceClass::Stock;
-    m_table["PrimMaker.Torus"]    = deepbrep::FaceClass::Stock;
-    m_table["TopoAlgo.Fuse"]      = deepbrep::FaceClass::Stock;
-    m_table["TopoAlgo.Common"]    = deepbrep::FaceClass::Stock;
+    m_table["box"]       = deepbrep::FaceClass::Stock;
+    m_table["fuse"]      = deepbrep::FaceClass::Stock;
+    m_table["translate"] = deepbrep::FaceClass::Stock;
+    m_table["offset"]    = deepbrep::FaceClass::Stock;
 }
 
 void OpNameVocabulary::Set(const std::string& op_name, deepbrep::FaceClass cls)

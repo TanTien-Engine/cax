@@ -51,6 +51,7 @@ struct MPLayer
     Mat h_pre_relu;
     std::vector<std::vector<float>> edge_msgs;
     std::vector<std::vector<float>> edge_concat;
+    std::vector<float> msg_scale;  // 1/degree per node (mean aggregation)
 
     void init(int h_dim, int e_dim, std::mt19937& rng);
 

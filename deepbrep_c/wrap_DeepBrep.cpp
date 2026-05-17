@@ -125,14 +125,7 @@ void w_DataExporter_export()
 
         std::unordered_map<uint32_t, std::string> op_map;
         if (cg) {
-            size_t n = cg->GetHistorySize();
-            for (size_t i = 0; i < n; ++i) {
-                auto& name = cg->GetStepOpName(static_cast<int>(i));
-                if (!name.empty()) {
-                    uint32_t oid = cg->CalcOpId(static_cast<int>(i), 0);
-                    op_map[oid] = name;
-                }
-            }
+            op_map = cg->GetIROpIdMap();
         }
 
         auto face_hg = tn ? tn->GetFaceGraph() : nullptr;
@@ -208,16 +201,19 @@ void w_DataExporter_export_augmented()
         return;
     }
 
-    struct ParamInfo {
+    struct ParamInfo 
+    {
         int    step_id;
         double original;
+        std::string name;
     };
     std::vector<ParamInfo> params;
 
     const auto& history = cg->GetHistory();
     for (auto& step : history.Steps()) {
-        if (std::holds_alternative<double>(step.imm)) {
-            params.push_back({step.step_id, std::get<double>(step.imm)});
+
+        if (std::holds_alternative<double>(step.imm) && step.desc != "uid") {
+            params.push_back({step.step_id, std::get<double>(step.imm),step.desc });
         }
     }
 
@@ -262,17 +258,7 @@ void w_DataExporter_export_augmented()
         auto& sv = std::get<breptopo::ShapeVal>(val);
         if (!sv.shape) continue;
 
-        std::unordered_map<uint32_t, std::string> op_map;
-        {
-            size_t n = cg->GetHistorySize();
-            for (size_t i = 0; i < n; ++i) {
-                auto& name = cg->GetStepOpName(static_cast<int>(i));
-                if (!name.empty()) {
-                    uint32_t oid = cg->CalcOpId(static_cast<int>(i), 0);
-                    op_map[oid] = name;
-                }
-            }
-        }
+        auto op_map = cg->GetIROpIdMap();
 
         auto face_hg = tn->GetFaceGraph();
         if (!face_hg) continue;

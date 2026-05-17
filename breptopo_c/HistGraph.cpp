@@ -12,7 +12,9 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <map>
 #include <queue>
+#include <set>
 #include <unordered_set>
 
 namespace breptopo
@@ -59,34 +61,94 @@ HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t
 	PartialPidMap pid_map;
 	auto& new_map = hist.GetNewMap();
 	auto& old_map = hist.GetOldMap();
+	auto& idx_map = hist.GetIdxMap();
+	auto& generated = hist.GetGeneratedIndices();
 
-	// 1. Assign uids for all outputs of this op and (re)bind shape<->uid.
-	std::vector<uint32_t> new_uids;
-	new_uids.reserve(new_map.Extent());
-	for (int i = 1; i <= new_map.Extent(); ++i)
-	{
-		uint32_t uid = CalcUID(type_id, op_id, i - 1);
-		BindShape(uid, new_map(i));
-		new_uids.push_back(uid);
-	}
+	// Classification of new_map faces:
+	//   Generated: truly new geometry (e.g. fillet surface) -> this op owns it
+	//   Modified:  existing face with altered boundary      -> inherit parent UID
+	//   Mop-up:   pass-through (IsPartner in BRepHistory)  -> inherit parent UID
+	//   Unmatched: not in any mapping, brand new            -> this op owns it
 
-	// 2. For each (old -> new) entry produced by OCC's history, record
-	//    the lineage. Unknown old shapes (never bound by a prior op)
-	//    are skipped -- their downstream selectors can't reference them.
-	for (auto& kv : hist.GetIdxMap())
-	{
-		int  old_idx  = kv.first;
-		auto& new_idxs = kv.second;
-
+	// First pass: collect old_uid for each old_idx (before any rebinding).
+	std::map<int, uint32_t> old_idx_to_uid;
+	for (auto& kv : idx_map) {
+		int old_idx = kv.first;
 		const TopoDS_Shape& old_shape = old_map(old_idx + 1);
 		const uint32_t* poid = m_shape2uid.Seek(old_shape);
-		if (!poid) continue;
-		uint32_t old_uid = *poid;
+		if (poid) old_idx_to_uid[old_idx] = *poid;
+	}
+
+	// Determine which new indices inherit a parent UID (Modified or mop-up,
+	// i.e. NOT Generated).
+	std::map<int, uint32_t> inherit_map;
+	for (auto& kv : idx_map) {
+		int old_idx = kv.first;
+		auto& new_idxs = kv.second;
+		for (int ni : new_idxs) {
+			if (!generated.count(ni)) {
+				auto it = old_idx_to_uid.find(old_idx);
+				if (it != old_idx_to_uid.end()) {
+					inherit_map[ni] = it->second;
+				}
+			}
+		}
+	}
+
+	// 1. Assign UIDs for faces in new_map.
+	std::vector<uint32_t> new_uids(new_map.Extent(), 0);
+	uint32_t next_index = 0;
+	for (int i = 1; i <= new_map.Extent(); ++i)
+	{
+		const int idx = i - 1;
+		const TopoDS_Shape& shape = new_map(i);
+
+		auto inh = inherit_map.find(idx);
+		if (inh != inherit_map.end())
+		{
+			// Modified/mop-up face: rebind to parent's UID.
+			BindShape(inh->second, shape);
+			new_uids[idx] = inh->second;
+		}
+		else if (generated.count(idx))
+		{
+			// Generated: this op owns it.
+			uint32_t uid = CalcUID(type_id, op_id, next_index++);
+			BindShape(uid, shape);
+			new_uids[idx] = uid;
+		}
+		else
+		{
+			// Not in any mapping: check for pre-existing UID.
+			const uint32_t* existing = m_shape2uid.Seek(shape);
+			if (existing) {
+				new_uids[idx] = *existing;
+			} else {
+				// Brand new face (e.g. generated from a different element
+				// type like an edge). Assign to this op.
+				uint32_t uid = CalcUID(type_id, op_id, next_index++);
+				BindShape(uid, shape);
+				new_uids[idx] = uid;
+			}
+		}
+	}
+
+	// 2. Record lineage for non-inherited mappings.
+	for (auto& kv : idx_map)
+	{
+		int  old_idx   = kv.first;
+		auto& new_idxs = kv.second;
+
+		auto it = old_idx_to_uid.find(old_idx);
+		if (it == old_idx_to_uid.end()) continue;
+		uint32_t old_uid = it->second;
 
 		std::vector<uint32_t> children;
-		children.reserve(new_idxs.size());
-		for (int ni : new_idxs)
+		for (int ni : new_idxs) {
+			if (inherit_map.count(ni)) continue;
 			children.push_back(new_uids[ni]);
+		}
+		if (children.empty()) continue;
 
 		pid_map[old_uid] = children;
 		m_forward[old_uid] = children;
@@ -96,15 +158,15 @@ HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t
 			if (std::find(bv.begin(), bv.end(), old_uid) == bv.end())
 				bv.push_back(old_uid);
 		}
-
-		// Old shape is consumed by this op. We keep its uid -> shape entry
-		// alive in the bind maps so the UI can still highlight historical
-		// nodes (clicking a dead node in the debug graph returns the
-		// original OCC shape). "Alive" vs "consumed" is encoded by whether
-		// the uid has a forward edge -- see IsActive().
 	}
 
-	m_op2uids[op_id] = std::move(new_uids);
+	// Store UIDs owned by this op (Generated + unmatched new faces).
+	std::vector<uint32_t> owned_uids;
+	for (int i = 0; i < (int)new_uids.size(); ++i) {
+		if (!inherit_map.count(i) && OpOf(new_uids[i]) == op_id)
+			owned_uids.push_back(new_uids[i]);
+	}
+	m_op2uids[op_id] = std::move(owned_uids);
 	return pid_map;
 }
 

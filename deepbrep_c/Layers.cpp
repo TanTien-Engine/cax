@@ -92,11 +92,15 @@ void MPLayer::forward(Mat& node_h, const GraphData& graph)
     edge_msgs.resize(graph.adj_list.size());
     edge_concat.resize(graph.adj_list.size());
 
+    msg_scale.resize(N);
     for (int i = 0; i < N; ++i) {
         self_linear.forward(h_in.row_ptr(i), h_pre_relu.row_ptr(i));
 
         const int start = graph.adj_offset[i];
         const int end   = graph.adj_offset[i + 1];
+        const int degree = end - start;
+        msg_scale[i] = degree > 0 ? 1.0f / static_cast<float>(degree) : 0.0f;
+
         for (int k = start; k < end; ++k) {
             const int j    = graph.adj_list[k].neighbor;
             const int eidx = graph.adj_list[k].edge_idx;
@@ -113,10 +117,11 @@ void MPLayer::forward(Mat& node_h, const GraphData& graph)
             edge_msgs[k].resize(hidden_dim);
             msg_linear.forward(edge_concat[k].data(), edge_msgs[k].data());
 
+            // Accumulate mean-scaled message: self(h_i) + mean(msgs)
             float* dst = h_pre_relu.row_ptr(i);
             const float* src = edge_msgs[k].data();
             for (int d = 0; d < hidden_dim; ++d) {
-                dst[d] += src[d];
+                dst[d] += src[d] * msg_scale[i];
             }
         }
 
@@ -139,6 +144,7 @@ void MPLayer::backward(Mat& grad_h, const GraphData& graph)
 
     std::vector<float> grad_self_in(hidden_dim);
     std::vector<float> grad_concat(hidden_dim + edge_feat_dim);
+    std::vector<float> grad_msg(hidden_dim);
 
     for (int i = 0; i < N; ++i) {
         self_linear.backward(grad_h.row_ptr(i),
@@ -151,10 +157,16 @@ void MPLayer::backward(Mat& grad_h, const GraphData& graph)
 
         const int start = graph.adj_offset[i];
         const int end   = graph.adj_offset[i + 1];
+        const float scale = msg_scale[i];
         for (int k = start; k < end; ++k) {
             const int j = graph.adj_list[k].neighbor;
 
-            msg_linear.backward(grad_h.row_ptr(i),
+            // Gradient through mean: d(loss)/d(msg_k) = grad_h[i] * scale
+            for (int d = 0; d < hidden_dim; ++d) {
+                grad_msg[d] = grad_h.row_ptr(i)[d] * scale;
+            }
+
+            msg_linear.backward(grad_msg.data(),
                                 edge_concat[k].data(),
                                 grad_concat.data());
 
@@ -162,8 +174,6 @@ void MPLayer::backward(Mat& grad_h, const GraphData& graph)
             for (int d = 0; d < hidden_dim; ++d) {
                 gh_in_j[d] += grad_concat[d];
             }
-            // Tail of grad_concat is gradient w.r.t. the edge feature row.
-            // Edge features are input-only here, so we drop it.
         }
     }
 

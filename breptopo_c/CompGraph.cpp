@@ -291,6 +291,20 @@ NRef CompGraph::Ref(int ext_id) const
 	return m_nodes[ext_id].ref;
 }
 
+std::unordered_map<uint32_t, std::string> CompGraph::GetIROpIdMap() const
+{
+	std::unordered_map<uint32_t, std::string> result;
+	for (auto ref : m_ir.TopoSort()) {
+		auto* nd = m_ir.Get(ref);
+		if (!nd || nd->dead) continue;
+		if (nd->op_name.empty() || nd->op_name[0] == '$') continue;
+		if (nd->op_id != UINT32_MAX) {
+			result[nd->op_id] = nd->op_name;
+		}
+	}
+	return result;
+}
+
 // ---------------------------------------------------------------
 //  CompGraph reconnection support
 // ---------------------------------------------------------------

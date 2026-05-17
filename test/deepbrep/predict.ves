@@ -68,36 +68,43 @@ node11.query_param("disable").value = false
 
 _editor.add_node(node11, 586.40382653733, 204.35289244306)
 
-var node12 = ::deepbrep::nodes::export_data::ExportData()
-node12.query_param("filepath").value = "deepbrep_export.bin"
-node12.query_param("graph_only").value = false
-node12.query_param("num_samples").value = 10
-node12.query_param("noise_ratio").value = 0.1
+var node12 = ::brepdb::nodes::brepdb::Brepdb()
+node12.query_param("filename").value = "test_cg"
 
-_editor.add_node(node12, 293.00368755771, 185.58035370659)
+_editor.add_node(node12, 277.15234289442, 309.26750624004)
 
-var node13 = ::breptopo::nodes::hist_graph::HistGraph()
-node13.query_param("type").value = "face"
+var node13 = ::blueprint::nodes::cache::Cache()
+node13.query_param("disable").value = false
 
-_editor.add_node(node13, 455.04262003961, -111.54798169524)
+_editor.add_node(node13, 420.87084546352, 299.11351329907)
 
-var node14 = ::partgraph::nodes::to_mesh::ToMesh()
+var node14 = ::blueprint::nodes::print::Print()
 
-_editor.add_node(node14, 598.74482617308, -100.24308448876)
+_editor.add_node(node14, 573.88862120344, 316.86831262126)
 
-Blueprint.connect(node13, "selected", node14, "shape")
+var node15 = ::deepbrep::nodes::predict::Predict()
+node15.query_param("filepath").value = "model.bin"
+
+_editor.add_node(node15, 296.29908989869, 211.63176881857)
+
+var node16 = ::blueprint::nodes::print::Print()
+
+_editor.add_node(node16, 419.35892518203, 76.541019310204)
+
+Blueprint.connect(node12, "brepdb", node13, "var")
+Blueprint.connect(node13, "var", node14, "value")
 Blueprint.connect(node7, "shape", node8, "shape")
 Blueprint.connect(node0, "shape", node3, "var")
 Blueprint.connect(node3, "var", node5, "shape")
 Blueprint.connect(node1, "this", node5, "camera")
 Blueprint.connect(node3, "var", node6, "shape")
 Blueprint.connect(node5, "objs", node6, "edges")
-Blueprint.connect(node6, "shape", node10, "val")
-Blueprint.connect(node10, "val", node12, "shape")
-Blueprint.connect(node12, "shape", node4, "shape")
-Blueprint.connect(node4, "va", node11, "var")
-Blueprint.connect(node11, "var", node2, "geos")
-Blueprint.connect(node1, "this", node2, "view_cam")
-Blueprint.connect(node14, "va", node2, "selected")
 Blueprint.connect(node6, "shape", node9, "a")
 Blueprint.connect(node8, "shape", node9, "b")
+Blueprint.connect(node9, "shape", node10, "val")
+Blueprint.connect(node10, "val", node15, "shape")
+Blueprint.connect(node15, "predictions", node4, "shape")
+Blueprint.connect(node4, "va", node11, "var")
+Blueprint.connect(node14, "next", node2, "prev")
+Blueprint.connect(node11, "var", node2, "geos")
+Blueprint.connect(node1, "this", node2, "view_cam")

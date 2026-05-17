@@ -7,6 +7,7 @@
 #include <TopTools_IndexedMapOfShape.hxx>
 
 #include <map>
+#include <set>
 #include <vector>
 
 class BRepBuilderAPI_MakeShape;
@@ -34,6 +35,11 @@ public:
 	auto& GetOldMap() const { return m_old_map; }
 	auto& GetNewMap() const { return m_new_map; }
 
+	// New-map indices that were Generated (truly new geometry created from
+	// a different-type parent, e.g. fillet surface from an edge).
+	const std::set<int>& GetGeneratedIndices() const { return m_generated_indices; }
+
+
 public:
 	class History
 	{
@@ -51,6 +57,7 @@ public:
 
 private:
 	std::map<int, std::vector<int>> m_shape_map;
+	std::set<int> m_generated_indices;  // new_map indices from Generated()
 
 	TopTools_IndexedMapOfShape m_new_map, m_old_map;
 

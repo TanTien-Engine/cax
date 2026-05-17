@@ -138,6 +138,7 @@ void BRepHistory::BuildHistory(const std::shared_ptr<History>& hist, TopAbs_Shap
             for (int j = 1; j <= m_new_map.Extent(); j++) {
                 if (m_new_map(j).IsPartner(it.Value())) {
                     m_shape_map[i-1].push_back(j-1);
+                    m_generated_indices.insert(j-1);
                     break;
                 }
             }

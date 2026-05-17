@@ -1,6 +1,7 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY, VAR_TYPE_STRING
 import "partgraph.variant" for VAR_TOPO_SHAPE
 import "deepbrep" for FeatureRecognizer
@@ -13,11 +14,12 @@ class Predict is Node
 
 		this.imports = [
 			Pin(this, "shape", VAR_TOPO_SHAPE),
-			Pin(this, "weights", VAR_TYPE_STRING),
 		]
 		this.exports = [
 			Pin(this, "predictions", VAR_TYPE_ARRAY),
 		]
+
+		this.params.add(NodeParam("filepath", "model.bin"))
 
 		this.layout()
 
@@ -32,15 +34,11 @@ class Predict is Node
 			return nil
 		}
 
-		var v_weights = Blueprint.calc_input_value(this, 1)
-		if (!v_weights) {
-			return nil
-		}
-
-		var path = v_weights.value
-		if (path != this.weights_path) {
-			this.recognizer = FeatureRecognizer(path)
-			this.weights_path = path
+		var filepath = this.query_param("filepath").value
+		if (filepath != this.weights_path) 
+		{
+			this.recognizer = FeatureRecognizer.init(filepath)
+			this.weights_path = filepath
 		}
 
 		if (!this.recognizer.is_loaded()) {
