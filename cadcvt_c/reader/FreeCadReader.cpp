@@ -12,6 +12,7 @@
 #include <cstring>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -177,6 +178,66 @@ LinkRef PropLink(const pugi::xml_node& props_node, const char* prop_name)
         out.sub_names.push_back(sub.attribute("value").value());
     }
     return out;
+}
+
+// App::PropertyLinkList: ordered list of object refs.
+//   <Property name="Group" type="App::PropertyLinkList">
+//     <LinkList count="3">
+//       <Link value="Origin"/>
+//       <Link value="Sketch"/>
+//       <Link value="Pad"/>
+//     </LinkList>
+//   </Property>
+//
+// Returns an empty vector when the property is absent (which is
+// fine for "no body" parts).
+std::vector<std::string> PropLinkList(const pugi::xml_node& props_node,
+                                      const char*           prop_name)
+{
+    std::vector<std::string> out;
+    auto p = FindProperty(props_node, prop_name);
+    if (!p) {
+        return out;
+    }
+    auto list = p.first_child();
+    if (!list) {
+        return out;
+    }
+    for (auto ln = list.child("Link"); ln; ln = ln.next_sibling("Link"))
+    {
+        out.emplace_back(ln.attribute("value").value());
+    }
+    return out;
+}
+
+// FreeCAD object types we ignore entirely. These either describe
+// the document tree (App::Part), a coordinate frame (App::Origin
+// and its anchor planes / axes / point), or auxiliary datum
+// features that don't produce a solid.
+bool IsSkipType(const std::string& t)
+{
+    if (t == "App::Part")                  { return true; }
+    if (t == "App::Origin")                { return true; }
+    if (t == "App::Plane")                 { return true; }
+    if (t == "App::Line")                  { return true; }
+    if (t == "App::Point")                 { return true; }
+    if (t == "PartDesign::CoordinateSystem"){ return true; }
+    if (t == "PartDesign::Plane")          { return true; }
+    if (t == "PartDesign::Line")           { return true; }
+    if (t == "PartDesign::Point")          { return true; }
+    if (t == "PartDesign::ShapeBinder")    { return true; }
+    if (t == "PartDesign::SubShapeBinder") { return true; }
+    return false;
+}
+
+// Container types that have ordered children (Group) but do not
+// produce a feature of their own. PartDesign::Body is the main
+// example: its Group lists every Sketch / Pad / Pocket / ... in
+// modeling order (and Tip points at the active leaf).
+bool IsContainerType(const std::string& t)
+{
+    if (t == "PartDesign::Body") { return true; }
+    return false;
 }
 
 // Quaternion (qx, qy, qz, qw) -> world X axis and Z axis (sketch
@@ -629,27 +690,33 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         return false;
     }
 
-    // First pass: <Objects> gives us name + type for every object.
-    // We allocate a feature id per supported object and skip the
-    // rest. ObjectData is processed in second pass since the body
-    // of each object is keyed by name.
+    // ---- First pass: walk <Objects>, allocate feature ids ----
+    //
+    // Allocation is up-front (before we know if the object will be
+    // emitted) so that BaseFeature / Profile cross-refs always
+    // find a valid id later, even for skipped objects (the id
+    // simply never appears in out.features).
     struct Pending
     {
         std::string name;
         std::string type;
         uint32_t    feature_id;
     };
-    std::vector<Pending> queue;
+    std::vector<Pending>                            queue;
+    std::unordered_map<std::string, const Pending*> by_name;
 
     auto objects_node = root.child("Objects");
     for (auto obj = objects_node.child("Object"); obj; obj = obj.next_sibling("Object"))
     {
         Pending p;
-        p.name = AttrStr(obj, "name");
-        p.type = AttrStr(obj, "type");
+        p.name       = AttrStr(obj, "name");
+        p.type       = AttrStr(obj, "type");
         p.feature_id = m_next_feature_id++;
         m_name_to_id[p.name] = p.feature_id;
         queue.push_back(std::move(p));
+    }
+    for (const auto& p : queue) {
+        by_name[p.name] = &p;
     }
 
     // Index ObjectData by name for cheap lookup.
@@ -660,9 +727,67 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         data_by_name[AttrStr(obj, "name")] = obj;
     }
 
-    // Second pass: build IR per object in declared order.
+    // ---- Compute emission order ----
+    //
+    // PartDesign::Body containers carry a Group property listing
+    // their children (sketches + features) in modeling order. When
+    // present we honor it; when absent we fall back to declaration
+    // order. Multi-body docs concatenate body groups in Body
+    // declaration order; standalone objects outside every body
+    // follow at the tail (also in declaration order).
+    std::vector<const Pending*> emission;
+    emission.reserve(queue.size());
+
+    std::unordered_set<std::string> seen;
+
+    auto push_if_unseen = [&](const Pending* p)
+    {
+        if (!p) {
+            return;
+        }
+        if (seen.count(p->name)) {
+            return;
+        }
+        seen.insert(p->name);
+        emission.push_back(p);
+    };
+
     for (const auto& pending : queue)
     {
+        if (!IsContainerType(pending.type)) {
+            continue;
+        }
+        auto it = data_by_name.find(pending.name);
+        if (it == data_by_name.end()) {
+            continue;
+        }
+        auto props = it->second.child("Properties");
+        for (const auto& child_name : PropLinkList(props, "Group"))
+        {
+            auto cit = by_name.find(child_name);
+            if (cit != by_name.end()) {
+                push_if_unseen(cit->second);
+            }
+        }
+        // Mark the Body itself as seen so it doesn't get re-queued
+        // at the tail; we never emit a feature for the container.
+        seen.insert(pending.name);
+    }
+
+    for (const auto& pending : queue)
+    {
+        push_if_unseen(&pending);
+    }
+
+    // ---- Second pass: build IR per object in emission order ----
+    for (const Pending* pending_ptr : emission)
+    {
+        const auto& pending = *pending_ptr;
+
+        if (IsSkipType(pending.type) || IsContainerType(pending.type)) {
+            continue;
+        }
+
         auto it = data_by_name.find(pending.name);
         if (it == data_by_name.end()) {
             continue;
@@ -777,6 +902,12 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.distance       = PropDouble(props, "Length",  0.0) * m_unit_scale;
             pl.distance2      = PropDouble(props, "Length2", 0.0) * m_unit_scale;
             pl.flip_direction = PropBool  (props, "Reversed", false);
+            // FreeCAD Pocket defaults to cutting INTO the material
+            // (opposite of sketch normal), while Pad extrudes along
+            // the normal.  Invert flip so the tool body lands on the
+            // correct side of the sketch plane.
+            if (pending.type == "PartDesign::Pocket")
+                pl.flip_direction = !pl.flip_direction;
 
             int  type_enum = PropInt (props, "Type", 0);
             bool midplane  = PropBool(props, "Midplane", false);
@@ -901,7 +1032,13 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
         else
         {
-            // Unknown -> Opaque (or fail in strict mode).
+            // Real unknown feature: container / origin / datum
+            // types were already filtered out by IsSkipType /
+            // IsContainerType at the top of this loop, so anything
+            // reaching here is a feature kind we just don't model
+            // yet (e.g. Loft, Revolution, Mirrored, ...). In strict
+            // mode this is an error; otherwise we preserve it as
+            // Opaque so a later pass can recognise it.
             if (m_strict)
             {
                 if (err_msg)

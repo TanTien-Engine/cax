@@ -6,7 +6,10 @@
 #include "brepdb_c/VersionTree.h"
 #include "partgraph_c/TopoShape.h"
 #include "partgraph_c/TopoAlgo.h"
+#include "partgraph_c/TopoAlgo_Ext.h"
 #include "partgraph_c/PrimMaker.h"
+
+#include "partgraph_c/BRepBuilder.h"
 
 #include "sketchlib/Scene.h"
 
@@ -16,7 +19,6 @@
 #include <geoshape/Circle.h>
 #include <geoshape/Arc.h>
 
-#include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
@@ -27,11 +29,16 @@
 #include <gp_Ax2.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Circ.hxx>
+#include <gp_Elips.hxx>
 #include <gp_Trsf.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Face.hxx>
 #include <TopoDS_Wire.hxx>
 #include <TopExp.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
+#include <TopTools_ListOfShape.hxx>
+#include <ShapeFix_Face.hxx>
 
 #include <cmath>
 #include <map>
@@ -66,8 +73,6 @@ namespace cadcvt
 namespace
 {
 
-constexpr int kArcSegments = 32;
-
 // Map a 2D sketch point (x, y) into 3D via (origin, x_dir, normal).
 gp_Pnt LocalToWorld(double       x,
                     double       y,
@@ -88,97 +93,96 @@ gp_Pnt LocalToWorld(double       x,
         origin[2] + x_dir[2] * x + yd[2] * y);
 }
 
-void SamplePolylineFromShape(const gs::Shape2D&     shape,
-                             std::vector<sm::vec2>& out)
+// Build one TopoDS_Edge from a single 2D geometry, lifted onto
+// the sketch plane. Returns a null edge if the type isn't an
+// edge-producing curve (Point, unhandled types). Using exact
+// Geom_Curve based edges (line / circle / arc / ellipse) instead
+// of polygon sampling is what lets BRepBuilderAPI_MakeWire match
+// endpoints reliably; sampled polylines accumulate fp error and
+// the resulting "wire" looks open to OCCT, which makes Prism
+// degenerate to a sweep of the wire (uncapped shell).
+TopoDS_Edge BuildEdgeFromShape(const gs::Shape2D& shape,
+                               const double       origin[3],
+                               const double       x_dir[3],
+                               const double       normal[3])
 {
     switch (shape.GetType())
     {
     case gs::ShapeType2D::Line:
     {
-        const auto& s = static_cast<const gs::Line2D&>(shape);
-        out.push_back(s.GetStart());
-        out.push_back(s.GetEnd());
-        break;
-    }
-    case gs::ShapeType2D::Arc:
-    {
-        const auto& s = static_cast<const gs::Arc&>(shape);
-        float a0 = 0;
-        float a1 = 0;
-        s.GetAngles(a0, a1);
-        float    r = s.GetRadius();
-        sm::vec2 c = s.GetCenter();
-        for (int i = 0; i <= kArcSegments; ++i)
-        {
-            float t = a0 + (a1 - a0) * (float)i / kArcSegments;
-            out.emplace_back(c.x + r * std::cos(t), c.y + r * std::sin(t));
+        const auto& s  = static_cast<const gs::Line2D&>(shape);
+        gp_Pnt      p1 = LocalToWorld(s.GetStart().x, s.GetStart().y,
+                                      origin, x_dir, normal);
+        gp_Pnt      p2 = LocalToWorld(s.GetEnd().x,   s.GetEnd().y,
+                                      origin, x_dir, normal);
+        if (p1.Distance(p2) < 1e-9) {
+            return TopoDS_Edge();
         }
-        break;
+        BRepBuilderAPI_MakeEdge mk(p1, p2);
+        return mk.IsDone() ? mk.Edge() : TopoDS_Edge();
     }
     case gs::ShapeType2D::Circle:
     {
         const auto& s = static_cast<const gs::Circle&>(shape);
-        float    r = s.GetRadius();
-        sm::vec2 c = s.GetCenter();
-        for (int i = 0; i <= kArcSegments; ++i)
-        {
-            float t = 2.0f * 3.14159265358979323846f * (float)i / kArcSegments;
-            out.emplace_back(c.x + r * std::cos(t), c.y + r * std::sin(t));
-        }
-        break;
+        gp_Pnt      c = LocalToWorld(s.GetCenter().x, s.GetCenter().y,
+                                     origin, x_dir, normal);
+        gp_Dir      nd(normal[0], normal[1], normal[2]);
+        gp_Dir      xd(x_dir [0], x_dir [1], x_dir [2]);
+        gp_Ax2      ax(c, nd, xd);
+        gp_Circ     circ(ax, s.GetRadius());
+        BRepBuilderAPI_MakeEdge mk(circ);
+        return mk.IsDone() ? mk.Edge() : TopoDS_Edge();
+    }
+    case gs::ShapeType2D::Arc:
+    {
+        const auto& s = static_cast<const gs::Arc&>(shape);
+        float       a0 = 0;
+        float       a1 = 0;
+        s.GetAngles(a0, a1);
+        gp_Pnt  c = LocalToWorld(s.GetCenter().x, s.GetCenter().y,
+                                 origin, x_dir, normal);
+        gp_Dir  nd(normal[0], normal[1], normal[2]);
+        gp_Dir  xd(x_dir [0], x_dir [1], x_dir [2]);
+        gp_Ax2  ax(c, nd, xd);
+        gp_Circ circ(ax, s.GetRadius());
+        BRepBuilderAPI_MakeEdge mk(circ, (double)a0, (double)a1);
+        return mk.IsDone() ? mk.Edge() : TopoDS_Edge();
     }
     case gs::ShapeType2D::Point:
-        // Points do not contribute to wires.
-        break;
+        // Points don't contribute to wires.
+        return TopoDS_Edge();
     default:
-        // Ellipse / Spline not supported yet, silently skipped.
-        break;
+        // Ellipse / Spline / others not yet supported; ignored.
+        return TopoDS_Edge();
     }
 }
 
-// Concatenate every solved geometry into one 3D wire.
-//
-// Simplified strategy: append shape samples in order, close the
-// polygon. Adequate for one-loop tests (single rectangle, single
-// circle). A real algorithm needs to walk a 2D graph and pick
-// closed loops, similar to sketchgraph/util.ves's wire pickup.
+// Build a wire from every solved geometry using exact edges.
+// BRepBuilderAPI_MakeWire(ListOfShape) reorders edges by endpoint
+// matching, so the input order from the solver doesn't matter.
 TopoDS_Wire BuildWireFromSolved(const SketchBridge::GeoShapes& solved,
                                 const double                   origin[3],
                                 const double                   x_dir[3],
                                 const double                   normal[3])
 {
-    BRepBuilderAPI_MakePolygon poly;
-    bool   first = true;
-    gp_Pnt last_pt;
-
+    TopTools_ListOfShape edges;
     for (const auto& kv : solved)
     {
-        std::vector<sm::vec2> pts;
-        SamplePolylineFromShape(*kv.second, pts);
-
-        for (size_t i = 0; i < pts.size(); ++i)
-        {
-            gp_Pnt p = LocalToWorld(pts[i].x, pts[i].y, origin, x_dir, normal);
-            if (first)
-            {
-                poly.Add(p);
-                last_pt = p;
-                first   = false;
-            }
-            else
-            {
-                // Skip coincident endpoints; MakePolygon rejects
-                // duplicates.
-                if (p.Distance(last_pt) > 1e-7)
-                {
-                    poly.Add(p);
-                    last_pt = p;
-                }
-            }
+        TopoDS_Edge e = BuildEdgeFromShape(*kv.second, origin, x_dir, normal);
+        if (!e.IsNull()) {
+            edges.Append(e);
         }
     }
-    poly.Close();
-    return poly.IsDone() ? poly.Wire() : TopoDS_Wire();
+    if (edges.IsEmpty()) {
+        return TopoDS_Wire();
+    }
+
+    BRepBuilderAPI_MakeWire mk;
+    mk.Add(edges);
+    if (!mk.IsDone()) {
+        return TopoDS_Wire();
+    }
+    return mk.Wire();
 }
 
 std::shared_ptr<partgraph::TopoShape> WireToFace(const TopoDS_Wire& wire,
@@ -193,11 +197,33 @@ std::shared_ptr<partgraph::TopoShape> WireToFace(const TopoDS_Wire& wire,
     gp_Dir n(normal[0], normal[1], normal[2]);
     gp_Pln plane(o, n);
 
+    // MakeFace(plane, wire) defaults to Inside=true, which already
+    // auto-reverses CW wires so the face ends up bounded.
+    //
+    // Important: do NOT call ShapeFix_Face::FixAddNaturalBound on
+    // the result. For a plane the "natural bound" is an infinite
+    // box; the fixer would treat our wire as an inner hole and
+    // turn the face into (infinite slab - our disc), which Prism
+    // then sweeps into an annular slab with the inner top cap
+    // missing - exactly the "one side not capped" symptom we saw.
     BRepBuilderAPI_MakeFace mkFace(plane, wire);
     if (!mkFace.IsDone()) {
         return {};
     }
-    return std::make_shared<partgraph::TopoShape>(mkFace.Face());
+
+    // FixOrientation is fine on its own: it just flips the wire
+    // when its signed area is negative relative to the plane
+    // normal, so the resulting face's natural normal lines up with
+    // the plane's normal. Without this the prism's side faces or
+    // top cap may end up with inward normals -> backface culling
+    // hides them in the renderer, looking like a missing cap.
+    TopoDS_Face   face = mkFace.Face();
+    ShapeFix_Face fixer(face);
+    fixer.FixOrientation();
+    fixer.Perform();
+    face = fixer.Face();
+
+    return std::make_shared<partgraph::TopoShape>(face);
 }
 
 // Locate the SketchIR whose feature_id matches sketch_feat_id.
@@ -375,6 +401,12 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     sk->plane_origin,
                     sk->plane_x_dir,
                     sk->plane_normal);
+                if (wire.IsNull())
+                {
+                    step_ok     = false;
+                    out.err_msg = "wire build failed: " + feat.name;
+                    return;
+                }
                 auto face = WireToFace(wire, sk->plane_origin, sk->plane_normal);
                 if (!face)
                 {
@@ -383,20 +415,52 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                double dx = p.direction[0] * p.distance;
-                double dy = p.direction[1] * p.distance;
-                double dz = p.direction[2] * p.distance;
-                if (p.flip_direction)
+                // direction is expressed in sketch-local axes
+                // (x = plane_x_dir, y = plane_y_dir, z = plane_normal).
+                // Readers conventionally write (0,0,1) to mean
+                // "along the sketch normal"; we rotate that into
+                // world space so the prism direction lines up with
+                // the face we just built.
+                double yd[3] =
                 {
-                    dx = -dx;
-                    dy = -dy;
-                    dz = -dz;
-                }
+                    sk->plane_normal[1] * sk->plane_x_dir[2] - sk->plane_normal[2] * sk->plane_x_dir[1],
+                    sk->plane_normal[2] * sk->plane_x_dir[0] - sk->plane_normal[0] * sk->plane_x_dir[2],
+                    sk->plane_normal[0] * sk->plane_x_dir[1] - sk->plane_normal[1] * sk->plane_x_dir[0],
+                };
+                double world_dir[3] =
+                {
+                    p.direction[0] * sk->plane_x_dir[0] + p.direction[1] * yd[0] + p.direction[2] * sk->plane_normal[0],
+                    p.direction[0] * sk->plane_x_dir[1] + p.direction[1] * yd[1] + p.direction[2] * sk->plane_normal[1],
+                    p.direction[0] * sk->plane_x_dir[2] + p.direction[1] * yd[2] + p.direction[2] * sk->plane_normal[2],
+                };
 
-                auto tool = partgraph::TopoAlgo::Prism(
-                    face,
-                    dx, dy, dz,
-                    op_id, m_impl->naming, m_impl->vtree);
+                double sign = p.flip_direction ? -1.0 : 1.0;
+
+                std::shared_ptr<partgraph::TopoShape> tool;
+                if (p.end_type != ExtrudeEndType::Blind)
+                {
+                    tool = partgraph::TopoAlgo_Ext::ExtrudeEx(
+                        face,
+                        sign * world_dir[0],
+                        sign * world_dir[1],
+                        sign * world_dir[2],
+                        p.distance,
+                        p.distance2,
+                        static_cast<partgraph::ExtrudeEndType>(p.end_type),
+                        static_cast<partgraph::ExtrudeEndType>(p.end_type2),
+                        shape,
+                        op_id, m_impl->naming);
+                }
+                else
+                {
+                    double dx = world_dir[0] * p.distance * sign;
+                    double dy = world_dir[1] * p.distance * sign;
+                    double dz = world_dir[2] * p.distance * sign;
+                    tool = partgraph::TopoAlgo::Prism(
+                        face,
+                        dx, dy, dz,
+                        op_id, m_impl->naming, m_impl->vtree);
+                }
                 if (!tool)
                 {
                     step_ok = false;
@@ -568,6 +632,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         }, feat.data);
 
         out.op_ids.push_back(step_ok ? op_id : 0);
+
         if (!step_ok && shape == nullptr)
         {
             // Failed on the very first feature; bail.

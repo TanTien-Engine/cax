@@ -8,6 +8,7 @@
 #include <unirender/VertexInputAttribute.h>
 #include <geoshape/Line3D.h>
 #include <geoshape/Polyline3D.h>
+#include <logger/logger.h>
 
 // OCCT
 #include <Standard_Handle.hxx>
@@ -273,6 +274,7 @@ void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vert
 
         int nb_tri_in_face = mesh->NbTriangles();
         TopAbs_Orientation orient = act_face.Orientation();
+
         for (int j = 1; j <= nb_tri_in_face; ++j)
         {
             Standard_Integer N1, N2, N3;
@@ -286,6 +288,21 @@ void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vert
             }
 
             gp_Pnt V1(mesh->Node(N1)), V2(mesh->Node(N2)), V3(mesh->Node(N3));
+
+            // Apply the face's TopLoc_Location to bring mesh nodes
+            // from the surface's local frame into world space. Some
+            // shapes (notably faces produced by BRepPrimAPI_MakePrism)
+            // carry a non-identity location; ignoring it puts that
+            // face's triangles at the wrong world position, which
+            // either places them outside the camera frustum or makes
+            // them z-fight with other faces.
+            if (!aLoc.IsIdentity())
+            {
+                const gp_Trsf& trsf = aLoc.Transformation();
+                V1.Transform(trsf);
+                V2.Transform(trsf);
+                V3.Transform(trsf);
+            }
 
             gp_Vec v1(V1.X(), V1.Y(), V1.Z()),
                 v2(V2.X(), V2.Y(), V2.Z()),
