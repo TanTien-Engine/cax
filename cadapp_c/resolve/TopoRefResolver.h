@@ -1,12 +1,12 @@
 #pragma once
 
-#include "cadcvt_c/ir/TopoRefIR.h"
+#include "cadapp_c/ir/TopoRefIR.h"
 
 #include <cstdint>
 #include <vector>
 
 // ============================================================
-// cadcvt/resolve/TopoRefResolver.h
+// cadapp/resolve/TopoRefResolver.h
 //
 // Locate every TopoRefIR on a live OCCT shape via geometric
 // matching, then ask TopoNaming for the uid (the second layer of
@@ -20,7 +20,7 @@
 // FeatureStore's TopoRefIR. From then on edits can take the uid
 // fast-path and skip geometric matching.
 //
-// The header only depends on cadcvt/ir; OCCT and breptopo are
+// The header only depends on cadapp/ir; OCCT and breptopo are
 // inside the cpp.
 // ============================================================
 
@@ -30,7 +30,7 @@ namespace breptopo
 class TopoNaming;
 }
 
-namespace cadcvt
+namespace cadapp
 {
 
 struct ResolvedRef
@@ -60,4 +60,4 @@ public:
                                             double                         tolerance = 1e-3);
 };
 
-} // namespace cadcvt
+} // namespace cadapp

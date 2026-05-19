@@ -3,7 +3,7 @@
 #include <cstdint>
 
 // ============================================================
-// cadcvt/ir/Enums.h
+// cadapp/ir/Enums.h
 //
 // Public enums for sketch geometry, sketch constraints, feature
 // types and extrude end conditions. CAD-kernel independent and
@@ -15,7 +15,7 @@
 // stay in lock-step.
 // ============================================================
 
-namespace cadcvt
+namespace cadapp
 {
 
 // Sketch geometry kind. 1:1 with sketchlib::GeoType for the items
@@ -150,4 +150,4 @@ enum class ExtrudeEndType : uint8_t
     OffsetFromSurface = 5,
 };
 
-} // namespace cadcvt
+} // namespace cadapp

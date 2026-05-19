@@ -1,6 +1,6 @@
 #include "cadcvt_c/wrap_CadCvt.h"
 #include "cadcvt_c/reader/FreeCadReader.h"
-#include "cadcvt_c/emitter/Replayer.h"
+#include "cadapp_c/emitter/Replayer.h"
 
 #include "partgraph_c/TransHelper.h"
 #include "partgraph_c/TopoShape.h"
@@ -39,9 +39,9 @@ namespace
 
 struct FreeCadLoaderState
 {
-    FreeCadReader reader;
-    Replayer      replayer;
-    std::string   last_error;
+    FreeCadReader      reader;       // cadcvt::FreeCadReader
+    cadapp::Replayer   replayer;
+    std::string        last_error;
 };
 
 
@@ -107,7 +107,7 @@ void w_FreeCadLoader_load()
     }
 
     // Step 1: read FreeCAD document into DocumentIR.
-    DocumentIR doc;
+    cadapp::DocumentIR doc;
     std::string err;
     if (!st->reader.ReadFile(path, doc, &err))
     {
@@ -117,11 +117,11 @@ void w_FreeCadLoader_load()
     }
 
     // Step 2: replay onto OCCT via partgraph.
-    ReplayOptions opt;
+    cadapp::ReplayOptions opt;
     opt.write_back_resolved = false;  // no need to mutate doc for one-shot load
     opt.commit_versions     = false;  // host script decides versioning policy
 
-    ReplayResult res;
+    cadapp::ReplayResult res;
     if (!st->replayer.Replay(doc, opt, res))
     {
         st->last_error = res.err_msg.empty() ? "Replay failed" : res.err_msg;

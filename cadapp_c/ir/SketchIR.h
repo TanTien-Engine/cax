@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cadcvt_c/ir/Enums.h"
+#include "cadapp_c/ir/Enums.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -8,7 +8,7 @@
 #include <vector>
 
 // ============================================================
-// cadcvt/ir/SketchIR.h
+// cadapp/ir/SketchIR.h
 //
 // CAD-kernel independent sketch IR.
 //
@@ -27,7 +27,7 @@
 //     Spline  : [n, x0, y0, x1, y1, ..., xn-1, yn-1]
 // ============================================================
 
-namespace cadcvt
+namespace cadapp
 {
 
 struct SkGeoRef
@@ -166,4 +166,4 @@ struct SketchIR
     std::vector<SkConsIR> cons;
 };
 
-} // namespace cadcvt
+} // namespace cadapp

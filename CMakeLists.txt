@@ -246,42 +246,60 @@ set(deepbrep__datagen
 source_group("deepbrep\\datagen" FILES ${deepbrep__datagen})
 
 
+# ---- cadapp: CAD application layer (IR + replay + name resolve) ----
+#
+# Sits between breptopo (kernel-agnostic computation graph) and
+# cadcvt (external-format readers). Owns the FeatureIR / SketchIR
+# data model, the Replayer that turns a DocumentIR into a CompGraph
+# + history, the TopoRefResolver, the binary stores, and the
+# sketch-related ops registered on breptopo's OpRegistry.
+
+set(cadapp__ir
+    "cadapp_c/ir/Enums.h"
+    "cadapp_c/ir/SketchIR.h"
+    "cadapp_c/ir/TopoRefIR.h"
+    "cadapp_c/ir/FeatureIR.h"
+)
+source_group("cadapp\\ir" FILES ${cadapp__ir})
+
+set(cadapp__store
+    "cadapp_c/store/SketchStore.cpp"
+    "cadapp_c/store/SketchStore.h"
+    "cadapp_c/store/FeatureStore.cpp"
+    "cadapp_c/store/FeatureStore.h"
+    "cadapp_c/store/SketchBridge.cpp"
+    "cadapp_c/store/SketchBridge.h"
+)
+source_group("cadapp\\store" FILES ${cadapp__store})
+
+set(cadapp__resolve
+    "cadapp_c/resolve/TopoRefResolver.cpp"
+    "cadapp_c/resolve/TopoRefResolver.h"
+)
+source_group("cadapp\\resolve" FILES ${cadapp__resolve})
+
+set(cadapp__emitter
+    "cadapp_c/emitter/Replayer.cpp"
+    "cadapp_c/emitter/Replayer.h"
+)
+source_group("cadapp\\emitter" FILES ${cadapp__emitter})
+
+set(cadapp__ops
+    "cadapp_c/ops/sketch_ops.cpp"
+    "cadapp_c/ops/sketch_ops.h"
+)
+source_group("cadapp\\ops" FILES ${cadapp__ops})
+
+
 # ---- cadcvt: CAD inter-format converter ----
-
-set(cadcvt__ir
-    "cadcvt_c/ir/Enums.h"
-    "cadcvt_c/ir/SketchIR.h"
-    "cadcvt_c/ir/TopoRefIR.h"
-    "cadcvt_c/ir/FeatureIR.h"
-)
-source_group("cadcvt\\ir" FILES ${cadcvt__ir})
-
-set(cadcvt__store
-    "cadcvt_c/store/SketchStore.cpp"
-    "cadcvt_c/store/SketchStore.h"
-    "cadcvt_c/store/FeatureStore.cpp"
-    "cadcvt_c/store/FeatureStore.h"
-    "cadcvt_c/store/SketchBridge.cpp"
-    "cadcvt_c/store/SketchBridge.h"
-)
-source_group("cadcvt\\store" FILES ${cadcvt__store})
-
-set(cadcvt__resolve
-    "cadcvt_c/resolve/TopoRefResolver.cpp"
-    "cadcvt_c/resolve/TopoRefResolver.h"
-)
-source_group("cadcvt\\resolve" FILES ${cadcvt__resolve})
+#
+# External-format readers (FreeCAD .FCStd, ...) that produce
+# cadapp::DocumentIR, plus the FreeCadLoader Ves binding.
 
 set(cadcvt__reader
     "cadcvt_c/reader/Reader.h"
 )
 source_group("cadcvt\\reader" FILES ${cadcvt__reader})
-
-set(cadcvt__emitter
-    "cadcvt_c/emitter/Replayer.cpp"
-    "cadcvt_c/emitter/Replayer.h"
-)
-source_group("cadcvt\\emitter" FILES ${cadcvt__emitter})
 
 set(cadcvt__script
     "cadcvt_c/cadcvt.ves.inc"
@@ -360,11 +378,12 @@ set(ALL_FILES
     ${deepbrep__brep}
     ${deepbrep__script}
     ${deepbrep__datagen}
-    ${cadcvt__ir}
-    ${cadcvt__store}
-    ${cadcvt__resolve}
+    ${cadapp__ir}
+    ${cadapp__store}
+    ${cadapp__resolve}
+    ${cadapp__emitter}
+    ${cadapp__ops}
     ${cadcvt__reader}
-    ${cadcvt__emitter}
     ${cadcvt__script}
     ${cadcvt__reader_freecad}
 )

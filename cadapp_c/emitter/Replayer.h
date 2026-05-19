@@ -1,13 +1,13 @@
 #pragma once
 
-#include "cadcvt_c/ir/FeatureIR.h"
+#include "cadapp_c/ir/FeatureIR.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
 // ============================================================
-// cadcvt/emitter/Replayer.h
+// cadapp/emitter/Replayer.h
 //
 // Rebuild a DocumentIR on the project's OCCT kernel.
 //
@@ -23,7 +23,7 @@
 //   5. Use TopoRefResolver to resolve any TopoRefIR that does not
 //      yet carry a uid, then write it back.
 //
-// The header only depends on cadcvt/ir; OCCT stays in the .cpp.
+// The header only depends on cadapp/ir; OCCT stays in the .cpp.
 // ============================================================
 
 namespace breptopo
@@ -40,7 +40,7 @@ namespace partgraph
 class TopoShape;
 }
 
-namespace cadcvt
+namespace cadapp
 {
 
 struct ReplayOptions
@@ -105,4 +105,4 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-} // namespace cadcvt
+} // namespace cadapp

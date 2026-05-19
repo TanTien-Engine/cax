@@ -1,19 +1,19 @@
 #pragma once
 
-#include "cadcvt_c/ir/SketchIR.h"
+#include "cadapp_c/ir/SketchIR.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
 // ============================================================
-// cadcvt/store/SketchStore.h
+// cadapp/store/SketchStore.h
 //
 // Binary sketch store, persisted as the "sketch_store" meta page
 // of BrepDB.
 //
 // Design points:
-//   1. Kernel independent (only depends on cadcvt/ir/, no OCCT,
+//   1. Kernel independent (only depends on cadapp/ir/, no OCCT,
 //      no sketchlib).
 //   2. POD arrays + string pool + double pool, packed, host
 //      endian.
@@ -31,7 +31,7 @@
 //   [char   name_pool[]]             SkSketchHeader::name_offset indexes here
 // ============================================================
 
-namespace cadcvt
+namespace cadapp
 {
 
 // ---- on-disk PODs; bump version when adding fields ----
@@ -171,4 +171,4 @@ private:
     SkSketchHeader m_cur{};
 };
 
-} // namespace cadcvt
+} // namespace cadapp

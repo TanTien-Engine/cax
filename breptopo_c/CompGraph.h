@@ -53,7 +53,7 @@ struct ShapeVal
 };
 
 // Opaque type-erased handle. Used for client-defined types that
-// breptopo doesn't depend on (e.g. cadcvt::SketchIR). The producing
+// breptopo doesn't depend on (e.g. cadapp::SketchIR). The producing
 // op (registered by the client) static_pointer_cast's back to its
 // concrete type.
 struct SketchVal

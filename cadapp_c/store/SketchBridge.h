@@ -1,7 +1,7 @@
 #pragma once
 
-#include "cadcvt_c/ir/SketchIR.h"
-#include "cadcvt_c/store/SketchStore.h"
+#include "cadapp_c/ir/SketchIR.h"
+#include "cadapp_c/store/SketchStore.h"
 
 #include <memory>
 #include <string>
@@ -9,7 +9,7 @@
 #include <vector>
 
 // ============================================================
-// cadcvt/store/SketchBridge.h
+// cadapp/store/SketchBridge.h
 //
 // SketchStore / SketchIR <-> sketchlib::Scene two-way bridge.
 //
@@ -36,7 +36,7 @@ namespace sketchlib
 class Scene;
 }
 
-namespace cadcvt
+namespace cadapp
 {
 
 class SketchBridge
@@ -75,4 +75,4 @@ public:
     static std::string EmitVes(const SketchIR&    sketch);
 };
 
-} // namespace cadcvt
+} // namespace cadapp

@@ -1,5 +1,6 @@
-#include "cadcvt_c/emitter/Replayer.h"
-#include "cadcvt_c/resolve/TopoRefResolver.h"
+#include "cadapp_c/emitter/Replayer.h"
+#include "cadapp_c/resolve/TopoRefResolver.h"
+#include "cadapp_c/ops/sketch_ops.h"
 
 #include "breptopo_c/CompGraph.h"
 #include "breptopo_c/TopoNaming.h"
@@ -32,10 +33,10 @@
 // The Replay path now builds a CompGraph: each feature becomes a
 // graph subtree of typed const + op nodes. Sketches enter the graph
 // as a $sketch const + plane Vec3 consts feeding a "sketch_face" op
-// (registered as a builtin in breptopo/comp_ops.cpp).
+// (registered by cadapp::RegisterSketchOps in cadapp/ops/).
 // ============================================================
 
-namespace cadcvt
+namespace cadapp
 {
 
 namespace
@@ -100,6 +101,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     out.vtree  = m_impl->vtree;
 
     auto cg = std::make_shared<breptopo::CompGraph>();
+    // Augment breptopo's builtin op set with cadapp's IR-aware ops
+    // (currently just "sketch_face"). breptopo cannot register this
+    // op itself without depending on cadapp::SketchIR, so the wiring
+    // happens here where both sides are visible.
+    RegisterSketchOps(cg->GetRegistry());
     cg->SetTopoNaming(m_impl->naming);
 
     int last_node = -1;
@@ -444,4 +450,4 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     return true;
 }
 
-} // namespace cadcvt
+} // namespace cadapp

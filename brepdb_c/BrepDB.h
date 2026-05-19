@@ -5,7 +5,7 @@ namespace breptopo
 class CompGraph;
 class TopoNaming;
 }
-namespace cadcvt
+namespace cadapp
 {
 class SketchStore;
 class FeatureStore;
@@ -46,11 +46,11 @@ public:
     void StoreTopoNaming(const breptopo::TopoNaming& tn);
     bool LoadTopoNaming(breptopo::TopoNaming& tn);
 
-    // ---- cadcvt meta pages: IR layer for SW / FreeCAD imports ----
-    void StoreSketchStore(const cadcvt::SketchStore& ss);
-    bool LoadSketchStore(cadcvt::SketchStore& ss);
-    void StoreFeatureStore(const cadcvt::FeatureStore& fs);
-    bool LoadFeatureStore(cadcvt::FeatureStore& fs);
+    // ---- cadapp meta pages: IR layer for SW / FreeCAD imports ----
+    void StoreSketchStore(const cadapp::SketchStore& ss);
+    bool LoadSketchStore(cadapp::SketchStore& ss);
+    void StoreFeatureStore(const cadapp::FeatureStore& fs);
+    bool LoadFeatureStore(cadapp::FeatureStore& fs);
 
 private:
     void StoreShapeIndex();

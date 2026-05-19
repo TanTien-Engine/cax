@@ -1,9 +1,9 @@
-#include "cadcvt_c/store/SketchStore.h"
+#include "cadapp_c/store/SketchStore.h"
 
 #include <cassert>
 #include <cstring>
 
-namespace cadcvt
+namespace cadapp
 {
 
 SketchStore::SketchStore() = default;
@@ -345,4 +345,4 @@ void SketchStore::Clear()
     m_cur = SkSketchHeader{};
 }
 
-} // namespace cadcvt
+} // namespace cadapp

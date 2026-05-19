@@ -1,9 +1,9 @@
-#include "cadcvt_c/store/FeatureStore.h"
+#include "cadapp_c/store/FeatureStore.h"
 
 #include <cassert>
 #include <cstring>
 
-namespace cadcvt
+namespace cadapp
 {
 
 // ============================================================
@@ -1041,4 +1041,4 @@ void FeatureStore::Clear()
     m_name_pool.clear();
 }
 
-} // namespace cadcvt
+} // namespace cadapp

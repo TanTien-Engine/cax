@@ -1,4 +1,4 @@
-#include "cadcvt_c/resolve/TopoRefResolver.h"
+#include "cadapp_c/resolve/TopoRefResolver.h"
 
 #include "breptopo_c/TopoNaming.h"
 #include "breptopo_c/HistGraph.h"
@@ -22,7 +22,7 @@
 #include <cmath>
 #include <limits>
 
-namespace cadcvt
+namespace cadapp
 {
 
 namespace
@@ -307,4 +307,4 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
     return out;
 }
 
-} // namespace cadcvt
+} // namespace cadapp

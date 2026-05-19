@@ -1,13 +1,13 @@
 #pragma once
 
-#include "cadcvt_c/ir/FeatureIR.h"
+#include "cadapp_c/ir/FeatureIR.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
 // ============================================================
-// cadcvt/store/FeatureStore.h
+// cadapp/store/FeatureStore.h
 //
 // Binary feature chain store. Persisted as the "feature_store"
 // meta page of BrepDB.
@@ -36,7 +36,7 @@
 //   reordering is not. Bump FEAT_VERSION on layout break.
 // ============================================================
 
-namespace cadcvt
+namespace cadapp
 {
 
 #pragma pack(push, 1)
@@ -121,4 +121,4 @@ private:
     std::string               m_name_pool;
 };
 
-} // namespace cadcvt
+} // namespace cadapp

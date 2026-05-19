@@ -1,13 +1,13 @@
 #pragma once
 
-#include "cadcvt_c/ir/FeatureIR.h"
+#include "cadapp_c/ir/FeatureIR.h"
 
 #include <string>
 
 // ============================================================
 // cadcvt/reader/Reader.h
 //
-// Abstract base for readers: CAD document -> DocumentIR.
+// Abstract base for readers: CAD document -> cadapp::DocumentIR.
 //
 // Each concrete reader is responsible only for emitting features
 // and sketches; OCCT reconstruction is done uniformly by
@@ -55,10 +55,10 @@ public:
     // Read a path (CAD-specific). On failure returns false and
     // writes a reason into err_msg when not null.
     virtual bool ReadFile(const std::string& path,
-                          DocumentIR&        out,
+                          cadapp::DocumentIR& out,
                           std::string*       err_msg = nullptr) = 0;
 
-    // Reader name, written into DocumentIR::source for diagnostics.
+    // Reader name, written into cadapp::DocumentIR::source for diagnostics.
     virtual const char* Name() const = 0;
 };
 

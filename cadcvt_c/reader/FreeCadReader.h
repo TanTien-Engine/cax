@@ -9,7 +9,7 @@
 // ============================================================
 // cadcvt/reader/FreeCadReader.h
 //
-// FreeCAD .FCStd / Document.xml -> DocumentIR.
+// FreeCAD .FCStd / Document.xml -> cadapp::DocumentIR.
 //
 // Data path:
 //   .FCStd is a zip archive; we extract Document.xml via miniz
@@ -59,7 +59,7 @@ public:
     ~FreeCadReader() override;
 
     bool ReadFile(const std::string& path,
-                  DocumentIR&        out,
+                  cadapp::DocumentIR& out,
                   std::string*       err_msg = nullptr) override;
 
     const char* Name() const override {
@@ -82,10 +82,10 @@ public:
 private:
     // Internal: parse Document.xml text into out. Both ReadFile
     // entry points (.FCStd via miniz and bare .xml) funnel here.
-    bool ParseDocumentXml(const char*  xml_data,
-                          size_t       xml_size,
-                          DocumentIR&  out,
-                          std::string* err_msg);
+    bool ParseDocumentXml(const char*       xml_data,
+                          size_t            xml_size,
+                          cadapp::DocumentIR& out,
+                          std::string*      err_msg);
 
     // Unzip path's Document.xml into a memory buffer. Returns true
     // on success and fills out_text + out_size. Caller frees with
@@ -106,7 +106,7 @@ private:
     std::unordered_map<std::string, uint32_t> m_name_to_id;
 
     // Used by sketches to convert the FreeCAD "geometry index" into
-    // the cadcvt SkGeoIR::id we assign at read time.
+    // the cadapp::SkGeoIR::id we assign at read time.
     std::unordered_map<int, uint32_t> m_sk_geo_idx_to_id;
 
     uint32_t m_next_feature_id = 1;

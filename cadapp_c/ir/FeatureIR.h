@@ -1,8 +1,8 @@
 #pragma once
 
-#include "cadcvt_c/ir/Enums.h"
-#include "cadcvt_c/ir/SketchIR.h"
-#include "cadcvt_c/ir/TopoRefIR.h"
+#include "cadapp_c/ir/Enums.h"
+#include "cadapp_c/ir/SketchIR.h"
+#include "cadapp_c/ir/TopoRefIR.h"
 
 #include <cstdint>
 #include <map>
@@ -11,7 +11,7 @@
 #include <vector>
 
 // ============================================================
-// cadcvt/ir/FeatureIR.h
+// cadapp/ir/FeatureIR.h
 //
 // A FeatureIR is split into:
 //   - common header  : id / name / suppressed / extension bag
@@ -39,7 +39,7 @@
 //      and Replayer (visit case).
 // ============================================================
 
-namespace cadcvt
+namespace cadapp
 {
 
 // ---- typed payloads ----
@@ -320,4 +320,4 @@ struct DocumentIR
     std::vector<FeatureIR> features;
 };
 
-} // namespace cadcvt
+} // namespace cadapp

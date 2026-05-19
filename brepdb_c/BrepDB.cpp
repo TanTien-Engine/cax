@@ -3,8 +3,9 @@
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
-#include "cadcvt_c/store/SketchStore.h"
-#include "cadcvt_c/store/FeatureStore.h"
+#include "cadapp_c/store/SketchStore.h"
+#include "cadapp_c/store/FeatureStore.h"
+#include "cadapp_c/ops/sketch_ops.h"
 #include "partgraph_c/GlobalConfig.h"
 
 #include <graph/Node.h>
@@ -288,6 +289,11 @@ bool BrepDB::LoadCompGraph(breptopo::CompGraph& cg)
         return false;
     }
 
+    // The saved graph may reference cadapp ops (e.g. sketch_face);
+    // make sure they're in this CompGraph's registry before
+    // LoadFromByteArray rebuilds the IR.
+    cadapp::RegisterSketchOps(cg.GetRegistry());
+
     bool ok = cg.LoadFromByteArray(buf, len);
     delete[] buf;
     return ok;
@@ -369,7 +375,7 @@ bool BrepDB::LoadTopoNaming(breptopo::TopoNaming& tn)
     return ok;
 }
 
-void BrepDB::StoreSketchStore(const cadcvt::SketchStore& ss)
+void BrepDB::StoreSketchStore(const cadapp::SketchStore& ss)
 {
     uint8_t* buf = nullptr;
     uint32_t len = 0;
@@ -395,7 +401,7 @@ void BrepDB::StoreSketchStore(const cadcvt::SketchStore& ss)
     delete[] buf;
 }
 
-bool BrepDB::LoadSketchStore(cadcvt::SketchStore& ss)
+bool BrepDB::LoadSketchStore(cadapp::SketchStore& ss)
 {
     spatialdb::id_type page = m_rtree->GetMetaPage(META_SKETCH_STORE);
     if (page == spatialdb::NewPage) {
@@ -418,7 +424,7 @@ bool BrepDB::LoadSketchStore(cadcvt::SketchStore& ss)
     return ok;
 }
 
-void BrepDB::StoreFeatureStore(const cadcvt::FeatureStore& fs)
+void BrepDB::StoreFeatureStore(const cadapp::FeatureStore& fs)
 {
     uint8_t* buf = nullptr;
     uint32_t len = 0;
@@ -444,7 +450,7 @@ void BrepDB::StoreFeatureStore(const cadcvt::FeatureStore& fs)
     delete[] buf;
 }
 
-bool BrepDB::LoadFeatureStore(cadcvt::FeatureStore& fs)
+bool BrepDB::LoadFeatureStore(cadapp::FeatureStore& fs)
 {
     spatialdb::id_type page = m_rtree->GetMetaPage(META_FEATURE_STORE);
     if (page == spatialdb::NewPage) {

@@ -29,6 +29,11 @@
 namespace cadcvt
 {
 
+// IR types (DocumentIR / FeatureIR / SkGeoIR / ...) all live in
+// cadapp now. Pull them into the cadcvt namespace via a directive so
+// the existing unqualified usages keep compiling.
+using namespace cadapp;
+
 // ============================================================
 // Section A: utilities
 // ============================================================
@@ -347,7 +352,7 @@ void FreeCadReader::FreeXmlBuffer(char* buf)
 namespace
 {
 
-// FreeCAD ConstraintType enum to cadcvt::SkConsType. Returned None
+// FreeCAD ConstraintType enum to cadapp::SkConsType. Returned None
 // values are dropped at the caller (not all FreeCAD constraints
 // have a sketchlib counterpart yet).
 SkConsType MapFreeCadConsType(int t)
@@ -374,7 +379,7 @@ SkConsType MapFreeCadConsType(int t)
     }
 }
 
-// FreeCAD PointPos enum to cadcvt::SkPointPos.
+// FreeCAD PointPos enum to cadapp::SkPointPos.
 SkPointPos MapFreeCadPointPos(int p)
 {
     switch (p)

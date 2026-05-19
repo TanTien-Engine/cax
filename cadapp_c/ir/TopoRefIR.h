@@ -3,7 +3,7 @@
 #include <cstdint>
 
 // ============================================================
-// cadcvt/ir/TopoRefIR.h
+// cadapp/ir/TopoRefIR.h
 //
 // CAD-kernel independent topology reference descriptor.
 //
@@ -18,7 +18,7 @@
 // layer strategy.
 // ============================================================
 
-namespace cadcvt
+namespace cadapp
 {
 
 struct TopoRefIR
@@ -59,4 +59,4 @@ struct TopoRefIR
     int32_t  resolved_topo_index = 0;
 };
 
-} // namespace cadcvt
+} // namespace cadapp
