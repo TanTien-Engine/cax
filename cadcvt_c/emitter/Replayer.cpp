@@ -2,6 +2,7 @@
 #include "cadcvt_c/store/SketchBridge.h"
 #include "cadcvt_c/resolve/TopoRefResolver.h"
 
+#include "breptopo_c/CompGraph.h"
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"
 #include "partgraph_c/TopoShape.h"
@@ -284,7 +285,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     out.naming = m_impl->naming;
     out.vtree  = m_impl->vtree;
 
-    std::shared_ptr<partgraph::TopoShape> shape;
+    auto cg = std::make_shared<breptopo::CompGraph>();
+    cg->SetTopoNaming(m_impl->naming);
+
+    int last_node = -1;
 
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
@@ -295,12 +299,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             continue;
         }
 
-        uint32_t op_id   = m_impl->naming->NextOpId();
-        bool     step_ok = true;
+        int  node    = -1;
+        bool step_ok = true;
 
-        // Dispatch by payload variant. Adding a new payload kind
-        // here is a compile error until you handle it - that is
-        // the whole point of using std::visit.
         std::visit([&](auto& p)
         {
             using T = std::decay_t<decltype(p)>;
@@ -308,71 +309,40 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // ---- Sketch ----
             if constexpr (std::is_same_v<T, FeatPayloadSketch>)
             {
-                // Sketches do not produce 3D directly; the next
-                // sketch-based feature consumes them.
                 (void)p;
             }
 
             // ---- Primitives ----
             else if constexpr (std::is_same_v<T, FeatPayloadPrimBox>)
             {
-                auto s = partgraph::PrimMaker::Box(
-                    p.length, p.width, p.height,
-                    op_id, m_impl->naming, m_impl->vtree);
-                if (!s)
-                {
-                    step_ok = false;
-                    return;
-                }
-                shape = s;
+                int l = cg->AddConst(p.length, "length");
+                int w = cg->AddConst(p.width,  "width");
+                int h = cg->AddConst(p.height, "height");
+                node = cg->AddOp("box", {l, w, h}, {}, feat.name);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCylinder>)
             {
-                auto s = partgraph::PrimMaker::Cylinder(
-                    p.radius, p.height,
-                    op_id, m_impl->naming, m_impl->vtree);
-                if (!s)
-                {
-                    step_ok = false;
-                    return;
-                }
-                shape = s;
+                int r = cg->AddConst(p.radius, "radius");
+                int h = cg->AddConst(p.height, "height");
+                node = cg->AddOp("cylinder", {r, h}, {}, feat.name);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCone>)
             {
-                auto s = partgraph::PrimMaker::Cone(
-                    p.radius1, p.radius2, p.height,
-                    op_id, m_impl->naming, m_impl->vtree);
-                if (!s)
-                {
-                    step_ok = false;
-                    return;
-                }
-                shape = s;
+                int r1 = cg->AddConst(p.radius1, "radius1");
+                int r2 = cg->AddConst(p.radius2, "radius2");
+                int h  = cg->AddConst(p.height,  "height");
+                node = cg->AddOp("cone", {r1, r2, h}, {}, feat.name);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimSphere>)
             {
-                auto s = partgraph::PrimMaker::Sphere(
-                    p.radius,
-                    op_id, m_impl->naming, m_impl->vtree);
-                if (!s)
-                {
-                    step_ok = false;
-                    return;
-                }
-                shape = s;
+                int r = cg->AddConst(p.radius, "radius");
+                node = cg->AddOp("sphere", {r}, {}, feat.name);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimTorus>)
             {
-                auto s = partgraph::PrimMaker::Torus(
-                    p.major_radius, p.minor_radius,
-                    op_id, m_impl->naming, m_impl->vtree);
-                if (!s)
-                {
-                    step_ok = false;
-                    return;
-                }
-                shape = s;
+                int r1 = cg->AddConst(p.major_radius, "major_radius");
+                int r2 = cg->AddConst(p.minor_radius, "minor_radius");
+                node = cg->AddOp("torus", {r1, r2}, {}, feat.name);
             }
 
             // ---- Extrude (Boss / Cut) ----
@@ -415,12 +385,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                // direction is expressed in sketch-local axes
-                // (x = plane_x_dir, y = plane_y_dir, z = plane_normal).
-                // Readers conventionally write (0,0,1) to mean
-                // "along the sketch normal"; we rotate that into
-                // world space so the prism direction lines up with
-                // the face we just built.
+                int face_n = cg->AddConst(face, "profile");
+
                 double yd[3] =
                 {
                     sk->plane_normal[1] * sk->plane_x_dir[2] - sk->plane_normal[2] * sk->plane_x_dir[1],
@@ -436,62 +402,56 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 double sign = p.flip_direction ? -1.0 : 1.0;
 
-                std::shared_ptr<partgraph::TopoShape> tool;
+                int tool_n;
                 if (p.end_type != ExtrudeEndType::Blind)
                 {
-                    tool = partgraph::TopoAlgo_Ext::ExtrudeEx(
-                        face,
-                        sign * world_dir[0],
-                        sign * world_dir[1],
-                        sign * world_dir[2],
-                        p.distance,
-                        p.distance2,
-                        static_cast<partgraph::ExtrudeEndType>(p.end_type),
-                        static_cast<partgraph::ExtrudeEndType>(p.end_type2),
-                        shape,
-                        op_id, m_impl->naming);
+                    breptopo::Vec3 dir = {sign * world_dir[0],
+                                          sign * world_dir[1],
+                                          sign * world_dir[2]};
+                    int dir_n = cg->AddConst(dir, "direction");
+                    int d1_n  = cg->AddConst(p.distance,  "dist1");
+                    int d2_n  = cg->AddConst(p.distance2, "dist2");
+                    int e1_n  = cg->AddConst((int)p.end_type,  "end1");
+                    int e2_n  = cg->AddConst((int)p.end_type2, "end2");
+                    int ref_n = last_node >= 0
+                        ? last_node
+                        : cg->AddConst(std::shared_ptr<partgraph::TopoShape>{}, "null_ref");
+                    tool_n = cg->AddOp("extrude_ex",
+                        {face_n, dir_n, d1_n, d2_n, e1_n, e2_n, ref_n},
+                        {}, feat.name);
                 }
                 else
                 {
                     double dx = world_dir[0] * p.distance * sign;
                     double dy = world_dir[1] * p.distance * sign;
                     double dz = world_dir[2] * p.distance * sign;
-                    tool = partgraph::TopoAlgo::Prism(
-                        face,
-                        dx, dy, dz,
-                        op_id, m_impl->naming, m_impl->vtree);
-                }
-                if (!tool)
-                {
-                    step_ok = false;
-                    return;
+                    breptopo::Vec3 dir = {dx, dy, dz};
+                    int dir_n = cg->AddConst(dir, "direction");
+                    tool_n = cg->AddOp("prism", {face_n, dir_n}, {}, feat.name);
                 }
 
                 if (feat.type == FeatType::BossExtrude)
                 {
-                    if (!shape)
+                    if (last_node < 0)
                     {
-                        shape = tool;
+                        node = tool_n;
                     }
                     else
                     {
-                        shape = partgraph::TopoAlgo::Fuse(
-                            shape, tool,
-                            op_id, m_impl->naming, m_impl->vtree);
+                        node = cg->AddOp("fuse", {last_node, tool_n},
+                                          {}, feat.name);
                     }
                 }
                 else
                 {
-                    // CutExtrude requires an existing base.
-                    if (!shape)
+                    if (last_node < 0)
                     {
                         step_ok     = false;
                         out.err_msg = "CutExtrude without base shape: " + feat.name;
                         return;
                     }
-                    shape = partgraph::TopoAlgo::Cut(
-                        shape, tool,
-                        op_id, m_impl->naming, m_impl->vtree);
+                    node = cg->AddOp("cut", {last_node, tool_n},
+                                      {}, feat.name);
                 }
             }
 
@@ -499,23 +459,33 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             else if constexpr (std::is_same_v<T, FeatPayloadFillet> ||
                                std::is_same_v<T, FeatPayloadChamfer>)
             {
-                if (!shape)
+                if (last_node < 0)
+                {
+                    step_ok = false;
+                    return;
+                }
+
+                // Phase-1: materialize previous shape for geometric
+                // resolution. Phase-2 replaces this with a graph-level
+                // resolved_edge_ref / resolved_face_ref op.
+                auto prev_val = cg->Eval(last_node);
+                auto* sv = std::get_if<breptopo::ShapeVal>(&prev_val);
+                if (!sv || !sv->shape)
                 {
                     step_ok = false;
                     return;
                 }
 
                 auto resolved = TopoRefResolver::Resolve(
-                    shape->GetShape(),
+                    sv->shape->GetShape(),
                     p.edges,
                     m_impl->naming.get(),
                     opt.topo_tolerance);
 
-                std::vector<std::shared_ptr<partgraph::TopoShape>> edge_shapes;
-                edge_shapes.reserve(resolved.size());
+                std::vector<int> edge_nodes;
 
                 TopTools_IndexedMapOfShape em;
-                TopExp::MapShapes(shape->GetShape(), TopAbs_EDGE, em);
+                TopExp::MapShapes(sv->shape->GetShape(), TopAbs_EDGE, em);
 
                 for (size_t k = 0; k < resolved.size(); ++k)
                 {
@@ -524,8 +494,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     {
                         continue;
                     }
-                    const TopoDS_Shape& e = em.FindKey(resolved[k].topo_index);
-                    edge_shapes.push_back(std::make_shared<partgraph::TopoShape>(e));
+                    auto edge_shape = std::make_shared<partgraph::TopoShape>(
+                        em.FindKey(resolved[k].topo_index));
+                    edge_nodes.push_back(cg->AddConst(edge_shape, "edge"));
 
                     if (opt.write_back_resolved && k < p.edges.size())
                     {
@@ -534,7 +505,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     }
                 }
 
-                if (edge_shapes.empty())
+                if (edge_nodes.empty())
                 {
                     step_ok     = false;
                     out.err_msg = "no edges resolved for: " + feat.name;
@@ -543,36 +514,44 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 if constexpr (std::is_same_v<T, FeatPayloadFillet>)
                 {
-                    shape = partgraph::TopoAlgo::Fillet(
-                        shape, p.radius, edge_shapes,
-                        op_id, m_impl->naming, m_impl->vtree);
+                    int r = cg->AddConst(p.radius, "radius");
+                    node = cg->AddOp("fillet", {last_node, r},
+                                      edge_nodes, feat.name);
                 }
                 else
                 {
-                    shape = partgraph::TopoAlgo::Chamfer(
-                        shape, p.distance1, edge_shapes,
-                        op_id, m_impl->naming, m_impl->vtree);
+                    int d = cg->AddConst(p.distance1, "dist");
+                    node = cg->AddOp("chamfer", {last_node, d},
+                                      edge_nodes, feat.name);
                 }
             }
 
             // ---- Shell ----
             else if constexpr (std::is_same_v<T, FeatPayloadShell>)
             {
-                if (!shape)
+                if (last_node < 0)
+                {
+                    step_ok = false;
+                    return;
+                }
+
+                auto prev_val = cg->Eval(last_node);
+                auto* sv = std::get_if<breptopo::ShapeVal>(&prev_val);
+                if (!sv || !sv->shape)
                 {
                     step_ok = false;
                     return;
                 }
 
                 auto resolved = TopoRefResolver::Resolve(
-                    shape->GetShape(),
+                    sv->shape->GetShape(),
                     p.faces_to_open,
                     m_impl->naming.get(),
                     opt.topo_tolerance);
 
-                std::vector<std::shared_ptr<partgraph::TopoShape>> face_shapes;
+                std::vector<int> face_nodes;
                 TopTools_IndexedMapOfShape fm;
-                TopExp::MapShapes(shape->GetShape(), TopAbs_FACE, fm);
+                TopExp::MapShapes(sv->shape->GetShape(), TopAbs_FACE, fm);
 
                 for (size_t k = 0; k < resolved.size(); ++k)
                 {
@@ -581,8 +560,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     {
                         continue;
                     }
-                    const TopoDS_Shape& f = fm.FindKey(resolved[k].topo_index);
-                    face_shapes.push_back(std::make_shared<partgraph::TopoShape>(f));
+                    auto face_shape = std::make_shared<partgraph::TopoShape>(
+                        fm.FindKey(resolved[k].topo_index));
+                    face_nodes.push_back(cg->AddConst(face_shape, "face"));
 
                     if (opt.write_back_resolved && k < p.faces_to_open.size())
                     {
@@ -591,36 +571,34 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     }
                 }
 
-                shape = partgraph::TopoAlgo::ThickSolid(
-                    shape, face_shapes, (float)p.thickness,
-                    op_id, m_impl->naming, m_impl->vtree);
+                int t = cg->AddConst(p.thickness, "thickness");
+                node = cg->AddOp("shell", {last_node, t},
+                                  face_nodes, feat.name);
             }
 
             // ---- Mirror ----
             else if constexpr (std::is_same_v<T, FeatPayloadMirror>)
             {
-                if (!shape)
+                if (last_node < 0)
                 {
                     step_ok = false;
                     return;
                 }
-                shape = partgraph::TopoAlgo::Mirror(
-                    shape,
-                    sm::vec3((float)p.plane_origin[0],
-                             (float)p.plane_origin[1],
-                             (float)p.plane_origin[2]),
-                    sm::vec3((float)p.plane_normal[0],
-                             (float)p.plane_normal[1],
-                             (float)p.plane_normal[2]),
-                    op_id, m_impl->naming, m_impl->vtree);
+                breptopo::Vec3 origin = {p.plane_origin[0],
+                                         p.plane_origin[1],
+                                         p.plane_origin[2]};
+                breptopo::Vec3 normal = {p.plane_normal[0],
+                                         p.plane_normal[1],
+                                         p.plane_normal[2]};
+                int o = cg->AddConst(origin, "origin");
+                int n = cg->AddConst(normal, "normal");
+                node = cg->AddOp("mirror", {last_node, o, n},
+                                  {}, feat.name);
             }
 
             // ---- Not implemented yet ----
             else
             {
-                // Revolve / Loft / Sweep / Draft / Offset /
-                // Transform / Patterns / Boolean / HoleWizard /
-                // Rib / Opaque all fall here.
                 std::ostringstream oss;
                 oss << "skipped unimplemented feature: " << feat.name
                     << " (type=" << (int)feat.type << ")";
@@ -631,19 +609,34 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             }
         }, feat.data);
 
-        out.op_ids.push_back(step_ok ? op_id : 0);
-
-        if (!step_ok && shape == nullptr)
+        if (node >= 0)
         {
-            // Failed on the very first feature; bail.
+            last_node = node;
+            out.op_ids.push_back(cg->CalcOpId(node, 0));
+        }
+        else
+        {
+            out.op_ids.push_back(0);
+        }
+
+        if (!step_ok && last_node < 0)
+        {
             out.ok    = false;
             out.shape = nullptr;
             return false;
         }
     }
 
-    out.ok    = true;
-    out.shape = shape;
+    if (last_node >= 0)
+    {
+        auto val = cg->Eval(last_node);
+        if (auto* sv = std::get_if<breptopo::ShapeVal>(&val)) {
+            out.shape = sv->shape;
+        }
+    }
+
+    out.comp_graph = cg;
+    out.ok         = true;
     return true;
 }
 

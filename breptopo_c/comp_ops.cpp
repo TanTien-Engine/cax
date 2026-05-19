@@ -6,6 +6,7 @@
 
 #include "partgraph_c/PrimMaker.h"
 #include "partgraph_c/TopoAlgo.h"
+#include "partgraph_c/TopoAlgo_Ext.h"
 #include "partgraph_c/TopoShape.h"
 
 #include <graph/Node.h>
@@ -133,6 +134,95 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (shapes.size() == 1) return shapes[0];
 			return shapes[0];
 		});
+
+	reg.Define("cylinder", {"radius", "height"}, {},
+		[](EvalCtx& ctx) -> Val {
+			double r = ctx.Num(0);
+			double h = ctx.Num(1);
+			auto shape = partgraph::PrimMaker::Cylinder(r, h, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shape);
+		});
+
+	reg.Define("cone", {"radius1", "radius2", "height"}, {},
+		[](EvalCtx& ctx) -> Val {
+			double r1 = ctx.Num(0);
+			double r2 = ctx.Num(1);
+			double h  = ctx.Num(2);
+			auto shape = partgraph::PrimMaker::Cone(r1, r2, h, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shape);
+		});
+
+	reg.Define("sphere", {"radius"}, {},
+		[](EvalCtx& ctx) -> Val {
+			double r = ctx.Num(0);
+			auto shape = partgraph::PrimMaker::Sphere(r, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shape);
+		});
+
+	reg.Define("torus", {"major_radius", "minor_radius"}, {},
+		[](EvalCtx& ctx) -> Val {
+			double r1 = ctx.Num(0);
+			double r2 = ctx.Num(1);
+			auto shape = partgraph::PrimMaker::Torus(r1, r2, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shape);
+		});
+
+	reg.Define("prism", {"face", "direction"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto dir = ctx.GetVec3(1);
+			auto shp = partgraph::TopoAlgo::Prism(
+				sv.shape, dir[0], dir[1], dir[2], ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
+	reg.Define("extrude_ex",
+		{"face", "direction", "dist1", "dist2", "end1", "end2", "ref"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto face = ctx.GetShape(0);
+			if (!face.shape) return {};
+			auto dir = ctx.GetVec3(1);
+			double d1 = ctx.Num(2);
+			double d2 = ctx.Num(3);
+			auto e1 = static_cast<partgraph::ExtrudeEndType>(ctx.Int(4));
+			auto e2 = static_cast<partgraph::ExtrudeEndType>(ctx.Int(5));
+			auto ref = ctx.GetShape(6);
+			auto shp = partgraph::TopoAlgo_Ext::ExtrudeEx(
+				face.shape, dir[0], dir[1], dir[2],
+				d1, d2, e1, e2,
+				ref.shape, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
+	reg.Define("mirror", {"shape", "origin", "normal"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto o = ctx.GetVec3(1);
+			auto n = ctx.GetVec3(2);
+			auto shp = partgraph::TopoAlgo::Mirror(sv.shape,
+				sm::vec3((float)o[0], (float)o[1], (float)o[2]),
+				sm::vec3((float)n[0], (float)n[1], (float)n[2]),
+				ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
+	reg.Define("shell", {"shape", "thickness"}, {"faces"},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			float thickness = (float)ctx.Num(1);
+			auto face_vals = ctx.VarShapes();
+			std::vector<std::shared_ptr<partgraph::TopoShape>> faces;
+			for (auto& fv : face_vals) {
+				if (fv.shape) faces.push_back(fv.shape);
+			}
+			auto shp = partgraph::TopoAlgo::ThickSolid(
+				sv.shape, faces, thickness, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		},
+		{true, false, false, false});
 }
 
 } // namespace breptopo

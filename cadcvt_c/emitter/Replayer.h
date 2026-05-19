@@ -29,6 +29,7 @@
 namespace breptopo
 {
 class TopoNaming;
+class CompGraph;
 }
 namespace brepdb
 {
@@ -76,6 +77,9 @@ struct ReplayResult
     // forwards them to BrepDB::Flush().
     std::shared_ptr<breptopo::TopoNaming> naming;
     std::shared_ptr<brepdb::VersionTree>  vtree;
+
+    // Computation graph built during replay (persistent).
+    std::shared_ptr<breptopo::CompGraph>  comp_graph;
 };
 
 class Replayer
