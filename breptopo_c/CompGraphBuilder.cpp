@@ -29,6 +29,7 @@ static std::string FormatStepVal(const Val& v)
 			s = os.str();
 		}
 		else if constexpr (std::is_same_v<T, ShapeVal>) s = "[shape]";
+		else if constexpr (std::is_same_v<T, SketchVal>) s = "[sketch]";
 	}, v);
 	return s;
 }

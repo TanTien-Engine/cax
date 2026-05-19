@@ -52,7 +52,17 @@ struct ShapeVal
 	bool operator==(const ShapeVal& o) const { return tag == o.tag; }
 };
 
-using Val = std::variant<std::monostate, int, double, bool, Vec3, ShapeVal>;
+// Opaque type-erased handle. Used for client-defined types that
+// breptopo doesn't depend on (e.g. cadcvt::SketchIR). The producing
+// op (registered by the client) static_pointer_cast's back to its
+// concrete type.
+struct SketchVal
+{
+	std::shared_ptr<void> handle;
+	bool operator==(const SketchVal& o) const { return handle == o.handle; }
+};
+
+using Val = std::variant<std::monostate, int, double, bool, Vec3, ShapeVal, SketchVal>;
 
 // ---------------------------------------------------------------
 //  EvalCtx -- passed to operation eval functions
@@ -72,6 +82,7 @@ struct EvalCtx
 	bool   Bool(size_t i) const;
 	Vec3   GetVec3(size_t i) const;
 	ShapeVal GetShape(size_t i) const;
+	SketchVal GetSketch(size_t i) const;
 	std::vector<ShapeVal> VarShapes() const;
 };
 
@@ -159,6 +170,7 @@ public:
 	NRef Const(bool v);
 	NRef Const(Vec3 v);
 	NRef Const(ShapeVal v);
+	NRef Const(SketchVal v);
 	NRef Add(const std::string& op,
 	         const std::vector<NRef>& inputs,
 	         const std::vector<NRef>& var_inputs = {});
@@ -361,6 +373,7 @@ public:
 	int AddConst(bool v, const std::string& desc);
 	int AddConst(Vec3 v, const std::string& desc);
 	int AddConst(const std::shared_ptr<partgraph::TopoShape>& shp, const std::string& desc);
+	int AddConst(const std::shared_ptr<void>& sketch_handle, const std::string& desc);
 	int AddOp(const std::string& op,
 	          const std::vector<int>& inputs,
 	          const std::vector<int>& var_inputs = {},
@@ -405,10 +418,14 @@ public:
 	int AddConst(bool v, const std::string& desc);
 	int AddConst(Vec3 v, const std::string& desc);
 	int AddConst(const std::shared_ptr<partgraph::TopoShape>& shp, const std::string& desc);
+	int AddConst(const std::shared_ptr<void>& sketch_handle, const std::string& desc);
 	int AddOp(const std::string& op,
 	          const std::vector<int>& inputs,
 	          const std::vector<int>& var_inputs = {},
 	          const std::string& desc = "");
+
+	// --- op registration (for client-defined ops like sketch_face) ---
+	OpRegistry& GetRegistry() { return m_reg; }
 
 	// --- mutation ---
 	void UpdateConst(int ext_id, Val v);

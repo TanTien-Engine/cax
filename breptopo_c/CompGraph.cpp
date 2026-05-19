@@ -57,6 +57,12 @@ int CompGraph::AddConst(const std::shared_ptr<partgraph::TopoShape>& shp, const 
 	return m_history.AddConst(shp, desc);
 }
 
+int CompGraph::AddConst(const std::shared_ptr<void>& sketch_handle, const std::string& desc)
+{
+	m_lowered = false;
+	return m_history.AddConst(sketch_handle, desc);
+}
+
 int CompGraph::AddOp(const std::string& op,
                      const std::vector<int>& inputs,
                      const std::vector<int>& var_inputs,
@@ -160,6 +166,7 @@ void CompGraph::AppendNewSteps()
 			else if (step.op_name == "$bool")   ref = m_ir.Const(std::get<bool>(step.imm));
 			else if (step.op_name == "$vec3")   ref = m_ir.Const(std::get<Vec3>(step.imm));
 			else if (step.op_name == "$shape")  ref = m_ir.Const(std::get<ShapeVal>(step.imm));
+			else if (step.op_name == "$sketch") ref = m_ir.Const(std::get<SketchVal>(step.imm));
 			Register(ref, step.desc);
 		}
 		else

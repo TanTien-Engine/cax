@@ -1,48 +1,15 @@
 #include "cadcvt_c/emitter/Replayer.h"
-#include "cadcvt_c/store/SketchBridge.h"
 #include "cadcvt_c/resolve/TopoRefResolver.h"
 
 #include "breptopo_c/CompGraph.h"
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"
 #include "partgraph_c/TopoShape.h"
-#include "partgraph_c/TopoAlgo.h"
-#include "partgraph_c/TopoAlgo_Ext.h"
-#include "partgraph_c/PrimMaker.h"
 
-#include "partgraph_c/BRepBuilder.h"
-
-#include "sketchlib/Scene.h"
-
-#include <geoshape/Shape2D.h>
-#include <geoshape/Point2D.h>
-#include <geoshape/Line2D.h>
-#include <geoshape/Circle.h>
-#include <geoshape/Arc.h>
-
-#include <BRepBuilderAPI_MakeEdge.hxx>
-#include <BRepBuilderAPI_MakeFace.hxx>
-#include <BRepBuilderAPI_MakeWire.hxx>
-#include <BRepBuilderAPI_Transform.hxx>
-#include <gp_Pnt.hxx>
-#include <gp_Vec.hxx>
-#include <gp_Dir.hxx>
-#include <gp_Ax2.hxx>
-#include <gp_Pln.hxx>
-#include <gp_Circ.hxx>
-#include <gp_Elips.hxx>
-#include <gp_Trsf.hxx>
 #include <TopoDS.hxx>
-#include <TopoDS_Edge.hxx>
-#include <TopoDS_Face.hxx>
-#include <TopoDS_Wire.hxx>
 #include <TopExp.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
-#include <TopTools_ListOfShape.hxx>
-#include <ShapeFix_Face.hxx>
 
-#include <cmath>
-#include <map>
 #include <sstream>
 #include <type_traits>
 #include <variant>
@@ -62,10 +29,10 @@
 //   Loft / Sweep                                 TODO
 //   LinearPattern / CircularPattern              TODO
 //
-// Wire reconstruction: solved 2D shapes are sampled to 32-segment
-// polylines and joined head-to-tail into a single polygon. Good
-// enough for a closed-loop sanity test; a future pass should use
-// BRepBuilderAPI_MakeEdge(Geom_Curve) for exact curves.
+// The Replay path now builds a CompGraph: each feature becomes a
+// graph subtree of typed const + op nodes. Sketches enter the graph
+// as a $sketch const + plane Vec3 consts feeding a "sketch_face" op
+// (registered as a builtin in breptopo/comp_ops.cpp).
 // ============================================================
 
 namespace cadcvt
@@ -73,159 +40,6 @@ namespace cadcvt
 
 namespace
 {
-
-// Map a 2D sketch point (x, y) into 3D via (origin, x_dir, normal).
-gp_Pnt LocalToWorld(double       x,
-                    double       y,
-                    const double origin[3],
-                    const double x_dir[3],
-                    const double normal[3])
-{
-    // y_dir = normal x x_dir
-    double yd[3] =
-    {
-        normal[1] * x_dir[2] - normal[2] * x_dir[1],
-        normal[2] * x_dir[0] - normal[0] * x_dir[2],
-        normal[0] * x_dir[1] - normal[1] * x_dir[0],
-    };
-    return gp_Pnt(
-        origin[0] + x_dir[0] * x + yd[0] * y,
-        origin[1] + x_dir[1] * x + yd[1] * y,
-        origin[2] + x_dir[2] * x + yd[2] * y);
-}
-
-// Build one TopoDS_Edge from a single 2D geometry, lifted onto
-// the sketch plane. Returns a null edge if the type isn't an
-// edge-producing curve (Point, unhandled types). Using exact
-// Geom_Curve based edges (line / circle / arc / ellipse) instead
-// of polygon sampling is what lets BRepBuilderAPI_MakeWire match
-// endpoints reliably; sampled polylines accumulate fp error and
-// the resulting "wire" looks open to OCCT, which makes Prism
-// degenerate to a sweep of the wire (uncapped shell).
-TopoDS_Edge BuildEdgeFromShape(const gs::Shape2D& shape,
-                               const double       origin[3],
-                               const double       x_dir[3],
-                               const double       normal[3])
-{
-    switch (shape.GetType())
-    {
-    case gs::ShapeType2D::Line:
-    {
-        const auto& s  = static_cast<const gs::Line2D&>(shape);
-        gp_Pnt      p1 = LocalToWorld(s.GetStart().x, s.GetStart().y,
-                                      origin, x_dir, normal);
-        gp_Pnt      p2 = LocalToWorld(s.GetEnd().x,   s.GetEnd().y,
-                                      origin, x_dir, normal);
-        if (p1.Distance(p2) < 1e-9) {
-            return TopoDS_Edge();
-        }
-        BRepBuilderAPI_MakeEdge mk(p1, p2);
-        return mk.IsDone() ? mk.Edge() : TopoDS_Edge();
-    }
-    case gs::ShapeType2D::Circle:
-    {
-        const auto& s = static_cast<const gs::Circle&>(shape);
-        gp_Pnt      c = LocalToWorld(s.GetCenter().x, s.GetCenter().y,
-                                     origin, x_dir, normal);
-        gp_Dir      nd(normal[0], normal[1], normal[2]);
-        gp_Dir      xd(x_dir [0], x_dir [1], x_dir [2]);
-        gp_Ax2      ax(c, nd, xd);
-        gp_Circ     circ(ax, s.GetRadius());
-        BRepBuilderAPI_MakeEdge mk(circ);
-        return mk.IsDone() ? mk.Edge() : TopoDS_Edge();
-    }
-    case gs::ShapeType2D::Arc:
-    {
-        const auto& s = static_cast<const gs::Arc&>(shape);
-        float       a0 = 0;
-        float       a1 = 0;
-        s.GetAngles(a0, a1);
-        gp_Pnt  c = LocalToWorld(s.GetCenter().x, s.GetCenter().y,
-                                 origin, x_dir, normal);
-        gp_Dir  nd(normal[0], normal[1], normal[2]);
-        gp_Dir  xd(x_dir [0], x_dir [1], x_dir [2]);
-        gp_Ax2  ax(c, nd, xd);
-        gp_Circ circ(ax, s.GetRadius());
-        BRepBuilderAPI_MakeEdge mk(circ, (double)a0, (double)a1);
-        return mk.IsDone() ? mk.Edge() : TopoDS_Edge();
-    }
-    case gs::ShapeType2D::Point:
-        // Points don't contribute to wires.
-        return TopoDS_Edge();
-    default:
-        // Ellipse / Spline / others not yet supported; ignored.
-        return TopoDS_Edge();
-    }
-}
-
-// Build a wire from every solved geometry using exact edges.
-// BRepBuilderAPI_MakeWire(ListOfShape) reorders edges by endpoint
-// matching, so the input order from the solver doesn't matter.
-TopoDS_Wire BuildWireFromSolved(const SketchBridge::GeoShapes& solved,
-                                const double                   origin[3],
-                                const double                   x_dir[3],
-                                const double                   normal[3])
-{
-    TopTools_ListOfShape edges;
-    for (const auto& kv : solved)
-    {
-        TopoDS_Edge e = BuildEdgeFromShape(*kv.second, origin, x_dir, normal);
-        if (!e.IsNull()) {
-            edges.Append(e);
-        }
-    }
-    if (edges.IsEmpty()) {
-        return TopoDS_Wire();
-    }
-
-    BRepBuilderAPI_MakeWire mk;
-    mk.Add(edges);
-    if (!mk.IsDone()) {
-        return TopoDS_Wire();
-    }
-    return mk.Wire();
-}
-
-std::shared_ptr<partgraph::TopoShape> WireToFace(const TopoDS_Wire& wire,
-                                                  const double      origin[3],
-                                                  const double      normal[3])
-{
-    if (wire.IsNull()) {
-        return {};
-    }
-
-    gp_Pnt o(origin[0], origin[1], origin[2]);
-    gp_Dir n(normal[0], normal[1], normal[2]);
-    gp_Pln plane(o, n);
-
-    // MakeFace(plane, wire) defaults to Inside=true, which already
-    // auto-reverses CW wires so the face ends up bounded.
-    //
-    // Important: do NOT call ShapeFix_Face::FixAddNaturalBound on
-    // the result. For a plane the "natural bound" is an infinite
-    // box; the fixer would treat our wire as an inner hole and
-    // turn the face into (infinite slab - our disc), which Prism
-    // then sweeps into an annular slab with the inner top cap
-    // missing - exactly the "one side not capped" symptom we saw.
-    BRepBuilderAPI_MakeFace mkFace(plane, wire);
-    if (!mkFace.IsDone()) {
-        return {};
-    }
-
-    // FixOrientation is fine on its own: it just flips the wire
-    // when its signed area is negative relative to the plane
-    // normal, so the resulting face's natural normal lines up with
-    // the plane's normal. Without this the prism's side faces or
-    // top cap may end up with inward normals -> backface culling
-    // hides them in the renderer, looking like a missing cap.
-    TopoDS_Face   face = mkFace.Face();
-    ShapeFix_Face fixer(face);
-    fixer.FixOrientation();
-    fixer.Perform();
-    face = fixer.Face();
-
-    return std::make_shared<partgraph::TopoShape>(face);
-}
 
 // Locate the SketchIR whose feature_id matches sketch_feat_id.
 const SketchIR* FindSketch(const DocumentIR& doc, uint32_t sketch_feat_id)
@@ -356,36 +170,26 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                sketchlib::Scene        scene;
-                SketchBridge::GeoShapes solved;
-                if (!SketchBridge::ImportToScene(*sk, scene, solved))
-                {
-                    step_ok     = false;
-                    out.err_msg = "ImportToScene failed: " + feat.name;
-                    return;
-                }
-                scene.Solve(solved);
-
-                TopoDS_Wire wire = BuildWireFromSolved(
-                    solved,
-                    sk->plane_origin,
-                    sk->plane_x_dir,
-                    sk->plane_normal);
-                if (wire.IsNull())
-                {
-                    step_ok     = false;
-                    out.err_msg = "wire build failed: " + feat.name;
-                    return;
-                }
-                auto face = WireToFace(wire, sk->plane_origin, sk->plane_normal);
-                if (!face)
-                {
-                    step_ok     = false;
-                    out.err_msg = "wire->face failed: " + feat.name;
-                    return;
-                }
-
-                int face_n = cg->AddConst(face, "profile");
+                // Sketch is a graph node: a deep copy of the SketchIR
+                // is owned by the CompGraph so the graph outlives the
+                // DocumentIR. Plane params are separate Vec3 consts so
+                // moving the plane doesn't invalidate the solver cache.
+                auto sk_copy = std::make_shared<SketchIR>(*sk);
+                int sketch_n = cg->AddConst(
+                    std::shared_ptr<void>(sk_copy),
+                    "sketch:" + sk->name);
+                breptopo::Vec3 sk_origin = {
+                    sk->plane_origin[0], sk->plane_origin[1], sk->plane_origin[2]};
+                breptopo::Vec3 sk_x_dir  = {
+                    sk->plane_x_dir[0],  sk->plane_x_dir[1],  sk->plane_x_dir[2]};
+                breptopo::Vec3 sk_normal = {
+                    sk->plane_normal[0], sk->plane_normal[1], sk->plane_normal[2]};
+                int sk_o_n = cg->AddConst(sk_origin, "plane_origin");
+                int sk_x_n = cg->AddConst(sk_x_dir,  "plane_x_dir");
+                int sk_n_n = cg->AddConst(sk_normal, "plane_normal");
+                int face_n = cg->AddOp("sketch_face",
+                    {sketch_n, sk_o_n, sk_x_n, sk_n_n},
+                    {}, sk->name);
 
                 double yd[3] =
                 {
