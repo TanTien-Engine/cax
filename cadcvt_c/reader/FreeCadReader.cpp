@@ -548,12 +548,16 @@ void ParseSketchConstraints(const pugi::xml_node&                cons_list_node,
 namespace
 {
 
-// FreeCAD Pad end type enum:
-//   0 = Dimension    (Blind)
-//   1 = ToLastFace   (closest analog: ThroughAll)
-//   2 = ThroughAll
-//   3 = UpToFace     (UpToSurface)
-//   4 = TwoDimensions (MidPlane is a separate Midplane flag)
+// FreeCAD Pad TypeEnums: {Length, UpToLast, UpToFirst, UpToFace, TwoLengths, UpToShape}.
+// UpToLast for an additive feature is the additive analog of ThroughAll.
+// UpToFirst / UpToShape need a target face; we fall back to ThroughAll
+// until we can resolve those targets.
+//   0 = Length      (Blind)
+//   1 = UpToLast    (ThroughAll)
+//   2 = UpToFirst   (no target -> ThroughAll fallback)
+//   3 = UpToFace    (UpToSurface)
+//   4 = TwoLengths  (Blind on both sides; deprecated upstream)
+//   5 = UpToShape   (no target -> ThroughAll fallback)
 ExtrudeEndType MapPadEndType(int t, bool midplane)
 {
     if (midplane) {
@@ -565,13 +569,15 @@ ExtrudeEndType MapPadEndType(int t, bool midplane)
     case 1:  return ExtrudeEndType::ThroughAll;
     case 2:  return ExtrudeEndType::ThroughAll;
     case 3:  return ExtrudeEndType::UpToSurface;
-    case 4:  return ExtrudeEndType::Blind;  // TwoDimensions: handled via distance2
+    case 4:  return ExtrudeEndType::Blind;  // TwoLengths: handled via distance2
+    case 5:  return ExtrudeEndType::ThroughAll;
     default: return ExtrudeEndType::Blind;
     }
 }
 
-// Pocket end type values are slightly different but we map them
-// the same way; the dimension semantics are the same.
+// Pocket TypeEnums: {Length, ThroughAll, UpToFirst, UpToFace, TwoLengths, UpToShape}.
+// Index 1 differs from Pad (ThroughAll vs UpToLast) but both collapse to our
+// ThroughAll, so the table can be shared.
 ExtrudeEndType MapPocketEndType(int t, bool midplane)
 {
     return MapPadEndType(t, midplane);
@@ -898,9 +904,6 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 }
             }
 
-            // Length / Length2 are stored in mm.
-            pl.distance       = PropDouble(props, "Length",  0.0) * m_unit_scale;
-            pl.distance2      = PropDouble(props, "Length2", 0.0) * m_unit_scale;
             pl.flip_direction = PropBool  (props, "Reversed", false);
             // FreeCAD Pocket defaults to cutting INTO the material
             // (opposite of sketch normal), while Pad extrudes along
@@ -915,9 +918,16 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                                ? MapPadEndType(type_enum, midplane)
                                : MapPocketEndType(type_enum, midplane);
 
-            // Two-direction extrude when Type == 4.
+            // Length / Length2 are stored in mm. FreeCAD always
+            // writes Length2 (default 100), but it is only used for
+            // the legacy TwoLengths mode (Type == 4); pulling it in
+            // for ThroughAll / UpToFace / Length-with-Midplane would
+            // cause the downstream extruder to spuriously build a
+            // second prism in the reverse direction.
+            pl.distance = PropDouble(props, "Length", 0.0) * m_unit_scale;
             if (type_enum == 4)
             {
+                pl.distance2 = PropDouble(props, "Length2", 0.0) * m_unit_scale;
                 pl.end_type2 = ExtrudeEndType::Blind;
             }
 
