@@ -9,19 +9,25 @@
 // ============================================================
 // cadapp/emitter/Replayer.h
 //
-// Rebuild a DocumentIR on the project's OCCT kernel.
+// Build a CompGraph from a DocumentIR. The graph encodes every
+// feature as op + const nodes; geometry is materialised lazily by
+// breptopo's evaluator, not by Replayer.
 //
 // Workflow per feature:
-//   1. Reconstruct the sketch
-//      (SketchBridge::ImportToScene -> Scene::Solve).
-//   2. Lift the solved 2D wire to a 3D wire + face on the sketch
-//      plane.
-//   3. Invoke the matching partgraph::TopoAlgo operator
-//      (Prism / Cut / Fillet / ...).
-//   4. Register history via TopoNaming::Update and
-//      VersionTree::Commit.
-//   5. Use TopoRefResolver to resolve any TopoRefIR that does not
-//      yet carry a uid, then write it back.
+//   1. Sketch          -> $sketch const + 3 Vec3 consts feeding a
+//                          "sketch_face" op (cadapp::RegisterSketchOps).
+//   2. Sketch-based    -> "prism" / "cut" / "fuse" / ... op consuming
+//                          the sketch_face result.
+//   3. Fillet/Chamfer/ -> per-ref "resolve_edge_ref" / "resolve_face_ref"
+//      Shell             op (cadapp::RegisterResolveOps); the geo
+//                          match runs at Eval time, not graph-build
+//                          time. The op outputs a ShapeVal whose tag
+//                          carries the TopoNaming uid.
+//   4. History         -> TopoNaming::Update and VersionTree::Commit
+//                          fire from inside the ops during Eval.
+//   5. write_back      -> post-loop pass eval's each resolve_*_ref
+//                          node and copies the uid back into the
+//                          caller's TopoRefIR fields.
 //
 // The header only depends on cadapp/ir; OCCT stays in the .cpp.
 // ============================================================

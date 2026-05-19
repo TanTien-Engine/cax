@@ -6,6 +6,7 @@
 #include "cadapp_c/store/SketchStore.h"
 #include "cadapp_c/store/FeatureStore.h"
 #include "cadapp_c/ops/sketch_ops.h"
+#include "cadapp_c/ops/resolve_ops.h"
 #include "partgraph_c/GlobalConfig.h"
 
 #include <graph/Node.h>
@@ -289,10 +290,11 @@ bool BrepDB::LoadCompGraph(breptopo::CompGraph& cg)
         return false;
     }
 
-    // The saved graph may reference cadapp ops (e.g. sketch_face);
-    // make sure they're in this CompGraph's registry before
-    // LoadFromByteArray rebuilds the IR.
+    // The saved graph may reference cadapp ops (sketch_face,
+    // resolve_edge_ref, resolve_face_ref); make sure they're in this
+    // CompGraph's registry before LoadFromByteArray rebuilds the IR.
     cadapp::RegisterSketchOps(cg.GetRegistry());
+    cadapp::RegisterResolveOps(cg.GetRegistry());
 
     bool ok = cg.LoadFromByteArray(buf, len);
     delete[] buf;

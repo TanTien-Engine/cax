@@ -1,15 +1,11 @@
 #include "cadapp_c/emitter/Replayer.h"
-#include "cadapp_c/resolve/TopoRefResolver.h"
 #include "cadapp_c/ops/sketch_ops.h"
+#include "cadapp_c/ops/resolve_ops.h"
 
 #include "breptopo_c/CompGraph.h"
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"
 #include "partgraph_c/TopoShape.h"
-
-#include <TopoDS.hxx>
-#include <TopExp.hxx>
-#include <TopTools_IndexedMapOfShape.hxx>
 
 #include <sstream>
 #include <type_traits>
@@ -34,6 +30,12 @@
 // graph subtree of typed const + op nodes. Sketches enter the graph
 // as a $sketch const + plane Vec3 consts feeding a "sketch_face" op
 // (registered by cadapp::RegisterSketchOps in cadapp/ops/).
+//
+// TopoRefIRs (edges for Fillet/Chamfer, faces for Shell) become
+// "$toporef" const nodes feeding a "resolve_edge_ref" / "resolve_face_ref"
+// op (registered by cadapp::RegisterResolveOps). Geometric matching
+// happens at Eval time, not graph-build time, so Replayer never
+// has to materialise an intermediate shape.
 // ============================================================
 
 namespace cadapp
@@ -56,6 +58,33 @@ const SketchIR* FindSketch(const DocumentIR& doc, uint32_t sketch_feat_id)
     }
     return nullptr;
 }
+
+// Build a resolve_*_ref op node from (shape_node, ref) and return
+// the op's graph node id. The ref is moved into a heap copy so the
+// const node owns it and survives later doc mutations.
+int AddResolveRefNode(breptopo::CompGraph& cg,
+                      const char*          op_name,
+                      int                  shape_node,
+                      const TopoRefIR&     ref,
+                      double               tolerance,
+                      const std::string&   desc)
+{
+    auto ref_copy = std::make_shared<TopoRefIR>(ref);
+    int ref_n  = cg.AddConst(breptopo::TopoRefVal{
+        std::static_pointer_cast<void>(ref_copy)}, desc);
+    int tol_n  = cg.AddConst(tolerance, "tolerance");
+    return cg.AddOp(op_name, {shape_node, ref_n, tol_n}, {}, desc);
+}
+
+// Pair recording which TopoRefIR in the user's DocumentIR should
+// receive the resolved uid once the corresponding op evaluates.
+// Filled while building the graph; consumed in a post-pass after
+// Replay() finishes constructing all features.
+struct ResolveBack
+{
+    int        resolve_node = -1;
+    TopoRefIR* ref          = nullptr;
+};
 
 } // anonymous namespace
 
@@ -101,14 +130,21 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     out.vtree  = m_impl->vtree;
 
     auto cg = std::make_shared<breptopo::CompGraph>();
-    // Augment breptopo's builtin op set with cadapp's IR-aware ops
-    // (currently just "sketch_face"). breptopo cannot register this
-    // op itself without depending on cadapp::SketchIR, so the wiring
-    // happens here where both sides are visible.
+    // Augment breptopo's builtin op set with cadapp's IR-aware ops.
+    // breptopo cannot register these itself without depending on
+    // cadapp's IR types, so the wiring happens here where both
+    // sides are visible.
     RegisterSketchOps(cg->GetRegistry());
+    RegisterResolveOps(cg->GetRegistry());
     cg->SetTopoNaming(m_impl->naming);
 
     int last_node = -1;
+
+    // (resolve_node, &TopoRefIR) pairs collected while building the
+    // graph; consumed post-loop to write the resolved uid back into
+    // the user's DocumentIR. Empty when opt.write_back_resolved is
+    // false, in which case the post-pass is a no-op.
+    std::vector<ResolveBack> resolve_back;
 
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
@@ -275,51 +311,21 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                // Phase-1: materialize previous shape for geometric
-                // resolution. Phase-2 replaces this with a graph-level
-                // resolved_edge_ref / resolved_face_ref op.
-                auto prev_val = cg->Eval(last_node);
-                auto* sv = std::get_if<breptopo::ShapeVal>(&prev_val);
-                if (!sv || !sv->shape)
-                {
-                    step_ok = false;
-                    return;
-                }
-
-                auto resolved = TopoRefResolver::Resolve(
-                    sv->shape->GetShape(),
-                    p.edges,
-                    m_impl->naming.get(),
-                    opt.topo_tolerance);
-
+                // Build a resolve_edge_ref op per ref and feed the
+                // resulting sub-shape nodes as variadic edge inputs
+                // to fillet / chamfer. The match itself happens at
+                // Eval time -- Replayer stays a pure graph builder.
                 std::vector<int> edge_nodes;
-
-                TopTools_IndexedMapOfShape em;
-                TopExp::MapShapes(sv->shape->GetShape(), TopAbs_EDGE, em);
-
-                for (size_t k = 0; k < resolved.size(); ++k)
+                edge_nodes.reserve(p.edges.size());
+                for (size_t k = 0; k < p.edges.size(); ++k)
                 {
-                    if (resolved[k].topo_index <= 0 ||
-                        resolved[k].topo_index > em.Extent())
-                    {
-                        continue;
-                    }
-                    auto edge_shape = std::make_shared<partgraph::TopoShape>(
-                        em.FindKey(resolved[k].topo_index));
-                    edge_nodes.push_back(cg->AddConst(edge_shape, "edge"));
-
-                    if (opt.write_back_resolved && k < p.edges.size())
-                    {
-                        p.edges[k].resolved_uid        = resolved[k].uid;
-                        p.edges[k].resolved_topo_index = resolved[k].topo_index;
-                    }
-                }
-
-                if (edge_nodes.empty())
-                {
-                    step_ok     = false;
-                    out.err_msg = "no edges resolved for: " + feat.name;
-                    return;
+                    int rn = AddResolveRefNode(*cg, "resolve_edge_ref",
+                                                last_node, p.edges[k],
+                                                opt.topo_tolerance,
+                                                feat.name + ":edge");
+                    edge_nodes.push_back(rn);
+                    if (opt.write_back_resolved)
+                        resolve_back.push_back({rn, &p.edges[k]});
                 }
 
                 if constexpr (std::is_same_v<T, FeatPayloadFillet>)
@@ -345,40 +351,17 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                auto prev_val = cg->Eval(last_node);
-                auto* sv = std::get_if<breptopo::ShapeVal>(&prev_val);
-                if (!sv || !sv->shape)
-                {
-                    step_ok = false;
-                    return;
-                }
-
-                auto resolved = TopoRefResolver::Resolve(
-                    sv->shape->GetShape(),
-                    p.faces_to_open,
-                    m_impl->naming.get(),
-                    opt.topo_tolerance);
-
                 std::vector<int> face_nodes;
-                TopTools_IndexedMapOfShape fm;
-                TopExp::MapShapes(sv->shape->GetShape(), TopAbs_FACE, fm);
-
-                for (size_t k = 0; k < resolved.size(); ++k)
+                face_nodes.reserve(p.faces_to_open.size());
+                for (size_t k = 0; k < p.faces_to_open.size(); ++k)
                 {
-                    if (resolved[k].topo_index <= 0 ||
-                        resolved[k].topo_index > fm.Extent())
-                    {
-                        continue;
-                    }
-                    auto face_shape = std::make_shared<partgraph::TopoShape>(
-                        fm.FindKey(resolved[k].topo_index));
-                    face_nodes.push_back(cg->AddConst(face_shape, "face"));
-
-                    if (opt.write_back_resolved && k < p.faces_to_open.size())
-                    {
-                        p.faces_to_open[k].resolved_uid        = resolved[k].uid;
-                        p.faces_to_open[k].resolved_topo_index = resolved[k].topo_index;
-                    }
+                    int rn = AddResolveRefNode(*cg, "resolve_face_ref",
+                                                last_node, p.faces_to_open[k],
+                                                opt.topo_tolerance,
+                                                feat.name + ":face");
+                    face_nodes.push_back(rn);
+                    if (opt.write_back_resolved)
+                        resolve_back.push_back({rn, &p.faces_to_open[k]});
                 }
 
                 int t = cg->AddConst(p.thickness, "thickness");
@@ -442,6 +425,27 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         auto val = cg->Eval(last_node);
         if (auto* sv = std::get_if<breptopo::ShapeVal>(&val)) {
             out.shape = sv->shape;
+        }
+    }
+
+    // Write-back pass for opt.write_back_resolved. Each resolve_*_ref
+    // op outputs a ShapeVal whose tag holds the TopoNaming uid; we
+    // eval them here (cheap -- downstream fillet/shell evals above
+    // have already populated the cache) and copy the uid back into
+    // the user-provided TopoRefIR fields. topo_index is not written
+    // back: it is a transient, this-eval-only index that would mislead
+    // a future replay if persisted.
+    if (opt.write_back_resolved)
+    {
+        for (const auto& rb : resolve_back)
+        {
+            if (!rb.ref || rb.resolve_node < 0) continue;
+            auto v = cg->Eval(rb.resolve_node);
+            if (auto* sv = std::get_if<breptopo::ShapeVal>(&v))
+            {
+                rb.ref->resolved_uid        = sv->tag;
+                rb.ref->resolved_topo_index = 0;
+            }
         }
     }
 

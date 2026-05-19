@@ -44,6 +44,11 @@ SketchVal EvalCtx::GetSketch(size_t i) const {
 	if (auto* s = std::get_if<SketchVal>(&inputs[i])) return *s;
 	return {};
 }
+TopoRefVal EvalCtx::GetTopoRef(size_t i) const {
+	if (i >= inputs.size()) return {};
+	if (auto* s = std::get_if<TopoRefVal>(&inputs[i])) return *s;
+	return {};
+}
 std::vector<ShapeVal> EvalCtx::VarShapes() const {
 	std::vector<ShapeVal> out;
 	for (size_t i = fixed_count; i < inputs.size(); ++i)
@@ -83,6 +88,7 @@ NRef IRGraph::Const(bool v)     { auto r=Alloc(); m_nodes[r.id]={r,"$bool",v};  
 NRef IRGraph::Const(Vec3 v)     { auto r=Alloc(); m_nodes[r.id]={r,"$vec3",v};      return r; }
 NRef IRGraph::Const(ShapeVal v) { auto r=Alloc(); m_nodes[r.id]={r,"$shape",std::move(v)}; return r; }
 NRef IRGraph::Const(SketchVal v) { auto r=Alloc(); m_nodes[r.id]={r,"$sketch",std::move(v)}; return r; }
+NRef IRGraph::Const(TopoRefVal v) { auto r=Alloc(); m_nodes[r.id]={r,"$toporef",std::move(v)}; return r; }
 
 NRef IRGraph::Add(const std::string& op,
                   const std::vector<NRef>& inputs,
@@ -355,6 +361,7 @@ std::string IRGraph::Dump() const
 			else if constexpr (std::is_same_v<T,bool>)   os << " =" << (v?"T":"F");
 			else if constexpr (std::is_same_v<T,Vec3>)   os << " =("<<v[0]<<","<<v[1]<<","<<v[2]<<")";
 			else if constexpr (std::is_same_v<T,ShapeVal>) os << " shp:"<<v.tag;
+			else if constexpr (std::is_same_v<T,TopoRefVal>) os << " ref:"<<v.handle.get();
 			else if constexpr (std::is_same_v<T,SketchVal>) os << " sketch:"<<v.handle.get();
 		}, nd->imm);
 		if (!nd->inputs.empty())
@@ -550,7 +557,7 @@ bool Optimizer::CSE(IRGraph& g)
 	for (auto ref : g.TopoSort())
 	{
 		auto* nd = g.Get(ref);
-		if (!nd || nd->op_name == "$shape" || nd->op_name == "$sketch") continue;
+		if (!nd || nd->op_name == "$shape" || nd->op_name == "$sketch" || nd->op_name == "$toporef") continue;
 		Key key; key.op = nd->op_name; key.imm_idx = nd->imm.index();
 		for (auto& inp : nd->inputs) key.ids.push_back(inp.id);
 		// Include fixed/var split in the key so ops with same id list but
@@ -934,6 +941,10 @@ int OpHistory::AddConst(const std::shared_ptr<void>& sketch_handle, const std::s
 	sv.handle = sketch_handle;
 	return Append({-1, "$sketch", Val(std::move(sv)), {}, {}, desc});
 }
+int OpHistory::AddConst(TopoRefVal v, const std::string& desc)
+{
+	return Append({-1, "$toporef", Val(std::move(v)), {}, {}, desc});
+}
 
 int OpHistory::AddOp(const std::string& op,
                      const std::vector<int>& inputs,
@@ -972,13 +983,14 @@ const OpStep* OpHistory::Get(int step_id) const
 //  OpHistory serialization
 // ---------------------------------------------------------------
 
-static constexpr uint8_t VAL_MONO   = 0;
-static constexpr uint8_t VAL_INT    = 1;
-static constexpr uint8_t VAL_DOUBLE = 2;
-static constexpr uint8_t VAL_BOOL   = 3;
-static constexpr uint8_t VAL_VEC3   = 4;
-static constexpr uint8_t VAL_SHAPE  = 5;
-static constexpr uint8_t VAL_SKETCH = 6;
+static constexpr uint8_t VAL_MONO    = 0;
+static constexpr uint8_t VAL_INT     = 1;
+static constexpr uint8_t VAL_DOUBLE  = 2;
+static constexpr uint8_t VAL_BOOL    = 3;
+static constexpr uint8_t VAL_VEC3    = 4;
+static constexpr uint8_t VAL_SHAPE   = 5;
+static constexpr uint8_t VAL_SKETCH  = 6;
+static constexpr uint8_t VAL_TOPOREF = 7;
 
 static constexpr uint32_t HIST_MAGIC   = 0x48495354;  // "HIST"
 static constexpr uint32_t HIST_VERSION = 1;
@@ -1036,10 +1048,12 @@ struct HistWriter
 		}
 		case VAL_SHAPE:
 		case VAL_SKETCH:
+		case VAL_TOPOREF:
 			// ShapeVal holds an OCCT shared_ptr -- restored from
-			// VersionTree via RestoreFn. SketchVal is an opaque
-			// type-erased handle -- restored by the client that
-			// originally produced it. Both write zero bytes here.
+			// VersionTree via RestoreFn. SketchVal / TopoRefVal are
+			// opaque type-erased handles -- restored by the client
+			// that originally produced them. All three write zero
+			// bytes here.
 			break;
 		default:
 			break;
@@ -1120,6 +1134,8 @@ struct HistReader
 			return Val(ShapeVal{});
 		case VAL_SKETCH:
 			return Val(SketchVal{});
+		case VAL_TOPOREF:
+			return Val(TopoRefVal{});
 		default:
 			return Val{};
 		}

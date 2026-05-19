@@ -287,6 +287,8 @@ source_group("cadapp\\emitter" FILES ${cadapp__emitter})
 set(cadapp__ops
     "cadapp_c/ops/sketch_ops.cpp"
     "cadapp_c/ops/sketch_ops.h"
+    "cadapp_c/ops/resolve_ops.cpp"
+    "cadapp_c/ops/resolve_ops.h"
 )
 source_group("cadapp\\ops" FILES ${cadapp__ops})
 
