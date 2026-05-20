@@ -8,12 +8,12 @@ import "graph.nodes.draw" for Draw
 import "brepkit.node_helper" for NodeHelper
 import "logger.logger" for Logger
 import "brepkit.variant" for VAR_TOPO_SHAPE
-import "brepgraph.variant" for VAR_COMP_GRAPH
+import "brepgraph.variant" for VAR_CALC_GRAPH
 import "brepgraph.compiler" for Compiler
 import "brepkit" for GlobalConfig, TopoShape
 import "graph" for GraphTools
 
-class CompGraph is Node
+class CalcGraph is Node
 {
 	init()
 	{
@@ -47,7 +47,7 @@ class CompGraph is Node
 
 	calc_value(idx)
 	{
-		this.graph = GlobalConfig.get_comp_graph()
+		this.graph = GlobalConfig.get_calc_graph()
 
 		var t_node = Blueprint.get_input_node(this, 0)
 		if (t_node) {
@@ -117,7 +117,7 @@ class CompGraph is Node
 		var graph = this.graph.get_graph(this.node_idx)
 		GraphTools.layout(graph, "hierarchy")
 
-		Blueprint.connect(VariantProxy(Variant(VAR_COMP_GRAPH, graph)), "out", this.n_draw, "graph")
+		Blueprint.connect(VariantProxy(Variant(VAR_CALC_GRAPH, graph)), "out", this.n_draw, "graph")
 	}
 
 	draw(mt, cam_mt)

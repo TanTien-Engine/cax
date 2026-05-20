@@ -17,14 +17,14 @@ set(brepgraph__common
 source_group("brepgraph\\common" FILES ${brepgraph__common})
 
 set(brepgraph__computation
-    "brepgraph_c/computation/CompGraph.cpp"
-    "brepgraph_c/computation/CompGraphCore.cpp"
-    "brepgraph_c/computation/CompGraph.h"
-    "brepgraph_c/computation/CompGraphBuilder.cpp"
-    "brepgraph_c/computation/CompGraphBuilder.h"
+    "brepgraph_c/computation/CalcGraph.cpp"
+    "brepgraph_c/computation/CalcGraphCore.cpp"
+    "brepgraph_c/computation/CalcGraph.h"
+    "brepgraph_c/computation/CalcGraphBuilder.cpp"
+    "brepgraph_c/computation/CalcGraphBuilder.h"
     "brepgraph_c/computation/ShapeCache.h"
-    "brepgraph_c/computation/comp_ops.cpp"
-    "brepgraph_c/computation/comp_ops.h"
+    "brepgraph_c/computation/calc_ops.cpp"
+    "brepgraph_c/computation/calc_ops.h"
     "brepgraph_c/computation/NodeShape.h"
 )
 source_group("brepgraph\\computation" FILES ${brepgraph__computation})
@@ -239,7 +239,7 @@ source_group("deepbrep\\datagen" FILES ${deepbrep__datagen})
 #
 # Sits between brepgraph (kernel-agnostic computation graph) and
 # cadcvt (external-format readers). Owns the FeatureIR / SketchIR
-# data model, the Replayer that turns a DocumentIR into a CompGraph
+# data model, the Replayer that turns a DocumentIR into a CalcGraph
 # + history, the TopoRefResolver, the binary stores, and the
 # sketch-related ops registered on brepgraph's OpRegistry.
 

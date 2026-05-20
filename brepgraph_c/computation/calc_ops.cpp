@@ -1,5 +1,5 @@
-#include "brepgraph_c/computation/comp_ops.h"
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/calc_ops.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 #include "brepgraph_c/history/TopoNaming.h"
 #include "brepgraph_c/history/HistGraph.h"
 #include "brepgraph_c/computation/NodeShape.h"

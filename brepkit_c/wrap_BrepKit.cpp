@@ -10,7 +10,7 @@
 #include "GeomDataset.h"
 #include "TransHelper.h"
 #include "GlobalConfig.h"
-#include <brepgraph_c/computation/CompGraph.h>
+#include <brepgraph_c/computation/CalcGraph.h>
 
 #include <logger/logger.h>
 #include <SM_Vector.h>
@@ -1085,14 +1085,14 @@ void w_GlobalConfig_get_version_tree()
     ves_pop(1);
 }
 
-void w_GlobalConfig_get_comp_graph()
+void w_GlobalConfig_get_calc_graph()
 {
     ves_pop(ves_argnum());
 
     ves_pushnil();
-    ves_import_class("brepgraph", "CompGraph");
-    auto proxy = (wrapper::Proxy<brepgraph::CompGraph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<brepgraph::CompGraph>));
-    proxy->obj = brepkit::GlobalConfig::Instance()->GetCompGraph();
+    ves_import_class("brepgraph", "CalcGraph");
+    auto proxy = (wrapper::Proxy<brepgraph::CalcGraph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<brepgraph::CalcGraph>));
+    proxy->obj = brepkit::GlobalConfig::Instance()->GetCalcGraph();
     ves_pop(1);
 }
 
@@ -1174,7 +1174,7 @@ VesselForeignMethodFn BrepKitBindMethod(const char* signature)
 
     if (strcmp(signature, "static GlobalConfig.get_topo_naming()") == 0) return w_GlobalConfig_get_topo_naming;
     if (strcmp(signature, "static GlobalConfig.get_version_tree()") == 0) return w_GlobalConfig_get_version_tree;
-    if (strcmp(signature, "static GlobalConfig.get_comp_graph()") == 0) return w_GlobalConfig_get_comp_graph;
+    if (strcmp(signature, "static GlobalConfig.get_calc_graph()") == 0) return w_GlobalConfig_get_calc_graph;
 
     return nullptr;
 }

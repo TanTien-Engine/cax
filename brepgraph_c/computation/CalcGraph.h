@@ -410,7 +410,7 @@ private:
 };
 
 // ---------------------------------------------------------------
-//  CompGraph -- top-level facade
+//  CalcGraph -- top-level facade
 //
 //  Wraps OpHistory + IRGraph + Optimizer + Evaluator.
 //  OpHistory records the user's design intent.
@@ -419,10 +419,10 @@ private:
 //  Eval() executes.
 // ---------------------------------------------------------------
 
-class CompGraph
+class CalcGraph
 {
 public:
-	CompGraph();
+	CalcGraph();
 
 	// --- record operations (design-intent level) ---
 	int AddConst(int v, const std::string& desc);

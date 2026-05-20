@@ -1,9 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 
 using namespace brepgraph;
 
-TEST_CASE("OpHistory byte-array round-trip", "[comp_persist]")
+TEST_CASE("OpHistory byte-array round-trip", "[calc_persist]")
 {
 	OpHistory h1;
 	int s0 = h1.AddConst(42.0, "width");
@@ -48,7 +48,7 @@ TEST_CASE("OpHistory byte-array round-trip", "[comp_persist]")
 	CHECK(p5->desc == "fillet box");
 }
 
-TEST_CASE("OpHistory bool and int round-trip", "[comp_persist]")
+TEST_CASE("OpHistory bool and int round-trip", "[calc_persist]")
 {
 	OpHistory h1;
 	int s0 = h1.AddConst(7, "count");
@@ -66,7 +66,7 @@ TEST_CASE("OpHistory bool and int round-trip", "[comp_persist]")
 	CHECK(std::get<bool>(h2.Get(s1)->imm) == true);
 }
 
-TEST_CASE("OpHistory empty round-trip", "[comp_persist]")
+TEST_CASE("OpHistory empty round-trip", "[calc_persist]")
 {
 	OpHistory h1;
 

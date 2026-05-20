@@ -79,7 +79,7 @@ node14.query_param("offset").value.set(0.73471611738205, 0, 0)
 
 _editor.add_node(node14, -529.0622253418, -210.77722167969)
 
-var node15 = ::brepgraph::nodes::comp_graph::CompGraph()
+var node15 = ::brepgraph::nodes::calc_graph::CalcGraph()
 
 _editor.add_node(node15, 150.32632922969, 239.11358071571)
 

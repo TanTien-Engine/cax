@@ -2,7 +2,7 @@
 
 #include <memory>
 
-namespace brepgraph { class TopoNaming; class CompGraph; }
+namespace brepgraph { class TopoNaming; class CalcGraph; }
 namespace brepdb { class VersionTree; }
 
 namespace brepkit
@@ -13,7 +13,7 @@ class GlobalConfig
 public:
 	auto GetTopoNaming() const { return m_topo_naming; }
 	auto GetVersionTree() const { return m_version_tree; }
-	auto GetCompGraph() const { return m_comp_graph; }
+	auto GetCalcGraph() const { return m_calc_graph; }
 
 	static GlobalConfig* Instance();
 
@@ -26,7 +26,7 @@ private:
 
 	std::shared_ptr<brepgraph::TopoNaming> m_topo_naming = nullptr;
 	std::shared_ptr<brepdb::VersionTree> m_version_tree = nullptr;
-	std::shared_ptr<brepgraph::CompGraph> m_comp_graph = nullptr;
+	std::shared_ptr<brepgraph::CalcGraph> m_calc_graph = nullptr;
 
 }; // GlobalConfig
 

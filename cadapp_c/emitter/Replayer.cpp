@@ -2,7 +2,7 @@
 #include "cadapp_c/ops/sketch_ops.h"
 #include "cadapp_c/ops/resolve_ops.h"
 
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 #include "brepgraph_c/history/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
@@ -26,7 +26,7 @@
 //   Loft / Sweep                                 TODO
 //   LinearPattern / CircularPattern              TODO
 //
-// The Replay path now builds a CompGraph: each feature becomes a
+// The Replay path now builds a CalcGraph: each feature becomes a
 // graph subtree of typed const + op nodes. Sketches enter the graph
 // as a $sketch const + plane Vec3 consts feeding a "sketch_face" op
 // (registered by cadapp::RegisterSketchOps in cadapp/ops/).
@@ -62,7 +62,7 @@ const SketchIR* FindSketch(const DocumentIR& doc, uint32_t sketch_feat_id)
 // Build a resolve_*_ref op node from (shape_node, ref) and return
 // the op's graph node id. The ref is moved into a heap copy so the
 // const node owns it and survives later doc mutations.
-int AddResolveRefNode(brepgraph::CompGraph& cg,
+int AddResolveRefNode(brepgraph::CalcGraph& cg,
                       const char*          op_name,
                       int                  shape_node,
                       const TopoRefIR&     ref,
@@ -129,7 +129,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     out.naming = m_impl->naming;
     out.vtree  = m_impl->vtree;
 
-    auto cg = std::make_shared<brepgraph::CompGraph>();
+    auto cg = std::make_shared<brepgraph::CalcGraph>();
     // Augment brepgraph's builtin op set with cadapp's IR-aware ops.
     // brepgraph cannot register these itself without depending on
     // cadapp's IR types, so the wiring happens here where both
@@ -213,7 +213,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
 
                 // Sketch is a graph node: a deep copy of the SketchIR
-                // is owned by the CompGraph so the graph outlives the
+                // is owned by the CalcGraph so the graph outlives the
                 // DocumentIR. Plane params are separate Vec3 consts so
                 // moving the plane doesn't invalidate the solver cache.
                 auto sk_copy = std::make_shared<SketchIR>(*sk);
@@ -449,7 +449,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         }
     }
 
-    out.comp_graph = cg;
+    out.calc_graph = cg;
     out.ok         = true;
     return true;
 }

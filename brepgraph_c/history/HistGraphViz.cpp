@@ -92,7 +92,7 @@ bool HistGraph::QueryNodes(uint32_t uid,
 // ---------------------------------------------------------------
 //  Debug graph (visualization only, rebuilt each call)
 //
-//  Mirrors the spirit of CompGraphBuilder::BuildGraph and
+//  Mirrors the spirit of CalcGraphBuilder::BuildGraph and
 //  VersionGraph::BuildGraph: walk our persistent state in a
 //  deterministic order (op_id ascending; uid ascending within each op),
 //  attach NodeId / NodeFlags / NodeShape / NodeInfo components for the

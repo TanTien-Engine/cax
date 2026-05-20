@@ -1,5 +1,5 @@
 import "brepgraph.nodes.*"
 
 var BREP_GRAPH_NODES = [
-Graph, TopoGraph, HistGraph, CompGraph,
+Graph, TopoGraph, HistGraph, CalcGraph,
 ]

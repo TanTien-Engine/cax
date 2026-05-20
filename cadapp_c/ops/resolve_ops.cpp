@@ -2,7 +2,7 @@
 #include "cadapp_c/ir/TopoRefIR.h"
 #include "cadapp_c/resolve/TopoRefResolver.h"
 
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 
 #include "brepkit_c/TopoShape.h"
 

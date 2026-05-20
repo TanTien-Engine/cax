@@ -2,7 +2,7 @@
 
 namespace brepgraph
 {
-class CompGraph;
+class CalcGraph;
 class TopoNaming;
 }
 namespace cadapp
@@ -37,8 +37,8 @@ public:
 
     void Flush();
 
-    void StoreCompGraph(const brepgraph::CompGraph& cg);
-    bool LoadCompGraph(brepgraph::CompGraph& cg);
+    void StoreCalcGraph(const brepgraph::CalcGraph& cg);
+    bool LoadCalcGraph(brepgraph::CalcGraph& cg);
 
     void StoreVersionTree(const VersionTree& vt);
     bool LoadVersionTree(VersionTree& vt);

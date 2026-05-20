@@ -41,7 +41,7 @@ class ExportData is Node
 
 		var exporter = DataExporter.init()
 		if (num_samples > 1) {
-			// Augmented export: perturb CompGraph params and export N samples.
+			// Augmented export: perturb CalcGraph params and export N samples.
 			exporter.export_augmented(filepath, num_samples, noise_ratio)
 		} else if (graph_only) {
 			exporter.export_graph_only(v_shape.value, filepath)

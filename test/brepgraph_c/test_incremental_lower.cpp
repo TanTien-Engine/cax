@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 
 #include <memory>
 
@@ -42,7 +42,7 @@ static void RegisterTestOps(OpRegistry& reg)
         {false, false, true, false});
 }
 
-// Simulate CompGraph::RebuildIR + AppendNewSteps at the raw IR level.
+// Simulate CalcGraph::RebuildIR + AppendNewSteps at the raw IR level.
 // This lets us test incrementality without OCCT dependencies.
 
 struct TestGraph

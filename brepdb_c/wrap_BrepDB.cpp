@@ -15,7 +15,7 @@
 #include <spatialdb/ObjVisitor.h>
 #include <brepkit_c/TopoShape.h>
 #include <brepkit_c/GlobalConfig.h>
-#include <brepgraph_c/computation/CompGraph.h>
+#include <brepgraph_c/computation/CalcGraph.h>
 #include <brepgraph_c/history/TopoNaming.h>
 #include <brepkit_c/TransHelper.h>
 #include <wrapper/TransHelper.h>
@@ -122,15 +122,15 @@ void w_BrepDB_allocate()
     auto vt = gc->GetVersionTree();
     if (vt)
         proxy->obj->LoadVersionTree(*vt);
-    proxy->obj->LoadCompGraph(*gc->GetCompGraph());
+    proxy->obj->LoadCalcGraph(*gc->GetCalcGraph());
 
     auto tn = gc->GetTopoNaming();
     if (tn) {
         proxy->obj->LoadTopoNaming(*tn);
-        // RebuildIR() inside LoadCompGraph clears CompGraph::m_tn; restore the
-        // share so .ves selectors (via GlobalConfig) and CompGraph::Eval see
+        // RebuildIR() inside LoadCalcGraph clears CalcGraph::m_tn; restore the
+        // share so .ves selectors (via GlobalConfig) and CalcGraph::Eval see
         // the same TopoNaming.
-        gc->GetCompGraph()->SetTopoNaming(tn);
+        gc->GetCalcGraph()->SetTopoNaming(tn);
     }
 }
 
@@ -148,7 +148,7 @@ void w_BrepDB_build()
     auto root = shape->GetShape();
 
     auto gc = brepkit::GlobalConfig::Instance();
-    auto tn = gc->GetCompGraph() ? gc->GetCompGraph()->GetTopoNaming() : nullptr;
+    auto tn = gc->GetCalcGraph() ? gc->GetCalcGraph()->GetTopoNaming() : nullptr;
     if (!tn) tn = gc->GetTopoNaming();
     brepdb::WorldSender sender(tn);
     brepdb::BRepWorld world;

@@ -21,9 +21,9 @@ struct FaceLabel
 };
 
 // Resolves a HistGraph op_id to the cax operator name that produced it. The
-// expected source is brepgraph::CompGraph (which already owns the
+// expected source is brepgraph::CalcGraph (which already owns the
 // op_id -> step/IRNode mapping); we take it as a callback to avoid a hard
-// dependency on CompGraph from this header.
+// dependency on CalcGraph from this header.
 //
 // Return empty string when op_id has no known operator (e.g. internal bind).
 using OpResolver = std::function<std::string(uint32_t op_id)>;

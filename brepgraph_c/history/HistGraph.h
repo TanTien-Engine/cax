@@ -32,7 +32,7 @@ namespace brepgraph
 //    m_shape2uid : shape -> uid (mirror of m_uid2shape, for sender lookup)
 //
 //  After deserialization the bind maps are empty. They get repopulated
-//  either by WarmUpFromVT (in CompGraph) or lazily as ops re-run.
+//  either by WarmUpFromVT (in CalcGraph) or lazily as ops re-run.
 //
 //  The visualization-only graph::Graph is rebuilt on demand by
 //  BuildDebugGraph(); it is never stored as ground-truth.

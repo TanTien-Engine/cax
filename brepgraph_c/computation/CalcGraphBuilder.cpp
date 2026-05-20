@@ -1,5 +1,5 @@
-#include "brepgraph_c/computation/CompGraphBuilder.h"
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraphBuilder.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 #include "brepgraph_c/common/NodeInfo.h"
 
 #include <graph/Graph.h>
@@ -48,7 +48,7 @@ static void CollectReachable(const std::vector<OpStep>& steps, int step_id,
 }
 
 std::shared_ptr<graph::Graph>
-CompGraphBuilder::BuildGraph(const CompGraph& cg, int root_step)
+CalcGraphBuilder::BuildGraph(const CalcGraph& cg, int root_step)
 {
 	auto g = std::make_shared<graph::Graph>();
 

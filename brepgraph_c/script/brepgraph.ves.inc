@@ -29,7 +29,7 @@ foreign class HistGraph
 	foreign query_shapes(uid)
 }
 
-foreign class CompGraph
+foreign class CalcGraph
 {
 	init() {}
 

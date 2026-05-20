@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 
 using namespace brepgraph;
 

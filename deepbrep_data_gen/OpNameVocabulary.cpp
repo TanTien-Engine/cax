@@ -25,7 +25,7 @@ deepbrep::FaceClass class_from_name(const std::string& s)
 
 OpNameVocabulary::OpNameVocabulary()
 {
-    // IR-level op_names from comp_ops.cpp (used by AssignOpIds / HistGraph).
+    // IR-level op_names from calc_ops.cpp (used by AssignOpIds / HistGraph).
     m_table["cut"]     = deepbrep::FaceClass::Hole;
     m_table["fillet"]  = deepbrep::FaceClass::Fillet;
     m_table["chamfer"] = deepbrep::FaceClass::Chamfer;

@@ -3,8 +3,8 @@
 #include "brepgraph_c/topology/TopoGraph.h"
 #include "brepgraph_c/history/HistGraph.h"
 #include "brepgraph_c/history/TopoNaming.h"
-#include "brepgraph_c/computation/CompGraph.h"
-#include "brepgraph_c/computation/CompGraphBuilder.h"
+#include "brepgraph_c/computation/CalcGraph.h"
+#include "brepgraph_c/computation/CalcGraphBuilder.h"
 #include "brepgraph_c/history/NodeId.h"
 #include "brepgraph_c/computation/NodeShape.h"
 
@@ -190,35 +190,35 @@ void w_HistGraph_query_shapes()
     }
 }
 
-void w_CompGraph_allocate()
+void w_CalcGraph_allocate()
 {
-    auto proxy = (wrapper::Proxy<brepgraph::CompGraph>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<brepgraph::CompGraph>));
-    proxy->obj = std::make_shared<brepgraph::CompGraph>();
+    auto proxy = (wrapper::Proxy<brepgraph::CalcGraph>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<brepgraph::CalcGraph>));
+    proxy->obj = std::make_shared<brepgraph::CalcGraph>();
 }
 
-int w_CompGraph_finalize(void* data)
+int w_CalcGraph_finalize(void* data)
 {
-    auto proxy = (wrapper::Proxy<brepgraph::CompGraph>*)(data);
+    auto proxy = (wrapper::Proxy<brepgraph::CalcGraph>*)(data);
     proxy->~Proxy();
-    return sizeof(wrapper::Proxy<brepgraph::CompGraph>);
+    return sizeof(wrapper::Proxy<brepgraph::CalcGraph>);
 }
 
-void w_CompGraph_get_graph()
+void w_CalcGraph_get_graph()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     ves_pop(ves_argnum());
 
     ves_pushnil();
     ves_import_class("graph", "Graph");
     auto proxy = (wrapper::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>));
-    proxy->obj = brepgraph::CompGraphBuilder::BuildGraph(*cg);
+    proxy->obj = brepgraph::CalcGraphBuilder::BuildGraph(*cg);
     ves_pop(1);
 }
 
-void w_CompGraph_get_graph_filtered()
+void w_CalcGraph_get_graph_filtered()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     int root_step = (int)ves_tonumber(1);
 
     ves_pop(ves_argnum());
@@ -226,20 +226,20 @@ void w_CompGraph_get_graph_filtered()
     ves_pushnil();
     ves_import_class("graph", "Graph");
     auto proxy = (wrapper::Proxy<graph::Graph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<graph::Graph>));
-    proxy->obj = brepgraph::CompGraphBuilder::BuildGraph(*cg, root_step);
+    proxy->obj = brepgraph::CalcGraphBuilder::BuildGraph(*cg, root_step);
     ves_pop(1);
 }
 
-void w_CompGraph_set_parallel()
+void w_CalcGraph_set_parallel()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     bool enabled = ves_toboolean(1);
     cg->SetParallel(enabled);
 }
 
-void w_CompGraph_eval()
+void w_CalcGraph_eval()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
 
@@ -267,9 +267,9 @@ void w_CompGraph_eval()
     }
 }
 
-void w_CompGraph_add_integer_node()
+void w_CalcGraph_add_integer_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int val = (int)ves_tonumber(1);
     const char* desc = ves_tostring(2);
@@ -278,9 +278,9 @@ void w_CompGraph_add_integer_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_number_node()
+void w_CalcGraph_add_number_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     double num = ves_tonumber(1);
     const char* desc = ves_tostring(2);
@@ -289,9 +289,9 @@ void w_CompGraph_add_number_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_number3_node()
+void w_CalcGraph_add_number3_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     double x = ves_tonumber(1);
     double y = ves_tonumber(2);
@@ -302,9 +302,9 @@ void w_CompGraph_add_number3_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_boolean_node()
+void w_CalcGraph_add_boolean_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     bool b = ves_toboolean(1);
     const char* desc = ves_tostring(2);
@@ -313,9 +313,9 @@ void w_CompGraph_add_boolean_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_shape_node()
+void w_CalcGraph_add_shape_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
     const char* desc = ves_tostring(2);
@@ -324,9 +324,9 @@ void w_CompGraph_add_shape_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_box_node()
+void w_CalcGraph_add_box_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int length = (int)ves_tonumber(1);
     int width  = (int)ves_tonumber(2);
@@ -336,9 +336,9 @@ void w_CompGraph_add_box_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_translate_node()
+void w_CalcGraph_add_translate_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int shape = (int)ves_tonumber(1);
     int offset = (int)ves_tonumber(2);
@@ -347,9 +347,9 @@ void w_CompGraph_add_translate_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_offset_node()
+void w_CalcGraph_add_offset_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int shape = (int)ves_tonumber(1);
     int offset = (int)ves_tonumber(2);
@@ -359,9 +359,9 @@ void w_CompGraph_add_offset_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_cut_node()
+void w_CalcGraph_add_cut_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int shp1 = (int)ves_tonumber(1);
     int shp2 = (int)ves_tonumber(2);
@@ -370,9 +370,9 @@ void w_CompGraph_add_cut_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_selector_node()
+void w_CalcGraph_add_selector_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int shp = (int)ves_tonumber(1);
     int uid = (int)ves_tonumber(2);
@@ -381,9 +381,9 @@ void w_CompGraph_add_selector_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_add_merge_node()
+void w_CalcGraph_add_merge_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     auto nodes = wrapper::list_to_array<int>(1);
 
@@ -391,9 +391,9 @@ void w_CompGraph_add_merge_node()
     ves_set_number(0, id);
 }
 
-void w_CompGraph_update_integer_node()
+void w_CalcGraph_update_integer_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
     int val = (int)ves_tonumber(2);
@@ -401,9 +401,9 @@ void w_CompGraph_update_integer_node()
     cg->UpdateConst(node_idx, val);
 }
 
-void w_CompGraph_update_number_node()
+void w_CalcGraph_update_number_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
     double val = ves_tonumber(2);
@@ -411,9 +411,9 @@ void w_CompGraph_update_number_node()
     cg->UpdateConst(node_idx, val);
 }
 
-void w_CompGraph_update_number3_node()
+void w_CalcGraph_update_number3_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
     double x = ves_tonumber(2);
@@ -423,9 +423,9 @@ void w_CompGraph_update_number3_node()
     cg->UpdateConst(node_idx, brepgraph::Vec3{x, y, z});
 }
 
-void w_CompGraph_update_boolean_node()
+void w_CalcGraph_update_boolean_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
     bool val = ves_toboolean(2);
@@ -433,9 +433,9 @@ void w_CompGraph_update_boolean_node()
     cg->UpdateConst(node_idx, val);
 }
 
-void w_CompGraph_update_shape_node()
+void w_CalcGraph_update_shape_node()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
     auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(2))->obj;
@@ -446,9 +446,9 @@ void w_CompGraph_update_shape_node()
 }
 
 // generic: add_op(op_name, inputs_list)
-void w_CompGraph_add_op()
+void w_CalcGraph_add_op()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     const char* op_name = ves_tostring(1);
     auto inputs = wrapper::list_to_array<int>(2);
@@ -458,9 +458,9 @@ void w_CompGraph_add_op()
 }
 
 // generic: add_op_v(op_name, inputs_list, var_inputs_list)
-void w_CompGraph_add_op_v()
+void w_CalcGraph_add_op_v()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     const char* op_name = ves_tostring(1);
     auto inputs = wrapper::list_to_array<int>(2);
@@ -472,9 +472,9 @@ void w_CompGraph_add_op_v()
 
 // generic: update_const(node_idx, value)
 // value type is detected automatically
-void w_CompGraph_update_const()
+void w_CalcGraph_update_const()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
 
@@ -490,32 +490,32 @@ void w_CompGraph_update_const()
     }
 }
 
-void w_CompGraph_truncate()
+void w_CalcGraph_truncate()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
 
     int keep = (int)ves_tonumber(1);
     if (keep < 0) keep = 0;
     cg->Truncate(static_cast<size_t>(keep));
 }
 
-void w_CompGraph_get_history_size()
+void w_CalcGraph_get_history_size()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     ves_set_number(0, static_cast<double>(cg->GetHistorySize()));
 }
 
-void w_CompGraph_get_step_op_name()
+void w_CalcGraph_get_step_op_name()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     int step_id = (int)ves_tonumber(1);
     auto& name = cg->GetStepOpName(step_id);
     ves_set_lstring(0, name.c_str(), name.size());
 }
 
-void w_CompGraph_get_step_inputs()
+void w_CalcGraph_get_step_inputs()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     int step_id = (int)ves_tonumber(1);
     auto inputs = cg->GetStepInputs(step_id);
 
@@ -529,23 +529,23 @@ void w_CompGraph_get_step_inputs()
     }
 }
 
-void w_CompGraph_claim_step()
+void w_CalcGraph_claim_step()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     int step_id = (int)ves_tonumber(1);
     cg->ClaimStep(step_id);
 }
 
-void w_CompGraph_is_step_claimed()
+void w_CalcGraph_is_step_claimed()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     int step_id = (int)ves_tonumber(1);
     ves_set_boolean(0, cg->IsStepClaimed(step_id));
 }
 
-void w_CompGraph_has_preloaded_history()
+void w_CalcGraph_has_preloaded_history()
 {
-    auto cg = ((wrapper::Proxy<brepgraph::CompGraph>*)ves_toforeign(0))->obj;
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
     ves_set_boolean(0, cg->HasPreloadedHistory());
 }
 
@@ -568,38 +568,38 @@ VesselForeignMethodFn BrepGraphBindMethod(const char* signature)
     if (strcmp(signature, "HistGraph.get_node_uid(_)") == 0) return w_HistGraph_get_node_uid;
     if (strcmp(signature, "HistGraph.query_shapes(_)") == 0) return w_HistGraph_query_shapes;
 
-    if (strcmp(signature, "CompGraph.get_graph()") == 0) return w_CompGraph_get_graph;
-    if (strcmp(signature, "CompGraph.get_graph(_)") == 0) return w_CompGraph_get_graph_filtered;
-    if (strcmp(signature, "CompGraph.eval(_)") == 0) return w_CompGraph_eval;
-    if (strcmp(signature, "CompGraph.set_parallel(_)") == 0) return w_CompGraph_set_parallel;
-    if (strcmp(signature, "CompGraph.add_integer_node(_,_)") == 0) return w_CompGraph_add_integer_node;
-    if (strcmp(signature, "CompGraph.add_number_node(_,_)") == 0) return w_CompGraph_add_number_node;
-    if (strcmp(signature, "CompGraph.add_number3_node(_,_,_,_)") == 0) return w_CompGraph_add_number3_node;
-    if (strcmp(signature, "CompGraph.add_boolean_node(_,_)") == 0) return w_CompGraph_add_boolean_node;
-    if (strcmp(signature, "CompGraph.add_shape_node(_,_)") == 0) return w_CompGraph_add_shape_node;
-    if (strcmp(signature, "CompGraph.add_box_node(_,_,_)") == 0) return w_CompGraph_add_box_node;
-    if (strcmp(signature, "CompGraph.add_translate_node(_,_)") == 0) return w_CompGraph_add_translate_node;
-    if (strcmp(signature, "CompGraph.add_offset_node(_,_,_)") == 0) return w_CompGraph_add_offset_node;
-    if (strcmp(signature, "CompGraph.add_cut_node(_,_)") == 0) return w_CompGraph_add_cut_node;
-    if (strcmp(signature, "CompGraph.add_selector_node(_,_)") == 0) return w_CompGraph_add_selector_node;
-    if (strcmp(signature, "CompGraph.add_merge_node(_)") == 0) return w_CompGraph_add_merge_node;
-    if (strcmp(signature, "CompGraph.update_integer_node(_,_)") == 0) return w_CompGraph_update_integer_node;
-    if (strcmp(signature, "CompGraph.update_number_node(_,_)") == 0) return w_CompGraph_update_number_node;
-    if (strcmp(signature, "CompGraph.update_number3_node(_,_,_,_)") == 0) return w_CompGraph_update_number3_node;
-    if (strcmp(signature, "CompGraph.update_boolean_node(_,_)") == 0) return w_CompGraph_update_boolean_node;
-    if (strcmp(signature, "CompGraph.update_shape_node(_,_)") == 0) return w_CompGraph_update_shape_node;
+    if (strcmp(signature, "CalcGraph.get_graph()") == 0) return w_CalcGraph_get_graph;
+    if (strcmp(signature, "CalcGraph.get_graph(_)") == 0) return w_CalcGraph_get_graph_filtered;
+    if (strcmp(signature, "CalcGraph.eval(_)") == 0) return w_CalcGraph_eval;
+    if (strcmp(signature, "CalcGraph.set_parallel(_)") == 0) return w_CalcGraph_set_parallel;
+    if (strcmp(signature, "CalcGraph.add_integer_node(_,_)") == 0) return w_CalcGraph_add_integer_node;
+    if (strcmp(signature, "CalcGraph.add_number_node(_,_)") == 0) return w_CalcGraph_add_number_node;
+    if (strcmp(signature, "CalcGraph.add_number3_node(_,_,_,_)") == 0) return w_CalcGraph_add_number3_node;
+    if (strcmp(signature, "CalcGraph.add_boolean_node(_,_)") == 0) return w_CalcGraph_add_boolean_node;
+    if (strcmp(signature, "CalcGraph.add_shape_node(_,_)") == 0) return w_CalcGraph_add_shape_node;
+    if (strcmp(signature, "CalcGraph.add_box_node(_,_,_)") == 0) return w_CalcGraph_add_box_node;
+    if (strcmp(signature, "CalcGraph.add_translate_node(_,_)") == 0) return w_CalcGraph_add_translate_node;
+    if (strcmp(signature, "CalcGraph.add_offset_node(_,_,_)") == 0) return w_CalcGraph_add_offset_node;
+    if (strcmp(signature, "CalcGraph.add_cut_node(_,_)") == 0) return w_CalcGraph_add_cut_node;
+    if (strcmp(signature, "CalcGraph.add_selector_node(_,_)") == 0) return w_CalcGraph_add_selector_node;
+    if (strcmp(signature, "CalcGraph.add_merge_node(_)") == 0) return w_CalcGraph_add_merge_node;
+    if (strcmp(signature, "CalcGraph.update_integer_node(_,_)") == 0) return w_CalcGraph_update_integer_node;
+    if (strcmp(signature, "CalcGraph.update_number_node(_,_)") == 0) return w_CalcGraph_update_number_node;
+    if (strcmp(signature, "CalcGraph.update_number3_node(_,_,_,_)") == 0) return w_CalcGraph_update_number3_node;
+    if (strcmp(signature, "CalcGraph.update_boolean_node(_,_)") == 0) return w_CalcGraph_update_boolean_node;
+    if (strcmp(signature, "CalcGraph.update_shape_node(_,_)") == 0) return w_CalcGraph_update_shape_node;
 
-    if (strcmp(signature, "CompGraph.add_op(_,_)") == 0) return w_CompGraph_add_op;
-    if (strcmp(signature, "CompGraph.add_op_v(_,_,_)") == 0) return w_CompGraph_add_op_v;
-    if (strcmp(signature, "CompGraph.update_const(_,_)") == 0) return w_CompGraph_update_const;
-    if (strcmp(signature, "CompGraph.truncate(_)") == 0) return w_CompGraph_truncate;
+    if (strcmp(signature, "CalcGraph.add_op(_,_)") == 0) return w_CalcGraph_add_op;
+    if (strcmp(signature, "CalcGraph.add_op_v(_,_,_)") == 0) return w_CalcGraph_add_op_v;
+    if (strcmp(signature, "CalcGraph.update_const(_,_)") == 0) return w_CalcGraph_update_const;
+    if (strcmp(signature, "CalcGraph.truncate(_)") == 0) return w_CalcGraph_truncate;
 
-    if (strcmp(signature, "CompGraph.get_history_size()") == 0) return w_CompGraph_get_history_size;
-    if (strcmp(signature, "CompGraph.get_step_op_name(_)") == 0) return w_CompGraph_get_step_op_name;
-    if (strcmp(signature, "CompGraph.get_step_inputs(_)") == 0) return w_CompGraph_get_step_inputs;
-    if (strcmp(signature, "CompGraph.claim_step(_)") == 0) return w_CompGraph_claim_step;
-    if (strcmp(signature, "CompGraph.is_step_claimed(_)") == 0) return w_CompGraph_is_step_claimed;
-    if (strcmp(signature, "CompGraph.has_preloaded_history()") == 0) return w_CompGraph_has_preloaded_history;
+    if (strcmp(signature, "CalcGraph.get_history_size()") == 0) return w_CalcGraph_get_history_size;
+    if (strcmp(signature, "CalcGraph.get_step_op_name(_)") == 0) return w_CalcGraph_get_step_op_name;
+    if (strcmp(signature, "CalcGraph.get_step_inputs(_)") == 0) return w_CalcGraph_get_step_inputs;
+    if (strcmp(signature, "CalcGraph.claim_step(_)") == 0) return w_CalcGraph_claim_step;
+    if (strcmp(signature, "CalcGraph.is_step_claimed(_)") == 0) return w_CalcGraph_is_step_claimed;
+    if (strcmp(signature, "CalcGraph.has_preloaded_history()") == 0) return w_CalcGraph_has_preloaded_history;
 
     return nullptr;
 }
@@ -627,10 +627,10 @@ void BrepGraphBindClass(const char* class_name, VesselForeignClassMethods* metho
         return;
     }
 
-    if (strcmp(class_name, "CompGraph") == 0)
+    if (strcmp(class_name, "CalcGraph") == 0)
     {
-        methods->allocate = w_CompGraph_allocate;
-        methods->finalize = w_CompGraph_finalize;
+        methods->allocate = w_CalcGraph_allocate;
+        methods->finalize = w_CalcGraph_finalize;
         return;
     }
 }

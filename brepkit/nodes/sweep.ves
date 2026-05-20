@@ -25,7 +25,7 @@ class Sweep is Node
 
 		this.layout()
 
-		this.comp_info = {
+		this.calc_info = {
 			"op"     : "sweep",
 			"inputs" : [0, 1],
 			"params" : [
@@ -33,9 +33,9 @@ class Sweep is Node
 			],
 		}
 
-		this.comp_const_refs = nil
-		this.comp_graph_ref = nil
-		this.comp_step_id = -1
+		this.calc_const_refs = nil
+		this.calc_graph_ref = nil
+		this.calc_step_id = -1
 
 		this.op_id = -1
 	}
@@ -48,7 +48,7 @@ class Sweep is Node
 
 
 	on_connection_dirty() {
-		this.comp_step_id = -1
+		this.calc_step_id = -1
 	}
 
 	calc_value(idx)

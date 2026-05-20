@@ -19,7 +19,7 @@ class Compiler
 	{
 		var curr = node
 		for (var i in 0..10) {
-			if (curr["comp_info"] or curr["comp_step_id"]) {
+			if (curr["calc_info"] or curr["calc_step_id"]) {
 				return curr
 			}
 			if (!curr.imports or curr.imports.isEmpty) {
@@ -41,7 +41,7 @@ class Compiler
 			return
 		}
 
-		var step = curr["comp_step_id"]
+		var step = curr["calc_step_id"]
 		if (step and step >= 0) {
 			return
 		}
@@ -52,10 +52,10 @@ class Compiler
 			}
 		}
 
-		if (curr["comp_info"]) {
+		if (curr["calc_info"]) {
 			Compiler.register_node(curr)
 		} else if (curr.has_method("register_selector(_)")) {
-			if (!(curr.comp_step_id and curr.comp_step_id >= 0)) {
+			if (!(curr.calc_step_id and curr.calc_step_id >= 0)) {
 				for (var uid in curr.selected_uids) {
 					curr.register_selector(uid)
 				}
@@ -67,7 +67,7 @@ class Compiler
 	{
 		var curr = node
 		for (var i in 0..10) {
-			var step = curr["comp_step_id"]
+			var step = curr["calc_step_id"]
 			if (step and step >= 0) {
 				return step
 			}
@@ -85,12 +85,12 @@ class Compiler
 
 	static register_node(node)
 	{
-		if (!node.comp_info or node.comp_step_id >= 0) {
+		if (!node.calc_info or node.calc_step_id >= 0) {
 			return
 		}
 
-		var cg = GlobalConfig.get_comp_graph()
-		var info = node.comp_info
+		var cg = GlobalConfig.get_calc_graph()
+		var info = node.calc_info
 		var all_inputs = []
 
 		if (info.containsKey("inputs")) {
@@ -129,8 +129,8 @@ class Compiler
 			}
 		}
 
-		node.comp_const_refs = const_refs
-		node.comp_graph_ref = cg
+		node.calc_const_refs = const_refs
+		node.calc_graph_ref = cg
 
 		if (info.containsKey("var_inputs")) {
 			var var_list = []
@@ -144,9 +144,9 @@ class Compiler
 					}
 				}
 			}
-			node.comp_step_id = cg.add_op_v(info["op"], all_inputs, var_list)
+			node.calc_step_id = cg.add_op_v(info["op"], all_inputs, var_list)
 		} else {
-			node.comp_step_id = cg.add_op(info["op"], all_inputs)
+			node.calc_step_id = cg.add_op(info["op"], all_inputs)
 		}
 
 	}
@@ -158,7 +158,7 @@ class Compiler
 			return
 		}
 
-		var step = curr["comp_step_id"]
+		var step = curr["calc_step_id"]
 		if (step and step >= 0) {
 			return
 		}
@@ -169,24 +169,24 @@ class Compiler
 			}
 		}
 
-		if (curr["comp_info"]) {
+		if (curr["calc_info"]) {
 			Compiler.reconnect_node(curr)
 		} else if (curr.has_method("register_selector(_)")) {
 			Compiler.reconnect_selector(curr)
 		}
 	}
 
-	// Selectors don't carry comp_info; they emit a selector_edge / _face op
+	// Selectors don't carry calc_info; they emit a selector_edge / _face op
 	// directly. Match the existing step in history by op name + shape input
 	// + uid immediate, so a re-opened project doesn't duplicate them (and
 	// can reuse the cached IR state for the lazy-eval fast path).
 	static reconnect_selector(node)
 	{
-		if (node.comp_step_id and node.comp_step_id >= 0) {
+		if (node.calc_step_id and node.calc_step_id >= 0) {
 			return
 		}
 
-		var cg = GlobalConfig.get_comp_graph()
+		var cg = GlobalConfig.get_calc_graph()
 
 		var type = node.query_param("type").value
 		var op_name = "selector_edge"
@@ -215,25 +215,25 @@ class Compiler
 			if (cg.get_step_op_name(uid_step) != "$num") continue
 			cg.claim_step(i)
 			cg.claim_step(uid_step)
-			node.comp_step_id = i
-			node.comp_graph_ref = cg
-			node.comp_const_refs = {"uid": uid_step}
+			node.calc_step_id = i
+			node.calc_graph_ref = cg
+			node.calc_const_refs = {"uid": uid_step}
 			return
 		}
 	}
 
 	static reconnect_node(node)
 	{
-		if (!node.comp_info) {
+		if (!node.calc_info) {
 			return
 		}
 
-		if (node.comp_step_id and node.comp_step_id >= 0) {
+		if (node.calc_step_id and node.calc_step_id >= 0) {
 			return
 		}
 
-		var cg = GlobalConfig.get_comp_graph()
-		var info = node.comp_info
+		var cg = GlobalConfig.get_calc_graph()
+		var info = node.calc_info
 		var shape_input_ids = []
 
 		if (info.containsKey("inputs")) {
@@ -288,8 +288,8 @@ class Compiler
 		}
 
 		cg.claim_step(found_step_id)
-		node.comp_step_id = found_step_id
-		node.comp_graph_ref = cg
+		node.calc_step_id = found_step_id
+		node.calc_graph_ref = cg
 
 		var step_inputs = cg.get_step_inputs(found_step_id)
 		var n_shape = shape_input_ids.count
@@ -308,32 +308,32 @@ class Compiler
 			}
 		}
 
-		node.comp_const_refs = const_refs
+		node.calc_const_refs = const_refs
 	}
 
-	// Generic compilation: reads comp_info from the node and builds IR.
+	// Generic compilation: reads calc_info from the node and builds IR.
 	//
-	// comp_info is a map:
+	// calc_info is a map:
 	//   "op"     : op name string (e.g. "box", "translate", "offset", "cut")
 	//   "params" : list of { "name": param_name, "type": "number"|"number3"|"boolean"|"integer" }
 	//   "inputs" : list of input pin indices that carry shapes (compiled recursively)
 	//
 	// Example for Box:
-	//   comp_info {
+	//   calc_info {
 	//     "op"     : "box",
 	//     "params" : [ {"name":"length","type":"number"}, {"name":"width","type":"number"}, {"name":"height","type":"number"} ],
 	//     "inputs" : [],
 	//   }
 	//
 	// Example for Offset:
-	//   comp_info {
+	//   calc_info {
 	//     "op"     : "offset",
 	//     "params" : [ {"name":"offset","type":"number"}, {"name":"is_solid","type":"boolean"} ],
 	//     "inputs" : [0],
 	//   }
 	compile_node(node, compiler)
 	{
-		var info = node.comp_info
+		var info = node.calc_info
 		if (!info) {
 			return nil
 		}
@@ -375,8 +375,8 @@ class Compiler
 		}
 
 		// store refs on node for on_param_dirty updates
-		node.comp_const_refs = const_refs
-		node.comp_graph_ref = G
+		node.calc_const_refs = const_refs
+		node.calc_graph_ref = G
 
 		return G.add_op(info["op"], all_inputs)
 	}
@@ -385,12 +385,12 @@ class Compiler
 	// Re-reads all params and calls update_const for each.
 	static update_params(node)
 	{
-		if (!node.comp_info or !node.comp_const_refs or !node.comp_graph_ref) {
+		if (!node.calc_info or !node.calc_const_refs or !node.calc_graph_ref) {
 			return
 		}
 
-		var G = node.comp_graph_ref
-		var info = node.comp_info
+		var G = node.calc_graph_ref
+		var info = node.calc_info
 
 		if (!info.containsKey("params")) {
 			return
@@ -399,7 +399,7 @@ class Compiler
 		for (var p in info["params"]) {
 			var name = p["name"]
 			var type = p["type"]
-			var ref = node.comp_const_refs[name]
+			var ref = node.calc_const_refs[name]
 			if (!ref) {
 				continue
 			}

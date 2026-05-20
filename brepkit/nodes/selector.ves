@@ -35,10 +35,10 @@ class Selector is Node
 		this.selected_objs = []
 		this.selected_uids = []
 
-		this.comp_info = nil
-		this.comp_const_refs = nil
-		this.comp_graph_ref = nil
-		this.comp_step_id = -1
+		this.calc_info = nil
+		this.calc_const_refs = nil
+		this.calc_graph_ref = nil
+		this.calc_step_id = -1
 	}
 
 	on_pin_dirty(pin, type, msg)
@@ -50,7 +50,7 @@ class Selector is Node
 
 
 	on_connection_dirty() {
-		this.comp_step_id = -1
+		this.calc_step_id = -1
 	}
 
 	calc_value(idx)
@@ -223,7 +223,7 @@ class Selector is Node
 
 	register_selector(uid)
 	{
-		var cg = GlobalConfig.get_comp_graph()
+		var cg = GlobalConfig.get_calc_graph()
 
 		var pin = Blueprint.query_pin(this.imports, 0)
 		var i_shp = -1
@@ -239,9 +239,9 @@ class Selector is Node
 		}
 
 		var i_uid = cg.add_number_node(uid, "uid")
-		this.comp_step_id = cg.add_op(op_name, [i_shp, i_uid])
-		this.comp_const_refs = {"uid": i_uid}
-		this.comp_graph_ref = cg
+		this.calc_step_id = cg.add_op(op_name, [i_shp, i_uid])
+		this.calc_const_refs = {"uid": i_uid}
+		this.calc_graph_ref = cg
 	}
 
 	get_hist_graph()

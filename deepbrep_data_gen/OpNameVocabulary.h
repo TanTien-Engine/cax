@@ -9,7 +9,7 @@ namespace deepbrep_data_gen
 {
 
 // Maps a physical-level cax operator name (as recorded in
-// brepgraph::CompGraph -- e.g. "PrimMaker.Box", "TopoAlgo.Cut") to a
+// brepgraph::CalcGraph -- e.g. "PrimMaker.Box", "TopoAlgo.Cut") to a
 // deepbrep::FaceClass. This is the recognizer's output vocabulary.
 //
 // Today the cax blueprint exposes only physical operators -- "Cut" is the

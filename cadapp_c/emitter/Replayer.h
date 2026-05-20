@@ -9,7 +9,7 @@
 // ============================================================
 // cadapp/emitter/Replayer.h
 //
-// Build a CompGraph from a DocumentIR. The graph encodes every
+// Build a CalcGraph from a DocumentIR. The graph encodes every
 // feature as op + const nodes; geometry is materialised lazily by
 // brepgraph's evaluator, not by Replayer.
 //
@@ -35,7 +35,7 @@
 namespace brepgraph
 {
 class TopoNaming;
-class CompGraph;
+class CalcGraph;
 }
 namespace brepdb
 {
@@ -85,7 +85,7 @@ struct ReplayResult
     std::shared_ptr<brepdb::VersionTree>  vtree;
 
     // Computation graph built during replay (persistent).
-    std::shared_ptr<brepgraph::CompGraph>  comp_graph;
+    std::shared_ptr<brepgraph::CalcGraph>  calc_graph;
 };
 
 class Replayer

@@ -2,7 +2,7 @@
 #include "TopoShape.h"
 
 #include <brepgraph_c/history/TopoNaming.h>
-#include <brepgraph_c/computation/CompGraph.h>
+#include <brepgraph_c/computation/CalcGraph.h>
 #include <brepdb_c/VersionTree.h>
 #include <brepdb_c/WorldSender.h>
 #include <brepdb_c/WorldReceiver.h>
@@ -26,14 +26,14 @@ GlobalConfig::GlobalConfig()
 {
 	m_topo_naming = std::make_shared<brepgraph::TopoNaming>();
 	m_version_tree = std::make_shared<brepdb::VersionTree>();
-	m_comp_graph = std::make_shared<brepgraph::CompGraph>();
+	m_calc_graph = std::make_shared<brepgraph::CalcGraph>();
 
-	// Share the same TopoNaming so direct .ves code and CompGraph::Eval
+	// Share the same TopoNaming so direct .ves code and CalcGraph::Eval
 	// see the same naming state.
-	m_comp_graph->SetTopoNaming(m_topo_naming);
+	m_calc_graph->SetTopoNaming(m_topo_naming);
 
 	auto vt = m_version_tree;
-	auto cg = m_comp_graph;
+	auto cg = m_calc_graph;
 	auto tn = m_topo_naming;
 	auto vt_mutex = std::make_shared<std::mutex>();
 

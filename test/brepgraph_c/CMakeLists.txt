@@ -11,17 +11,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Catch2)
 
-# CompGraphCore.cpp is the OCCT-independent core (IRGraph, Evaluator, etc.).
+# CalcGraphCore.cpp is the OCCT-independent core (IRGraph, Evaluator, etc.).
 add_executable(${PROJECT_NAME}
     catch_main.cpp
     test_shape_cache.cpp
     test_evaluator.cpp
     test_incremental_lower.cpp
-    test_comp_persist.cpp
+    test_calc_persist.cpp
     test_reconnect.cpp
     test_irgraph.cpp
-    test_compgraph_core.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../brepgraph_c/computation/CompGraphCore.cpp
+    test_calcgraph_core.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../brepgraph_c/computation/CalcGraphCore.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

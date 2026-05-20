@@ -9,7 +9,7 @@
 #include "deepbrep_data_gen/DatasetWriter.h"
 
 #include "brepgraph_c/history/TopoNaming.h"
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 #include "brepgraph_c/history/HistGraph.h"
 #include "brepkit_c/TopoShape.h"
 #include "brepkit_c/GlobalConfig.h"
@@ -128,7 +128,7 @@ void w_DataExporter_export()
     {
         auto cfg = brepkit::GlobalConfig::Instance();
         auto tn  = cfg->GetTopoNaming();
-        auto cg  = cfg->GetCompGraph();
+        auto cg  = cfg->GetCalcGraph();
 
         std::unordered_map<uint32_t, std::string> op_map;
         if (cg) {
@@ -201,7 +201,7 @@ void w_DataExporter_export_augmented()
 
     auto cfg = brepkit::GlobalConfig::Instance();
     auto tn  = cfg->GetTopoNaming();
-    auto cg  = cfg->GetCompGraph();
+    auto cg  = cfg->GetCalcGraph();
 
     if (!cg || !tn) {
         ves_set_number(0, 0);

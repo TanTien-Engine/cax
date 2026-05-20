@@ -1,5 +1,5 @@
 #include "brepdb_c/BrepDB.h"
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 #include "brepgraph_c/history/TopoNaming.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
@@ -21,7 +21,7 @@ namespace
 
 static constexpr const char* META_SHAPE_INDEX  = "shape_index";
 static constexpr const char* META_TOPO_GRAPH   = "topo_graph";
-static constexpr const char* META_COMP_GRAPH   = "comp_graph";
+static constexpr const char* META_CALC_GRAPH   = "calc_graph";
 static constexpr const char* META_VERSION_TREE = "version_tree";
 static constexpr const char* META_TOPO_NAMING = "topo_naming";
 static constexpr const char* META_SKETCH_STORE  = "sketch_store";
@@ -194,8 +194,8 @@ void BrepDB::Flush()
     StoreTopoGraph();
 
     auto gc = brepkit::GlobalConfig::Instance();
-    if (gc->GetCompGraph())
-        StoreCompGraph(*gc->GetCompGraph());
+    if (gc->GetCalcGraph())
+        StoreCalcGraph(*gc->GetCalcGraph());
     if (gc->GetTopoNaming())
         StoreTopoNaming(*gc->GetTopoNaming());
     if (gc->GetVersionTree())
@@ -257,7 +257,7 @@ void BrepDB::LoadTopoGraph()
     delete[] buf;
 }
 
-void BrepDB::StoreCompGraph(const brepgraph::CompGraph& cg)
+void BrepDB::StoreCalcGraph(const brepgraph::CalcGraph& cg)
 {
     uint8_t* buf = nullptr;
     uint32_t len = 0;
@@ -265,10 +265,10 @@ void BrepDB::StoreCompGraph(const brepgraph::CompGraph& cg)
 
     if (len == 0) { delete[] buf; return; }
 
-    spatialdb::id_type page = m_rtree->GetMetaPage(META_COMP_GRAPH);
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_CALC_GRAPH);
     try {
         m_sm->StoreByteArray(page, len, buf);
-        m_rtree->SetMetaPage(META_COMP_GRAPH, page);
+        m_rtree->SetMetaPage(META_CALC_GRAPH, page);
     } catch (...) {
         delete[] buf;
         throw;
@@ -276,9 +276,9 @@ void BrepDB::StoreCompGraph(const brepgraph::CompGraph& cg)
     delete[] buf;
 }
 
-bool BrepDB::LoadCompGraph(brepgraph::CompGraph& cg)
+bool BrepDB::LoadCalcGraph(brepgraph::CalcGraph& cg)
 {
-    spatialdb::id_type page = m_rtree->GetMetaPage(META_COMP_GRAPH);
+    spatialdb::id_type page = m_rtree->GetMetaPage(META_CALC_GRAPH);
     if (page == spatialdb::NewPage)
         return false;
 
@@ -292,7 +292,7 @@ bool BrepDB::LoadCompGraph(brepgraph::CompGraph& cg)
 
     // The saved graph may reference cadapp ops (sketch_face,
     // resolve_edge_ref, resolve_face_ref); make sure they're in this
-    // CompGraph's registry before LoadFromByteArray rebuilds the IR.
+    // CalcGraph's registry before LoadFromByteArray rebuilds the IR.
     cadapp::RegisterSketchOps(cg.GetRegistry());
     cadapp::RegisterResolveOps(cg.GetRegistry());
 

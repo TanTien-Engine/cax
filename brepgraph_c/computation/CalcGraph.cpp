@@ -1,5 +1,5 @@
-#include "brepgraph_c/computation/CompGraph.h"
-#include "brepgraph_c/computation/comp_ops.h"
+#include "brepgraph_c/computation/CalcGraph.h"
+#include "brepgraph_c/computation/calc_ops.h"
 #include "brepgraph_c/history/TopoNaming.h"
 
 #include <cstring>
@@ -8,10 +8,10 @@ namespace brepgraph
 {
 
 // ---------------------------------------------------------------
-//  CompGraph -- facade
+//  CalcGraph -- facade
 // ---------------------------------------------------------------
 
-CompGraph::CompGraph()
+CalcGraph::CalcGraph()
 	: m_ir(m_reg)
 	, m_eval(m_reg)
 {
@@ -19,7 +19,7 @@ CompGraph::CompGraph()
 	m_opt.AddDefaultRules();
 }
 
-int CompGraph::Register(NRef ref, const std::string& desc)
+int CalcGraph::Register(NRef ref, const std::string& desc)
 {
 	int ext = static_cast<int>(m_nodes.size());
 	m_nodes.push_back({ref, desc});
@@ -27,49 +27,49 @@ int CompGraph::Register(NRef ref, const std::string& desc)
 	return ext;
 }
 
-int CompGraph::AddConst(int v, const std::string& desc)
+int CalcGraph::AddConst(int v, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(v, desc);
 }
 
-int CompGraph::AddConst(double v, const std::string& desc)
+int CalcGraph::AddConst(double v, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(v, desc);
 }
 
-int CompGraph::AddConst(bool v, const std::string& desc)
+int CalcGraph::AddConst(bool v, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(v, desc);
 }
 
-int CompGraph::AddConst(Vec3 v, const std::string& desc)
+int CalcGraph::AddConst(Vec3 v, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(v, desc);
 }
 
-int CompGraph::AddConst(const std::shared_ptr<brepkit::TopoShape>& shp, const std::string& desc)
+int CalcGraph::AddConst(const std::shared_ptr<brepkit::TopoShape>& shp, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(shp, desc);
 }
 
-int CompGraph::AddConst(const std::shared_ptr<void>& sketch_handle, const std::string& desc)
+int CalcGraph::AddConst(const std::shared_ptr<void>& sketch_handle, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(sketch_handle, desc);
 }
 
-int CompGraph::AddConst(TopoRefVal v, const std::string& desc)
+int CalcGraph::AddConst(TopoRefVal v, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(std::move(v), desc);
 }
 
-int CompGraph::AddOp(const std::string& op,
+int CalcGraph::AddOp(const std::string& op,
                      const std::vector<int>& inputs,
                      const std::vector<int>& var_inputs,
                      const std::string& desc)
@@ -78,17 +78,17 @@ int CompGraph::AddOp(const std::string& op,
 	return m_history.AddOp(op, inputs, var_inputs, desc);
 }
 
-void CompGraph::SetRestoreFn(RestoreFn fn)
+void CalcGraph::SetRestoreFn(RestoreFn fn)
 {
 	m_eval.SetRestoreFn(std::move(fn));
 }
 
-void CompGraph::SetCommitFn(CommitFn fn)
+void CalcGraph::SetCommitFn(CommitFn fn)
 {
 	m_eval.SetCommitFn(std::move(fn));
 }
 
-void CompGraph::SetNodeVersion(int ext_id, uint32_t vt_node_id)
+void CalcGraph::SetNodeVersion(int ext_id, uint32_t vt_node_id)
 {
 	if (!m_lowered) Lower();
 	if (ext_id < 0 || ext_id >= (int)m_nodes.size()) return;
@@ -99,7 +99,7 @@ void CompGraph::SetNodeVersion(int ext_id, uint32_t vt_node_id)
 	}
 }
 
-void CompGraph::Truncate(size_t keep)
+void CalcGraph::Truncate(size_t keep)
 {
 	if (keep >= m_history.Size()) return;
 
@@ -128,7 +128,7 @@ void CompGraph::Truncate(size_t keep)
 	m_lowered = false;
 }
 
-void CompGraph::UpdateConst(int ext_id, Val v)
+void CalcGraph::UpdateConst(int ext_id, Val v)
 {
 	m_history.UpdateConst(ext_id, v);
 
@@ -144,7 +144,7 @@ void CompGraph::UpdateConst(int ext_id, Val v)
 	}
 }
 
-void CompGraph::RebuildIR()
+void CalcGraph::RebuildIR()
 {
 	m_ir.Clear();
 	m_nodes.clear();
@@ -158,7 +158,7 @@ void CompGraph::RebuildIR()
 	AppendNewSteps();
 }
 
-void CompGraph::AppendNewSteps()
+void CalcGraph::AppendNewSteps()
 {
 	auto& steps = m_history.Steps();
 	for (size_t i = m_lowered_count; i < steps.size(); ++i)
@@ -226,7 +226,7 @@ void CompGraph::AppendNewSteps()
 	m_lowered_count = steps.size();
 }
 
-void CompGraph::Lower()
+void CalcGraph::Lower()
 {
 	if (m_lowered) return;
 	if (m_lowered_count > 0)
@@ -236,13 +236,13 @@ void CompGraph::Lower()
 	m_lowered = true;
 }
 
-void CompGraph::Optimize()
+void CalcGraph::Optimize()
 {
 	if (!m_lowered) Lower();
 	m_opt.Run(m_ir);
 }
 
-Val CompGraph::Eval(int ext_id)
+Val CalcGraph::Eval(int ext_id)
 {
 	if (!m_lowered) Lower();
 	if (ext_id < 0 || ext_id >= (int)m_nodes.size()) return {};
@@ -281,12 +281,12 @@ Val CompGraph::Eval(int ext_id)
 	return m_eval.ResolveVal(m_ir, ref);
 }
 
-size_t CompGraph::NodeCount() const
+size_t CalcGraph::NodeCount() const
 {
 	return m_ir.LiveCount();
 }
 
-uint32_t CompGraph::CalcOpId(int ext_id, int sub_op_id) const
+uint32_t CalcGraph::CalcOpId(int ext_id, int sub_op_id) const
 {
 	auto key = std::make_pair(ext_id, sub_op_id);
 	auto itr = m_op_id_map.find(key);
@@ -299,13 +299,13 @@ uint32_t CompGraph::CalcOpId(int ext_id, int sub_op_id) const
 	return itr->second;
 }
 
-NRef CompGraph::Ref(int ext_id) const
+NRef CalcGraph::Ref(int ext_id) const
 {
 	if (ext_id < 0 || ext_id >= (int)m_nodes.size()) return NREF_NULL;
 	return m_nodes[ext_id].ref;
 }
 
-std::unordered_map<uint32_t, std::string> CompGraph::GetIROpIdMap() const
+std::unordered_map<uint32_t, std::string> CalcGraph::GetIROpIdMap() const
 {
 	std::unordered_map<uint32_t, std::string> result;
 	for (auto ref : m_ir.TopoSort()) {
@@ -320,32 +320,32 @@ std::unordered_map<uint32_t, std::string> CompGraph::GetIROpIdMap() const
 }
 
 // ---------------------------------------------------------------
-//  CompGraph reconnection support
+//  CalcGraph reconnection support
 // ---------------------------------------------------------------
 
 static const std::string s_empty_str;
 
-const std::string& CompGraph::GetStepOpName(int step_id) const
+const std::string& CalcGraph::GetStepOpName(int step_id) const
 {
 	auto* s = m_history.Get(step_id);
 	return s ? s->op_name : s_empty_str;
 }
 
-std::vector<int> CompGraph::GetStepInputs(int step_id) const
+std::vector<int> CalcGraph::GetStepInputs(int step_id) const
 {
 	auto* s = m_history.Get(step_id);
 	return s ? s->inputs : std::vector<int>{};
 }
 
 // ---------------------------------------------------------------
-//  CompGraph persistence
+//  CalcGraph persistence
 //
 //  vt_node_id is stored on OpStep (persistent) rather than IRNode
 //  (rebuilt on every Lower). StoreToByteArray syncs IR vt_node_ids
 //  back to history steps before serializing.
 // ---------------------------------------------------------------
 
-void CompGraph::StoreToByteArray(uint8_t** buf, uint32_t& len) const
+void CalcGraph::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 {
 	auto& hist = const_cast<OpHistory&>(m_history);
 	for (size_t ext = 0; ext < m_nodes.size(); ++ext)
@@ -357,7 +357,7 @@ void CompGraph::StoreToByteArray(uint8_t** buf, uint32_t& len) const
 	m_history.StoreToByteArray(buf, len);
 }
 
-bool CompGraph::LoadFromByteArray(const uint8_t* buf, uint32_t len)
+bool CalcGraph::LoadFromByteArray(const uint8_t* buf, uint32_t len)
 {
 	m_history.Clear();
 	m_lowered = false;

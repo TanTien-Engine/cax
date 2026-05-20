@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 
 #include <atomic>
 #include <chrono>
@@ -915,7 +915,7 @@ TEST_CASE("RunParallel: wide graph with many independent branches", "[parallel]"
 }
 
 // ---------------------------------------------------------------
-//  CompGraph facade integration tests (real modeling scenarios)
+//  CalcGraph facade integration tests (real modeling scenarios)
 // ---------------------------------------------------------------
 
 // Register CAD-like ops that simulate real boolean modeling workloads
@@ -980,7 +980,7 @@ static void RegisterCADTestOps(OpRegistry& reg)
 TEST_CASE("CAD: boolean cut with two independent box subtrees", "[integration]")
 {
     // Mirrors test/brepgraph/nodes/rollback.ves:
-    //   boxA -> cut(_, boxB->translate) via CompGraph
+    //   boxA -> cut(_, boxB->translate) via CalcGraph
     OpRegistry reg;
     RegisterCADTestOps(reg);
     IRGraph g(reg);
@@ -1110,7 +1110,7 @@ TEST_CASE("CAD: parallel param update + re-eval (fuse)", "[integration]")
 TEST_CASE("CAD: complex multi-boolean pipeline (cut + fuse + fillet)", "[integration]")
 {
     // Mirrors test/brepgraph/nodes/compute.ves:
-    //   boxA -> fillet -> cut(_, boxB->translate) via CompGraph
+    //   boxA -> fillet -> cut(_, boxB->translate) via CalcGraph
     // Extended with fuse:
     //
     //   boxA -> trA --+

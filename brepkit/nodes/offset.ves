@@ -29,7 +29,7 @@ class Offset is Node
 
 		this.layout()
 
-		this.comp_info = {
+		this.calc_info = {
 			"op"     : "offset",
 			"inputs" : [0],
 			"params" : [
@@ -38,9 +38,9 @@ class Offset is Node
 			],
 		}
 
-		this.comp_const_refs = nil
-		this.comp_graph_ref = nil
-		this.comp_step_id = -1
+		this.calc_const_refs = nil
+		this.calc_graph_ref = nil
+		this.calc_step_id = -1
 
 		this.op_id = []
 	}
@@ -53,7 +53,7 @@ class Offset is Node
 
 
 	on_connection_dirty() {
-		this.comp_step_id = -1
+		this.calc_step_id = -1
 	}
 
 	calc_value(idx)
