@@ -13,11 +13,11 @@
 #include <spatialdb/DiskStorageManager.h>
 #include <spatialdb/Region.h>
 #include <spatialdb/ObjVisitor.h>
-#include <partgraph_c/TopoShape.h>
-#include <partgraph_c/GlobalConfig.h>
+#include <brepkit_c/TopoShape.h>
+#include <brepkit_c/GlobalConfig.h>
 #include <breptopo_c/CompGraph.h>
 #include <breptopo_c/TopoNaming.h>
-#include <partgraph_c/TransHelper.h>
+#include <brepkit_c/TransHelper.h>
 #include <wrapper/TransHelper.h>
 #include <SM_Cube.h>
 
@@ -53,10 +53,10 @@ int w_BrepWorld_finalize(void* data)
 void w_BrepWorld_serialize()
 {
     auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
-    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
     const TopoDS_Shape& tshape = shape->GetShape();
 
-    brepdb::WorldSender sender(partgraph::GlobalConfig::Instance()->GetTopoNaming());
+    brepdb::WorldSender sender(brepkit::GlobalConfig::Instance()->GetTopoNaming());
     sender.Serialize(tshape, *world);
 }
 
@@ -81,8 +81,8 @@ void w_BrepWorld_deserialize()
     brepdb::WorldReceiver receiver(*world);
     TopoDS_Shape compound = receiver.GetAll();
 
-    auto shape = std::make_shared<partgraph::TopoShape>(compound);
-    partgraph::return_topo_shape(shape);
+    auto shape = std::make_shared<brepkit::TopoShape>(compound);
+    brepkit::return_topo_shape(shape);
 }
 
 void w_BrepWorld_entity_count()
@@ -103,7 +103,7 @@ void w_BrepWorld_import_step()
 {
     auto world = ((wrapper::Proxy<brepdb::BRepWorld>*)ves_toforeign(0))->obj;
     std::string filepath = ves_tostring(1);
-    auto tn = partgraph::GlobalConfig::Instance()->GetTopoNaming();
+    auto tn = brepkit::GlobalConfig::Instance()->GetTopoNaming();
     bool ok = brepdb::StepFile::Import(filepath, *world, tn);
     ves_set_boolean(0, ok);
 }
@@ -118,7 +118,7 @@ void w_BrepDB_allocate()
     auto sm = std::make_shared<spatialdb::DiskStorageManager>(filename, overwrite);
     proxy->obj = std::make_shared<brepdb::BrepDB>(sm, overwrite);
 
-    auto gc = partgraph::GlobalConfig::Instance();
+    auto gc = brepkit::GlobalConfig::Instance();
     auto vt = gc->GetVersionTree();
     if (vt)
         proxy->obj->LoadVersionTree(*vt);
@@ -144,10 +144,10 @@ int w_BrepDB_finalize(void* data)
 void w_BrepDB_build()
 {
     auto db = ((wrapper::Proxy<brepdb::BrepDB>*)ves_toforeign(0))->obj;
-    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
     auto root = shape->GetShape();
 
-    auto gc = partgraph::GlobalConfig::Instance();
+    auto gc = brepkit::GlobalConfig::Instance();
     auto tn = gc->GetCompGraph() ? gc->GetCompGraph()->GetTopoNaming() : nullptr;
     if (!tn) tn = gc->GetTopoNaming();
     brepdb::WorldSender sender(tn);

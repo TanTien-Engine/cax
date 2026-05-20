@@ -14,7 +14,7 @@
 #include "NodeId.h"
 #include "NodeFlags.h"
 #include "NodeInfo.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <TopAbs_ShapeEnum.hxx>
 
@@ -33,7 +33,7 @@ namespace
 {
 
 std::shared_ptr<graph::Node> MakeShimNode(uint32_t uid,
-                                          const std::shared_ptr<partgraph::TopoShape>& shape)
+                                          const std::shared_ptr<brepkit::TopoShape>& shape)
 {
     auto n = std::make_shared<graph::Node>();
     n->AddComponent<NodeId>(uid, 0);
@@ -70,7 +70,7 @@ std::string DescribeUid(uint32_t uid, uint32_t owning_op_id, bool active)
 } // namespace
 
 std::shared_ptr<graph::Node>
-HistGraph::QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
+HistGraph::QueryNode(const std::shared_ptr<brepkit::TopoShape>& shape) const
 {
     uint32_t uid = GetUID(shape);
     if (uid == 0xFFFFFFFFu) return nullptr;
@@ -80,7 +80,7 @@ HistGraph::QueryNode(const std::shared_ptr<partgraph::TopoShape>& shape) const
 bool HistGraph::QueryNodes(uint32_t uid,
                            std::vector<std::shared_ptr<graph::Node>>& results) const
 {
-    std::vector<std::shared_ptr<partgraph::TopoShape>> shapes;
+    std::vector<std::shared_ptr<brepkit::TopoShape>> shapes;
     if (!QueryCurrentShapes(uid, shapes))
         return false;
     results.reserve(results.size() + shapes.size());
@@ -129,7 +129,7 @@ std::shared_ptr<graph::Graph> HistGraph::GetGraph() const
         // node in the UI can still preview the original geometry.
         auto sit = Uid2Shape().find(uid);
         if (sit != Uid2Shape().end())
-            n->AddComponent<NodeShape>(std::make_shared<partgraph::TopoShape>(sit->second));
+            n->AddComponent<NodeShape>(std::make_shared<brepkit::TopoShape>(sit->second));
 
         n->AddComponent<NodeInfo>(std::move(desc));
 

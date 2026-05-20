@@ -4,7 +4,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant, VAR_TYPE_NUMBER2, VAR_TYPE_ARRAY
 import "blueprint.node_editor" for NodeEditor
 import "blueprint.nodes.array" for Array
-import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
+import "brepkit.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "breptopo.variant" for VAR_TOPO_GRAPH
 import "geograph.variant" for VAR_TYPE_GEO, VarGeo
 import "geograph.config" for POINT_RADIUS

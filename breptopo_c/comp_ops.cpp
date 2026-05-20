@@ -4,17 +4,17 @@
 #include "HistGraph.h"
 #include "NodeShape.h"
 
-#include "partgraph_c/PrimMaker.h"
-#include "partgraph_c/TopoAlgo.h"
-#include "partgraph_c/TopoAlgo_Ext.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/PrimMaker.h"
+#include "brepkit_c/TopoAlgo.h"
+#include "brepkit_c/TopoAlgo_Ext.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <graph/Node.h>
 
 namespace breptopo
 {
 
-static ShapeVal MakeShapeVal(const std::shared_ptr<partgraph::TopoShape>& shp)
+static ShapeVal MakeShapeVal(const std::shared_ptr<brepkit::TopoShape>& shp)
 {
 	ShapeVal sv;
 	sv.shape = shp;
@@ -28,7 +28,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			double dx = ctx.Num(0);
 			double dy = ctx.Num(1);
 			double dz = ctx.Num(2);
-			auto shape = partgraph::PrimMaker::Box(dx, dy, dz, ctx.op_id, ctx.tn);
+			auto shape = brepkit::PrimMaker::Box(dx, dy, dz, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shape);
 		});
 
@@ -37,7 +37,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			auto sv = ctx.GetShape(0);
 			auto off = ctx.GetVec3(1);
 			if (!sv.shape) return {};
-			auto shp = partgraph::TopoAlgo::Translate(sv.shape, off[0], off[1], off[2], ctx.op_id, ctx.tn);
+			auto shp = brepkit::TopoAlgo::Translate(sv.shape, off[0], off[1], off[2], ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		});
 
@@ -47,7 +47,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (!sv.shape) return {};
 			double off = ctx.Num(1);
 			bool is_solid = ctx.Bool(2);
-			auto shp = partgraph::TopoAlgo::OffsetShape(sv.shape, static_cast<float>(off), is_solid, ctx.op_id, ctx.tn);
+			auto shp = brepkit::TopoAlgo::OffsetShape(sv.shape, static_cast<float>(off), is_solid, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		},
 		{true, false, false, false});  // is_dressup
@@ -57,7 +57,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			auto s1 = ctx.GetShape(0);
 			auto s2 = ctx.GetShape(1);
 			if (!s1.shape || !s2.shape) return {};
-			auto shp = partgraph::TopoAlgo::Cut(s1.shape, s2.shape, ctx.op_id, ctx.tn);
+			auto shp = brepkit::TopoAlgo::Cut(s1.shape, s2.shape, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		},
 		{false, false, true, false});  // is_boolean
@@ -67,7 +67,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			auto s1 = ctx.GetShape(0);
 			auto s2 = ctx.GetShape(1);
 			if (!s1.shape || !s2.shape) return {};
-			auto shp = partgraph::TopoAlgo::Fuse(s1.shape, s2.shape, ctx.op_id, ctx.tn);
+			auto shp = brepkit::TopoAlgo::Fuse(s1.shape, s2.shape, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		},
 		{false, false, true, false});  // is_boolean
@@ -78,11 +78,11 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (!sv.shape) return {};
 			double radius = ctx.Num(1);
 			auto edge_vals = ctx.VarShapes();
-			std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
+			std::vector<std::shared_ptr<brepkit::TopoShape>> edges;
 			for (auto& ev : edge_vals) {
 				if (ev.shape) edges.push_back(ev.shape);
 			}
-			auto shp = partgraph::TopoAlgo::Fillet(sv.shape, radius, edges, ctx.op_id, ctx.tn);
+			auto shp = brepkit::TopoAlgo::Fillet(sv.shape, radius, edges, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		},
 		{true, false, false, false});  // is_dressup
@@ -93,11 +93,11 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (!sv.shape) return {};
 			double dist = ctx.Num(1);
 			auto edge_vals = ctx.VarShapes();
-			std::vector<std::shared_ptr<partgraph::TopoShape>> edges;
+			std::vector<std::shared_ptr<brepkit::TopoShape>> edges;
 			for (auto& ev : edge_vals) {
 				if (ev.shape) edges.push_back(ev.shape);
 			}
-			auto shp = partgraph::TopoAlgo::Chamfer(sv.shape, dist, edges, ctx.op_id, ctx.tn);
+			auto shp = brepkit::TopoAlgo::Chamfer(sv.shape, dist, edges, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		},
 		{true, false, false, false});  // is_dressup
@@ -139,7 +139,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		[](EvalCtx& ctx) -> Val {
 			double r = ctx.Num(0);
 			double h = ctx.Num(1);
-			auto shape = partgraph::PrimMaker::Cylinder(r, h, ctx.op_id, ctx.tn);
+			auto shape = brepkit::PrimMaker::Cylinder(r, h, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shape);
 		});
 
@@ -148,14 +148,14 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			double r1 = ctx.Num(0);
 			double r2 = ctx.Num(1);
 			double h  = ctx.Num(2);
-			auto shape = partgraph::PrimMaker::Cone(r1, r2, h, ctx.op_id, ctx.tn);
+			auto shape = brepkit::PrimMaker::Cone(r1, r2, h, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shape);
 		});
 
 	reg.Define("sphere", {"radius"}, {},
 		[](EvalCtx& ctx) -> Val {
 			double r = ctx.Num(0);
-			auto shape = partgraph::PrimMaker::Sphere(r, ctx.op_id, ctx.tn);
+			auto shape = brepkit::PrimMaker::Sphere(r, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shape);
 		});
 
@@ -163,7 +163,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		[](EvalCtx& ctx) -> Val {
 			double r1 = ctx.Num(0);
 			double r2 = ctx.Num(1);
-			auto shape = partgraph::PrimMaker::Torus(r1, r2, ctx.op_id, ctx.tn);
+			auto shape = brepkit::PrimMaker::Torus(r1, r2, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shape);
 		});
 
@@ -172,7 +172,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			auto sv = ctx.GetShape(0);
 			if (!sv.shape) return {};
 			auto dir = ctx.GetVec3(1);
-			auto shp = partgraph::TopoAlgo::Prism(
+			auto shp = brepkit::TopoAlgo::Prism(
 				sv.shape, dir[0], dir[1], dir[2], ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		});
@@ -185,10 +185,10 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			auto dir = ctx.GetVec3(1);
 			double d1 = ctx.Num(2);
 			double d2 = ctx.Num(3);
-			auto e1 = static_cast<partgraph::ExtrudeEndType>(ctx.Int(4));
-			auto e2 = static_cast<partgraph::ExtrudeEndType>(ctx.Int(5));
+			auto e1 = static_cast<brepkit::ExtrudeEndType>(ctx.Int(4));
+			auto e2 = static_cast<brepkit::ExtrudeEndType>(ctx.Int(5));
 			auto ref = ctx.GetShape(6);
-			auto shp = partgraph::TopoAlgo_Ext::ExtrudeEx(
+			auto shp = brepkit::TopoAlgo_Ext::ExtrudeEx(
 				face.shape, dir[0], dir[1], dir[2],
 				d1, d2, e1, e2,
 				ref.shape, ctx.op_id, ctx.tn);
@@ -201,7 +201,7 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (!sv.shape) return {};
 			auto o = ctx.GetVec3(1);
 			auto n = ctx.GetVec3(2);
-			auto shp = partgraph::TopoAlgo::Mirror(sv.shape,
+			auto shp = brepkit::TopoAlgo::Mirror(sv.shape,
 				sm::vec3((float)o[0], (float)o[1], (float)o[2]),
 				sm::vec3((float)n[0], (float)n[1], (float)n[2]),
 				ctx.op_id, ctx.tn);
@@ -214,11 +214,11 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			if (!sv.shape) return {};
 			float thickness = (float)ctx.Num(1);
 			auto face_vals = ctx.VarShapes();
-			std::vector<std::shared_ptr<partgraph::TopoShape>> faces;
+			std::vector<std::shared_ptr<brepkit::TopoShape>> faces;
 			for (auto& fv : face_vals) {
 				if (fv.shape) faces.push_back(fv.shape);
 			}
-			auto shp = partgraph::TopoAlgo::ThickSolid(
+			auto shp = brepkit::TopoAlgo::ThickSolid(
 				sv.shape, faces, thickness, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		},

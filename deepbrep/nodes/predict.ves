@@ -3,7 +3,7 @@ import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_ARRAY, VAR_TYPE_STRING
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "brepkit.variant" for VAR_TOPO_SHAPE
 import "deepbrep" for FeatureRecognizer
 
 class Predict is Node

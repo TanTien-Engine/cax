@@ -5,7 +5,7 @@
 #include "breptopo_c/CompGraph.h"
 #include "breptopo_c/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <sstream>
 #include <type_traits>
@@ -261,7 +261,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     int e2_n  = cg->AddConst((int)p.end_type2, "end2");
                     int ref_n = last_node >= 0
                         ? last_node
-                        : cg->AddConst(std::shared_ptr<partgraph::TopoShape>{}, "null_ref");
+                        : cg->AddConst(std::shared_ptr<brepkit::TopoShape>{}, "null_ref");
                     tool_n = cg->AddOp("extrude_ex",
                         {face_n, dir_n, d1_n, d2_n, e1_n, e2_n, ref_n},
                         {}, feat.name);

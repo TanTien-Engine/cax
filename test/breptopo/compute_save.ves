@@ -1,4 +1,4 @@
-var node0 = ::partgraph::nodes::box::Box()
+var node0 = ::brepkit::nodes::box::Box()
 node0.query_param("length").value = 1
 node0.query_param("width").value = 1
 node0.query_param("height").value = 1
@@ -27,35 +27,35 @@ node3.query_param("disable").value = false
 
 _editor.add_node(node3, -504.56675756827, 227.03525516485)
 
-var node4 = ::partgraph::nodes::to_mesh::ToMesh()
+var node4 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node4, 387.8260556368, 217.19643135148)
 
-var node5 = ::partgraph::nodes::selector::Selector()
+var node5 = ::brepkit::nodes::selector::Selector()
 node5.query_param("type").value = "edge"
 
 node5.selected_uids = [ 3221225483 ]
 
 _editor.add_node(node5, -368.03073134194, 126.55461670988)
 
-var node6 = ::partgraph::nodes::fillet::Fillet()
+var node6 = ::brepkit::nodes::fillet::Fillet()
 node6.query_param("radius").value = 0.4
 
 _editor.add_node(node6, -221.36614702984, 223.19765254884)
 
-var node7 = ::partgraph::nodes::box::Box()
+var node7 = ::brepkit::nodes::box::Box()
 node7.query_param("length").value = 0.2
 node7.query_param("width").value = 2
 node7.query_param("height").value = 2
 
 _editor.add_node(node7, -400.29147401642, -77.796020007216)
 
-var node8 = ::partgraph::nodes::translate::Translate()
+var node8 = ::brepkit::nodes::translate::Translate()
 node8.query_param("offset").value.set(0.5, -0.5, -0.5)
 
 _editor.add_node(node8, -245.9252937226, -68.060266929916)
 
-var node9 = ::partgraph::nodes::cut::Cut()
+var node9 = ::brepkit::nodes::cut::Cut()
 
 _editor.add_node(node9, -11.147977317495, 130.60872749328)
 
@@ -68,7 +68,7 @@ node11.query_param("disable").value = false
 
 _editor.add_node(node11, 586.40382653733, 204.35289244306)
 
-var node12 = ::partgraph::nodes::translate::Translate()
+var node12 = ::brepkit::nodes::translate::Translate()
 node12.query_param("offset").value.set(0.08046493679285, 0, 0)
 
 _editor.add_node(node12, 2.3790786769408, 433.62092132306)

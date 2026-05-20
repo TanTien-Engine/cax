@@ -82,44 +82,44 @@ set(nurbslib
 )
 source_group("nurbslib" FILES ${nurbslib})
 
-set(partgraph__brep
-    "partgraph_c/BRepBuilder.cpp"
-    "partgraph_c/BRepBuilder.h"
-    "partgraph_c/BRepHistory.cpp"
-    "partgraph_c/BRepHistory.h"
-    "partgraph_c/BRepSelector.cpp"
-    "partgraph_c/BRepSelector.h"
-    "partgraph_c/BRepTools.cpp"
-    "partgraph_c/BRepTools.h"
-    "partgraph_c/GeomDataset.h"
-    "partgraph_c/PrimMaker.cpp"
-    "partgraph_c/PrimMaker.h"
-    "partgraph_c/TopoShape.cpp"
-    "partgraph_c/TopoShape.h"
+set(brepkit__brep
+    "brepkit_c/ShapeBuilder.cpp"
+    "brepkit_c/ShapeBuilder.h"
+    "brepkit_c/ShapeHistory.cpp"
+    "brepkit_c/ShapeHistory.h"
+    "brepkit_c/ShapeSelector.cpp"
+    "brepkit_c/ShapeSelector.h"
+    "brepkit_c/ShapeTools.cpp"
+    "brepkit_c/ShapeTools.h"
+    "brepkit_c/GeomDataset.h"
+    "brepkit_c/PrimMaker.cpp"
+    "brepkit_c/PrimMaker.h"
+    "brepkit_c/TopoShape.cpp"
+    "brepkit_c/TopoShape.h"
 )
-source_group("partgraph\\brep" FILES ${partgraph__brep})
+source_group("brepkit\\brep" FILES ${brepkit__brep})
 
-set(partgraph__script
-    "partgraph_c/partgraph.ves.inc"
-    "partgraph_c/TransHelper.cpp"
-    "partgraph_c/TransHelper.h"
-    "partgraph_c/wrap_PartGraph.cpp"
-    "partgraph_c/wrap_PartGraph.h"
+set(brepkit__script
+    "brepkit_c/brepkit.ves.inc"
+    "brepkit_c/TransHelper.cpp"
+    "brepkit_c/TransHelper.h"
+    "brepkit_c/wrap_BrepKit.cpp"
+    "brepkit_c/wrap_BrepKit.h"
 )
-source_group("partgraph\\script" FILES ${partgraph__script})
+source_group("brepkit\\script" FILES ${brepkit__script})
 
-set(partgraph__tools
-    "partgraph_c/occt_adapter.h"
-    "partgraph_c/TopoAdapter.cpp"
-    "partgraph_c/TopoAdapter.h"
-    "partgraph_c/TopoAlgo.cpp"
-    "partgraph_c/TopoAlgo.h"
-    "partgraph_c/TopoAlgo_Ext.cpp"
-    "partgraph_c/TopoAlgo_Ext.h"
-    "partgraph_c/GlobalConfig.cpp"
-    "partgraph_c/GlobalConfig.h"
+set(brepkit__tools
+    "brepkit_c/occt_adapter.h"
+    "brepkit_c/TopoAdapter.cpp"
+    "brepkit_c/TopoAdapter.h"
+    "brepkit_c/TopoAlgo.cpp"
+    "brepkit_c/TopoAlgo.h"
+    "brepkit_c/TopoAlgo_Ext.cpp"
+    "brepkit_c/TopoAlgo_Ext.h"
+    "brepkit_c/GlobalConfig.cpp"
+    "brepkit_c/GlobalConfig.h"
 )
-source_group("partgraph\\tools" FILES ${partgraph__tools})
+source_group("brepkit\\tools" FILES ${brepkit__tools})
 
 set(sketchlib__data
     "sketchlib/Constraint.h"
@@ -364,9 +364,9 @@ set(ALL_FILES
     ${breptopo__topology}
     ${breptopo__topology__comp}
     ${nurbslib}
-    ${partgraph__brep}
-    ${partgraph__script}
-    ${partgraph__tools}
+    ${brepkit__brep}
+    ${brepkit__script}
+    ${brepkit__tools}
     ${sketchlib__data}
     ${sketchlib__external__PlaneGCS}
     ${sketchlib__script}

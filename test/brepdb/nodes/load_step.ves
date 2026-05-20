@@ -1,4 +1,4 @@
-var node0 = ::partgraph::nodes::to_mesh::ToMesh()
+var node0 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node0, 384.80709659003, 182.88122999074)
 
@@ -24,7 +24,7 @@ node3.set_prop_value("no_bg", false)
 
 _editor.add_node(node3, 781.75739548213, 130.07227839696)
 
-var node4 = ::partgraph::nodes::to_mesh::ToMesh()
+var node4 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node4, 592.94741470939, -134.97772466121)
 

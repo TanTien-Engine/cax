@@ -1,15 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
-#include "partgraph_c/PrimMaker.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/PrimMaker.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <TopExp.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <BRepGProp.hxx>
 #include <GProp_GProps.hxx>
 
-using namespace partgraph;
+using namespace brepkit;
 
 static int count_shapes(const TopoDS_Shape& s, TopAbs_ShapeEnum type) {
     TopTools_IndexedMapOfShape map;

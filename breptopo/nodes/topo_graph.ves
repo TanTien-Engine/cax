@@ -5,7 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "blueprint.variant_proxy" for VariantProxy
 import "graph.nodes.draw" for Draw
 import "graph.variant" for VAR_TYPE_GRAPH
-import "partgraph.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
+import "brepkit.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "breptopo.variant" for VAR_TOPO_GRAPH
 import "breptopo" for TopoGraph as tt_TopoGraph
 

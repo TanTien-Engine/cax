@@ -4,7 +4,7 @@
 namespace breptopo
 {
 
-TopoGraph::TopoGraph(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes)
+TopoGraph::TopoGraph(const std::vector<std::shared_ptr<brepkit::TopoShape>>& shapes)
 {
 	m_graph = TopoGraphBuilder::BuildGraph(shapes);
 }

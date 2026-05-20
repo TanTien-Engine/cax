@@ -1,0 +1,25 @@
+import "brepkit.nodes.*"
+
+var BREP_KIT_NODES = [
+// BRep
+Edge, Wire, Face, Shell, Compound,
+// Prim
+Plane, Box, Cylinder, Cone, Sphere, Torus, Threading,
+// Geom
+CylindricalSurface, EllipseCurve, TrimmedCurve,
+// DressUpFeatures
+Chamfer, Fillet, VariableFillet, Draft, Shelling, Offset,
+// SketchBasedFeatures
+Extrude, ExtrudeEx, Revolve, Split, Cut, Fuse, Common, Section,
+Loft, Sweep, SweepWithGuide, Rib,
+// Boolean
+Sew, UnifySameDomain,
+// FeaturesTransformed
+Translate, Rotate, Scale, Mirror, GeneralTransform,
+// Pattern
+LinearPattern, CircularPattern,
+// Hole
+HoleWizard,
+// Tools
+ToMesh, ToGeometry, Defeature, Selector, MapShapes,
+]

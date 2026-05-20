@@ -7,7 +7,7 @@
 #include "cadapp_c/store/FeatureStore.h"
 #include "cadapp_c/ops/sketch_ops.h"
 #include "cadapp_c/ops/resolve_ops.h"
-#include "partgraph_c/GlobalConfig.h"
+#include "brepkit_c/GlobalConfig.h"
 
 #include <graph/Node.h>
 #include <vessel.h>
@@ -193,7 +193,7 @@ void BrepDB::Flush()
     StoreShapeIndex();
     StoreTopoGraph();
 
-    auto gc = partgraph::GlobalConfig::Instance();
+    auto gc = brepkit::GlobalConfig::Instance();
     if (gc->GetCompGraph())
         StoreCompGraph(*gc->GetCompGraph());
     if (gc->GetTopoNaming())

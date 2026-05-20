@@ -13,7 +13,7 @@ class BRepBuilderAPI_MakeShape;
 class BRepTools_History;
 class BRepOffset_MakeSimpleOffset;
 
-namespace partgraph { class TopoShape; }
+namespace brepkit { class TopoShape; }
 
 class TopoDS_Shape;
 
@@ -32,12 +32,12 @@ public:
 
 	TopoNaming();
 
-	PidMap Update(const partgraph::TopoShape& new_shape, uint32_t op_id);
-	PidMap Update(BRepBuilderAPI_MakeShape& builder, const partgraph::TopoShape& new_shape,
-		const partgraph::TopoShape& old_shape, uint32_t op_id);
-	PidMap Update(opencascade::handle<BRepTools_History> hist, const partgraph::TopoShape& new_shape,
-		const partgraph::TopoShape& old_shape, uint32_t op_id);
-	PidMap Update(const BRepOffset_MakeSimpleOffset& builder, const partgraph::TopoShape& old_shape, uint32_t op_id);
+	PidMap Update(const brepkit::TopoShape& new_shape, uint32_t op_id);
+	PidMap Update(BRepBuilderAPI_MakeShape& builder, const brepkit::TopoShape& new_shape,
+		const brepkit::TopoShape& old_shape, uint32_t op_id);
+	PidMap Update(opencascade::handle<BRepTools_History> hist, const brepkit::TopoShape& new_shape,
+		const brepkit::TopoShape& old_shape, uint32_t op_id);
+	PidMap Update(const BRepOffset_MakeSimpleOffset& builder, const brepkit::TopoShape& old_shape, uint32_t op_id);
 
 
 	auto GetVertexGraph() const { return m_vertex_hg; }

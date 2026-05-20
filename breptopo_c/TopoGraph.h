@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-namespace partgraph { class TopoShape; }
+namespace brepkit { class TopoShape; }
 namespace graph { class Graph; }
 
 namespace breptopo
@@ -12,7 +12,7 @@ namespace breptopo
 class TopoGraph
 {
 public:
-	TopoGraph(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes);
+	TopoGraph(const std::vector<std::shared_ptr<brepkit::TopoShape>>& shapes);
 
 	auto GetGraph() { return m_graph; }
 

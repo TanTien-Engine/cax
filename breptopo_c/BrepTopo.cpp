@@ -3,7 +3,7 @@
 #include "NodeInfo.h"
 #include "NodeShape.h"
 
-#include "partgraph_c/TransHelper.h"
+#include "brepkit_c/TransHelper.h"
 
 #include <graph/Node.h>
 #include <wrapper/Graph.h>
@@ -18,7 +18,7 @@ void init_cb()
 		if (node.HasComponent<NodeShape>())
 		{
 			auto& shape = node.GetComponent<NodeShape>();
-			partgraph::return_topo_shape(shape.GetShape());
+			brepkit::return_topo_shape(shape.GetShape());
 		}
 		else
 		{

@@ -1,7 +1,7 @@
 #include "brepdb_c/WorldSender.h"
 
-#include "partgraph_c/GlobalConfig.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/GlobalConfig.h"
+#include "brepkit_c/TopoShape.h"
 #include "breptopo_c/HistGraph.h"
 #include "breptopo_c/TopoNaming.h"
 #include "breptopo_c/NodeId.h"
@@ -287,7 +287,7 @@ uint32_t WorldSender::GetUID(const TopoDS_Shape& shape) const
     if (!hg)
         return 0xffffffff;
 
-    auto node = hg->QueryNode(std::make_shared<partgraph::TopoShape>(shape));
+    auto node = hg->QueryNode(std::make_shared<brepkit::TopoShape>(shape));
     if (!node)
         return 0xffffffff;
 

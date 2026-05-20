@@ -1,11 +1,11 @@
-var node0 = ::partgraph::nodes::box::Box()
+var node0 = ::brepkit::nodes::box::Box()
 node0.query_param("length").value = 1
 node0.query_param("width").value = 1
 node0.query_param("height").value = 1
 
 _editor.add_node(node0, -571.18529010805, -103.03934624992)
 
-var node1 = ::partgraph::nodes::to_mesh::ToMesh()
+var node1 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node1, -103.16460278273, 155.72435630455)
 
@@ -37,20 +37,20 @@ node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(2
 
 _editor.add_node(node5, -105.70107421875, -148.78260447605)
 
-var node6 = ::partgraph::nodes::translate::Translate()
+var node6 = ::brepkit::nodes::translate::Translate()
 node6.query_param("offset").value.set(0.63747018575668, 0.54454076290131, 0.45565184950829)
 
 _editor.add_node(node6, -397.50434792258, -158.73475730203)
 
-var node7 = ::partgraph::nodes::compound::Compound()
+var node7 = ::brepkit::nodes::compound::Compound()
 
 _editor.add_node(node7, -268.59944654733, -73.48231977983)
 
-var node8 = ::partgraph::nodes::to_mesh::ToMesh()
+var node8 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node8, 30.22596721727, -219.55744369545)
 
-var node9 = ::partgraph::nodes::cut::Cut()
+var node9 = ::brepkit::nodes::cut::Cut()
 
 _editor.add_node(node9, -385.33327969638, 72.293800417058)
 

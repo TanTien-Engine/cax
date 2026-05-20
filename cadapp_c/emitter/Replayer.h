@@ -41,7 +41,7 @@ namespace brepdb
 {
 class VersionTree;
 }
-namespace partgraph
+namespace brepkit
 {
 class TopoShape;
 }
@@ -73,7 +73,7 @@ struct ReplayResult
     std::string                           err_msg;
 
     // Final (top-of-chain) shape produced by Replay.
-    std::shared_ptr<partgraph::TopoShape> shape;
+    std::shared_ptr<brepkit::TopoShape> shape;
 
     // Per-feature op_id (0 means skipped). Same length as
     // doc.features.

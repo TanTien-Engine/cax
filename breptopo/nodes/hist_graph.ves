@@ -5,9 +5,9 @@ import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
 import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.node_param" for NodeParam
 import "graph.nodes.draw" for Draw
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "brepkit.variant" for VAR_TOPO_SHAPE
 import "breptopo.variant" for VAR_HIST_GRAPH
-import "partgraph" for GlobalConfig
+import "brepkit" for GlobalConfig
 import "breptopo" for TopoNaming
 
 class HistGraph is Node

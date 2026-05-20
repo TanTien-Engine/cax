@@ -2,8 +2,8 @@
 #include "cadcvt_c/reader/FreeCadReader.h"
 #include "cadapp_c/emitter/Replayer.h"
 
-#include "partgraph_c/TransHelper.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TransHelper.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <wrapper/Proxy.h>
 
@@ -18,7 +18,7 @@
 //
 // Right now this exposes a single helper class FreeCadLoader,
 // which combines a FreeCadReader + Replayer call. The caller gets
-// back a partgraph::TopoShape ready to plug into the rest of the
+// back a brepkit::TopoShape ready to plug into the rest of the
 // node graph.
 // ============================================================
 
@@ -116,7 +116,7 @@ void w_FreeCadLoader_load()
         return;
     }
 
-    // Step 2: replay onto OCCT via partgraph.
+    // Step 2: replay onto OCCT via brepkit.
     cadapp::ReplayOptions opt;
     opt.write_back_resolved = false;  // no need to mutate doc for one-shot load
     opt.commit_versions     = false;  // host script decides versioning policy
@@ -139,7 +139,7 @@ void w_FreeCadLoader_load()
         st->last_error.clear();
     }
 
-    partgraph::return_topo_shape(res.shape);
+    brepkit::return_topo_shape(res.shape);
 }
 
 void w_FreeCadLoader_last_error()

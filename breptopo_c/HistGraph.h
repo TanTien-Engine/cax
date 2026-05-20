@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <map>
 
-namespace partgraph { class TopoShape; class BRepHistory; }
+namespace brepkit { class TopoShape; class ShapeHistory; }
 namespace graph { class Graph; class Node; }
 
 namespace breptopo
@@ -57,29 +57,29 @@ public:
 
 	// Apply an OCC modeling step to the graph. type_id is one of TopAbs_*.
 	// Returns the old-uid -> new-uids map (used to build a per-op pid map).
-	PartialPidMap Update(const partgraph::BRepHistory& hist,
+	PartialPidMap Update(const brepkit::ShapeHistory& hist,
 	                     uint32_t type_id, uint32_t op_id);
 
 	// Lookups -----------------------------------------------------
 
 	// Return the UID assigned to `shape` (looked up via m_shape2uid).
 	// 0xFFFFFFFF if unknown.
-	uint32_t GetUID(const std::shared_ptr<partgraph::TopoShape>& shape) const;
+	uint32_t GetUID(const std::shared_ptr<brepkit::TopoShape>& shape) const;
 	uint32_t GetUID(const TopoDS_Shape& shape) const;
 
 	// Resolve uid to the current live TopoDS_Shape. If `uid` itself was
 	// consumed by a later op (no entry in m_uid2shape), follow m_forward
 	// BFS to find live descendants. Caller-facing version returns
-	// partgraph::TopoShape pointers for compatibility with old callers.
-	std::vector<std::shared_ptr<partgraph::TopoShape>>
+	// brepkit::TopoShape pointers for compatibility with old callers.
+	std::vector<std::shared_ptr<brepkit::TopoShape>>
 	QueryCurrentShapes(uint32_t uid) const;
 	bool QueryCurrentShapes(uint32_t uid,
-	                        std::vector<std::shared_ptr<partgraph::TopoShape>>& out) const;
+	                        std::vector<std::shared_ptr<brepkit::TopoShape>>& out) const;
 
 	// Compatibility wrappers around the new lookups (return synthetic
 	// graph::Node objects so existing wrap code keeps compiling).
 	std::shared_ptr<graph::Node> QueryNode(
-		const std::shared_ptr<partgraph::TopoShape>& shape) const;
+		const std::shared_ptr<brepkit::TopoShape>& shape) const;
 	bool QueryNodes(uint32_t uid,
 	                std::vector<std::shared_ptr<graph::Node>>& results) const;
 

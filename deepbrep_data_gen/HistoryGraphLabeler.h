@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace partgraph { class TopoShape; }
+namespace brepkit { class TopoShape; }
 namespace breptopo  { class HistGraph; }
 
 namespace deepbrep_data_gen
@@ -57,7 +57,7 @@ public:
                         OpResolver                           resolver,
                         std::shared_ptr<OpNameVocabulary>    vocab);
 
-    std::vector<FaceLabel> Label(const partgraph::TopoShape& shape) const;
+    std::vector<FaceLabel> Label(const brepkit::TopoShape& shape) const;
 
 private:
     std::shared_ptr<breptopo::HistGraph> m_face_hg;

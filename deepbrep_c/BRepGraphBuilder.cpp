@@ -1,7 +1,7 @@
 #include "BRepGraphBuilder.h"
 #include "FeatureLabels.h"
 
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TopoShape.h"
 
 // OCCT
 #include <BRepAdaptor_Curve.hxx>
@@ -243,7 +243,7 @@ void fill_edge_features(const TopoDS_Edge& edge,
 // ============================================================
 
 void BRepGraphBuilder::AppendShape(
-    const std::shared_ptr<partgraph::TopoShape>& topo_shape,
+    const std::shared_ptr<brepkit::TopoShape>& topo_shape,
     GraphData& g,
     std::vector<std::pair<int, int>>& from_to,
     std::vector<std::vector<float>>& edge_rows)
@@ -315,7 +315,7 @@ void BRepGraphBuilder::AppendShape(
 }
 
 GraphData BRepGraphBuilder::Build(
-    const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes)
+    const std::vector<std::shared_ptr<brepkit::TopoShape>>& shapes)
 {
     GraphData g;
     std::vector<std::pair<int, int>> from_to;
@@ -346,10 +346,10 @@ GraphData BRepGraphBuilder::Build(
     return g;
 }
 
-GraphData BRepGraphBuilder::Build(const std::shared_ptr<partgraph::TopoShape>& shape)
+GraphData BRepGraphBuilder::Build(const std::shared_ptr<brepkit::TopoShape>& shape)
 {
     if (!shape) return GraphData{};
-    return Build(std::vector<std::shared_ptr<partgraph::TopoShape>>{shape});
+    return Build(std::vector<std::shared_ptr<brepkit::TopoShape>>{shape});
 }
 
 }

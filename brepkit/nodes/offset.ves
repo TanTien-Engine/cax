@@ -1,0 +1,130 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.node_helper" for NodeHelper
+import "blueprint.variant_helper" for VariantHelper, VAR_TYPE_ARRAY
+import "brepkit.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
+import "brepkit.node_helper" for NodeHelper as pg_NodeHelper
+import "brepkit" for TopoAlgo
+import "breptopo.compiler" for Compiler
+
+class Offset is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape",  [ VAR_TOPO_SHAPE, VAR_TYPE_ARRAY ]),
+			Pin(this, "offset", VAR_TYPE_NUMBER),
+		]
+		this.exports = [
+			Pin(this, "shape", [ VAR_TOPO_SHAPE, VAR_TYPE_ARRAY ]),
+		]
+
+		this.params.add(NodeParam("offset", 0.1))
+		this.params.add(NodeParam("is_solid", false))
+
+		this.layout()
+
+		this.comp_info = {
+			"op"     : "offset",
+			"inputs" : [0],
+			"params" : [
+				{"name":"offset",   "type":"number"},
+				{"name":"is_solid", "type":"boolean"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
+		this.op_id = []
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
+	}
+
+
+	on_connection_dirty() {
+		this.comp_step_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		var src_shps = []
+		this.get_input_shapes(v_shape, src_shps)
+		if (src_shps.isEmpty) {
+			return nil
+		}
+
+		var offset = NodeHelper.calc_prop_value(this, "offset")
+		var is_solid = NodeHelper.calc_prop_value(this, "is_solid")
+
+		var result
+		if (src_shps.count == 1)
+		{
+			var op_id
+			if (this.op_id.isEmpty)
+			{
+			}
+			else
+			{
+				op_id = this.op_id[0]
+			}
+
+			var dst_shp = TopoAlgo.offset_shape(src_shps[0], offset, is_solid, op_id)
+			result = Variant(VAR_TOPO_SHAPE, dst_shp)
+		}
+		else
+		{
+			var dst_shps = []
+
+			for (var i in 0..src_shps.count)
+			{
+				var op_id
+				if (this.op_id.count <= i)
+				{
+				}
+				else
+				{
+					op_id = this.op_id[i]
+				}
+
+				var dst_shp = TopoAlgo.offset_shape(src_shps[i], offset, is_solid, op_id)
+				dst_shps.add(Variant(VAR_TOPO_SHAPE, dst_shp))
+			}
+
+			result = Variant(dst_shps)
+		}
+
+
+		return result
+	}
+
+	compile_graph(compiler, idx)
+	{
+		return compiler.compile_node(this, compiler)
+	}
+
+	get_input_shapes(val, shapes)
+	{
+		if (val.type == VAR_TOPO_SHAPE)
+		{
+			shapes.add(val.value)
+		}
+		else if (val.type == VAR_TYPE_ARRAY)
+		{
+			for (var v in val.value) {
+				shapes.add(v.value)
+			}
+		}
+	}
+}

@@ -1,7 +1,7 @@
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_helper" for NodeHelper
-import "partgraph.node_helper" for NodeHelper as pg_NodeHelper
-import "partgraph" for GlobalConfig
+import "brepkit.node_helper" for NodeHelper as pg_NodeHelper
+import "brepkit" for GlobalConfig
 import "maths.vector" for Vector3
 
 class Compiler

@@ -1,7 +1,7 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "brepkit.variant" for VAR_TOPO_SHAPE
 import "dbgraph.variant" for VAR_TYPE_RTREE
 import "brepdb.variant" for VAR_TYPE_BREP_DB
 

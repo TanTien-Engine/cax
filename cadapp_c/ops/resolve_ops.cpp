@@ -4,7 +4,7 @@
 
 #include "breptopo_c/CompGraph.h"
 
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <TopoDS_Shape.hxx>
 #include <TopExp.hxx>
@@ -48,7 +48,7 @@ ShapeVal ResolveOne(EvalCtx& ctx, TopAbs_ShapeEnum kind)
 	}
 
 	ShapeVal out;
-	out.shape = std::make_shared<partgraph::TopoShape>(
+	out.shape = std::make_shared<brepkit::TopoShape>(
 		m.FindKey(resolved[0].topo_index));
 	out.tag = resolved[0].uid;   // 0 means TopoNaming had no binding
 	return out;

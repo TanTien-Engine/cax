@@ -4,7 +4,7 @@
 
 #include <vector>
 
-namespace partgraph { class TopoShape; }
+namespace brepkit { class TopoShape; }
 
 namespace breptopo
 {
@@ -12,7 +12,7 @@ namespace breptopo
 class GraphShape : public objcomp::Component
 {
 public:
-	GraphShape(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes)
+	GraphShape(const std::vector<std::shared_ptr<brepkit::TopoShape>>& shapes)
 		: m_shapes(shapes) {}
 
 	virtual const char* Type() const override { return "topo_graph_shp"; }
@@ -20,7 +20,7 @@ public:
 	virtual GraphShape* Clone() const override { return nullptr; }
 
 private:
-	std::vector<std::shared_ptr<partgraph::TopoShape>> m_shapes;
+	std::vector<std::shared_ptr<brepkit::TopoShape>> m_shapes;
 
 }; // GraphShape
 

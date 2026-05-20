@@ -11,8 +11,8 @@
 #include "breptopo_c/TopoNaming.h"
 #include "breptopo_c/CompGraph.h"
 #include "breptopo_c/HistGraph.h"
-#include "partgraph_c/TopoShape.h"
-#include "partgraph_c/GlobalConfig.h"
+#include "brepkit_c/TopoShape.h"
+#include "brepkit_c/GlobalConfig.h"
 
 #include <wrapper/Proxy.h>
 
@@ -60,7 +60,7 @@ int w_FeatureRecognizer_finalize(void* data)
 void w_FeatureRecognizer_predict()
 {
     auto r = ((wrapper::Proxy<Recognizer>*)ves_toforeign(0))->obj;
-    auto s = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto s = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
 
     std::vector<int> preds;
     if (r->loaded && s) {
@@ -119,14 +119,14 @@ int w_DataExporter_finalize(void* data)
 void w_DataExporter_export()
 {
     auto exporter = ((wrapper::Proxy<DataExporter>*)ves_toforeign(0))->obj;
-    auto shape    = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape    = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
     const char* filepath = ves_tostring(2);
 
     bool ok = false;
 
     if (shape && filepath && filepath[0] != '\0')
     {
-        auto cfg = partgraph::GlobalConfig::Instance();
+        auto cfg = brepkit::GlobalConfig::Instance();
         auto tn  = cfg->GetTopoNaming();
         auto cg  = cfg->GetCompGraph();
 
@@ -169,7 +169,7 @@ void w_DataExporter_export()
 
 void w_DataExporter_export_graph_only()
 {
-    auto shape    = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape    = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
     const char* filepath = ves_tostring(2);
 
     bool ok = false;
@@ -199,7 +199,7 @@ void w_DataExporter_export_augmented()
         return;
     }
 
-    auto cfg = partgraph::GlobalConfig::Instance();
+    auto cfg = brepkit::GlobalConfig::Instance();
     auto tn  = cfg->GetTopoNaming();
     auto cg  = cfg->GetCompGraph();
 

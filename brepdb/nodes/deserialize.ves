@@ -2,7 +2,7 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "brepkit.variant" for VAR_TOPO_SHAPE
 import "brepdb.variant" for VAR_TYPE_BREP_WORLD
 
 class Deserialize is Node

@@ -15,7 +15,7 @@
 #include <vector>
 #include <map>
 
-namespace partgraph { class TopoShape; }
+namespace brepkit { class TopoShape; }
 namespace graph { class Graph; }
 
 namespace breptopo
@@ -47,7 +47,7 @@ using Vec3 = std::array<double, 3>;
 
 struct ShapeVal
 {
-	std::shared_ptr<partgraph::TopoShape> shape;
+	std::shared_ptr<brepkit::TopoShape> shape;
 	uint32_t tag = 0;
 	bool operator==(const ShapeVal& o) const { return tag == o.tag; }
 };
@@ -383,7 +383,7 @@ public:
 	int AddConst(double v, const std::string& desc);
 	int AddConst(bool v, const std::string& desc);
 	int AddConst(Vec3 v, const std::string& desc);
-	int AddConst(const std::shared_ptr<partgraph::TopoShape>& shp, const std::string& desc);
+	int AddConst(const std::shared_ptr<brepkit::TopoShape>& shp, const std::string& desc);
 	int AddConst(const std::shared_ptr<void>& sketch_handle, const std::string& desc);
 	int AddConst(TopoRefVal v, const std::string& desc);
 	int AddOp(const std::string& op,
@@ -429,7 +429,7 @@ public:
 	int AddConst(double v, const std::string& desc);
 	int AddConst(bool v, const std::string& desc);
 	int AddConst(Vec3 v, const std::string& desc);
-	int AddConst(const std::shared_ptr<partgraph::TopoShape>& shp, const std::string& desc);
+	int AddConst(const std::shared_ptr<brepkit::TopoShape>& shp, const std::string& desc);
 	int AddConst(const std::shared_ptr<void>& sketch_handle, const std::string& desc);
 	int AddConst(TopoRefVal v, const std::string& desc);
 	int AddOp(const std::string& op,

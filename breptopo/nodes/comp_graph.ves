@@ -5,12 +5,12 @@ import "blueprint.variant" for VAR_TYPE_ANY, Variant
 import "blueprint.variant_proxy" for VariantProxy
 import "blueprint.dirty_types" for DIRTY_CONNECTION, DIRTY_GUI
 import "graph.nodes.draw" for Draw
-import "partgraph.node_helper" for NodeHelper
+import "brepkit.node_helper" for NodeHelper
 import "logger.logger" for Logger
-import "partgraph.variant" for VAR_TOPO_SHAPE
+import "brepkit.variant" for VAR_TOPO_SHAPE
 import "breptopo.variant" for VAR_COMP_GRAPH
 import "breptopo.compiler" for Compiler
-import "partgraph" for GlobalConfig, TopoShape
+import "brepkit" for GlobalConfig, TopoShape
 import "graph" for GraphTools
 
 class CompGraph is Node

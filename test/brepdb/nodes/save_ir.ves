@@ -1,11 +1,11 @@
-var node0 = ::partgraph::nodes::box::Box()
+var node0 = ::brepkit::nodes::box::Box()
 node0.query_param("length").value = 1
 node0.query_param("width").value = 1
 node0.query_param("height").value = 1
 
 _editor.add_node(node0, -692.9582512405, 263.27431859497)
 
-var node1 = ::partgraph::nodes::to_mesh::ToMesh()
+var node1 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node1, 434.87696886651, 237.35230437091)
 
@@ -40,18 +40,18 @@ var node6 = ::blueprint::nodes::print::Print()
 
 _editor.add_node(node6, 545.45847309935, 411.03572728663)
 
-var node7 = ::partgraph::nodes::to_mesh::ToMesh()
+var node7 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node7, 592.94741470939, -134.97772466121)
 
-var node8 = ::partgraph::nodes::selector::Selector()
+var node8 = ::brepkit::nodes::selector::Selector()
 node8.query_param("type").value = "edge"
 
 node8.selected_uids = [ 3221225483 ]
 
 _editor.add_node(node8, -368.03073134194, 126.55461670988)
 
-var node9 = ::partgraph::nodes::fillet::Fillet()
+var node9 = ::brepkit::nodes::fillet::Fillet()
 node9.query_param("radius").value = 0.4
 
 _editor.add_node(node9, -221.36614702984, 223.19765254884)

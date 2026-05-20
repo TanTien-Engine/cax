@@ -1,0 +1,82 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_helper" for NodeHelper
+import "brepkit.variant" for VAR_TOPO_WIRE, VAR_TOPO_SHAPE
+import "brepkit" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
+
+class Loft is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "wire0", [ VAR_TOPO_WIRE ]),
+			Pin(this, "wire1", [ VAR_TOPO_WIRE ]),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.layout()
+
+		this.comp_info = {
+			"op"     : "loft",
+			"inputs" : [],
+			"params" : [],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
+		this.op_id = -1
+	}
+
+
+	on_connection_dirty() {
+		this.comp_step_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var wires = []
+		for (var i in 0 .. this.imports.count)
+		{
+			var v_wire = Blueprint.calc_input_value(this, i)
+			if (v_wire) {
+				wires.add(v_wire.value)
+			}
+		}
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.thru_sections(wires, this.op_id)
+
+
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+
+	on_connected(pin)
+	{
+		if (pin.is_input) {
+			NodeHelper.dynamic_imports_update(this, 0, "wire", [ VAR_TOPO_WIRE ])
+		}
+	}
+
+	on_disconnected(pin)
+	{
+		if (pin.is_input) {
+			NodeHelper.dynamic_imports_update(this, 0, "wire", [ VAR_TOPO_WIRE ])
+		}
+	}
+}

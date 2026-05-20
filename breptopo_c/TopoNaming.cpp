@@ -1,8 +1,8 @@
 #include "TopoNaming.h"
 #include "HistGraph.h"
 
-#include <partgraph_c/BRepHistory.h>
-#include <partgraph_c/TopoShape.h>
+#include <brepkit_c/ShapeHistory.h>
+#include <brepkit_c/TopoShape.h>
 
 #include <TopAbs_ShapeEnum.hxx>
 
@@ -34,45 +34,45 @@ TopoNaming::TopoNaming()
 	m_solid_hg = std::make_shared<HistGraph>();
 }
 
-TopoNaming::PidMap TopoNaming::Update(const partgraph::TopoShape& new_shape, uint32_t op_id)
+TopoNaming::PidMap TopoNaming::Update(const brepkit::TopoShape& new_shape, uint32_t op_id)
 {
 	PidMap pm;
-	Merge(pm, m_vertex_hg->Update(partgraph::BRepHistory(new_shape), TopAbs_VERTEX, op_id));
-	Merge(pm, m_edge_hg->Update(partgraph::BRepHistory(new_shape), TopAbs_EDGE, op_id));
-	Merge(pm, m_face_hg->Update(partgraph::BRepHistory(new_shape), TopAbs_FACE, op_id));
-	Merge(pm, m_solid_hg->Update(partgraph::BRepHistory(new_shape), TopAbs_SOLID, op_id));
+	Merge(pm, m_vertex_hg->Update(brepkit::ShapeHistory(new_shape), TopAbs_VERTEX, op_id));
+	Merge(pm, m_edge_hg->Update(brepkit::ShapeHistory(new_shape), TopAbs_EDGE, op_id));
+	Merge(pm, m_face_hg->Update(brepkit::ShapeHistory(new_shape), TopAbs_FACE, op_id));
+	Merge(pm, m_solid_hg->Update(brepkit::ShapeHistory(new_shape), TopAbs_SOLID, op_id));
 	return pm;
 }
 
-TopoNaming::PidMap TopoNaming::Update(BRepBuilderAPI_MakeShape& builder, const partgraph::TopoShape& new_shape,
-	                                  const partgraph::TopoShape& old_shape, uint32_t op_id)
+TopoNaming::PidMap TopoNaming::Update(BRepBuilderAPI_MakeShape& builder, const brepkit::TopoShape& new_shape,
+	                                  const brepkit::TopoShape& old_shape, uint32_t op_id)
 {
 	PidMap pm;
-	Merge(pm, m_vertex_hg->Update(partgraph::BRepHistory(builder, TopAbs_VERTEX, new_shape, old_shape), TopAbs_VERTEX, op_id));
-	Merge(pm, m_edge_hg->Update(partgraph::BRepHistory(builder, TopAbs_EDGE, new_shape, old_shape), TopAbs_EDGE, op_id));
-	Merge(pm, m_face_hg->Update(partgraph::BRepHistory(builder, TopAbs_FACE, new_shape, old_shape), TopAbs_FACE, op_id));
-	Merge(pm, m_solid_hg->Update(partgraph::BRepHistory(builder, TopAbs_SOLID, new_shape, old_shape), TopAbs_SOLID, op_id));
+	Merge(pm, m_vertex_hg->Update(brepkit::ShapeHistory(builder, TopAbs_VERTEX, new_shape, old_shape), TopAbs_VERTEX, op_id));
+	Merge(pm, m_edge_hg->Update(brepkit::ShapeHistory(builder, TopAbs_EDGE, new_shape, old_shape), TopAbs_EDGE, op_id));
+	Merge(pm, m_face_hg->Update(brepkit::ShapeHistory(builder, TopAbs_FACE, new_shape, old_shape), TopAbs_FACE, op_id));
+	Merge(pm, m_solid_hg->Update(brepkit::ShapeHistory(builder, TopAbs_SOLID, new_shape, old_shape), TopAbs_SOLID, op_id));
 	return pm;
 }
 
-TopoNaming::PidMap TopoNaming::Update(opencascade::handle<BRepTools_History> hist, const partgraph::TopoShape& new_shape,
-	                                  const partgraph::TopoShape& old_shape, uint32_t op_id)
+TopoNaming::PidMap TopoNaming::Update(opencascade::handle<BRepTools_History> hist, const brepkit::TopoShape& new_shape,
+	                                  const brepkit::TopoShape& old_shape, uint32_t op_id)
 {
 	PidMap pm;
-	Merge(pm, m_vertex_hg->Update(partgraph::BRepHistory(hist, TopAbs_VERTEX, new_shape, old_shape), TopAbs_VERTEX, op_id));
-	Merge(pm, m_edge_hg->Update(partgraph::BRepHistory(hist, TopAbs_EDGE, new_shape, old_shape), TopAbs_EDGE, op_id));
-	Merge(pm, m_face_hg->Update(partgraph::BRepHistory(hist, TopAbs_FACE, new_shape, old_shape), TopAbs_FACE, op_id));
-	Merge(pm, m_solid_hg->Update(partgraph::BRepHistory(hist, TopAbs_SOLID, new_shape, old_shape), TopAbs_SOLID, op_id));
+	Merge(pm, m_vertex_hg->Update(brepkit::ShapeHistory(hist, TopAbs_VERTEX, new_shape, old_shape), TopAbs_VERTEX, op_id));
+	Merge(pm, m_edge_hg->Update(brepkit::ShapeHistory(hist, TopAbs_EDGE, new_shape, old_shape), TopAbs_EDGE, op_id));
+	Merge(pm, m_face_hg->Update(brepkit::ShapeHistory(hist, TopAbs_FACE, new_shape, old_shape), TopAbs_FACE, op_id));
+	Merge(pm, m_solid_hg->Update(brepkit::ShapeHistory(hist, TopAbs_SOLID, new_shape, old_shape), TopAbs_SOLID, op_id));
 	return pm;
 }
 
-TopoNaming::PidMap TopoNaming::Update(const BRepOffset_MakeSimpleOffset& builder, const partgraph::TopoShape& old_shape, uint32_t op_id)
+TopoNaming::PidMap TopoNaming::Update(const BRepOffset_MakeSimpleOffset& builder, const brepkit::TopoShape& old_shape, uint32_t op_id)
 {
 	PidMap pm;
-	Merge(pm, m_vertex_hg->Update(partgraph::BRepHistory(builder, old_shape), TopAbs_VERTEX, op_id));
-	Merge(pm, m_edge_hg->Update(partgraph::BRepHistory(builder, old_shape), TopAbs_EDGE, op_id));
-	Merge(pm, m_face_hg->Update(partgraph::BRepHistory(builder, old_shape), TopAbs_FACE, op_id));
-	Merge(pm, m_solid_hg->Update(partgraph::BRepHistory(builder, old_shape), TopAbs_SOLID, op_id));
+	Merge(pm, m_vertex_hg->Update(brepkit::ShapeHistory(builder, old_shape), TopAbs_VERTEX, op_id));
+	Merge(pm, m_edge_hg->Update(brepkit::ShapeHistory(builder, old_shape), TopAbs_EDGE, op_id));
+	Merge(pm, m_face_hg->Update(brepkit::ShapeHistory(builder, old_shape), TopAbs_FACE, op_id));
+	Merge(pm, m_solid_hg->Update(brepkit::ShapeHistory(builder, old_shape), TopAbs_SOLID, op_id));
 	return pm;
 }
 

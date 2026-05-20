@@ -1,0 +1,78 @@
+var node0 = ::brepkit::nodes::box::Box()
+node0.query_param("length").value = 0.49427762627602
+node0.query_param("width").value = 0.4609442949295
+node0.query_param("height").value = 0.41649982333183
+
+_editor.add_node(node0, -446.490030645, 36.789989083)
+
+var node1 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node1, -127.302100645, 124.095089083)
+
+var node2 = ::blueprint::nodes::camera3d::Camera3d()
+
+node2.cam.position.set(-0.42454294861347, 1.9906413663896, 2.2659857698824)
+node2.cam.yaw = -62.1
+node2.cam.pitch = -41.1
+node2.cam.zoom = 45
+node2.cam.update_vectors()
+node2.speed = 0.30111083388329
+
+_editor.add_node(node2, 169.83944975918, -79.68979140769)
+
+var node3 = ::blueprint::nodes::cache::Cache()
+node3.query_param("disable").value = false
+
+_editor.add_node(node3, 171.65984484328, 58.70670480566)
+
+var node4 = ::brepkit::nodes::translate::Translate()
+node4.query_param("offset").value.set(0.73031717538834, 0, 0)
+
+_editor.add_node(node4, -284.86930967504, 94.96766164721)
+
+var node5 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node5, -283.324100645, 5.620989083)
+
+var node6 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node6, 31.54529894484, 46.80443063573)
+
+var node7 = ::brepkit::nodes::extrude::Extrude()
+node7.query_param("dist").value.set(0, 0, 0)
+
+_editor.add_node(node7, -283.56344748941, 226.50154058742)
+
+var node8 = ::blueprint::nodes::subgraph::Subgraph()
+node8.load_from_file(_editor, "../../../assets/blueprints/render/draw_mesh.ves")
+node8.set_prop_value("no_bg", false)
+
+_editor.add_node(node8, 358, 1.6999999999999)
+
+var node9 = ::breptopo::nodes::graph::Graph()
+
+node9.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(135.18566894531, 10.679901123047)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-0.77145385742188, 71.748321533203)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-2.96533203125, 11.282684326172)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(133.72344970703, 71.179183959961)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(66.117065429688, 11.605087280273)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(66.506286621094, 74.195663452148)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(130.78778076172, -240.90799713135)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-5.18115234375, -179.84907531738)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-3.7071533203125, -240.34875869751)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(132.96997070312, -180.44274902344)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(67.510314941406, -262.36032867432)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(67.887329101562, -158.76963806152)) ]
+
+_editor.add_node(node9, 28.85574102877, -205.24657635109)
+
+var node10 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node10, 167.39392115576, -212.75969404888)
+
+var node11 = ::blueprint::nodes::merge::Merge()
+
+_editor.add_node(node11, -120.7279510498, -187.54162597656)
+
+Blueprint.connect(node0, "shape", node5, "shape")
+Blueprint.connect(node0, "shape", node4, "shape")
+Blueprint.connect(node4, "shape", node11, "in0")
+Blueprint.connect(node0, "shape", node11, "in1")
+Blueprint.connect(node11, "list", node9, "shape")
+Blueprint.connect(node9, "selected", node10, "shape")
+Blueprint.connect(node4, "shape", node1, "shape")
+Blueprint.connect(node1, "va", node6, "in0")
+Blueprint.connect(node5, "va", node6, "in1")
+Blueprint.connect(node6, "list", node3, "var")
+Blueprint.connect(node3, "var", node8, "geos")
+Blueprint.connect(node2, "this", node8, "view_cam")
+Blueprint.connect(node10, "va", node8, "selected")

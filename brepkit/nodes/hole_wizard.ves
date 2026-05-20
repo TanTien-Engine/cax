@@ -1,0 +1,101 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.node_helper" for NodeHelper
+import "brepkit.variant" for VAR_TOPO_SHAPE
+import "maths.vector" for Vector3
+import "brepkit" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
+import "math" for Math
+
+class HoleWizard is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "body", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("pos", Vector3(0, 0, 0), { "region" : 2 }))
+		this.params.add(NodeParam("dir", Vector3(0, 0, -1), { "region" : 1 }))
+		this.params.add(NodeParam("diameter", 0.5, { "region" : 10 }))
+		this.params.add(NodeParam("depth", 0.0, { "region" : 10 }))
+		this.params.add(NodeParam("hole_type", "simple", { "combo": [ "simple", "counterbore", "countersink", "tapped" ] }))
+		this.params.add(NodeParam("cb_diameter", 0.8, { "region" : 10 }))
+		this.params.add(NodeParam("cb_depth", 0.3, { "region" : 10 }))
+		this.params.add(NodeParam("cs_diameter", 0.8, { "region" : 10 }))
+		this.params.add(NodeParam("cs_angle", Math.pi() / 2, { "region" : Math.pi() }))
+
+		this.layout()
+
+		this.comp_info = {
+			"op"     : "hole_wizard",
+			"inputs" : [0],
+			"params" : [
+				{"name":"pos",         "type":"number3"},
+				{"name":"dir",         "type":"number3"},
+				{"name":"diameter",    "type":"number"},
+				{"name":"depth",       "type":"number"},
+				{"name":"cb_diameter", "type":"number"},
+				{"name":"cb_depth",    "type":"number"},
+				{"name":"cs_diameter", "type":"number"},
+				{"name":"cs_angle",    "type":"number"},
+			],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
+		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
+	}
+
+
+	on_connection_dirty() {
+		this.comp_step_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_body = Blueprint.calc_input_value(this, 0)
+		if (!v_body) {
+			return nil
+		}
+
+		var pos = this.query_param("pos").value
+		var dir = this.query_param("dir").value
+		var diameter = this.query_param("diameter").value
+		var depth = this.query_param("depth").value
+		var hole_type = this.query_param("hole_type").value
+		var cb_diameter = this.query_param("cb_diameter").value
+		var cb_depth = this.query_param("cb_depth").value
+		var cs_diameter = this.query_param("cs_diameter").value
+		var cs_angle = this.query_param("cs_angle").value
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.hole_wizard(v_body.value, pos.x, pos.z, pos.y, dir.x, dir.z, dir.y, diameter, depth, hole_type, cb_diameter, cb_depth, cs_diameter, cs_angle, this.op_id)
+
+
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+}

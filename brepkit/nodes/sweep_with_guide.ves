@@ -1,0 +1,87 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "brepkit.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
+import "brepkit" for TopoAlgo, GlobalConfig
+import "breptopo.compiler" for Compiler
+
+class SweepWithGuide is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "profile", [ VAR_TOPO_SHAPE, VAR_TOPO_WIRE ]),
+			Pin(this, "path",    VAR_TOPO_WIRE),
+			Pin(this, "guides",  VAR_TYPE_ARRAY),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("is_solid", true))
+
+		this.layout()
+
+		this.comp_info = {
+			"op"         : "sweep_with_guide",
+			"inputs"     : [0, 1],
+			"params"     : [
+				{"name":"is_solid", "type":"boolean"},
+			],
+			"var_inputs" : [2],
+		}
+
+		this.comp_const_refs = nil
+		this.comp_graph_ref = nil
+		this.comp_step_id = -1
+
+		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
+	}
+
+
+	on_connection_dirty() {
+		this.comp_step_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_profile = Blueprint.calc_input_value(this, 0)
+		var v_path = Blueprint.calc_input_value(this, 1)
+		if (!v_profile or !v_path) {
+			return nil
+		}
+
+		var v_guides = Blueprint.calc_input_value(this, 2)
+		var guides = []
+		if (v_guides) {
+			for (var g in v_guides.value) {
+				guides.add(g.value)
+			}
+		}
+
+		var is_solid = this.query_param("is_solid").value
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.sweep_with_guide(v_profile.value, v_path.value, guides, is_solid, this.op_id)
+
+
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+}

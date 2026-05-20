@@ -1,9 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
 
-#include "partgraph_c/TopoAlgo.h"
-#include "partgraph_c/TopoShape.h"
-#include "partgraph_c/BRepHistory.h"
+#include "brepkit_c/TopoAlgo.h"
+#include "brepkit_c/TopoShape.h"
+#include "brepkit_c/ShapeHistory.h"
 
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
@@ -14,7 +14,7 @@
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
 
-using namespace partgraph;
+using namespace brepkit;
 
 namespace
 {
@@ -128,7 +128,7 @@ TEST_CASE("Mirror reflects shape", "[topo_algo]")
     CHECK(ymax == Catch::Approx(0.0).margin(0.01));
 }
 
-TEST_CASE("BRepHistory tracks Boolean modifications", "[brep_history]")
+TEST_CASE("ShapeHistory tracks Boolean modifications", "[brep_history]")
 {
     auto box1_shape = BRepPrimAPI_MakeBox(20, 20, 20).Shape();
     auto box2_shape = BRepPrimAPI_MakeBox(10, 10, 10).Shape();
@@ -136,7 +136,7 @@ TEST_CASE("BRepHistory tracks Boolean modifications", "[brep_history]")
 
     TopoShape old_ts(box1_shape);
     TopoShape new_ts(cutter.Shape());
-    BRepHistory hist(cutter, TopAbs_FACE, new_ts, old_ts);
+    ShapeHistory hist(cutter, TopAbs_FACE, new_ts, old_ts);
 
     auto& idx_map = hist.GetIdxMap();
     CHECK(idx_map.size() > 0);

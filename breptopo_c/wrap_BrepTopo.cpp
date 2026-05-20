@@ -8,8 +8,8 @@
 #include "NodeId.h"
 #include "NodeShape.h"
 
-#include "partgraph_c/TopoShape.h"
-#include "partgraph_c/TransHelper.h"
+#include "brepkit_c/TopoShape.h"
+#include "brepkit_c/TransHelper.h"
 
 #include <graph/Node.h>
 #include <graph/Graph.h>
@@ -23,7 +23,7 @@ namespace
 
 void w_TopoGraph_allocate()
 {
-    std::vector<std::shared_ptr<partgraph::TopoShape>> shapes;
+    std::vector<std::shared_ptr<brepkit::TopoShape>> shapes;
     wrapper::list_to_foreigns(1, shapes);
 
     auto proxy = (wrapper::Proxy<breptopo::TopoGraph>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<breptopo::TopoGraph>));
@@ -151,7 +151,7 @@ void w_HistGraph_get_node_uid()
 {
     auto hg = ((wrapper::Proxy<breptopo::HistGraph>*)ves_toforeign(0))->obj;
 
-    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
 
     auto node = hg->QueryNode(shape);
     auto& cid = node->GetComponent<breptopo::NodeId>();
@@ -176,8 +176,8 @@ void w_HistGraph_query_shapes()
         for (int i = 0; i < num; ++i)
         {
             ves_pushnil();
-            ves_import_class("partgraph", "TopoShape");
-            auto proxy = (wrapper::Proxy<partgraph::TopoShape>*)ves_set_newforeign(1, 2, sizeof(wrapper::Proxy<partgraph::TopoShape>));
+            ves_import_class("brepkit", "TopoShape");
+            auto proxy = (wrapper::Proxy<brepkit::TopoShape>*)ves_set_newforeign(1, 2, sizeof(wrapper::Proxy<brepkit::TopoShape>));
             proxy->obj = nodes[i]->GetComponent<breptopo::NodeShape>().GetShape();
             ves_pop(1);
             ves_seti(-2, i);
@@ -258,7 +258,7 @@ void w_CompGraph_eval()
         ves_set_boolean(0, *v);
     } else if (auto* v = std::get_if<breptopo::ShapeVal>(&result)) {
         if (v->shape) {
-            partgraph::return_topo_shape(v->shape);
+            brepkit::return_topo_shape(v->shape);
         } else {
             ves_set_nil(0);
         }
@@ -317,7 +317,7 @@ void w_CompGraph_add_shape_node()
 {
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
-    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
     const char* desc = ves_tostring(2);
 
     int id = cg->AddConst(shape, desc);
@@ -438,7 +438,7 @@ void w_CompGraph_update_shape_node()
     auto cg = ((wrapper::Proxy<breptopo::CompGraph>*)ves_toforeign(0))->obj;
 
     int node_idx = (int)ves_tonumber(1);
-    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(2))->obj;
 
     breptopo::ShapeVal sv;
     sv.shape = shape;
@@ -483,7 +483,7 @@ void w_CompGraph_update_const()
     } else if (ves_type(2) == VES_TYPE_BOOL) {
         cg->UpdateConst(node_idx, (bool)ves_toboolean(2));
     } else if (ves_type(2) == VES_TYPE_FOREIGN) {
-        auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+        auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(2))->obj;
         breptopo::ShapeVal sv;
         sv.shape = shape;
         cg->UpdateConst(node_idx, std::move(sv));

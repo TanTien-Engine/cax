@@ -1,7 +1,7 @@
 #include "TopoGraphBuilder.h"
 #include "NodeShape.h"
 #include "GraphShape.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>
@@ -22,7 +22,7 @@ namespace breptopo
 {
 
 std::shared_ptr<graph::Graph>
-TopoGraphBuilder::BuildGraph(const std::vector<std::shared_ptr<partgraph::TopoShape>>& shapes)
+TopoGraphBuilder::BuildGraph(const std::vector<std::shared_ptr<brepkit::TopoShape>>& shapes)
 {
     auto graph = std::make_shared<graph::Graph>();
     graph->SetDirected(false);
@@ -37,7 +37,7 @@ TopoGraphBuilder::BuildGraph(const std::vector<std::shared_ptr<partgraph::TopoSh
 	return graph;
 }
 
-void TopoGraphBuilder::AddShapeToGraph(const std::shared_ptr<partgraph::TopoShape>& topo_shape,
+void TopoGraphBuilder::AddShapeToGraph(const std::shared_ptr<brepkit::TopoShape>& topo_shape,
                                        const std::shared_ptr<graph::Graph>& graph)
 {
 	auto& shape = topo_shape->GetShape();
@@ -78,7 +78,7 @@ void TopoGraphBuilder::AddShapeToGraph(const std::shared_ptr<partgraph::TopoShap
         node->SetValue(key);
 
         auto face = TopoDS::Face(all_faces.FindKey(key));
-        auto shape = std::make_shared<partgraph::TopoShape>(face);
+        auto shape = std::make_shared<brepkit::TopoShape>(face);
         node->AddComponent<NodeShape>(shape);
 
         graph->AddNode(node);

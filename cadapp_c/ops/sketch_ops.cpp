@@ -4,7 +4,7 @@
 
 #include "breptopo_c/CompGraph.h"
 
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TopoShape.h"
 
 #include "sketchlib/Scene.h"
 
@@ -39,7 +39,7 @@ using breptopo::ShapeVal;
 using breptopo::Val;
 using breptopo::Vec3;
 
-ShapeVal MakeShapeVal(const std::shared_ptr<partgraph::TopoShape>& shp)
+ShapeVal MakeShapeVal(const std::shared_ptr<brepkit::TopoShape>& shp)
 {
 	ShapeVal sv;
 	sv.shape = shp;
@@ -135,7 +135,7 @@ TopoDS_Wire BuildWireFromSolved(const cadapp::SketchBridge::GeoShapes& solved,
 	return mk.IsDone() ? mk.Wire() : TopoDS_Wire();
 }
 
-std::shared_ptr<partgraph::TopoShape> WireToFace(const TopoDS_Wire& wire,
+std::shared_ptr<brepkit::TopoShape> WireToFace(const TopoDS_Wire& wire,
                                                   const double origin[3],
                                                   const double normal[3])
 {
@@ -161,7 +161,7 @@ std::shared_ptr<partgraph::TopoShape> WireToFace(const TopoDS_Wire& wire,
 	fixer.Perform();
 	face = fixer.Face();
 
-	return std::make_shared<partgraph::TopoShape>(face);
+	return std::make_shared<brepkit::TopoShape>(face);
 }
 
 } // anonymous namespace

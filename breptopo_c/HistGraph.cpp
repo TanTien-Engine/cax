@@ -1,6 +1,6 @@
 #include "HistGraph.h"
-#include "partgraph_c/BRepHistory.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/ShapeHistory.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <TopAbs_ShapeEnum.hxx>
 
@@ -56,7 +56,7 @@ uint32_t HistGraph::IndexOf(uint32_t uid) { return  uid                & kIndexM
 // ---------------------------------------------------------------
 
 HistGraph::PartialPidMap
-HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t op_id)
+HistGraph::Update(const brepkit::ShapeHistory& hist, uint32_t type_id, uint32_t op_id)
 {
 	PartialPidMap pid_map;
 	auto& new_map = hist.GetNewMap();
@@ -67,7 +67,7 @@ HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t
 	// Classification of new_map faces:
 	//   Generated: truly new geometry (e.g. fillet surface) -> this op owns it
 	//   Modified:  existing face with altered boundary      -> inherit parent UID
-	//   Mop-up:   pass-through (IsPartner in BRepHistory)  -> inherit parent UID
+	//   Mop-up:   pass-through (IsPartner in ShapeHistory)  -> inherit parent UID
 	//   Unmatched: not in any mapping, brand new            -> this op owns it
 
 	// First pass: collect old_uid for each old_idx (before any rebinding).
@@ -174,7 +174,7 @@ HistGraph::Update(const partgraph::BRepHistory& hist, uint32_t type_id, uint32_t
 //  Lookups
 // ---------------------------------------------------------------
 
-uint32_t HistGraph::GetUID(const std::shared_ptr<partgraph::TopoShape>& shape) const
+uint32_t HistGraph::GetUID(const std::shared_ptr<brepkit::TopoShape>& shape) const
 {
 	if (!shape) return 0xFFFFFFFFu;
 	return GetUID(shape->GetShape());
@@ -187,7 +187,7 @@ uint32_t HistGraph::GetUID(const TopoDS_Shape& shape) const
 }
 
 bool HistGraph::QueryCurrentShapes(uint32_t uid,
-                                   std::vector<std::shared_ptr<partgraph::TopoShape>>& out) const
+                                   std::vector<std::shared_ptr<brepkit::TopoShape>>& out) const
 {
 	bool known = (m_uid2shape.find(uid) != m_uid2shape.end()) ||
 	             (m_forward.find(uid)   != m_forward.end())   ||
@@ -200,7 +200,7 @@ bool HistGraph::QueryCurrentShapes(uint32_t uid,
 	if (IsActive(uid))
 	{
 		auto it = m_uid2shape.find(uid);
-		out.push_back(std::make_shared<partgraph::TopoShape>(it->second));
+		out.push_back(std::make_shared<brepkit::TopoShape>(it->second));
 		return true;
 	}
 
@@ -222,7 +222,7 @@ bool HistGraph::QueryCurrentShapes(uint32_t uid,
 			if (IsActive(c))
 			{
 				auto sit = m_uid2shape.find(c);
-				out.push_back(std::make_shared<partgraph::TopoShape>(sit->second));
+				out.push_back(std::make_shared<brepkit::TopoShape>(sit->second));
 			}
 			else
 			{
@@ -234,10 +234,10 @@ bool HistGraph::QueryCurrentShapes(uint32_t uid,
 	return known;
 }
 
-std::vector<std::shared_ptr<partgraph::TopoShape>>
+std::vector<std::shared_ptr<brepkit::TopoShape>>
 HistGraph::QueryCurrentShapes(uint32_t uid) const
 {
-	std::vector<std::shared_ptr<partgraph::TopoShape>> out;
+	std::vector<std::shared_ptr<brepkit::TopoShape>> out;
 	QueryCurrentShapes(uid, out);
 	return out;
 }

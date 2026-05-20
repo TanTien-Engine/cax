@@ -19,9 +19,9 @@
 
 #include "breptopo_c/TopoNaming.h"
 #include "breptopo_c/HistGraph.h"
-#include "partgraph_c/PrimMaker.h"
-#include "partgraph_c/TopoAlgo.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/PrimMaker.h"
+#include "brepkit_c/TopoAlgo.h"
+#include "brepkit_c/TopoShape.h"
 
 #include <TopExp.hxx>
 #include <TopExp_Explorer.hxx>
@@ -43,21 +43,21 @@ namespace
 using namespace deepbrep_data_gen;
 
 // Collects all edges from a shape as TopoShape wrappers (for Fillet/Chamfer).
-std::vector<std::shared_ptr<partgraph::TopoShape>>
-collect_edges(const std::shared_ptr<partgraph::TopoShape>& shape)
+std::vector<std::shared_ptr<brepkit::TopoShape>>
+collect_edges(const std::shared_ptr<brepkit::TopoShape>& shape)
 {
-    std::vector<std::shared_ptr<partgraph::TopoShape>> result;
+    std::vector<std::shared_ptr<brepkit::TopoShape>> result;
     TopTools_IndexedMapOfShape edge_map;
     TopExp::MapShapes(shape->GetShape(), TopAbs_EDGE, edge_map);
     for (int i = 1; i <= edge_map.Extent(); ++i) {
-        result.push_back(std::make_shared<partgraph::TopoShape>(edge_map(i)));
+        result.push_back(std::make_shared<brepkit::TopoShape>(edge_map(i)));
     }
     return result;
 }
 
 // Randomly select a subset of edges.
-std::vector<std::shared_ptr<partgraph::TopoShape>>
-random_edge_subset(const std::vector<std::shared_ptr<partgraph::TopoShape>>& all_edges,
+std::vector<std::shared_ptr<brepkit::TopoShape>>
+random_edge_subset(const std::vector<std::shared_ptr<brepkit::TopoShape>>& all_edges,
                    int min_count, int max_count, std::mt19937& rng)
 {
     if (all_edges.empty()) return {};
@@ -73,7 +73,7 @@ random_edge_subset(const std::vector<std::shared_ptr<partgraph::TopoShape>>& all
     for (int i = 0; i < n; ++i) indices[i] = i;
     std::shuffle(indices.begin(), indices.end(), rng);
 
-    std::vector<std::shared_ptr<partgraph::TopoShape>> result;
+    std::vector<std::shared_ptr<brepkit::TopoShape>> result;
     for (int i = 0; i < count; ++i) {
         result.push_back(all_edges[indices[i]]);
     }
@@ -102,7 +102,7 @@ bool emit_sample(DatasetWriter& writer,
     const double dz = dim(rng);
 
     const uint32_t op_box = tn->NextOpId();
-    auto shape = partgraph::PrimMaker::Box(dx, dy, dz, op_box, tn);
+    auto shape = brepkit::PrimMaker::Box(dx, dy, dz, op_box, tn);
     op_names[op_box] = "PrimMaker.Box";
 
     if (!shape) return false;
@@ -122,7 +122,7 @@ bool emit_sample(DatasetWriter& writer,
             double cyl_h = dz * 2.0;
 
             const uint32_t op_cyl = tn->NextOpId();
-            auto cylinder = partgraph::PrimMaker::Cylinder(hole_r, cyl_h, op_cyl, tn);
+            auto cylinder = brepkit::PrimMaker::Cylinder(hole_r, cyl_h, op_cyl, tn);
             op_names[op_cyl] = "PrimMaker.Cylinder";
 
             if (cylinder) {
@@ -134,12 +134,12 @@ bool emit_sample(DatasetWriter& writer,
                 double cz = -dz * 0.5; // start below to cut through
 
                 const uint32_t op_trans = tn->NextOpId();
-                cylinder = partgraph::TopoAlgo::Translate(cylinder, cx, cy, cz, op_trans, tn);
+                cylinder = brepkit::TopoAlgo::Translate(cylinder, cx, cy, cz, op_trans, tn);
                 op_names[op_trans] = "PrimMaker.Cylinder"; // translation is part of tool setup
 
                 if (cylinder) {
                     const uint32_t op_cut = tn->NextOpId();
-                    auto cut_result = partgraph::TopoAlgo::Cut(shape, cylinder, op_cut, tn);
+                    auto cut_result = brepkit::TopoAlgo::Cut(shape, cylinder, op_cut, tn);
                     if (cut_result) {
                         shape = cut_result;
                         op_names[op_cut] = "TopoAlgo.Cut";
@@ -158,7 +158,7 @@ bool emit_sample(DatasetWriter& writer,
             double fillet_r = r_dist(rng);
 
             const uint32_t op_fillet = tn->NextOpId();
-            auto filleted = partgraph::TopoAlgo::Fillet(shape, fillet_r, subset, op_fillet, tn);
+            auto filleted = brepkit::TopoAlgo::Fillet(shape, fillet_r, subset, op_fillet, tn);
             if (filleted) {
                 shape = filleted;
                 op_names[op_fillet] = "TopoAlgo.Fillet";
@@ -175,7 +175,7 @@ bool emit_sample(DatasetWriter& writer,
             double chamfer_d = d_dist(rng);
 
             const uint32_t op_chamfer = tn->NextOpId();
-            auto chamfered = partgraph::TopoAlgo::Chamfer(shape, chamfer_d, subset, op_chamfer, tn);
+            auto chamfered = brepkit::TopoAlgo::Chamfer(shape, chamfer_d, subset, op_chamfer, tn);
             if (chamfered) {
                 shape = chamfered;
                 op_names[op_chamfer] = "TopoAlgo.Chamfer";

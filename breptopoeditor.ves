@@ -28,8 +28,8 @@ class Breptopoeditor is Editor
 			super.add_popup_node(node)
 		}
 		
-		import "partnodes" for PART_NODES
-		for (var node in PART_NODES) {
+		import "brepkitnodes" for BREP_KIT_NODES
+		for (var node in BREP_KIT_NODES) {
 			super.add_popup_node(node)
 		}
 

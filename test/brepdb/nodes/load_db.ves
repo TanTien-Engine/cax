@@ -1,4 +1,4 @@
-var node0 = ::partgraph::nodes::to_mesh::ToMesh()
+var node0 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node0, 443.60065687643, 190.65491561192)
 

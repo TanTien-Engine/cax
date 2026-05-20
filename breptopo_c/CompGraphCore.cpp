@@ -929,7 +929,7 @@ int OpHistory::AddConst(Vec3 v, const std::string& desc)
 {
 	return Append({-1, "$vec3", Val(v), {}, {}, desc});
 }
-int OpHistory::AddConst(const std::shared_ptr<partgraph::TopoShape>& shp, const std::string& desc)
+int OpHistory::AddConst(const std::shared_ptr<brepkit::TopoShape>& shp, const std::string& desc)
 {
 	ShapeVal sv;
 	sv.shape = shp;

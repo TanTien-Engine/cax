@@ -7,7 +7,7 @@ import "graph.nodes.draw" for Draw
 import "graph.variant" for VAR_TYPE_GRAPH
 import "brepdb.variant" for VAR_TYPE_VERSION_GRAPH, VAR_TYPE_BREP_WORLD
 import "brepdb" for VersionGraph as tt_VersionGraph
-import "partgraph" for GlobalConfig
+import "brepkit" for GlobalConfig
 
 class VersionGraph is Node
 {

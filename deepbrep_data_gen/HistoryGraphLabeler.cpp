@@ -1,7 +1,7 @@
 #include "HistoryGraphLabeler.h"
 
 #include "breptopo_c/HistGraph.h"
-#include "partgraph_c/TopoShape.h"
+#include "brepkit_c/TopoShape.h"
 #include "deepbrep_c/FeatureLabels.h"
 
 // OCCT
@@ -24,7 +24,7 @@ HistoryGraphLabeler::HistoryGraphLabeler(
 }
 
 std::vector<FaceLabel>
-HistoryGraphLabeler::Label(const partgraph::TopoShape& shape) const
+HistoryGraphLabeler::Label(const brepkit::TopoShape& shape) const
 {
     TopTools_IndexedMapOfShape faces;
     TopExp::MapShapes(shape.GetShape(), TopAbs_FACE, faces);

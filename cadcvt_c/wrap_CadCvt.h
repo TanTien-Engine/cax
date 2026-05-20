@@ -6,7 +6,7 @@
 // cadcvt/wrap_CadCvt.h
 //
 // Vessel binding entry points. Wire these into the host editor's
-// main.cpp next to PartGraphBindMethod / PartGraphBindClass:
+// main.cpp next to BrepKitBindMethod / BrepKitBindClass:
 //
 //   // module source lookup
 //   } else if (strcmp(module, "cadcvt") == 0) {

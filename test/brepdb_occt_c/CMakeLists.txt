@@ -19,8 +19,8 @@ add_executable(${PROJECT_NAME}
     test_step_file.cpp
     test_world_roundtrip.cpp
     test_prim_maker.cpp
-    test_brep_selector.cpp
-    test_brep_tools.cpp
+    test_shape_selector.cpp
+    test_shape_tools.cpp
     test_topo_algo.cpp
     test_topo_graph_builder.cpp
 )

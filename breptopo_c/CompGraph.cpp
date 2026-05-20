@@ -51,7 +51,7 @@ int CompGraph::AddConst(Vec3 v, const std::string& desc)
 	return m_history.AddConst(v, desc);
 }
 
-int CompGraph::AddConst(const std::shared_ptr<partgraph::TopoShape>& shp, const std::string& desc)
+int CompGraph::AddConst(const std::shared_ptr<brepkit::TopoShape>& shp, const std::string& desc)
 {
 	m_lowered = false;
 	return m_history.AddConst(shp, desc);
