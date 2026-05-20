@@ -591,7 +591,98 @@ node68.var_name = "model_mat"
 
 _editor.add_node(node68, 589.70479556616, 109.75804932432)
 
-Blueprint.connect(node50, "next", node62, "do")
+// === topological-edge draw pass (replaces depth-based detection) ===
+
+var node69 = ::blueprint::nodes::input::Input()
+
+node69.var_name = "edges"
+node69.var_type = "array"
+
+_editor.add_node(node69, 1056, 0)
+
+var node70 = ::blueprint::nodes::for_each::ForEach()
+
+_editor.add_node(node70, 1250, 0)
+
+var node71 = ::rendergraph::nodes::draw::Draw()
+
+node71.set_prim_type("lines")
+node71.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "lequal", "clip_plane" : false }
+node71.skip = false
+
+_editor.add_node(node71, 1100, -100)
+
+var node72 = ::rendergraph::nodes::shader::Shader()
+node72.query_param("inc_dir").value = ""
+
+node72.vs = "
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+
+uniform UBO
+{
+	mat4 model;
+	mat4 view;
+	mat4 projection;
+};
+
+void main()
+{
+	vec4 clip = projection * view * model * vec4(aPos, 1.0);
+	// pull edges slightly toward the camera in NDC to win the depth
+	// comparison against the face they belong to without z-fighting.
+	clip.z -= 0.0005 * clip.w;
+	gl_Position = clip;
+}
+"
+node72.tcs = ""
+node72.tes = ""
+node72.gs = ""
+node72.fs = "
+#version 330 core
+layout (location = 0) out vec3 gMain;
+layout (location = 1) out vec3 gDepth;
+layout (location = 2) out vec3 gNormal;
+
+float near = 0.01;
+float far = 100.0;
+float LinearizeDepth(float depth)
+{
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
+void main()
+{
+	// Solid black for the topological edge. The fragment ends up in
+	// the GBuffer color attachment and survives the post-process
+	// because the alphaBlend in node12 only modulates by the
+	// detected edge mask.
+	gMain   = vec3(0.0);
+	gDepth  = vec3(LinearizeDepth(gl_FragCoord.z) / far);
+	// Match the surrounding face's normal as best we can: we don't
+	// have it here, so write zero. The post-process normal-edge
+	// check may fire on the seam, but it just paints the same
+	// black we already drew.
+	gNormal = vec3(0.0);
+}
+"
+node72.cs = ""
+node72.render_gen()
+
+_editor.add_node(node72, 900, -100)
+
+Blueprint.connect(node50, "next", node70, "prev")
+Blueprint.connect(node70, "next", node62, "do")
+Blueprint.connect(node69, "var", node70, "in")
+Blueprint.connect(node70, "out", node71, "va")
+Blueprint.connect(node72, "out", node71, "shader")
+Blueprint.connect(node71, "next", node70, "do")
+Blueprint.connect(node59, "var", node72, "model")
+Blueprint.connect(node3, "mat", node72, "view")
+Blueprint.connect(node53, "var", node72, "projection")
+
 Blueprint.connect(node5, "fbo", node62, "fbo")
 Blueprint.connect(node62, "next", node16, "prev")
 Blueprint.connect(node11, "next", node16, "do")

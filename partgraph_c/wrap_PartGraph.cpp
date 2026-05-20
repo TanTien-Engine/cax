@@ -901,6 +901,27 @@ void w_TopoAdapter_build_mesh()
     ves_pop(1);
 }
 
+void w_TopoAdapter_build_edges()
+{
+    auto dev = ((wrapper::Proxy<ur::Device>*)ves_toforeign(1))->obj;
+    auto shape = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(2))->obj;
+
+    auto va = partgraph::TopoAdapter::BuildEdgesFromShape(dev, *shape);
+
+    ves_pop(ves_argnum());
+
+    if (!va) {
+        ves_set_nil(0);
+        return;
+    }
+
+    ves_pushnil();
+    ves_import_class("render", "VertexArray");
+    auto proxy = (wrapper::Proxy<ur::VertexArray>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<ur::VertexArray>));
+    proxy->obj = va;
+    ves_pop(1);
+}
+
 void w_TopoAdapter_build_edge_geo()
 {
     auto edge = ((wrapper::Proxy<partgraph::TopoShape>*)ves_toforeign(1))->obj;
@@ -1146,6 +1167,7 @@ VesselForeignMethodFn PartGraphBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.rib(_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_rib;
 
     if (strcmp(signature, "static TopoAdapter.build_mesh(_,_)") == 0) return w_TopoAdapter_build_mesh;
+    if (strcmp(signature, "static TopoAdapter.build_edges(_,_)") == 0) return w_TopoAdapter_build_edges;
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
     if (strcmp(signature, "static TopoAdapter.build_wire_geo(_)") == 0) return w_TopoAdapter_build_wire_geo;
     if (strcmp(signature, "static TopoAdapter.shape2wire(_)") == 0) return w_TopoAdapter_shape2wire;

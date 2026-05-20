@@ -17,7 +17,8 @@ class ToMesh is Node
 			Pin(this, "shape", [ VAR_TOPO_SHAPE, VAR_TOPO_SHELL, VAR_TYPE_ARRAY ]),
 		]
 		this.exports = [
-			Pin(this, "va", [ VAR_TYPE_VERTEX_ARRAY, VAR_TYPE_ARRAY ]),
+			Pin(this, "va",    [ VAR_TYPE_VERTEX_ARRAY, VAR_TYPE_ARRAY ]),
+			Pin(this, "edges", [ VAR_TYPE_VERTEX_ARRAY, VAR_TYPE_ARRAY ]),
 		]
 
 		this.layout()
@@ -30,20 +31,24 @@ class ToMesh is Node
 			return nil
 		}
 
-		var meshes = []
-		this.build_meshes(v_shape, meshes)
+		var items = []
+		if (idx == 1) {
+			this.build_edges(v_shape, items)
+		} else {
+			this.build_meshes(v_shape, items)
+		}
 
-		if (meshes.count == 0)
+		if (items.count == 0)
 		{
 			return nil
 		}
-		else if (meshes.count == 1)
+		else if (items.count == 1)
 		{
-			return Variant(VAR_TYPE_VERTEX_ARRAY, meshes[0])
+			return Variant(VAR_TYPE_VERTEX_ARRAY, items[0])
 		}
 		else
 		{
-			return Variant(VAR_TYPE_ARRAY, meshes)
+			return Variant(VAR_TYPE_ARRAY, items)
 		}
 	}
 
@@ -61,6 +66,24 @@ class ToMesh is Node
 			var va = TopoAdapter.build_mesh(Device.init(), v_shape.value)
 			if (va) {
 				meshes.add(va)
+			}
+		}
+	}
+
+	build_edges(v_shape, edges)
+	{
+		if (v_shape.type == VAR_TYPE_ARRAY)
+		{
+			for (var shape in v_shape.value)
+			{
+				this.build_edges(shape, edges)
+			}
+		}
+		else if (v_shape.type == VAR_TOPO_SHAPE)
+		{
+			var va = TopoAdapter.build_edges(Device.init(), v_shape.value)
+			if (va) {
+				edges.add(va)
 			}
 		}
 	}

@@ -130,6 +130,97 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShell(const std::shar
     return BuildMesh(dev, shell.GetShape());
 }
 
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape)
+{
+    const TopoDS_Shape& src = shape.GetShape();
+
+    // BRepMesh attaches a Poly_Polygon3D to each edge as a side effect
+    // of triangulating its faces. Without this call edges of a
+    // freshly-loaded shape often have no polygonal representation
+    // attached and PolygonOfEdge returns null.
+    BRepLib::BuildCurves3d(src);
+    BRepMesh_IncrementalMesh algo(src, 0.01, Standard_False, 0.1);
+    algo.Perform();
+
+    std::vector<Vertex> vertices;
+
+    // TopTools_IndexedMapOfShape uses TopoDS_Shape::IsSame for hashing,
+    // so each edge appears once even when shared between two faces.
+    TopTools_IndexedMapOfShape edge_map;
+    TopExp::MapShapes(src, TopAbs_EDGE, edge_map);
+
+    for (int i = 1; i <= edge_map.Extent(); i++)
+    {
+        const TopoDS_Edge& edge = TopoDS::Edge(edge_map(i));
+
+        TopLoc_Location loc;
+        Handle(Poly_Polygon3D) poly = PolygonOfEdge(edge, loc);
+        if (poly.IsNull()) {
+            continue;
+        }
+
+        bool identity = loc.IsIdentity();
+        gp_Trsf trsf;
+        if (!identity) {
+            trsf = loc.Transformation();
+        }
+
+        const TColgp_Array1OfPnt& nodes = poly->Nodes();
+        const int nb = poly->NbNodes();
+        if (nb < 2) {
+            continue;
+        }
+
+        // Emit as line segments: (n0,n1), (n1,n2), ... rather than a
+        // line strip so a single VAO can hold all edges of the shape.
+        sm::vec3 prev;
+        bool have_prev = false;
+        for (int j = 1; j <= nb; ++j)
+        {
+            gp_Pnt pnt = nodes(j);
+            if (!identity) {
+                pnt.Transform(trsf);
+            }
+            sm::vec3 p(
+                static_cast<float>(pnt.X()),
+                static_cast<float>(pnt.Y()),
+                static_cast<float>(pnt.Z()));
+
+            if (have_prev) {
+                // Use a zero normal as a sentinel; the GBuffer shader
+                // can branch on length(normal)==0 to skip lighting on
+                // edge fragments.
+                vertices.push_back(Vertex({ prev, sm::vec3(0, 0, 0) }));
+                vertices.push_back(Vertex({ p,    sm::vec3(0, 0, 0) }));
+            }
+            prev = p;
+            have_prev = true;
+        }
+    }
+
+    if (vertices.empty()) {
+        return nullptr;
+    }
+
+    auto va = dev->CreateVertexArray();
+
+    int vbuf_sz = static_cast<int>(sizeof(Vertex) * vertices.size());
+    auto vbuf = dev->CreateVertexBuffer(ur::BufferUsageHint::StaticDraw, vbuf_sz);
+    vbuf->ReadFromMemory(vertices.data(), vbuf_sz, 0);
+    va->SetVertexBuffer(vbuf);
+
+    std::vector<std::shared_ptr<ur::VertexInputAttribute>> vbuf_attrs;
+    // pos
+    vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
+        0, ur::ComponentDataType::Float, 3, 0, 24));
+    // normal (zeroed - sentinel meaning "edge, no shading")
+    vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
+        1, ur::ComponentDataType::Float, 3, 12, 24));
+    va->SetVertexBufferAttrs(vbuf_attrs);
+
+    return va;
+}
+
 std::shared_ptr<gs::Line3D> TopoAdapter::BuildGeoFromEdge(const TopoShape& shape)
 {
     std::vector<sm::vec3> pts;

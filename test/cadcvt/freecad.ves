@@ -31,7 +31,14 @@ node4.query_param("strict").value = false
 
 _editor.add_node(node4, 210.21983471074, 171.99090909091)
 
+var node5 = ::blueprint::nodes::cache::Cache()
+node5.query_param("disable").value = false
+
+_editor.add_node(node5, 586.40382653733, 260)
+
 Blueprint.connect(node4, "shape", node2, "shape")
 Blueprint.connect(node2, "va", node3, "var")
+Blueprint.connect(node2, "edges", node5, "var")
 Blueprint.connect(node3, "var", node1, "geos")
+Blueprint.connect(node5, "var", node1, "edges")
 Blueprint.connect(node0, "this", node1, "view_cam")

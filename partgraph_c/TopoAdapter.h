@@ -20,6 +20,7 @@ class TopoAdapter
 public:
 	static std::shared_ptr<ur::VertexArray> BuildMeshFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape);
 	static std::shared_ptr<ur::VertexArray> BuildMeshFromShell(const std::shared_ptr<ur::Device>& dev, const TopoShape& shell);
+	static std::shared_ptr<ur::VertexArray> BuildEdgesFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape);
 	static std::shared_ptr<gs::Line3D> BuildGeoFromEdge(const TopoShape& edge);
 	static std::shared_ptr<gs::Polyline3D> BuildGeoFromWire(const TopoShape& wire);
 
