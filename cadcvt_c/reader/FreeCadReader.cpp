@@ -379,6 +379,27 @@ SkConsType MapFreeCadConsType(int t)
     }
 }
 
+// Whether a constraint's `Value` field carries a length (and must
+// therefore be multiplied by m_unit_scale on the way out). Angles
+// stay in radians; positional / topological constraints have no
+// numeric value (FreeCAD writes 0 / ignored).
+bool IsLengthConstraint(SkConsType t)
+{
+    switch (t)
+    {
+    case SkConsType::Distance:
+    case SkConsType::DistanceX:
+    case SkConsType::DistanceY:
+    case SkConsType::CircleRadius:
+    case SkConsType::CircleDiameter:
+    case SkConsType::ArcRadius:
+    case SkConsType::ArcDiameter:
+        return true;
+    default:
+        return false;
+    }
+}
+
 // FreeCAD PointPos enum to cadapp::SkPointPos.
 SkPointPos MapFreeCadPointPos(int p)
 {
@@ -494,10 +515,18 @@ SkGeoIR ParseSketchGeometry(const pugi::xml_node& geo_node,
 
 // ConstraintList walker. FreeCAD wrote "Constrait" (typo) in older
 // versions and "Constraint" in newer; accept both.
+//
+// unit_scale converts FreeCAD's internal millimetres to project
+// metres for length-bearing constraints (Distance / Radius / ...);
+// angles and topological constraints pass through unchanged. The
+// sketch geometry was already scaled in ParseSketchGeometry, so
+// without this the geometry and its constraints would disagree by
+// 1000x and the solver would warp the sketch to satisfy it.
 void ParseSketchConstraints(const pugi::xml_node&                cons_list_node,
                             const std::unordered_map<int, uint32_t>& geo_idx_to_id,
                             uint32_t&                            next_cons_id,
-                            std::vector<SkConsIR>&               out_cons)
+                            std::vector<SkConsIR>&               out_cons,
+                            double                               unit_scale)
 {
     auto walk = [&](const char* tag)
     {
@@ -513,6 +542,9 @@ void ParseSketchConstraints(const pugi::xml_node&                cons_list_node,
             cons.id      = next_cons_id++;
             cons.type    = type;
             cons.value   = AttrDouble(c, "Value");
+            if (IsLengthConstraint(type)) {
+                cons.value *= unit_scale;
+            }
             cons.driving = AttrBool(c, "IsDriving", true);
 
             int first       = AttrInt(c, "First", -1);
@@ -863,7 +895,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     cons_list,
                     m_sk_geo_idx_to_id,
                     m_next_sketch_cons_id,
-                    sk.cons);
+                    sk.cons,
+                    m_unit_scale);
             }
 
             out.sketches.push_back(std::move(sk));

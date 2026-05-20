@@ -8,7 +8,7 @@ sketch 2 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   con 2 type=Coincident a=2:3 b=3:1 value=0.000 driving=1
   con 3 type=Coincident a=3:3 b=4:1 value=0.000 driving=1
   con 4 type=Coincident a=4:3 b=1:1 value=0.000 driving=1
-  con 5 type=Distance a=1:0 b=4294967295:0 value=20.000 driving=1
-  con 6 type=DistanceY a=2:0 b=4294967295:0 value=10.000 driving=1
+  con 5 type=Distance a=1:0 b=4294967295:0 value=0.020 driving=1
+  con 6 type=DistanceY a=2:0 b=4294967295:0 value=0.010 driving=1
 feat 2 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=2
 feat 3 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=2 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=0
