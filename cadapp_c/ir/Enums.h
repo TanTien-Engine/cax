@@ -122,6 +122,7 @@ enum class FeatType : uint8_t
     // pattern
     LinearPattern    = 60,
     CircularPattern  = 61,
+    MultiTransform   = 62,  // ordered chain of Mirror / LinearPattern / CircularPattern
 
     // boolean
     Fuse             = 70,

@@ -238,6 +238,119 @@ bool LookupOriginPlaneNormal(const std::string& sub_name, double out[3])
 }
 
 
+// Translate a FreeCAD Transformed child (Mirrored / LinearPattern /
+// PolarPattern) into one MultiTransformStep. Returns false when the
+// type is not a recognised transformation kind. Used by the
+// PartDesign::MultiTransform path which carries an ordered list of
+// such child features in its Transformations property.
+bool ReadTransformedStep(const std::string&    child_type,
+                         const pugi::xml_node& props,
+                         double                unit_scale,
+                         MultiTransformStep&   out)
+{
+    if (child_type == "PartDesign::Mirrored")
+    {
+        out.kind = MultiTransformStep::Kind::Mirror;
+        out.plane_origin[0] = 0.0;
+        out.plane_origin[1] = 0.0;
+        out.plane_origin[2] = 0.0;
+        out.plane_normal[0] = 1.0;
+        out.plane_normal[1] = 0.0;
+        out.plane_normal[2] = 0.0;
+
+        LinkRef mp = PropLink(props, "MirrorPlane");
+        if (!mp.sub_names.empty())
+        {
+            double n[3];
+            if (LookupOriginPlaneNormal(mp.sub_names[0], n))
+            {
+                out.plane_normal[0] = n[0];
+                out.plane_normal[1] = n[1];
+                out.plane_normal[2] = n[2];
+            }
+        }
+        return true;
+    }
+
+    if (child_type == "PartDesign::LinearPattern")
+    {
+        out.kind    = MultiTransformStep::Kind::LinearPattern;
+        out.dir1[0] = 1.0;
+        out.dir1[1] = 0.0;
+        out.dir1[2] = 0.0;
+        out.dir2[0] = 0.0;
+        out.dir2[1] = 1.0;
+        out.dir2[2] = 0.0;
+        out.count2  = 1;
+        out.spacing2 = 0.0;
+
+        LinkRef dir = PropLink(props, "Direction");
+        if (!dir.sub_names.empty())
+        {
+            double d[3];
+            if (LookupOriginAxisDir(dir.sub_names[0], d))
+            {
+                out.dir1[0] = d[0];
+                out.dir1[1] = d[1];
+                out.dir1[2] = d[2];
+            }
+        }
+
+        int    count  = PropInt   (props, "Occurrences", 2);
+        double length = PropDouble(props, "Length",      0.0) * unit_scale;
+        bool   rev    = PropBool  (props, "Reversed",    false);
+
+        out.count1   = (count >= 1) ? count : 2;
+        out.spacing1 = (out.count1 > 1)
+                        ? (length / (double)(out.count1 - 1))
+                        : 0.0;
+        if (rev)
+        {
+            out.dir1[0] = -out.dir1[0];
+            out.dir1[1] = -out.dir1[1];
+            out.dir1[2] = -out.dir1[2];
+        }
+        return true;
+    }
+
+    if (child_type == "PartDesign::PolarPattern")
+    {
+        out.kind = MultiTransformStep::Kind::CircularPattern;
+        out.axis_origin[0] = 0.0;
+        out.axis_origin[1] = 0.0;
+        out.axis_origin[2] = 0.0;
+        out.axis_dir[0]    = 0.0;
+        out.axis_dir[1]    = 0.0;
+        out.axis_dir[2]    = 1.0;
+
+        LinkRef axis = PropLink(props, "Axis");
+        if (!axis.sub_names.empty())
+        {
+            double d[3];
+            if (LookupOriginAxisDir(axis.sub_names[0], d))
+            {
+                out.axis_dir[0] = d[0];
+                out.axis_dir[1] = d[1];
+                out.axis_dir[2] = d[2];
+            }
+        }
+
+        int    count   = PropInt   (props, "Occurrences", 2);
+        double angDeg  = PropDouble(props, "Angle",     360.0);
+        bool   rev     = PropBool  (props, "Reversed",  false);
+
+        out.count        = (count >= 1) ? count : 2;
+        out.total_angle  = angDeg * 3.14159265358979323846 / 180.0;
+        if (rev) {
+            out.total_angle = -out.total_angle;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+
 // FreeCAD object types we ignore entirely. These either describe
 // the document tree (App::Part), a coordinate frame (App::Origin
 // and its anchor planes / axes / point), or auxiliary datum
@@ -793,6 +906,32 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         data_by_name[AttrStr(obj, "name")] = obj;
     }
 
+    // ---- Collect MultiTransform children ----
+    //
+    // PartDesign::MultiTransform owns an ordered list of Mirrored /
+    // LinearPattern / PolarPattern child objects via its
+    // Transformations property. Those children are NOT standalone
+    // body features -- the MultiTransform reads their params and
+    // chains them itself. Track their names so the emission walk
+    // can skip them and the MultiTransform handler can find their
+    // properties.
+    std::unordered_set<std::string> mt_children;
+    for (const auto& pending : queue)
+    {
+        if (pending.type != "PartDesign::MultiTransform") {
+            continue;
+        }
+        auto it = data_by_name.find(pending.name);
+        if (it == data_by_name.end()) {
+            continue;
+        }
+        auto props = it->second.child("Properties");
+        for (const auto& child_name : PropLinkList(props, "Transformations"))
+        {
+            mt_children.insert(child_name);
+        }
+    }
+
     // ---- Compute emission order ----
     //
     // PartDesign::Body containers carry a Group property listing
@@ -805,6 +944,12 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     emission.reserve(queue.size());
 
     std::unordered_set<std::string> seen;
+
+    // Children owned by a MultiTransform must never be emitted
+    // standalone; the MultiTransform itself encodes their effect.
+    for (const auto& n : mt_children) {
+        seen.insert(n);
+    }
 
     auto push_if_unseen = [&](const Pending* p)
     {
@@ -1293,23 +1438,41 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
         else if (pending.type == "PartDesign::MultiTransform")
         {
-            // MultiTransform wraps a list of Transformed features
-            // (Mirrored / LinearPattern / PolarPattern). Those child
-            // features are emitted separately by the document walk
-            // and will already have applied their effect; the
-            // MultiTransform itself becomes a no-op carrier that
-            // preserves the original linkage for round-tripping.
-            // Stash the transformation list so a later pass can
-            // recognise the grouping.
-            FeatPayloadOpaque pl;
-            pl.strings["freecad_type"] = pending.type;
+            // MultiTransform wraps an ordered list of Transformed
+            // features (Mirrored / LinearPattern / PolarPattern). The
+            // children themselves are filtered out of the emission
+            // walk (see mt_children); we read their parameters here
+            // and emit one MultiTransformStep per child. The Replayer
+            // chains the corresponding mirror / linear_pattern /
+            // circular_pattern ops in order.
+            FeatPayloadMultiTransform pl;
             auto xforms = PropLinkList(props, "Transformations");
+            pl.steps.reserve(xforms.size());
             for (size_t k = 0; k < xforms.size(); ++k)
             {
-                pl.strings["transformation_" + std::to_string(k)] = xforms[k];
+                auto cqit = by_name.find(xforms[k]);
+                if (cqit == by_name.end()) {
+                    continue;
+                }
+                auto cdit = data_by_name.find(xforms[k]);
+                if (cdit == data_by_name.end()) {
+                    continue;
+                }
+                auto child_props = cdit->second.child("Properties");
+
+                MultiTransformStep step;
+                if (ReadTransformedStep(cqit->second->type,
+                                        child_props,
+                                        m_unit_scale,
+                                        step))
+                {
+                    pl.steps.push_back(step);
+                }
             }
-            feat.type = FeatType::Unknown;
+
+            feat.type = FeatType::MultiTransform;
             feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
         }
         else
         {

@@ -173,6 +173,47 @@ struct FeatPayloadCircularPattern
     double  total_angle    = 0.0;     // radians; 0 means equal-spaced full
 };
 
+// One step inside a MultiTransform. Mirrors / linear patterns /
+// circular patterns share the slot; the kind discriminator picks
+// which subset of fields is meaningful (other fields hold defaults).
+struct MultiTransformStep
+{
+    enum class Kind : uint8_t
+    {
+        Mirror          = 0,
+        LinearPattern   = 1,
+        CircularPattern = 2,
+    };
+    Kind kind = Kind::Mirror;
+
+    // Mirror
+    double plane_origin[3] = { 0.0, 0.0, 0.0 };
+    double plane_normal[3] = { 1.0, 0.0, 0.0 };
+
+    // LinearPattern
+    double  dir1[3]  = { 1.0, 0.0, 0.0 };
+    int32_t count1   = 2;
+    double  spacing1 = 0.0;
+    double  dir2[3]  = { 0.0, 1.0, 0.0 };
+    int32_t count2   = 1;
+    double  spacing2 = 0.0;
+
+    // CircularPattern
+    double  axis_origin[3] = { 0.0, 0.0, 0.0 };
+    double  axis_dir   [3] = { 0.0, 0.0, 1.0 };
+    int32_t count          = 2;
+    double  total_angle    = 0.0;
+};
+
+// FreeCAD's PartDesign::MultiTransform: an ordered list of single
+// transformations applied to the previous shape. Each step's effect
+// includes the original (mirror produces orig + reflection; pattern
+// ops produce orig + copies), so the Replayer just chains the ops.
+struct FeatPayloadMultiTransform
+{
+    std::vector<MultiTransformStep> steps;
+};
+
 struct FeatPayloadBoolean
 {
     // Fuse / Cut / Common. Operands are referenced by feature_id
@@ -271,7 +312,8 @@ using FeaturePayload = std::variant<
     FeatPayloadPrimTorus,        // 19
     FeatPayloadHoleWizard,       // 20
     FeatPayloadRib,              // 21
-    FeatPayloadOpaque            // 22
+    FeatPayloadOpaque,           // 22
+    FeatPayloadMultiTransform    // 23
 >;
 
 

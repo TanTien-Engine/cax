@@ -132,6 +132,7 @@ const char* FeatTypeName(cadapp::FeatType t)
     case cadapp::FeatType::Scale:           return "Scale";
     case cadapp::FeatType::LinearPattern:   return "LinearPattern";
     case cadapp::FeatType::CircularPattern: return "CircularPattern";
+    case cadapp::FeatType::MultiTransform:  return "MultiTransform";
     case cadapp::FeatType::Fuse:            return "Fuse";
     case cadapp::FeatType::Cut:             return "Cut";
     case cadapp::FeatType::Common:          return "Common";
@@ -261,6 +262,25 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
                << " axis_d=" << Vec3(p.axis_dir, dec)
                << " count=" << p.count
                << " total_angle=" << Num(p.total_angle, adec);
+        }
+        else if constexpr (std::is_same_v<T, cadapp::FeatPayloadMultiTransform>) {
+            os << "multixform steps=" << p.steps.size();
+            for (size_t si = 0; si < p.steps.size(); ++si) {
+                const auto& s = p.steps[si];
+                os << " [" << si << ":";
+                if (s.kind == cadapp::MultiTransformStep::Kind::Mirror) {
+                    os << "mirror plane_n=" << Vec3(s.plane_normal, dec);
+                } else if (s.kind == cadapp::MultiTransformStep::Kind::LinearPattern) {
+                    os << "linpat dir1=" << Vec3(s.dir1, dec)
+                       << " count1=" << s.count1
+                       << " spacing1=" << Num(s.spacing1, dec);
+                } else {
+                    os << "circpat axis_d=" << Vec3(s.axis_dir, dec)
+                       << " count=" << s.count
+                       << " total_angle=" << Num(s.total_angle, adec);
+                }
+                os << "]";
+            }
         }
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadPrimBox>) {
             os << "box l=" << Num(p.length, dec)

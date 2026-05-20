@@ -419,6 +419,27 @@ void Encode(const FeatPayloadOpaque& p, BlobWriter& w)
     w.TopoRefVec(p.face_refs);
 }
 
+void Encode(const FeatPayloadMultiTransform& p, BlobWriter& w)
+{
+    w.U32((uint32_t)p.steps.size());
+    for (const auto& s : p.steps)
+    {
+        w.U8((uint8_t)s.kind);
+        w.Vec3(s.plane_origin);
+        w.Vec3(s.plane_normal);
+        w.Vec3(s.dir1);
+        w.I32(s.count1);
+        w.F64(s.spacing1);
+        w.Vec3(s.dir2);
+        w.I32(s.count2);
+        w.F64(s.spacing2);
+        w.Vec3(s.axis_origin);
+        w.Vec3(s.axis_dir);
+        w.I32(s.count);
+        w.F64(s.total_angle);
+    }
+}
+
 
 // ============================================================
 // Decode dispatch: payload tag -> Decode(reader, payload)
@@ -615,6 +636,29 @@ void Decode(BlobReader& r, FeatPayloadOpaque& p)
 
     p.edge_refs = r.TopoRefVec();
     p.face_refs = r.TopoRefVec();
+}
+
+void Decode(BlobReader& r, FeatPayloadMultiTransform& p)
+{
+    uint32_t n = r.U32();
+    p.steps.resize(n);
+    for (uint32_t i = 0; i < n; ++i)
+    {
+        auto& s = p.steps[i];
+        s.kind = (MultiTransformStep::Kind)r.U8();
+        r.Vec3(s.plane_origin);
+        r.Vec3(s.plane_normal);
+        r.Vec3(s.dir1);
+        s.count1   = r.I32();
+        s.spacing1 = r.F64();
+        r.Vec3(s.dir2);
+        s.count2   = r.I32();
+        s.spacing2 = r.F64();
+        r.Vec3(s.axis_origin);
+        r.Vec3(s.axis_dir);
+        s.count       = r.I32();
+        s.total_angle = r.F64();
+    }
 }
 
 
@@ -895,6 +939,13 @@ bool FeatureStore::ExportToIR(uint32_t entry_idx, FeatureIR& out) const
     case 22:
     {
         FeatPayloadOpaque p;
+        Decode(r, p);
+        out.data = std::move(p);
+        break;
+    }
+    case 23:
+    {
+        FeatPayloadMultiTransform p;
         Decode(r, p);
         out.data = std::move(p);
         break;

@@ -24,6 +24,7 @@
 //   Shell (with TopoRef resolution)              OK
 //   Mirror                                       OK
 //   LinearPattern / CircularPattern              OK
+//   MultiTransform                               OK
 //   BossRevolve / CutRevolve                     TODO
 //   Loft / Sweep                                 TODO
 //
@@ -465,6 +466,70 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 node = cg->AddOp("circular_pattern",
                                   {last_node, o, a, c, t},
                                   {}, feat.name);
+            }
+
+            // ---- MultiTransform ----
+            //
+            // FreeCAD's MultiTransform applies a chain of Mirror /
+            // LinearPattern / CircularPattern in order; each step
+            // operates on the full result of the previous step, so
+            // we just feed the running shape through op-per-step.
+            else if constexpr (std::is_same_v<T, FeatPayloadMultiTransform>)
+            {
+                if (last_node < 0)
+                {
+                    step_ok = false;
+                    return;
+                }
+                int cur = last_node;
+                for (size_t si = 0; si < p.steps.size(); ++si)
+                {
+                    const auto& s = p.steps[si];
+                    std::string step_name = feat.name + ":step" + std::to_string(si);
+                    if (s.kind == MultiTransformStep::Kind::Mirror)
+                    {
+                        brepgraph::Vec3 origin = {s.plane_origin[0],
+                                                 s.plane_origin[1],
+                                                 s.plane_origin[2]};
+                        brepgraph::Vec3 normal = {s.plane_normal[0],
+                                                 s.plane_normal[1],
+                                                 s.plane_normal[2]};
+                        int o = cg->AddConst(origin, "origin");
+                        int n = cg->AddConst(normal, "normal");
+                        cur = cg->AddOp("mirror", {cur, o, n}, {}, step_name);
+                    }
+                    else if (s.kind == MultiTransformStep::Kind::LinearPattern)
+                    {
+                        brepgraph::Vec3 dir1 = {s.dir1[0], s.dir1[1], s.dir1[2]};
+                        brepgraph::Vec3 dir2 = {s.dir2[0], s.dir2[1], s.dir2[2]};
+                        int d1 = cg->AddConst(dir1, "dir1");
+                        int c1 = cg->AddConst((int)s.count1, "count1");
+                        int sp1= cg->AddConst(s.spacing1,    "spacing1");
+                        int d2 = cg->AddConst(dir2, "dir2");
+                        int c2 = cg->AddConst((int)s.count2, "count2");
+                        int sp2= cg->AddConst(s.spacing2,    "spacing2");
+                        cur = cg->AddOp("linear_pattern",
+                                         {cur, d1, c1, sp1, d2, c2, sp2},
+                                         {}, step_name);
+                    }
+                    else  // CircularPattern
+                    {
+                        brepgraph::Vec3 origin = {s.axis_origin[0],
+                                                 s.axis_origin[1],
+                                                 s.axis_origin[2]};
+                        brepgraph::Vec3 axis   = {s.axis_dir[0],
+                                                 s.axis_dir[1],
+                                                 s.axis_dir[2]};
+                        int o = cg->AddConst(origin, "axis_origin");
+                        int a = cg->AddConst(axis,   "axis_dir");
+                        int c = cg->AddConst((int)s.count,    "count");
+                        int t = cg->AddConst(s.total_angle,   "total_angle");
+                        cur = cg->AddOp("circular_pattern",
+                                         {cur, o, a, c, t},
+                                         {}, step_name);
+                    }
+                }
+                node = cur;
             }
 
             // ---- Not implemented yet ----
