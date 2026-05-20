@@ -16,16 +16,19 @@
 
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
-#include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Circ.hxx>
+#include <TopoDS.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Wire.hxx>
-#include <TopTools_ListOfShape.hxx>
+#include <TopTools_HSequenceOfShape.hxx>
+#include <ShapeAnalysis_FreeBounds.hxx>
 #include <ShapeFix_Face.hxx>
 
 namespace cadapp
@@ -117,44 +120,106 @@ TopoDS_Edge BuildEdgeFromShape(const gs::Shape2D& shape,
 	}
 }
 
-TopoDS_Wire BuildWireFromSolved(const cadapp::SketchBridge::GeoShapes& solved,
-                                 const double origin[3],
-                                 const double x_dir[3],
-                                 const double normal[3])
+// Gap tolerance for stitching edges into wires. Project space is
+// metres (FreeCAD mm * unit_scale 0.001), and sketchlib's solver is
+// float -- so endpoints can drift by ~1e-6 m even when the user's
+// constraints say they coincide. A pure BRepBuilderAPI_MakeWire is
+// stricter than that (Precision::Confusion() ~ 1e-7) and rejects the
+// chain. 1e-5 m (10 microns) is loose enough to absorb solver drift
+// without merging unrelated endpoints in a tightly-packed sketch.
+constexpr double kWireStitchTol = 1.0e-5;
+
+// Chain solved edges into one or more closed wires. Multiple wires
+// indicate a sketch with holes or disconnected loops; the caller is
+// responsible for assembling them into a single face.
+//
+// Returns an empty sequence when no edges could be built or no wires
+// could be stitched at all.
+Handle(TopTools_HSequenceOfShape)
+BuildWiresFromSolved(const cadapp::SketchBridge::GeoShapes& solved,
+                     const double origin[3],
+                     const double x_dir[3],
+                     const double normal[3])
 {
-	TopTools_ListOfShape edges;
+	Handle(TopTools_HSequenceOfShape) edges_seq =
+		new TopTools_HSequenceOfShape();
 	for (const auto& kv : solved)
 	{
 		TopoDS_Edge e = BuildEdgeFromShape(*kv.second, origin, x_dir, normal);
-		if (!e.IsNull()) edges.Append(e);
+		if (!e.IsNull()) edges_seq->Append(e);
 	}
-	if (edges.IsEmpty()) return TopoDS_Wire();
+	if (edges_seq->IsEmpty()) return Handle(TopTools_HSequenceOfShape)();
 
-	BRepBuilderAPI_MakeWire mk;
-	mk.Add(edges);
-	return mk.IsDone() ? mk.Wire() : TopoDS_Wire();
+	Handle(TopTools_HSequenceOfShape) wires_seq;
+	// shared=Standard_False: chain by endpoint distance, not by
+	// shared TVertex identity. Our edges are built fresh from
+	// gp_Pnt's, so no shared vertices exist yet.
+	ShapeAnalysis_FreeBounds::ConnectEdgesToWires(
+		edges_seq, kWireStitchTol, Standard_False, wires_seq);
+	return wires_seq;
 }
 
-std::shared_ptr<brepkit::TopoShape> WireToFace(const TopoDS_Wire& wire,
-                                                  const double origin[3],
-                                                  const double normal[3])
+// Face area on the sketch plane, used to pick the outer wire when a
+// sketch has holes. Builds a throwaway face just to measure -- cheap
+// for a single wire and avoids re-implementing polygon shoelace in
+// 3D world coords.
+double WireFaceArea(const TopoDS_Wire& wire, const gp_Pln& plane)
 {
-	if (wire.IsNull()) return {};
+	if (wire.IsNull()) return 0.0;
+	BRepBuilderAPI_MakeFace mk(plane, wire);
+	if (!mk.IsDone()) return 0.0;
+	GProp_GProps props;
+	BRepGProp::SurfaceProperties(mk.Face(), props);
+	return std::abs(props.Mass());
+}
+
+std::shared_ptr<brepkit::TopoShape> WiresToFace(
+	const Handle(TopTools_HSequenceOfShape)& wires,
+	const double                              origin[3],
+	const double                              normal[3])
+{
+	if (wires.IsNull() || wires->IsEmpty()) return {};
 
 	gp_Pnt o(origin[0], origin[1], origin[2]);
 	gp_Dir n(normal[0], normal[1], normal[2]);
 	gp_Pln plane(o, n);
 
+	// Find the largest-area wire and treat it as the outer boundary.
+	// The rest are inner wires (holes). When there's only one wire,
+	// outer_idx == 1 and the inner loop is a no-op.
+	int    outer_idx  = 1;
+	double outer_area = -1.0;
+	for (int i = 1; i <= wires->Length(); ++i)
+	{
+		const TopoDS_Wire& w = TopoDS::Wire(wires->Value(i));
+		double a = WireFaceArea(w, plane);
+		if (a > outer_area) {
+			outer_area = a;
+			outer_idx  = i;
+		}
+	}
+
+	const TopoDS_Wire& outer = TopoDS::Wire(wires->Value(outer_idx));
+
 	// Do NOT call ShapeFix_Face::FixAddNaturalBound: for a plane the
 	// natural bound is an infinite box, the fixer would treat our
 	// wire as an inner hole, and Prism then sweeps it into an
 	// annular slab with the inner top cap missing.
-	BRepBuilderAPI_MakeFace mkFace(plane, wire);
+	BRepBuilderAPI_MakeFace mkFace(plane, outer);
 	if (!mkFace.IsDone()) return {};
+
+	for (int i = 1; i <= wires->Length(); ++i)
+	{
+		if (i == outer_idx) continue;
+		const TopoDS_Wire& hole = TopoDS::Wire(wires->Value(i));
+		mkFace.Add(hole);
+	}
 
 	// FixOrientation flips CW wires so the face normal lines up with
 	// the plane normal -- without this Prism's caps may end up with
 	// inward normals (renderer hides them, looks like a missing cap).
+	// It also re-orients inner wires opposite to the outer, which is
+	// what OCCT expects for a face with holes.
 	TopoDS_Face   face = mkFace.Face();
 	ShapeFix_Face fixer(face);
 	fixer.FixOrientation();
@@ -186,13 +251,15 @@ void RegisterSketchOps(brepgraph::OpRegistry& reg)
 			sketchlib::Scene                 scene;
 			cadapp::SketchBridge::GeoShapes  solved;
 			if (!cadapp::SketchBridge::ImportToScene(*sk, scene, solved)) return {};
+			if (solved.empty()) return {};
 			scene.Solve(solved);
 
-			TopoDS_Wire wire = BuildWireFromSolved(
+			auto wires = BuildWiresFromSolved(
 				solved, origin_v.data(), x_dir_v.data(), normal_v.data());
-			if (wire.IsNull()) return {};
+			if (wires.IsNull() || wires->IsEmpty()) return {};
 
-			auto face = WireToFace(wire, origin_v.data(), normal_v.data());
+			auto face = WiresToFace(
+				wires, origin_v.data(), normal_v.data());
 			if (!face) return {};
 
 			return MakeShapeVal(face);

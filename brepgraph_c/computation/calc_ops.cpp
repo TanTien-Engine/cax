@@ -208,6 +208,42 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		});
 
+	reg.Define("linear_pattern",
+		{"shape", "dir1", "count1", "spacing1", "dir2", "count2", "spacing2"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto d1 = ctx.GetVec3(1);
+			int  c1 = ctx.Int(2);
+			double s1 = ctx.Num(3);
+			auto d2 = ctx.GetVec3(4);
+			int  c2 = ctx.Int(5);
+			double s2 = ctx.Num(6);
+			auto shp = brepkit::TopoAlgo_Ext::LinearPattern(sv.shape,
+				sm::vec3((float)d1[0], (float)d1[1], (float)d1[2]), c1, s1,
+				sm::vec3((float)d2[0], (float)d2[1], (float)d2[2]), c2, s2,
+				ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		},
+		{false, true, false, false, false});  // is_pattern
+
+	reg.Define("circular_pattern",
+		{"shape", "axis_origin", "axis_dir", "count", "total_angle"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto o = ctx.GetVec3(1);
+			auto d = ctx.GetVec3(2);
+			int  c = ctx.Int(3);
+			double a = ctx.Num(4);
+			auto shp = brepkit::TopoAlgo_Ext::CircularPattern(sv.shape,
+				sm::vec3((float)o[0], (float)o[1], (float)o[2]),
+				sm::vec3((float)d[0], (float)d[1], (float)d[2]),
+				c, a, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		},
+		{false, true, false, false, false});  // is_pattern
+
 	reg.Define("shell", {"shape", "thickness"}, {"faces"},
 		[](EvalCtx& ctx) -> Val {
 			auto sv = ctx.GetShape(0);

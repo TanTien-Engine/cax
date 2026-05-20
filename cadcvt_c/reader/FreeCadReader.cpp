@@ -215,6 +215,29 @@ std::vector<std::string> PropLinkList(const pugi::xml_node& props_node,
     return out;
 }
 
+// Map a body-origin sub-name (e.g. "X_Axis", "Y_Axis", "Z_Axis")
+// to a unit direction. Returns false when the name is not a
+// recognised origin axis -- callers can then fall back to a
+// default and stash the original ref in ext_strings.
+bool LookupOriginAxisDir(const std::string& sub_name, double out[3])
+{
+    if (sub_name == "X_Axis") { out[0] = 1.0; out[1] = 0.0; out[2] = 0.0; return true; }
+    if (sub_name == "Y_Axis") { out[0] = 0.0; out[1] = 1.0; out[2] = 0.0; return true; }
+    if (sub_name == "Z_Axis") { out[0] = 0.0; out[1] = 0.0; out[2] = 1.0; return true; }
+    return false;
+}
+
+// Map a body-origin plane sub-name (e.g. "XY_Plane") to its
+// unit normal vector. Returns false on unknown names.
+bool LookupOriginPlaneNormal(const std::string& sub_name, double out[3])
+{
+    if (sub_name == "XY_Plane") { out[0] = 0.0; out[1] = 0.0; out[2] = 1.0; return true; }
+    if (sub_name == "XZ_Plane") { out[0] = 0.0; out[1] = 1.0; out[2] = 0.0; return true; }
+    if (sub_name == "YZ_Plane") { out[0] = 1.0; out[1] = 0.0; out[2] = 0.0; return true; }
+    return false;
+}
+
+
 // FreeCAD object types we ignore entirely. These either describe
 // the document tree (App::Part), a coordinate frame (App::Origin
 // and its anchor planes / axes / point), or auxiliary datum
@@ -1078,13 +1101,223 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type       = FeatType::PrimTorus;
             feat.data       = std::move(pl);
         }
+        else if (pending.type == "PartDesign::AdditiveBox" ||
+                 pending.type == "PartDesign::SubtractiveBox")
+        {
+            // PartDesign additive/subtractive box: same params as
+            // Part::Box. The additive/subtractive flavour controls
+            // whether the result fuses with or cuts the previous
+            // body feature; the Replayer currently treats both as
+            // a standalone primitive emission.
+            FeatPayloadPrimBox pl;
+            pl.length = PropDouble(props, "Length", 1.0) * m_unit_scale;
+            pl.width  = PropDouble(props, "Width",  1.0) * m_unit_scale;
+            pl.height = PropDouble(props, "Height", 1.0) * m_unit_scale;
+            feat.type = FeatType::PrimBox;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "PartDesign::AdditiveCylinder" ||
+                 pending.type == "PartDesign::SubtractiveCylinder")
+        {
+            FeatPayloadPrimCylinder pl;
+            pl.radius = PropDouble(props, "Radius", 0.5) * m_unit_scale;
+            pl.height = PropDouble(props, "Height", 1.0) * m_unit_scale;
+            feat.type = FeatType::PrimCylinder;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "PartDesign::AdditiveSphere" ||
+                 pending.type == "PartDesign::SubtractiveSphere")
+        {
+            FeatPayloadPrimSphere pl;
+            pl.radius = PropDouble(props, "Radius", 0.5) * m_unit_scale;
+            feat.type = FeatType::PrimSphere;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "PartDesign::AdditiveCone" ||
+                 pending.type == "PartDesign::SubtractiveCone")
+        {
+            FeatPayloadPrimCone pl;
+            pl.radius1 = PropDouble(props, "Radius1", 0.5) * m_unit_scale;
+            pl.radius2 = PropDouble(props, "Radius2", 0.0) * m_unit_scale;
+            pl.height  = PropDouble(props, "Height",  1.0) * m_unit_scale;
+            feat.type  = FeatType::PrimCone;
+            feat.data  = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "PartDesign::AdditiveTorus" ||
+                 pending.type == "PartDesign::SubtractiveTorus")
+        {
+            FeatPayloadPrimTorus pl;
+            pl.major_radius = PropDouble(props, "Radius1", 1.0)  * m_unit_scale;
+            pl.minor_radius = PropDouble(props, "Radius2", 0.25) * m_unit_scale;
+            feat.type       = FeatType::PrimTorus;
+            feat.data       = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "PartDesign::Mirrored")
+        {
+            // FreeCAD mirror feature. MirrorPlane is a LinkSub
+            // pointing at a body-origin plane (XY_Plane / XZ_Plane /
+            // YZ_Plane) or a face on the base feature. Origin planes
+            // map to a fixed normal; non-origin refs fall back to
+            // the YZ plane (mirror across X) and the original
+            // reference is preserved in ext_strings.
+            FeatPayloadMirror pl;
+            // sensible default: mirror across the YZ plane.
+            pl.plane_origin[0] = 0.0;
+            pl.plane_origin[1] = 0.0;
+            pl.plane_origin[2] = 0.0;
+            pl.plane_normal[0] = 1.0;
+            pl.plane_normal[1] = 0.0;
+            pl.plane_normal[2] = 0.0;
+
+            LinkRef mp = PropLink(props, "MirrorPlane");
+            if (!mp.sub_names.empty())
+            {
+                double n[3];
+                if (LookupOriginPlaneNormal(mp.sub_names[0], n))
+                {
+                    pl.plane_normal[0] = n[0];
+                    pl.plane_normal[1] = n[1];
+                    pl.plane_normal[2] = n[2];
+                }
+                feat.ext_strings["mirror_plane_ref"] =
+                    mp.object_name + "." + mp.sub_names[0];
+            }
+            else if (!mp.object_name.empty())
+            {
+                feat.ext_strings["mirror_plane_ref"] = mp.object_name;
+            }
+
+            feat.type = FeatType::Mirror;
+            feat.data = std::move(pl);
+        }
+        else if (pending.type == "PartDesign::LinearPattern")
+        {
+            // FreeCAD linear pattern. Direction is a LinkSub to an
+            // origin axis or an edge; Length is total length;
+            // Occurrences is the count (including original).
+            FeatPayloadLinearPattern pl;
+            pl.dir1[0] = 1.0;
+            pl.dir1[1] = 0.0;
+            pl.dir1[2] = 0.0;
+            pl.dir2[0] = 0.0;
+            pl.dir2[1] = 1.0;
+            pl.dir2[2] = 0.0;
+            pl.count2  = 1;       // FreeCAD's LinearPattern is 1D.
+            pl.spacing2 = 0.0;
+
+            LinkRef dir = PropLink(props, "Direction");
+            if (!dir.sub_names.empty())
+            {
+                double d[3];
+                if (LookupOriginAxisDir(dir.sub_names[0], d))
+                {
+                    pl.dir1[0] = d[0];
+                    pl.dir1[1] = d[1];
+                    pl.dir1[2] = d[2];
+                }
+                feat.ext_strings["pattern_dir_ref"] =
+                    dir.object_name + "." + dir.sub_names[0];
+            }
+            else if (!dir.object_name.empty())
+            {
+                feat.ext_strings["pattern_dir_ref"] = dir.object_name;
+            }
+
+            int    count  = PropInt   (props, "Occurrences", 2);
+            double length = PropDouble(props, "Length",      0.0) * m_unit_scale;
+            bool   rev    = PropBool  (props, "Reversed",    false);
+
+            pl.count1   = (count >= 1) ? count : 2;
+            // FreeCAD stores total length; we store per-step spacing.
+            // count >= 2 so denominator is safe.
+            pl.spacing1 = (pl.count1 > 1)
+                            ? (length / (double)(pl.count1 - 1))
+                            : 0.0;
+            if (rev) {
+                pl.dir1[0] = -pl.dir1[0];
+                pl.dir1[1] = -pl.dir1[1];
+                pl.dir1[2] = -pl.dir1[2];
+            }
+
+            feat.type = FeatType::LinearPattern;
+            feat.data = std::move(pl);
+        }
+        else if (pending.type == "PartDesign::PolarPattern")
+        {
+            // FreeCAD polar pattern. Axis is a LinkSub to an origin
+            // axis or an edge; Angle is total angle in degrees;
+            // Occurrences is the count (including original).
+            FeatPayloadCircularPattern pl;
+            pl.axis_origin[0] = 0.0;
+            pl.axis_origin[1] = 0.0;
+            pl.axis_origin[2] = 0.0;
+            pl.axis_dir[0]    = 0.0;
+            pl.axis_dir[1]    = 0.0;
+            pl.axis_dir[2]    = 1.0;
+
+            LinkRef axis = PropLink(props, "Axis");
+            if (!axis.sub_names.empty())
+            {
+                double d[3];
+                if (LookupOriginAxisDir(axis.sub_names[0], d))
+                {
+                    pl.axis_dir[0] = d[0];
+                    pl.axis_dir[1] = d[1];
+                    pl.axis_dir[2] = d[2];
+                }
+                feat.ext_strings["pattern_axis_ref"] =
+                    axis.object_name + "." + axis.sub_names[0];
+            }
+            else if (!axis.object_name.empty())
+            {
+                feat.ext_strings["pattern_axis_ref"] = axis.object_name;
+            }
+
+            int    count   = PropInt   (props, "Occurrences", 2);
+            double angDeg  = PropDouble(props, "Angle",     360.0);
+            bool   rev     = PropBool  (props, "Reversed",  false);
+
+            pl.count        = (count >= 1) ? count : 2;
+            pl.total_angle  = angDeg * 3.14159265358979323846 / 180.0;
+            if (rev) {
+                pl.total_angle = -pl.total_angle;
+            }
+
+            feat.type = FeatType::CircularPattern;
+            feat.data = std::move(pl);
+        }
+        else if (pending.type == "PartDesign::MultiTransform")
+        {
+            // MultiTransform wraps a list of Transformed features
+            // (Mirrored / LinearPattern / PolarPattern). Those child
+            // features are emitted separately by the document walk
+            // and will already have applied their effect; the
+            // MultiTransform itself becomes a no-op carrier that
+            // preserves the original linkage for round-tripping.
+            // Stash the transformation list so a later pass can
+            // recognise the grouping.
+            FeatPayloadOpaque pl;
+            pl.strings["freecad_type"] = pending.type;
+            auto xforms = PropLinkList(props, "Transformations");
+            for (size_t k = 0; k < xforms.size(); ++k)
+            {
+                pl.strings["transformation_" + std::to_string(k)] = xforms[k];
+            }
+            feat.type = FeatType::Unknown;
+            feat.data = std::move(pl);
+        }
         else
         {
             // Real unknown feature: container / origin / datum
             // types were already filtered out by IsSkipType /
             // IsContainerType at the top of this loop, so anything
             // reaching here is a feature kind we just don't model
-            // yet (e.g. Loft, Revolution, Mirrored, ...). In strict
+            // yet (e.g. Loft, Revolution, Sweep, ...). In strict
             // mode this is an error; otherwise we preserve it as
             // Opaque so a later pass can recognise it.
             if (m_strict)

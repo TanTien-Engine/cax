@@ -7,6 +7,7 @@
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 
+#include <map>
 #include <sstream>
 #include <type_traits>
 #include <variant>
@@ -22,9 +23,9 @@
 //   Fillet / Chamfer (with TopoRef resolution)   OK
 //   Shell (with TopoRef resolution)              OK
 //   Mirror                                       OK
+//   LinearPattern / CircularPattern              OK
 //   BossRevolve / CutRevolve                     TODO
 //   Loft / Sweep                                 TODO
-//   LinearPattern / CircularPattern              TODO
 //
 // The Replay path now builds a CalcGraph: each feature becomes a
 // graph subtree of typed const + op nodes. Sketches enter the graph
@@ -74,6 +75,31 @@ int AddResolveRefNode(brepgraph::CalcGraph& cg,
         std::static_pointer_cast<void>(ref_copy)}, desc);
     int tol_n  = cg.AddConst(tolerance, "tolerance");
     return cg.AddOp(op_name, {shape_node, ref_n, tol_n}, {}, desc);
+}
+
+// Build the sketch_face graph subtree for a SketchIR and return the
+// face op's node id. A deep copy of the SketchIR is owned by the
+// CalcGraph so the graph outlives the DocumentIR; plane params are
+// kept as separate Vec3 consts so moving the plane re-runs the
+// face step without re-solving constraints.
+int AddSketchFaceNode(brepgraph::CalcGraph& cg, const SketchIR& sk)
+{
+    auto sk_copy = std::make_shared<SketchIR>(sk);
+    int sketch_n = cg.AddConst(
+        std::shared_ptr<void>(sk_copy),
+        "sketch:" + sk.name);
+    brepgraph::Vec3 sk_origin = {
+        sk.plane_origin[0], sk.plane_origin[1], sk.plane_origin[2]};
+    brepgraph::Vec3 sk_x_dir  = {
+        sk.plane_x_dir[0],  sk.plane_x_dir[1],  sk.plane_x_dir[2]};
+    brepgraph::Vec3 sk_normal = {
+        sk.plane_normal[0], sk.plane_normal[1], sk.plane_normal[2]};
+    int sk_o_n = cg.AddConst(sk_origin, "plane_origin");
+    int sk_x_n = cg.AddConst(sk_x_dir,  "plane_x_dir");
+    int sk_n_n = cg.AddConst(sk_normal, "plane_normal");
+    return cg.AddOp("sketch_face",
+        {sketch_n, sk_o_n, sk_x_n, sk_n_n},
+        {}, sk.name);
 }
 
 // Pair recording which TopoRefIR in the user's DocumentIR should
@@ -140,6 +166,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
     int last_node = -1;
 
+    // sketch_id -> face op node. Populated when a FeatPayloadSketch
+    // feature is visited; consumed by later Extrude / Revolve / etc.
+    // features that reference the same sketch. Building the face
+    // once means a sketch shared by several features (e.g. Pad +
+    // Pocket on the same profile) lands as a single subtree.
+    std::map<uint32_t, int> sketch_face_nodes;
+
     // (resolve_node, &TopoRefIR) pairs collected while building the
     // graph; consumed post-loop to write the resolved uid back into
     // the user's DocumentIR. Empty when opt.write_back_resolved is
@@ -165,7 +198,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // ---- Sketch ----
             if constexpr (std::is_same_v<T, FeatPayloadSketch>)
             {
-                (void)p;
+                // Build the sketch_face subtree up-front and stash it
+                // in sketch_face_nodes; downstream features (Extrude,
+                // Revolve, ...) read from there so a sketch shared by
+                // several features lands as a single subtree in the
+                // calc graph. The feature itself doesn't contribute a
+                // 3D body, so node stays -1 and last_node is unchanged.
+                const SketchIR* sk = FindSketch(doc, p.sketch_id);
+                if (sk) {
+                    sketch_face_nodes[p.sketch_id] = AddSketchFaceNode(*cg, *sk);
+                }
             }
 
             // ---- Primitives ----
@@ -212,26 +254,18 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                // Sketch is a graph node: a deep copy of the SketchIR
-                // is owned by the CalcGraph so the graph outlives the
-                // DocumentIR. Plane params are separate Vec3 consts so
-                // moving the plane doesn't invalidate the solver cache.
-                auto sk_copy = std::make_shared<SketchIR>(*sk);
-                int sketch_n = cg->AddConst(
-                    std::shared_ptr<void>(sk_copy),
-                    "sketch:" + sk->name);
-                brepgraph::Vec3 sk_origin = {
-                    sk->plane_origin[0], sk->plane_origin[1], sk->plane_origin[2]};
-                brepgraph::Vec3 sk_x_dir  = {
-                    sk->plane_x_dir[0],  sk->plane_x_dir[1],  sk->plane_x_dir[2]};
-                brepgraph::Vec3 sk_normal = {
-                    sk->plane_normal[0], sk->plane_normal[1], sk->plane_normal[2]};
-                int sk_o_n = cg->AddConst(sk_origin, "plane_origin");
-                int sk_x_n = cg->AddConst(sk_x_dir,  "plane_x_dir");
-                int sk_n_n = cg->AddConst(sk_normal, "plane_normal");
-                int face_n = cg->AddOp("sketch_face",
-                    {sketch_n, sk_o_n, sk_x_n, sk_n_n},
-                    {}, sk->name);
+                // Reuse the face built by the upstream Sketch feature
+                // when present; otherwise (e.g. a DocumentIR that
+                // forgot to emit a Sketch FeatureIR around its sketch)
+                // build it inline so the extrude still resolves.
+                int face_n;
+                auto it = sketch_face_nodes.find(p.sketch_id);
+                if (it != sketch_face_nodes.end()) {
+                    face_n = it->second;
+                } else {
+                    face_n = AddSketchFaceNode(*cg, *sk);
+                    sketch_face_nodes[p.sketch_id] = face_n;
+                }
 
                 double yd[3] =
                 {
@@ -389,6 +423,50 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                   {}, feat.name);
             }
 
+            // ---- LinearPattern ----
+            else if constexpr (std::is_same_v<T, FeatPayloadLinearPattern>)
+            {
+                if (last_node < 0)
+                {
+                    step_ok = false;
+                    return;
+                }
+                brepgraph::Vec3 dir1 = {p.dir1[0], p.dir1[1], p.dir1[2]};
+                brepgraph::Vec3 dir2 = {p.dir2[0], p.dir2[1], p.dir2[2]};
+                int d1 = cg->AddConst(dir1, "dir1");
+                int c1 = cg->AddConst((int)p.count1, "count1");
+                int s1 = cg->AddConst(p.spacing1, "spacing1");
+                int d2 = cg->AddConst(dir2, "dir2");
+                int c2 = cg->AddConst((int)p.count2, "count2");
+                int s2 = cg->AddConst(p.spacing2, "spacing2");
+                node = cg->AddOp("linear_pattern",
+                                  {last_node, d1, c1, s1, d2, c2, s2},
+                                  {}, feat.name);
+            }
+
+            // ---- CircularPattern ----
+            else if constexpr (std::is_same_v<T, FeatPayloadCircularPattern>)
+            {
+                if (last_node < 0)
+                {
+                    step_ok = false;
+                    return;
+                }
+                brepgraph::Vec3 origin = {p.axis_origin[0],
+                                         p.axis_origin[1],
+                                         p.axis_origin[2]};
+                brepgraph::Vec3 axis   = {p.axis_dir[0],
+                                         p.axis_dir[1],
+                                         p.axis_dir[2]};
+                int o = cg->AddConst(origin, "axis_origin");
+                int a = cg->AddConst(axis,   "axis_dir");
+                int c = cg->AddConst((int)p.count, "count");
+                int t = cg->AddConst(p.total_angle, "total_angle");
+                node = cg->AddOp("circular_pattern",
+                                  {last_node, o, a, c, t},
+                                  {}, feat.name);
+            }
+
             // ---- Not implemented yet ----
             else
             {
@@ -423,8 +501,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     if (last_node >= 0)
     {
         auto val = cg->Eval(last_node);
-        if (auto* sv = std::get_if<brepgraph::ShapeVal>(&val)) {
+        auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
+        if (sv && sv->shape) {
             out.shape = sv->shape;
+        } else if (out.err_msg.empty()) {
+            // The graph was assembled OK but evaluation collapsed to
+            // an empty Val somewhere downstream -- typically a
+            // sketch_face whose wire didn't close, or a boolean whose
+            // operand was already empty. Pin the failure here so the
+            // caller doesn't get a silent nullptr shape with ok=true.
+            out.err_msg = "shape evaluation produced no result";
         }
     }
 
