@@ -1,6 +1,6 @@
 #include "brepdb_c/BrepDB.h"
-#include "brepgraph_c/CompGraph.h"
-#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/history/TopoNaming.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
 #include "cadapp_c/store/SketchStore.h"

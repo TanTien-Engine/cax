@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "brepgraph_c/TopoGraphBuilder.h"
+#include "brepgraph_c/topology/TopoGraphBuilder.h"
 #include "brepkit_c/TopoShape.h"
 
 #include <graph/Graph.h>

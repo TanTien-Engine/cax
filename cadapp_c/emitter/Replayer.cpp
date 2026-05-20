@@ -2,8 +2,8 @@
 #include "cadapp_c/ops/sketch_ops.h"
 #include "cadapp_c/ops/resolve_ops.h"
 
-#include "brepgraph_c/CompGraph.h"
-#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/history/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 

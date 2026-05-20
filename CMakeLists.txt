@@ -9,29 +9,33 @@ add_definitions(
 ################################################################################
 # Source groups
 ################################################################################
-set(brepgraph
-    "brepgraph_c/BrepGraph.cpp"
-    "brepgraph_c/BrepGraph.h"
+set(brepgraph__common
+    "brepgraph_c/common/BrepGraph.cpp"
+    "brepgraph_c/common/BrepGraph.h"
+    "brepgraph_c/common/NodeInfo.h"
 )
-source_group("brepgraph" FILES ${brepgraph})
+source_group("brepgraph\\common" FILES ${brepgraph__common})
 
 set(brepgraph__computation
-    "brepgraph_c/CompGraph.cpp"
-    "brepgraph_c/CompGraphCore.cpp"
-    "brepgraph_c/CompGraph.h"
-    "brepgraph_c/CompGraphBuilder.cpp"
-    "brepgraph_c/CompGraphBuilder.h"
-    "brepgraph_c/ShapeCache.h"
-    "brepgraph_c/comp_ops.cpp"
-    "brepgraph_c/comp_ops.h"
+    "brepgraph_c/computation/CompGraph.cpp"
+    "brepgraph_c/computation/CompGraphCore.cpp"
+    "brepgraph_c/computation/CompGraph.h"
+    "brepgraph_c/computation/CompGraphBuilder.cpp"
+    "brepgraph_c/computation/CompGraphBuilder.h"
+    "brepgraph_c/computation/ShapeCache.h"
+    "brepgraph_c/computation/comp_ops.cpp"
+    "brepgraph_c/computation/comp_ops.h"
+    "brepgraph_c/computation/NodeShape.h"
 )
 source_group("brepgraph\\computation" FILES ${brepgraph__computation})
 
 set(brepgraph__history
-    "brepgraph_c/HistGraph.cpp"
-    "brepgraph_c/HistGraph.h"
-    "brepgraph_c/TopoNaming.cpp"
-    "brepgraph_c/TopoNaming.h"
+    "brepgraph_c/history/HistGraph.cpp"
+    "brepgraph_c/history/HistGraph.h"
+    "brepgraph_c/history/TopoNaming.cpp"
+    "brepgraph_c/history/TopoNaming.h"
+    "brepgraph_c/history/NodeFlags.h"
+    "brepgraph_c/history/NodeId.h"
 )
 source_group("brepgraph\\history" FILES ${brepgraph__history})
 
@@ -40,40 +44,25 @@ source_group("brepgraph\\history" FILES ${brepgraph__history})
 # consumers (data gen, training, recognition) don't drag graph/ogdf via
 # unrelated lineage methods.
 set(brepgraph__history__viz
-    "brepgraph_c/HistGraphViz.cpp"
+    "brepgraph_c/history/HistGraphViz.cpp"
 )
 source_group("brepgraph\\history\\viz" FILES ${brepgraph__history__viz})
 
-set(brepgraph__history__comp
-    "brepgraph_c/NodeFlags.h"
-    "brepgraph_c/NodeId.h"
-)
-source_group("brepgraph\\history\\comp" FILES ${brepgraph__history__comp})
-
 set(brepgraph__script
-    "brepgraph_c/brepgraph.ves.inc"
-    "brepgraph_c/wrap_BrepGraph.cpp"
-    "brepgraph_c/wrap_BrepGraph.h"
+    "brepgraph_c/script/brepgraph.ves.inc"
+    "brepgraph_c/script/wrap_BrepGraph.cpp"
+    "brepgraph_c/script/wrap_BrepGraph.h"
 )
 source_group("brepgraph\\script" FILES ${brepgraph__script})
 
-set(brepgraph__tools__comp
-    "brepgraph_c/NodeShape.h"
-)
-source_group("brepgraph\\tools\\comp" FILES ${brepgraph__tools__comp})
-
 set(brepgraph__topology
-    "brepgraph_c/TopoGraph.cpp"
-    "brepgraph_c/TopoGraph.h"
-    "brepgraph_c/TopoGraphBuilder.cpp"
-    "brepgraph_c/TopoGraphBuilder.h"
+    "brepgraph_c/topology/TopoGraph.cpp"
+    "brepgraph_c/topology/TopoGraph.h"
+    "brepgraph_c/topology/TopoGraphBuilder.cpp"
+    "brepgraph_c/topology/TopoGraphBuilder.h"
+    "brepgraph_c/topology/GraphShape.h"
 )
 source_group("brepgraph\\topology" FILES ${brepgraph__topology})
-
-set(brepgraph__topology__comp
-    "brepgraph_c/GraphShape.h"
-)
-source_group("brepgraph\\topology\\comp" FILES ${brepgraph__topology__comp})
 
 set(nurbslib
     "nurbslib/nurbslib.ves.inc"
@@ -354,15 +343,12 @@ endif()
 
 
 set(ALL_FILES
-    ${brepgraph}
+    ${brepgraph__common}
     ${brepgraph__computation}
     ${brepgraph__history}
     ${brepgraph__history__viz}
-    ${brepgraph__history__comp}
     ${brepgraph__script}
-    ${brepgraph__tools__comp}
     ${brepgraph__topology}
-    ${brepgraph__topology__comp}
     ${nurbslib}
     ${brepkit__brep}
     ${brepkit__script}

@@ -1,6 +1,6 @@
-#include "CompGraphBuilder.h"
-#include "CompGraph.h"
-#include "NodeInfo.h"
+#include "brepgraph_c/computation/CompGraphBuilder.h"
+#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/common/NodeInfo.h"
 
 #include <graph/Graph.h>
 #include <graph/Node.h>

@@ -17,8 +17,8 @@
 #include "deepbrep_c/GraphData.h"
 #include "deepbrep_c/FeatureLabels.h"
 
-#include "brepgraph_c/TopoNaming.h"
-#include "brepgraph_c/HistGraph.h"
+#include "brepgraph_c/history/TopoNaming.h"
+#include "brepgraph_c/history/HistGraph.h"
 #include "brepkit_c/PrimMaker.h"
 #include "brepkit_c/TopoAlgo.h"
 #include "brepkit_c/TopoShape.h"

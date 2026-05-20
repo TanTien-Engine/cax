@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "CompGraph.h"
+#include "brepgraph_c/computation/CompGraph.h"
 
 #include <atomic>
 #include <chrono>

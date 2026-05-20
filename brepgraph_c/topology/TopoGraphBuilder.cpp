@@ -1,6 +1,6 @@
-#include "TopoGraphBuilder.h"
-#include "NodeShape.h"
-#include "GraphShape.h"
+#include "brepgraph_c/topology/TopoGraphBuilder.h"
+#include "brepgraph_c/computation/NodeShape.h"
+#include "brepgraph_c/topology/GraphShape.h"
 #include "brepkit_c/TopoShape.h"
 
 #include <graph/Graph.h>

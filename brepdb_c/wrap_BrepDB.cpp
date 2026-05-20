@@ -15,8 +15,8 @@
 #include <spatialdb/ObjVisitor.h>
 #include <brepkit_c/TopoShape.h>
 #include <brepkit_c/GlobalConfig.h>
-#include <brepgraph_c/CompGraph.h>
-#include <brepgraph_c/TopoNaming.h>
+#include <brepgraph_c/computation/CompGraph.h>
+#include <brepgraph_c/history/TopoNaming.h>
 #include <brepkit_c/TransHelper.h>
 #include <wrapper/TransHelper.h>
 #include <SM_Cube.h>

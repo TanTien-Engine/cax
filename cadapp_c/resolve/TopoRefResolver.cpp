@@ -1,7 +1,7 @@
 #include "cadapp_c/resolve/TopoRefResolver.h"
 
-#include "brepgraph_c/TopoNaming.h"
-#include "brepgraph_c/HistGraph.h"
+#include "brepgraph_c/history/TopoNaming.h"
+#include "brepgraph_c/history/HistGraph.h"
 
 #include <TopoDS.hxx>
 #include <TopoDS_Shape.hxx>

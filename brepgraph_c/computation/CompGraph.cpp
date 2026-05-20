@@ -1,6 +1,6 @@
-#include "CompGraph.h"
-#include "comp_ops.h"
-#include "TopoNaming.h"
+#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/computation/comp_ops.h"
+#include "brepgraph_c/history/TopoNaming.h"
 
 #include <cstring>
 

@@ -1,4 +1,4 @@
-#include "HistGraph.h"
+#include "brepgraph_c/history/HistGraph.h"
 #include "brepkit_c/ShapeHistory.h"
 #include "brepkit_c/TopoShape.h"
 

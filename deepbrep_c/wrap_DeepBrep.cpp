@@ -8,9 +8,9 @@
 #include "deepbrep_data_gen/HistoryGraphLabeler.h"
 #include "deepbrep_data_gen/DatasetWriter.h"
 
-#include "brepgraph_c/TopoNaming.h"
-#include "brepgraph_c/CompGraph.h"
-#include "brepgraph_c/HistGraph.h"
+#include "brepgraph_c/history/TopoNaming.h"
+#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/history/HistGraph.h"
 #include "brepkit_c/TopoShape.h"
 #include "brepkit_c/GlobalConfig.h"
 

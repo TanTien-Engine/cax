@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ShapeCache.h"
+#include "brepgraph_c/computation/ShapeCache.h"
 
 #include <array>
 #include <cassert>

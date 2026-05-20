@@ -3,7 +3,7 @@
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/WorldReceiver.h"
 #include "brepdb_c/TypedPool.h"
-#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/history/TopoNaming.h"
 
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>

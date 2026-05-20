@@ -10,7 +10,7 @@
 #include "GeomDataset.h"
 #include "TransHelper.h"
 #include "GlobalConfig.h"
-#include <brepgraph_c/CompGraph.h>
+#include <brepgraph_c/computation/CompGraph.h>
 
 #include <logger/logger.h>
 #include <SM_Vector.h>

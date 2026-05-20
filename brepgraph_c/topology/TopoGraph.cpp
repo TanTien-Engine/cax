@@ -1,5 +1,5 @@
-#include "TopoGraph.h"
-#include "TopoGraphBuilder.h"
+#include "brepgraph_c/topology/TopoGraph.h"
+#include "brepgraph_c/topology/TopoGraphBuilder.h"
 
 namespace brepgraph
 {

@@ -1,4 +1,4 @@
-#include "CompGraph.h"
+#include "brepgraph_c/computation/CompGraph.h"
 
 #include <algorithm>
 #include <future>

@@ -3,7 +3,7 @@
 #include "occt_adapter.h"
 
 #include "ShapeBuilder.h"
-#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/history/TopoNaming.h"
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/VersionTree.h"
 

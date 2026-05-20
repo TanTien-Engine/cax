@@ -9,11 +9,11 @@
 // The core lineage methods (Update, GetUID, OpOf, ...) stay in HistGraph.cpp
 // and have zero graph-lib dependency.
 
-#include "HistGraph.h"
-#include "NodeShape.h"
-#include "NodeId.h"
-#include "NodeFlags.h"
-#include "NodeInfo.h"
+#include "brepgraph_c/history/HistGraph.h"
+#include "brepgraph_c/computation/NodeShape.h"
+#include "brepgraph_c/history/NodeId.h"
+#include "brepgraph_c/history/NodeFlags.h"
+#include "brepgraph_c/common/NodeInfo.h"
 #include "brepkit_c/TopoShape.h"
 
 #include <TopAbs_ShapeEnum.hxx>

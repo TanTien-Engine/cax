@@ -2,7 +2,7 @@
 #include "cadapp_c/ir/SketchIR.h"
 #include "cadapp_c/store/SketchBridge.h"
 
-#include "brepgraph_c/CompGraph.h"
+#include "brepgraph_c/computation/CompGraph.h"
 
 #include "brepkit_c/TopoShape.h"
 

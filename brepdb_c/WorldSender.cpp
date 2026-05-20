@@ -2,9 +2,9 @@
 
 #include "brepkit_c/GlobalConfig.h"
 #include "brepkit_c/TopoShape.h"
-#include "brepgraph_c/HistGraph.h"
-#include "brepgraph_c/TopoNaming.h"
-#include "brepgraph_c/NodeId.h"
+#include "brepgraph_c/history/HistGraph.h"
+#include "brepgraph_c/history/TopoNaming.h"
+#include "brepgraph_c/history/NodeId.h"
 #include "graph/Node.h"
 
 #include <Geom_Line.hxx>

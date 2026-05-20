@@ -21,11 +21,10 @@ add_executable(${PROJECT_NAME}
     test_reconnect.cpp
     test_irgraph.cpp
     test_compgraph_core.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../brepgraph_c/CompGraphCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../brepgraph_c/computation/CompGraphCore.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../brepgraph_c
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
 )
 

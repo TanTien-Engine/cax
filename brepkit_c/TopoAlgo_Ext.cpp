@@ -11,7 +11,7 @@
 #include "TopoShape.h"
 #include "ShapeBuilder.h"
 #include "occt_adapter.h"
-#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/history/TopoNaming.h"
 
 // OCCT
 #include <BRepPrimAPI_MakePrism.hxx>

@@ -1,7 +1,7 @@
-#include "BrepGraph.h"
-#include "NodeShape.h"
-#include "NodeInfo.h"
-#include "NodeShape.h"
+#include "brepgraph_c/common/BrepGraph.h"
+#include "brepgraph_c/computation/NodeShape.h"
+#include "brepgraph_c/common/NodeInfo.h"
+#include "brepgraph_c/computation/NodeShape.h"
 
 #include "brepkit_c/TransHelper.h"
 

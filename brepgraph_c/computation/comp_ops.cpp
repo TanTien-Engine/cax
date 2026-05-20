@@ -1,8 +1,8 @@
-#include "comp_ops.h"
-#include "CompGraph.h"
-#include "TopoNaming.h"
-#include "HistGraph.h"
-#include "NodeShape.h"
+#include "brepgraph_c/computation/comp_ops.h"
+#include "brepgraph_c/computation/CompGraph.h"
+#include "brepgraph_c/history/TopoNaming.h"
+#include "brepgraph_c/history/HistGraph.h"
+#include "brepgraph_c/computation/NodeShape.h"
 
 #include "brepkit_c/PrimMaker.h"
 #include "brepkit_c/TopoAlgo.h"

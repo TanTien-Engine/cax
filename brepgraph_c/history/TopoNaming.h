@@ -1,6 +1,6 @@
 #pragma once
 
-#include "HistGraph.h"
+#include "brepgraph_c/history/HistGraph.h"
 
 #include <Standard_Handle.hxx>
 

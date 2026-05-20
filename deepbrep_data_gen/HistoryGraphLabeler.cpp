@@ -1,6 +1,6 @@
 #include "HistoryGraphLabeler.h"
 
-#include "brepgraph_c/HistGraph.h"
+#include "brepgraph_c/history/HistGraph.h"
 #include "brepkit_c/TopoShape.h"
 #include "deepbrep_c/FeatureLabels.h"
 

@@ -1,8 +1,8 @@
 #include "GlobalConfig.h"
 #include "TopoShape.h"
 
-#include <brepgraph_c/TopoNaming.h>
-#include <brepgraph_c/CompGraph.h>
+#include <brepgraph_c/history/TopoNaming.h>
+#include <brepgraph_c/computation/CompGraph.h>
 #include <brepdb_c/VersionTree.h>
 #include <brepdb_c/WorldSender.h>
 #include <brepdb_c/WorldReceiver.h>
