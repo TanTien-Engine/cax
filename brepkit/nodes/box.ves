@@ -6,8 +6,8 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.node_helper" for NodeHelper
 import "brepkit.variant" for VAR_TOPO_SHAPE
 import "brepkit" for PrimMaker, GlobalConfig
-import "breptopo" for TopoNaming
-import "breptopo.compiler" for Compiler
+import "brepgraph" for TopoNaming
+import "brepgraph.compiler" for Compiler
 
 class Box is Node
 {

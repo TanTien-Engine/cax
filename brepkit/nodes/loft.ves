@@ -5,7 +5,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.node_helper" for NodeHelper
 import "brepkit.variant" for VAR_TOPO_WIRE, VAR_TOPO_SHAPE
 import "brepkit" for TopoAlgo, GlobalConfig
-import "breptopo.compiler" for Compiler
+import "brepgraph.compiler" for Compiler
 
 class Loft is Node
 {

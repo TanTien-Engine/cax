@@ -11,7 +11,7 @@
 #include "TopoShape.h"
 #include "ShapeBuilder.h"
 #include "occt_adapter.h"
-#include "breptopo_c/TopoNaming.h"
+#include "brepgraph_c/TopoNaming.h"
 
 // OCCT
 #include <BRepPrimAPI_MakePrism.hxx>
@@ -67,7 +67,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
     ExtrudeEndType end2,
     const std::shared_ptr<TopoShape>& ref,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!shape) {
         return nullptr;
@@ -214,7 +214,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::Revolve(
     double angle,
     bool is_full,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!shape) {
         return nullptr;
@@ -249,7 +249,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::Sweep(
     const std::shared_ptr<TopoShape>& path,
     bool is_solid,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!profile || !path) {
         return nullptr;
@@ -305,7 +305,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::LinearPattern(
     int count2,
     double spacing2,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!base || count1 < 1) {
         return nullptr;
@@ -389,7 +389,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::CircularPattern(
     int count,
     double angle,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!base || count < 1) {
         return nullptr;
@@ -446,7 +446,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::HoleWizard(
     double cs_diameter,
     double cs_angle,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!body || diameter < 1e-15) {
         return nullptr;
@@ -564,7 +564,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::VariableFillet(
     const std::vector<std::shared_ptr<TopoShape>>& edges,
     const std::vector<double>& params,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!shape || edges.empty() || params.size() < 2) {
         return nullptr;
@@ -608,7 +608,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::SweepWithGuide(
     const std::vector<std::shared_ptr<TopoShape>>& guides,
     bool is_solid,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!profile || !path) {
         return nullptr;
@@ -705,7 +705,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::Rib(
     double thickness,
     bool is_symmetric,
     uint32_t op_id,
-    const std::shared_ptr<breptopo::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     if (!body || !profile || thickness < 1e-15) {
         return nullptr;

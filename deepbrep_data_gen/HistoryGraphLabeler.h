@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace brepkit { class TopoShape; }
-namespace breptopo  { class HistGraph; }
+namespace brepgraph  { class HistGraph; }
 
 namespace deepbrep_data_gen
 {
@@ -21,7 +21,7 @@ struct FaceLabel
 };
 
 // Resolves a HistGraph op_id to the cax operator name that produced it. The
-// expected source is breptopo::CompGraph (which already owns the
+// expected source is brepgraph::CompGraph (which already owns the
 // op_id -> step/IRNode mapping); we take it as a callback to avoid a hard
 // dependency on CompGraph from this header.
 //
@@ -53,14 +53,14 @@ using OpResolver = std::function<std::string(uint32_t op_id)>;
 class HistoryGraphLabeler
 {
 public:
-    HistoryGraphLabeler(std::shared_ptr<breptopo::HistGraph> face_hg,
+    HistoryGraphLabeler(std::shared_ptr<brepgraph::HistGraph> face_hg,
                         OpResolver                           resolver,
                         std::shared_ptr<OpNameVocabulary>    vocab);
 
     std::vector<FaceLabel> Label(const brepkit::TopoShape& shape) const;
 
 private:
-    std::shared_ptr<breptopo::HistGraph> m_face_hg;
+    std::shared_ptr<brepgraph::HistGraph> m_face_hg;
     OpResolver                           m_resolver;
     std::shared_ptr<OpNameVocabulary>    m_vocab;
 };

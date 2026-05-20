@@ -8,7 +8,7 @@ import "blueprint.variant_helper" for VariantHelper, VAR_TYPE_ARRAY
 import "brepkit.variant" for VAR_TOPO_SHAPE, VAR_TOPO_FACE
 import "brepkit.node_helper" for NodeHelper as pg_NodeHelper
 import "brepkit" for TopoAlgo
-import "breptopo.compiler" for Compiler
+import "brepgraph.compiler" for Compiler
 
 class Offset is Node
 {

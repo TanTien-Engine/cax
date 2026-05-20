@@ -3,7 +3,7 @@
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/WorldReceiver.h"
 #include "brepdb_c/TypedPool.h"
-#include "breptopo_c/TopoNaming.h"
+#include "brepgraph_c/TopoNaming.h"
 
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -33,7 +33,7 @@ int count_shapes(const TopoDS_Shape& shape, TopAbs_ShapeEnum type)
 // Helper: serialize a shape through WorldSender and reconstruct via WorldReceiver::GetAll()
 TopoDS_Shape roundtrip(const TopoDS_Shape& shape, BRepWorld& world)
 {
-    auto tn = std::make_shared<breptopo::TopoNaming>();
+    auto tn = std::make_shared<brepgraph::TopoNaming>();
     WorldSender sender(tn);
     sender.Serialize(shape, world);
 

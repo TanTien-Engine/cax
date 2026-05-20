@@ -2,9 +2,9 @@
 
 #include "brepkit_c/GlobalConfig.h"
 #include "brepkit_c/TopoShape.h"
-#include "breptopo_c/HistGraph.h"
-#include "breptopo_c/TopoNaming.h"
-#include "breptopo_c/NodeId.h"
+#include "brepgraph_c/HistGraph.h"
+#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/NodeId.h"
 #include "graph/Node.h"
 
 #include <Geom_Line.hxx>
@@ -84,7 +84,7 @@ brepdb::AabbComp ComputeAabb(const TopoDS_Shape& shape)
 namespace brepdb
 {
 
-WorldSender::WorldSender(const std::shared_ptr<breptopo::TopoNaming>& tn)
+WorldSender::WorldSender(const std::shared_ptr<brepgraph::TopoNaming>& tn)
     : m_tn(tn)
 {
 }
@@ -274,7 +274,7 @@ uint32_t WorldSender::ResolveUID(const TopoDS_Shape& shape)
 
 uint32_t WorldSender::GetUID(const TopoDS_Shape& shape) const
 {
-    std::shared_ptr<breptopo::HistGraph> hg = nullptr;
+    std::shared_ptr<brepgraph::HistGraph> hg = nullptr;
     switch (shape.ShapeType())
     {
     case TopAbs_VERTEX: hg = m_tn->GetVertexGraph(); break;
@@ -291,7 +291,7 @@ uint32_t WorldSender::GetUID(const TopoDS_Shape& shape) const
     if (!node)
         return 0xffffffff;
 
-    auto& cid = node->GetComponent<breptopo::NodeId>();
+    auto& cid = node->GetComponent<brepgraph::NodeId>();
     return cid.GetUID();
 }
 

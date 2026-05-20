@@ -59,7 +59,7 @@ var node9 = ::brepkit::nodes::cut::Cut()
 
 _editor.add_node(node9, -11.147977317495, 130.60872749328)
 
-var node10 = ::breptopo::nodes::comp_graph::CompGraph()
+var node10 = ::brepgraph::nodes::comp_graph::CompGraph()
 
 _editor.add_node(node10, 147.40095912331, 211.22269071277)
 

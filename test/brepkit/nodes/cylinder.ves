@@ -30,7 +30,7 @@ node4.set_prop_value("no_bg", false)
 
 _editor.add_node(node4, 367.56660179687, 33.580594731445)
 
-var node5 = ::breptopo::nodes::graph::Graph()
+var node5 = ::brepgraph::nodes::graph::Graph()
 
 node5.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(159.375, 13.794921875)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(346.875, 13.794921875)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-28.125, 13.794921875)) ]
 

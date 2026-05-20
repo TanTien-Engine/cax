@@ -1,6 +1,6 @@
 #pragma once
 
-namespace breptopo
+namespace brepgraph
 {
 class OpRegistry;
 }
@@ -8,7 +8,7 @@ class OpRegistry;
 namespace cadapp
 {
 
-// Register sketch-related ops on a breptopo::OpRegistry.
+// Register sketch-related ops on a brepgraph::OpRegistry.
 //
 // Currently registers:
 //   "sketch_face" -- consumes a SketchVal (carrying a cadapp::SketchIR),
@@ -16,9 +16,9 @@ namespace cadapp
 //                    solved 2D wire onto the plane carried by the
 //                    Vec3 inputs, returns a planar TopoDS_Face.
 //
-// This op lives in cadapp (not breptopo) because it knows the
+// This op lives in cadapp (not brepgraph) because it knows the
 // concrete cadapp::SketchIR type underneath the type-erased
-// SketchVal. breptopo stays kernel-/IR-agnostic.
-void RegisterSketchOps(breptopo::OpRegistry& reg);
+// SketchVal. brepgraph stays kernel-/IR-agnostic.
+void RegisterSketchOps(brepgraph::OpRegistry& reg);
 
 } // namespace cadapp

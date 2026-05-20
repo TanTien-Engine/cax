@@ -1,6 +1,6 @@
 #include "HistoryGraphLabeler.h"
 
-#include "breptopo_c/HistGraph.h"
+#include "brepgraph_c/HistGraph.h"
 #include "brepkit_c/TopoShape.h"
 #include "deepbrep_c/FeatureLabels.h"
 
@@ -14,7 +14,7 @@ namespace deepbrep_data_gen
 {
 
 HistoryGraphLabeler::HistoryGraphLabeler(
-    std::shared_ptr<breptopo::HistGraph> face_hg,
+    std::shared_ptr<brepgraph::HistGraph> face_hg,
     OpResolver                           resolver,
     std::shared_ptr<OpNameVocabulary>    vocab)
     : m_face_hg(std::move(face_hg))
@@ -46,7 +46,7 @@ HistoryGraphLabeler::Label(const brepkit::TopoShape& shape) const
             continue;
         }
 
-        const uint32_t op_id = breptopo::HistGraph::OpOf(uid);
+        const uint32_t op_id = brepgraph::HistGraph::OpOf(uid);
         const std::string name = m_resolver ? m_resolver(op_id) : std::string();
 
         // TODO(provenance): when the most-recent op is a low-level boolean

@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 
-namespace breptopo { class TopoNaming; }
+namespace brepgraph { class TopoNaming; }
 
 namespace brepdb
 {
@@ -19,7 +19,7 @@ public:
     static bool Export(const std::string& filename, const BRepWorld& world);
 
     static bool Import(const std::string& filename, BRepWorld& world,
-                       const std::shared_ptr<breptopo::TopoNaming>& tn);
+                       const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
 }; // StepFile
 

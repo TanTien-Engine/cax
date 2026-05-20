@@ -2,8 +2,8 @@
 #include "cadapp_c/ops/sketch_ops.h"
 #include "cadapp_c/ops/resolve_ops.h"
 
-#include "breptopo_c/CompGraph.h"
-#include "breptopo_c/TopoNaming.h"
+#include "brepgraph_c/CompGraph.h"
+#include "brepgraph_c/TopoNaming.h"
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 
@@ -62,7 +62,7 @@ const SketchIR* FindSketch(const DocumentIR& doc, uint32_t sketch_feat_id)
 // Build a resolve_*_ref op node from (shape_node, ref) and return
 // the op's graph node id. The ref is moved into a heap copy so the
 // const node owns it and survives later doc mutations.
-int AddResolveRefNode(breptopo::CompGraph& cg,
+int AddResolveRefNode(brepgraph::CompGraph& cg,
                       const char*          op_name,
                       int                  shape_node,
                       const TopoRefIR&     ref,
@@ -70,7 +70,7 @@ int AddResolveRefNode(breptopo::CompGraph& cg,
                       const std::string&   desc)
 {
     auto ref_copy = std::make_shared<TopoRefIR>(ref);
-    int ref_n  = cg.AddConst(breptopo::TopoRefVal{
+    int ref_n  = cg.AddConst(brepgraph::TopoRefVal{
         std::static_pointer_cast<void>(ref_copy)}, desc);
     int tol_n  = cg.AddConst(tolerance, "tolerance");
     return cg.AddOp(op_name, {shape_node, ref_n, tol_n}, {}, desc);
@@ -94,7 +94,7 @@ struct ResolveBack
 
 struct Replayer::Impl
 {
-    std::shared_ptr<breptopo::TopoNaming> naming;
+    std::shared_ptr<brepgraph::TopoNaming> naming;
     std::shared_ptr<brepdb::VersionTree>  vtree;
 };
 
@@ -105,7 +105,7 @@ Replayer::Replayer()
 
 Replayer::~Replayer() = default;
 
-void Replayer::SetNaming(const std::shared_ptr<breptopo::TopoNaming>& tn)
+void Replayer::SetNaming(const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     m_impl->naming = tn;
 }
@@ -120,7 +120,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     out = ReplayResult{};
 
     if (!m_impl->naming) {
-        m_impl->naming = std::make_shared<breptopo::TopoNaming>();
+        m_impl->naming = std::make_shared<brepgraph::TopoNaming>();
     }
     if (!m_impl->vtree) {
         m_impl->vtree = std::make_shared<brepdb::VersionTree>();
@@ -129,9 +129,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     out.naming = m_impl->naming;
     out.vtree  = m_impl->vtree;
 
-    auto cg = std::make_shared<breptopo::CompGraph>();
-    // Augment breptopo's builtin op set with cadapp's IR-aware ops.
-    // breptopo cannot register these itself without depending on
+    auto cg = std::make_shared<brepgraph::CompGraph>();
+    // Augment brepgraph's builtin op set with cadapp's IR-aware ops.
+    // brepgraph cannot register these itself without depending on
     // cadapp's IR types, so the wiring happens here where both
     // sides are visible.
     RegisterSketchOps(cg->GetRegistry());
@@ -220,11 +220,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int sketch_n = cg->AddConst(
                     std::shared_ptr<void>(sk_copy),
                     "sketch:" + sk->name);
-                breptopo::Vec3 sk_origin = {
+                brepgraph::Vec3 sk_origin = {
                     sk->plane_origin[0], sk->plane_origin[1], sk->plane_origin[2]};
-                breptopo::Vec3 sk_x_dir  = {
+                brepgraph::Vec3 sk_x_dir  = {
                     sk->plane_x_dir[0],  sk->plane_x_dir[1],  sk->plane_x_dir[2]};
-                breptopo::Vec3 sk_normal = {
+                brepgraph::Vec3 sk_normal = {
                     sk->plane_normal[0], sk->plane_normal[1], sk->plane_normal[2]};
                 int sk_o_n = cg->AddConst(sk_origin, "plane_origin");
                 int sk_x_n = cg->AddConst(sk_x_dir,  "plane_x_dir");
@@ -251,7 +251,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int tool_n;
                 if (p.end_type != ExtrudeEndType::Blind)
                 {
-                    breptopo::Vec3 dir = {sign * world_dir[0],
+                    brepgraph::Vec3 dir = {sign * world_dir[0],
                                           sign * world_dir[1],
                                           sign * world_dir[2]};
                     int dir_n = cg->AddConst(dir, "direction");
@@ -271,7 +271,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     double dx = world_dir[0] * p.distance * sign;
                     double dy = world_dir[1] * p.distance * sign;
                     double dz = world_dir[2] * p.distance * sign;
-                    breptopo::Vec3 dir = {dx, dy, dz};
+                    brepgraph::Vec3 dir = {dx, dy, dz};
                     int dir_n = cg->AddConst(dir, "direction");
                     tool_n = cg->AddOp("prism", {face_n, dir_n}, {}, feat.name);
                 }
@@ -377,10 +377,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     step_ok = false;
                     return;
                 }
-                breptopo::Vec3 origin = {p.plane_origin[0],
+                brepgraph::Vec3 origin = {p.plane_origin[0],
                                          p.plane_origin[1],
                                          p.plane_origin[2]};
-                breptopo::Vec3 normal = {p.plane_normal[0],
+                brepgraph::Vec3 normal = {p.plane_normal[0],
                                          p.plane_normal[1],
                                          p.plane_normal[2]};
                 int o = cg->AddConst(origin, "origin");
@@ -423,7 +423,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     if (last_node >= 0)
     {
         auto val = cg->Eval(last_node);
-        if (auto* sv = std::get_if<breptopo::ShapeVal>(&val)) {
+        if (auto* sv = std::get_if<brepgraph::ShapeVal>(&val)) {
             out.shape = sv->shape;
         }
     }
@@ -441,7 +441,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         {
             if (!rb.ref || rb.resolve_node < 0) continue;
             auto v = cg->Eval(rb.resolve_node);
-            if (auto* sv = std::get_if<breptopo::ShapeVal>(&v))
+            if (auto* sv = std::get_if<brepgraph::ShapeVal>(&v))
             {
                 rb.ref->resolved_uid        = sv->tag;
                 rb.ref->resolved_topo_index = 0;

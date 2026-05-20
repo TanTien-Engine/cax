@@ -7,7 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "blueprint.variant_helper" for VariantHelper
 import "brepkit.variant" for VAR_TOPO_SHAPE
 import "brepkit" for TopoAlgo, GlobalConfig
-import "breptopo.compiler" for Compiler
+import "brepgraph.compiler" for Compiler
 
 class Chamfer is Node
 {

@@ -2,7 +2,7 @@
 #include "cadapp_c/ir/SketchIR.h"
 #include "cadapp_c/store/SketchBridge.h"
 
-#include "breptopo_c/CompGraph.h"
+#include "brepgraph_c/CompGraph.h"
 
 #include "brepkit_c/TopoShape.h"
 
@@ -34,10 +34,10 @@ namespace cadapp
 namespace
 {
 
-using breptopo::EvalCtx;
-using breptopo::ShapeVal;
-using breptopo::Val;
-using breptopo::Vec3;
+using brepgraph::EvalCtx;
+using brepgraph::ShapeVal;
+using brepgraph::Val;
+using brepgraph::Vec3;
 
 ShapeVal MakeShapeVal(const std::shared_ptr<brepkit::TopoShape>& shp)
 {
@@ -166,7 +166,7 @@ std::shared_ptr<brepkit::TopoShape> WireToFace(const TopoDS_Wire& wire,
 
 } // anonymous namespace
 
-void RegisterSketchOps(breptopo::OpRegistry& reg)
+void RegisterSketchOps(brepgraph::OpRegistry& reg)
 {
 	// sketch_face: pulls the SketchIR back out of the type-erased
 	// SketchVal, runs sketchlib's constraint solver, and lifts the

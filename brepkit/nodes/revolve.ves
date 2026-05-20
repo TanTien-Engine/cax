@@ -7,7 +7,7 @@ import "blueprint.node_helper" for NodeHelper
 import "brepkit.variant" for VAR_TOPO_FACE, VAR_TOPO_SHAPE
 import "maths.vector" for Vector3
 import "brepkit" for TopoAlgo, GlobalConfig
-import "breptopo.compiler" for Compiler
+import "brepgraph.compiler" for Compiler
 import "math" for Math
 
 class Revolve is Node

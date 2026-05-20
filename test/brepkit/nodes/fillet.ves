@@ -48,7 +48,7 @@ node7.selected_indices = [ 8 ]
 
 _editor.add_node(node7, -244.4485, 37.947414800901)
 
-var node8 = ::breptopo::nodes::graph::Graph()
+var node8 = ::brepgraph::nodes::graph::Graph()
 
 node8.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-1.5044555664062, -49.288513183594)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(83.165100097656, -99.127052307129)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(88.525024414062, 0.33219909667969)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(31.754821777344, -129.54144287109)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(95.519348144531, -60.387283325195)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(180.82403564453, -50.716529846191)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(146.1865234375, -129.46092224121)) ]
 

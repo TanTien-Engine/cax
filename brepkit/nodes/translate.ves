@@ -8,8 +8,8 @@ import "brepkit.variant" for VAR_TOPO_SHAPE
 import "brepkit.node_helper" for NodeHelper as pg_NodeHelper
 import "maths.vector" for Vector3
 import "brepkit" for TopoAlgo, GlobalConfig
-import "breptopo" for TopoNaming
-import "breptopo.compiler" for Compiler
+import "brepgraph" for TopoNaming
+import "brepgraph.compiler" for Compiler
 
 class Translate is Node
 {

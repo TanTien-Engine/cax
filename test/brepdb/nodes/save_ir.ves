@@ -61,7 +61,7 @@ node10.query_param("disable").value = false
 
 _editor.add_node(node10, 392.45250713278, 396.04592674825)
 
-var node11 = ::breptopo::nodes::hist_graph::HistGraph()
+var node11 = ::brepgraph::nodes::hist_graph::HistGraph()
 node11.query_param("type").value = "edge"
 
 _editor.add_node(node11, 437.24692650882, -144.4222365857)

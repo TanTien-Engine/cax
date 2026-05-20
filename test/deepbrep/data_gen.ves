@@ -59,7 +59,7 @@ var node9 = ::brepkit::nodes::cut::Cut()
 
 _editor.add_node(node9, -11.147977317495, 130.60872749328)
 
-var node10 = ::breptopo::nodes::comp_graph::CompGraph()
+var node10 = ::brepgraph::nodes::comp_graph::CompGraph()
 
 _editor.add_node(node10, 147.40095912331, 211.22269071277)
 
@@ -76,7 +76,7 @@ node12.query_param("noise_ratio").value = 0.2
 
 _editor.add_node(node12, 293.00368755771, 185.58035370659)
 
-var node13 = ::breptopo::nodes::hist_graph::HistGraph()
+var node13 = ::brepgraph::nodes::hist_graph::HistGraph()
 node13.query_param("type").value = "face"
 
 _editor.add_node(node13, 455.04262003961, -111.54798169524)

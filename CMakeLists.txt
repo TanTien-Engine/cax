@@ -9,71 +9,71 @@ add_definitions(
 ################################################################################
 # Source groups
 ################################################################################
-set(breptopo
-    "breptopo_c/BrepTopo.cpp"
-    "breptopo_c/BrepTopo.h"
+set(brepgraph
+    "brepgraph_c/BrepGraph.cpp"
+    "brepgraph_c/BrepGraph.h"
 )
-source_group("breptopo" FILES ${breptopo})
+source_group("brepgraph" FILES ${brepgraph})
 
-set(breptopo__computation
-    "breptopo_c/CompGraph.cpp"
-    "breptopo_c/CompGraphCore.cpp"
-    "breptopo_c/CompGraph.h"
-    "breptopo_c/CompGraphBuilder.cpp"
-    "breptopo_c/CompGraphBuilder.h"
-    "breptopo_c/ShapeCache.h"
-    "breptopo_c/comp_ops.cpp"
-    "breptopo_c/comp_ops.h"
+set(brepgraph__computation
+    "brepgraph_c/CompGraph.cpp"
+    "brepgraph_c/CompGraphCore.cpp"
+    "brepgraph_c/CompGraph.h"
+    "brepgraph_c/CompGraphBuilder.cpp"
+    "brepgraph_c/CompGraphBuilder.h"
+    "brepgraph_c/ShapeCache.h"
+    "brepgraph_c/comp_ops.cpp"
+    "brepgraph_c/comp_ops.h"
 )
-source_group("breptopo\\computation" FILES ${breptopo__computation})
+source_group("brepgraph\\computation" FILES ${brepgraph__computation})
 
-set(breptopo__history
-    "breptopo_c/HistGraph.cpp"
-    "breptopo_c/HistGraph.h"
-    "breptopo_c/TopoNaming.cpp"
-    "breptopo_c/TopoNaming.h"
+set(brepgraph__history
+    "brepgraph_c/HistGraph.cpp"
+    "brepgraph_c/HistGraph.h"
+    "brepgraph_c/TopoNaming.cpp"
+    "brepgraph_c/TopoNaming.h"
 )
-source_group("breptopo\\history" FILES ${breptopo__history})
+source_group("brepgraph\\history" FILES ${brepgraph__history})
 
 # Viz-only TUs that pull graph + ogdf. Kept in cax static lib so UI callers
 # transparently get the symbols, but isolated in their own object so headless
 # consumers (data gen, training, recognition) don't drag graph/ogdf via
 # unrelated lineage methods.
-set(breptopo__history__viz
-    "breptopo_c/HistGraphViz.cpp"
+set(brepgraph__history__viz
+    "brepgraph_c/HistGraphViz.cpp"
 )
-source_group("breptopo\\history\\viz" FILES ${breptopo__history__viz})
+source_group("brepgraph\\history\\viz" FILES ${brepgraph__history__viz})
 
-set(breptopo__history__comp
-    "breptopo_c/NodeFlags.h"
-    "breptopo_c/NodeId.h"
+set(brepgraph__history__comp
+    "brepgraph_c/NodeFlags.h"
+    "brepgraph_c/NodeId.h"
 )
-source_group("breptopo\\history\\comp" FILES ${breptopo__history__comp})
+source_group("brepgraph\\history\\comp" FILES ${brepgraph__history__comp})
 
-set(breptopo__script
-    "breptopo_c/breptopo.ves.inc"
-    "breptopo_c/wrap_BrepTopo.cpp"
-    "breptopo_c/wrap_BrepTopo.h"
+set(brepgraph__script
+    "brepgraph_c/brepgraph.ves.inc"
+    "brepgraph_c/wrap_BrepGraph.cpp"
+    "brepgraph_c/wrap_BrepGraph.h"
 )
-source_group("breptopo\\script" FILES ${breptopo__script})
+source_group("brepgraph\\script" FILES ${brepgraph__script})
 
-set(breptopo__tools__comp
-    "breptopo_c/NodeShape.h"
+set(brepgraph__tools__comp
+    "brepgraph_c/NodeShape.h"
 )
-source_group("breptopo\\tools\\comp" FILES ${breptopo__tools__comp})
+source_group("brepgraph\\tools\\comp" FILES ${brepgraph__tools__comp})
 
-set(breptopo__topology
-    "breptopo_c/TopoGraph.cpp"
-    "breptopo_c/TopoGraph.h"
-    "breptopo_c/TopoGraphBuilder.cpp"
-    "breptopo_c/TopoGraphBuilder.h"
+set(brepgraph__topology
+    "brepgraph_c/TopoGraph.cpp"
+    "brepgraph_c/TopoGraph.h"
+    "brepgraph_c/TopoGraphBuilder.cpp"
+    "brepgraph_c/TopoGraphBuilder.h"
 )
-source_group("breptopo\\topology" FILES ${breptopo__topology})
+source_group("brepgraph\\topology" FILES ${brepgraph__topology})
 
-set(breptopo__topology__comp
-    "breptopo_c/GraphShape.h"
+set(brepgraph__topology__comp
+    "brepgraph_c/GraphShape.h"
 )
-source_group("breptopo\\topology\\comp" FILES ${breptopo__topology__comp})
+source_group("brepgraph\\topology\\comp" FILES ${brepgraph__topology__comp})
 
 set(nurbslib
     "nurbslib/nurbslib.ves.inc"
@@ -248,11 +248,11 @@ source_group("deepbrep\\datagen" FILES ${deepbrep__datagen})
 
 # ---- cadapp: CAD application layer (IR + replay + name resolve) ----
 #
-# Sits between breptopo (kernel-agnostic computation graph) and
+# Sits between brepgraph (kernel-agnostic computation graph) and
 # cadcvt (external-format readers). Owns the FeatureIR / SketchIR
 # data model, the Replayer that turns a DocumentIR into a CompGraph
 # + history, the TopoRefResolver, the binary stores, and the
-# sketch-related ops registered on breptopo's OpRegistry.
+# sketch-related ops registered on brepgraph's OpRegistry.
 
 set(cadapp__ir
     "cadapp_c/ir/Enums.h"
@@ -354,15 +354,15 @@ endif()
 
 
 set(ALL_FILES
-    ${breptopo}
-    ${breptopo__computation}
-    ${breptopo__history}
-    ${breptopo__history__viz}
-    ${breptopo__history__comp}
-    ${breptopo__script}
-    ${breptopo__tools__comp}
-    ${breptopo__topology}
-    ${breptopo__topology__comp}
+    ${brepgraph}
+    ${brepgraph__computation}
+    ${brepgraph__history}
+    ${brepgraph__history__viz}
+    ${brepgraph__history__comp}
+    ${brepgraph__script}
+    ${brepgraph__tools__comp}
+    ${brepgraph__topology}
+    ${brepgraph__topology__comp}
     ${nurbslib}
     ${brepkit__brep}
     ${brepkit__script}
@@ -502,7 +502,7 @@ if(CAX_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test/brepdb_c)
     add_subdirectory(test/brepdb_occt_c)
-    add_subdirectory(test/breptopo_c)
+    add_subdirectory(test/brepgraph_c)
     add_subdirectory(test/deepbrep_c)
 endif()
 

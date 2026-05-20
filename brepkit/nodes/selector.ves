@@ -11,8 +11,8 @@ import "maths.vector" for Vector2
 import "graphics" for Graphics
 import "keyboard" for Keyboard
 import "brepkit" for GlobalConfig
-import "breptopo" for TopoNaming
-import "breptopo.compiler" for Compiler
+import "brepgraph" for TopoNaming
+import "brepgraph.compiler" for Compiler
 
 class Selector is Node
 {

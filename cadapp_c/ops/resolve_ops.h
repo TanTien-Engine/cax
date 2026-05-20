@@ -1,6 +1,6 @@
 #pragma once
 
-namespace breptopo
+namespace brepgraph
 {
 class OpRegistry;
 }
@@ -8,7 +8,7 @@ class OpRegistry;
 namespace cadapp
 {
 
-// Register TopoRef-resolution ops on a breptopo::OpRegistry.
+// Register TopoRef-resolution ops on a brepgraph::OpRegistry.
 //
 // Registers:
 //   "resolve_edge_ref" (shape, ref, tolerance) -> ShapeVal
@@ -25,9 +25,9 @@ namespace cadapp
 // LruCache on rebuild, and frees Replayer to remain a pure graph
 // builder.
 //
-// breptopo cannot register these itself: it would have to depend on
+// brepgraph cannot register these itself: it would have to depend on
 // cadapp::TopoRefIR. The wiring happens here where both sides are
 // visible.
-void RegisterResolveOps(breptopo::OpRegistry& reg);
+void RegisterResolveOps(brepgraph::OpRegistry& reg);
 
 } // namespace cadapp

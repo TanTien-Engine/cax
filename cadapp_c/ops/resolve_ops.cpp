@@ -2,7 +2,7 @@
 #include "cadapp_c/ir/TopoRefIR.h"
 #include "cadapp_c/resolve/TopoRefResolver.h"
 
-#include "breptopo_c/CompGraph.h"
+#include "brepgraph_c/CompGraph.h"
 
 #include "brepkit_c/TopoShape.h"
 
@@ -17,9 +17,9 @@ namespace cadapp
 namespace
 {
 
-using breptopo::EvalCtx;
-using breptopo::ShapeVal;
-using breptopo::Val;
+using brepgraph::EvalCtx;
+using brepgraph::ShapeVal;
+using brepgraph::Val;
 
 ShapeVal ResolveOne(EvalCtx& ctx, TopAbs_ShapeEnum kind)
 {
@@ -56,7 +56,7 @@ ShapeVal ResolveOne(EvalCtx& ctx, TopAbs_ShapeEnum kind)
 
 } // anonymous namespace
 
-void RegisterResolveOps(breptopo::OpRegistry& reg)
+void RegisterResolveOps(brepgraph::OpRegistry& reg)
 {
 	// no_vt_cache: the resolved sub-shape depends on the upstream
 	// shape's transient identity (topo_index). Caching the result in

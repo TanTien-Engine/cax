@@ -20,12 +20,12 @@
 // FeatureStore's TopoRefIR. From then on edits can take the uid
 // fast-path and skip geometric matching.
 //
-// The header only depends on cadapp/ir; OCCT and breptopo are
+// The header only depends on cadapp/ir; OCCT and brepgraph are
 // inside the cpp.
 // ============================================================
 
 class TopoDS_Shape;
-namespace breptopo
+namespace brepgraph
 {
 class TopoNaming;
 }
@@ -56,7 +56,7 @@ public:
     // The result is one ResolvedRef per input, in the same order.
     static std::vector<ResolvedRef> Resolve(const TopoDS_Shape&            shape,
                                             const std::vector<TopoRefIR>&  refs,
-                                            breptopo::TopoNaming*          naming,
+                                            brepgraph::TopoNaming*          naming,
                                             double                         tolerance = 1e-3);
 };
 

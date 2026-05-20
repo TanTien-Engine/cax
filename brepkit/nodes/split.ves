@@ -4,7 +4,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.variant" for Variant
 import "brepkit.variant" for VAR_TOPO_SHAPE
 import "brepkit" for TopoAlgo, GlobalConfig
-import "breptopo.compiler" for Compiler
+import "brepgraph.compiler" for Compiler
 
 class Split is Node
 {

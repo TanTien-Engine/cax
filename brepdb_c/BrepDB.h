@@ -1,6 +1,6 @@
 #pragma once
 
-namespace breptopo
+namespace brepgraph
 {
 class CompGraph;
 class TopoNaming;
@@ -37,14 +37,14 @@ public:
 
     void Flush();
 
-    void StoreCompGraph(const breptopo::CompGraph& cg);
-    bool LoadCompGraph(breptopo::CompGraph& cg);
+    void StoreCompGraph(const brepgraph::CompGraph& cg);
+    bool LoadCompGraph(brepgraph::CompGraph& cg);
 
     void StoreVersionTree(const VersionTree& vt);
     bool LoadVersionTree(VersionTree& vt);
 
-    void StoreTopoNaming(const breptopo::TopoNaming& tn);
-    bool LoadTopoNaming(breptopo::TopoNaming& tn);
+    void StoreTopoNaming(const brepgraph::TopoNaming& tn);
+    bool LoadTopoNaming(brepgraph::TopoNaming& tn);
 
     // ---- cadapp meta pages: IR layer for SW / FreeCAD imports ----
     void StoreSketchStore(const cadapp::SketchStore& ss);

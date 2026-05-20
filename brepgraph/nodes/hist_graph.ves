@@ -1,0 +1,121 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "blueprint.variant_proxy" for VariantProxy
+import "blueprint.node_param" for NodeParam
+import "graph.nodes.draw" for Draw
+import "brepkit.variant" for VAR_TOPO_SHAPE
+import "brepgraph.variant" for VAR_HIST_GRAPH
+import "brepkit" for GlobalConfig
+import "brepgraph" for TopoNaming
+
+class HistGraph is Node
+{
+	init()
+	{
+		super.init()
+
+		this.exports = [
+			Pin(this, "selected", VAR_TYPE_ARRAY),
+		]
+
+		this.params.add(NodeParam("type", "face", { "combo" : [ "vertex", "edge", "face", "shell" ] }))
+
+		this.layout()
+
+		this.hist_graph = nil
+		this.v_selected = []
+
+		this.curr_type = nil
+
+		this.n_draw = Draw()
+	}
+
+	calc_value(idx)
+	{
+		var type = this.query_param("type").value
+		if (this.curr_type != type)
+		{
+			this.curr_type = type
+			this.build_graph()
+			this.v_selected = []
+		}
+
+		if (idx == 0) {
+			return Variant(this.v_selected)
+		}
+	}
+
+	build_graph()
+	{
+		var tn = GlobalConfig.get_topo_naming()
+		if (this.curr_type == "vertex")
+			this.hist_graph = tn.get_vertex_graph()
+		else if (this.curr_type == "edge")
+			this.hist_graph = tn.get_edge_graph()
+		else if (this.curr_type == "face")
+			this.hist_graph = tn.get_face_graph()
+		else if (this.curr_type == "shell")
+			this.hist_graph = tn.get_solid_graph()
+		
+		var graph = this.hist_graph.get_hist_graph()
+		Blueprint.connect(VariantProxy(Variant(VAR_HIST_GRAPH, graph)), "out", this.n_draw, "graph")
+	}
+
+	draw(mt, cam_mt)
+	{
+		super.draw(mt, cam_mt)
+
+		this.n_draw.draw_preview()
+	}
+
+	bind_editor()
+	{
+		return this.n_draw.bind_editor()
+	}
+
+	draw_editor() 
+	{
+		this.n_draw.draw_editor()
+	}
+
+	on_mouse_pressed(x, y, btn) 
+	{
+		this.n_draw.on_mouse_pressed(x, y, btn)
+
+		this.update_selected()
+	}
+
+	on_mouse_dragged(x, y, btn) 
+	{
+		this.n_draw.on_mouse_dragged(x, y, btn)
+	}
+
+	on_mouse_scrolled(x, y, dx, dy) 
+	{
+		this.n_draw.on_mouse_scrolled(x, y, dx, dy)
+	}
+
+	on_key_pressed(key)
+	{
+		this.n_draw.on_key_pressed(key)
+	}
+
+	update_selected()
+	{
+		this.v_selected.clear()
+
+		var v_selecteds = Blueprint.calc_output_value(this.n_draw, "selected")
+		if (!v_selecteds) {
+			return
+		}
+
+		for (var v_sel in v_selecteds.value)
+		{
+			var face = v_sel.value.get_component("topo_shape")
+			if (face)
+				this.v_selected.add(Variant(VAR_TOPO_SHAPE, face))
+		}
+	}
+}

@@ -13,7 +13,7 @@
 #include <TopoDS_Solid.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 
-namespace breptopo { class TopoNaming; }
+namespace brepgraph { class TopoNaming; }
 
 namespace brepdb
 {
@@ -21,7 +21,7 @@ namespace brepdb
 class WorldSender
 {
 public:
-    WorldSender(const std::shared_ptr<breptopo::TopoNaming>& tn);
+    WorldSender(const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     void Serialize(const TopoDS_Shape& shape, BRepWorld& world);
 
@@ -43,7 +43,7 @@ private:
                                           const TopoDS_Face& face);
 
 private:
-    std::shared_ptr<breptopo::TopoNaming> m_tn;
+    std::shared_ptr<brepgraph::TopoNaming> m_tn;
 
     uint32_t m_next_auto_uid = 1;
     TopTools_IndexedMapOfShape m_auto_uid_map;

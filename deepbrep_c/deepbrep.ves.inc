@@ -11,7 +11,7 @@ static const char* deepbrepModuleSource = QUOTE(
 //
 // predict(shape):
 //   Returns a list of per-face class ids (integers), in the same face order
-//   as breptopo::TopoGraphBuilder. Empty list if no weights loaded or the
+//   as brepgraph::TopoGraphBuilder. Empty list if no weights loaded or the
 //   shape has no faces.
 
 foreign class FeatureRecognizer

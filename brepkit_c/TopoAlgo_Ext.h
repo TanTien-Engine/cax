@@ -8,7 +8,7 @@
 #include <vector>
 #include <cstdint>
 
-namespace breptopo { class TopoNaming; }
+namespace brepgraph { class TopoNaming; }
 
 namespace brepkit
 {
@@ -48,7 +48,7 @@ public:
         ExtrudeEndType end2,
         const std::shared_ptr<TopoShape>& ref,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Revolve (SW Boss-Revolve / Cut-Revolve)
@@ -66,7 +66,7 @@ public:
         double angle,
         bool is_full,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Sweep (SW Sweep)
@@ -80,7 +80,7 @@ public:
         const std::shared_ptr<TopoShape>& path,
         bool is_solid,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Linear Pattern (SW Linear Pattern)
@@ -102,7 +102,7 @@ public:
         int count2,
         double spacing2,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Circular Pattern (SW Circular Pattern)
@@ -120,7 +120,7 @@ public:
         int count,
         double angle,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Hole Wizard (SW Hole Wizard / NX Hole Feature)
@@ -161,7 +161,7 @@ public:
         double cs_diameter,
         double cs_angle,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Variable Fillet (variable radius along edge)
@@ -176,7 +176,7 @@ public:
         const std::vector<std::shared_ptr<TopoShape>>& edges,
         const std::vector<double>& params,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Sweep With Guide (SW Sweep with guide curves)
@@ -192,7 +192,7 @@ public:
         const std::vector<std::shared_ptr<TopoShape>>& guides,
         bool is_solid,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
     // Rib (SW Rib / structural web)
@@ -210,7 +210,7 @@ public:
         double thickness,
         bool is_symmetric,
         uint32_t op_id,
-        const std::shared_ptr<breptopo::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
 }; // TopoAlgo_Ext
 

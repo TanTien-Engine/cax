@@ -4,7 +4,7 @@
 
 #include "ShapeBuilder.h"
 
-#include <breptopo_c/TopoNaming.h>
+#include <brepgraph_c/TopoNaming.h>
 #include <brepdb_c/WorldSender.h>
 #include <brepdb_c/VersionTree.h>
 
@@ -33,14 +33,14 @@ namespace brepkit
 {
 
 std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double nx, double ny, double nz,
-                                            uint32_t op_id, const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         gp_Pln pln(gp_Pnt(x, y, z), gp_Dir(nx, ny, nz));
         BRepBuilderAPI_MakeFace mk_face(pln, -20.0, 20.0, -20.0, 20.0);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -63,13 +63,13 @@ std::shared_ptr<TopoShape> PrimMaker::Plane(double x, double y, double z, double
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint32_t op_id,
-                                          const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                          const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                           const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeBox mk_box(dx, dy, dz);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -91,13 +91,13 @@ std::shared_ptr<TopoShape> PrimMaker::Box(double dx, double dy, double dz, uint3
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length, uint32_t op_id,
-                                               const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                               const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                                const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeCylinder mk_cyl(radius, length);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -119,13 +119,13 @@ std::shared_ptr<TopoShape> PrimMaker::Cylinder(double radius, double length, uin
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height, uint32_t op_id,
-                                           const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                           const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                            const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeCone mk_cone(r1, r2, height);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -147,13 +147,13 @@ std::shared_ptr<TopoShape> PrimMaker::Cone(double r1, double r2, double height, 
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, uint32_t op_id,
-                                             const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                             const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                              const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeSphere mk_sphere(radius);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -175,13 +175,13 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, uint32_t op_id,
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle, uint32_t op_id,
-                                             const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                             const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                              const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeSphere mk_sphere(radius, angle);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -203,13 +203,13 @@ std::shared_ptr<TopoShape> PrimMaker::Sphere(double radius, double angle, uint32
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, uint32_t op_id,
-                                            const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeTorus mk_torus(r1, r2);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -231,13 +231,13 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, uint32_t op_id
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle, uint32_t op_id,
-                                            const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                            const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     std::shared_ptr<TopoShape> shape = nullptr;
     try {
         BRepPrimAPI_MakeTorus mk_torus(r1, r2, angle);
-        breptopo::TopoNaming::PidMap pid_map;
+        brepgraph::TopoNaming::PidMap pid_map;
         if (tn)
         {
             auto old_shp = ShapeBuilder::MakeCompound({});
@@ -259,7 +259,7 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle, 
 }
 
 std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height, uint32_t op_id,
-                                                const std::shared_ptr<breptopo::TopoNaming>& tn,
+                                                const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                                 const std::shared_ptr<brepdb::VersionTree>& vt)
 {
     gp_Pnt neckLocation(0, 0, height);
@@ -305,7 +305,7 @@ std::shared_ptr<TopoShape> PrimMaker::Threading(double thickness, double height,
     aTool.AddWire(threadingWire2);
     aTool.CheckCompatibility(Standard_False);
 
-    breptopo::TopoNaming::PidMap pid_map;
+    brepgraph::TopoNaming::PidMap pid_map;
     if (tn)
     {
         auto old_shp = ShapeBuilder::MakeCompound({});

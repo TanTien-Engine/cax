@@ -1,7 +1,7 @@
 #include "cadapp_c/resolve/TopoRefResolver.h"
 
-#include "breptopo_c/TopoNaming.h"
-#include "breptopo_c/HistGraph.h"
+#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/HistGraph.h"
 
 #include <TopoDS.hxx>
 #include <TopoDS_Shape.hxx>
@@ -129,7 +129,7 @@ double FaceArea(const TopoDS_Face& face)
     return props.Mass();
 }
 
-uint32_t LookupUid(breptopo::TopoNaming* naming,
+uint32_t LookupUid(brepgraph::TopoNaming* naming,
                    TopoRefIR::Kind       kind,
                    const TopoDS_Shape&   sub)
 {
@@ -137,7 +137,7 @@ uint32_t LookupUid(breptopo::TopoNaming* naming,
         return 0;
     }
 
-    std::shared_ptr<breptopo::HistGraph> hg;
+    std::shared_ptr<brepgraph::HistGraph> hg;
     switch (kind)
     {
     case TopoRefIR::Kind::Vertex:
@@ -165,7 +165,7 @@ uint32_t LookupUid(breptopo::TopoNaming* naming,
 
 std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&            shape,
                                                   const std::vector<TopoRefIR>&  refs,
-                                                  breptopo::TopoNaming*          naming,
+                                                  brepgraph::TopoNaming*          naming,
                                                   double                         tolerance)
 {
     std::vector<ResolvedRef> out;

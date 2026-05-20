@@ -5,7 +5,7 @@ import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
 import "blueprint.blueprint" for Blueprint
 import "brepkit.variant" for VAR_TOPO_SHAPE
 import "brepkit" for PrimMaker, GlobalConfig
-import "breptopo.compiler" for Compiler
+import "brepgraph.compiler" for Compiler
 
 class Threading is Node
 {

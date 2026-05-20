@@ -4,7 +4,7 @@
 #include "brepdb_c/TypedPool.h"
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/WorldReceiver.h"
-#include "breptopo_c/TopoNaming.h"
+#include "brepgraph_c/TopoNaming.h"
 
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -27,7 +27,7 @@ std::string TmpPath(const std::string& name)
 }
 
 // Build a BRepWorld containing a simple box
-BRepWorld make_box_world(const std::shared_ptr<breptopo::TopoNaming>& tn)
+BRepWorld make_box_world(const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     BRepWorld world;
     TopoDS_Shape box = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
@@ -41,7 +41,7 @@ BRepWorld make_box_world(const std::shared_ptr<breptopo::TopoNaming>& tn)
 
 TEST_CASE("StepFile export produces a file", "[step]")
 {
-    auto tn = std::make_shared<breptopo::TopoNaming>();
+    auto tn = std::make_shared<brepgraph::TopoNaming>();
     auto world = make_box_world(tn);
     const auto filepath = TmpPath("test_export.step");
 
@@ -55,14 +55,14 @@ TEST_CASE("StepFile export produces a file", "[step]")
 
 TEST_CASE("StepFile import reads a STEP file", "[step]")
 {
-    auto tn = std::make_shared<breptopo::TopoNaming>();
+    auto tn = std::make_shared<brepgraph::TopoNaming>();
     auto original = make_box_world(tn);
     const auto filepath = TmpPath("test_import.step");
 
     REQUIRE(StepFile::Export(filepath, original));
 
     BRepWorld imported;
-    auto tn2 = std::make_shared<breptopo::TopoNaming>();
+    auto tn2 = std::make_shared<brepgraph::TopoNaming>();
     bool ok = StepFile::Import(filepath, imported, tn2);
     CHECK(ok);
     CHECK(imported.EntityCount() > 0);
@@ -72,14 +72,14 @@ TEST_CASE("StepFile import reads a STEP file", "[step]")
 
 TEST_CASE("StepFile roundtrip preserves topology", "[step]")
 {
-    auto tn = std::make_shared<breptopo::TopoNaming>();
+    auto tn = std::make_shared<brepgraph::TopoNaming>();
     auto original = make_box_world(tn);
     const auto filepath = TmpPath("test_roundtrip.step");
 
     REQUIRE(StepFile::Export(filepath, original));
 
     BRepWorld imported;
-    auto tn2 = std::make_shared<breptopo::TopoNaming>();
+    auto tn2 = std::make_shared<brepgraph::TopoNaming>();
     REQUIRE(StepFile::Import(filepath, imported, tn2));
 
     // A box should have: 8 vertices, 12 edges, 6 faces, 1 solid
@@ -117,7 +117,7 @@ TEST_CASE("StepFile roundtrip preserves topology", "[step]")
 TEST_CASE("StepFile import nonexistent file returns false", "[step]")
 {
     BRepWorld world;
-    auto tn = std::make_shared<breptopo::TopoNaming>();
+    auto tn = std::make_shared<brepgraph::TopoNaming>();
     CHECK_FALSE(StepFile::Import(TmpPath("nonexistent_99999.step"), world, tn));
 }
 

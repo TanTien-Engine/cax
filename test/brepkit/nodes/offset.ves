@@ -31,7 +31,7 @@ node4.set_prop_value("no_bg", false)
 
 _editor.add_node(node4, 561.10470257457, 22.59360151256)
 
-var node5 = ::breptopo::nodes::graph::Graph()
+var node5 = ::brepgraph::nodes::graph::Graph()
 
 node5.nodes = [  ]
 
@@ -41,7 +41,7 @@ var node6 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node6, 142.11127652766, -188.28035520591)
 
-var node7 = ::breptopo::nodes::topo_graph::TopoGraph()
+var node7 = ::brepgraph::nodes::topo_graph::TopoGraph()
 
 _editor.add_node(node7, -753.53870247934, -35.726545454545)
 
@@ -67,7 +67,7 @@ var node11 = ::blueprint::nodes::merge::Merge()
 
 _editor.add_node(node11, 11.725215565075, 302.68375466087)
 
-var node12 = ::breptopo::nodes::hist_graph::HistGraph()
+var node12 = ::brepgraph::nodes::hist_graph::HistGraph()
 
 _editor.add_node(node12, -18.94578514414, -182.12704240783)
 

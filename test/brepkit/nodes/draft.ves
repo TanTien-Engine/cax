@@ -38,7 +38,7 @@ node5.query_param("length").value = 0.58995091915131
 
 _editor.add_node(node5, -325.09558105469, 76.645797729492)
 
-var node6 = ::breptopo::nodes::graph::Graph()
+var node6 = ::brepgraph::nodes::graph::Graph()
 
 node6.nodes = [ ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(212.84568786621, -111.66566947103)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(208.25855255127, 4.3364129066467)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-12.478809356689, 0.92577773332596)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(-7.891674041748, -114.0762745738)), ::blueprint::variant::Variant("num2", ::maths::vector::Vector2(101.18341064453, -54.869930833578)) ]
 

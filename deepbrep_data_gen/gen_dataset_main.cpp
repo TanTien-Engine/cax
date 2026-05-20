@@ -17,8 +17,8 @@
 #include "deepbrep_c/GraphData.h"
 #include "deepbrep_c/FeatureLabels.h"
 
-#include "breptopo_c/TopoNaming.h"
-#include "breptopo_c/HistGraph.h"
+#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/HistGraph.h"
 #include "brepkit_c/PrimMaker.h"
 #include "brepkit_c/TopoAlgo.h"
 #include "brepkit_c/TopoShape.h"
@@ -92,7 +92,7 @@ bool emit_sample(DatasetWriter& writer,
                  const std::shared_ptr<OpNameVocabulary>& vocab,
                  std::mt19937& rng)
 {
-    auto tn = std::make_shared<breptopo::TopoNaming>();
+    auto tn = std::make_shared<brepgraph::TopoNaming>();
     std::unordered_map<uint32_t, std::string> op_names;
 
     // --- Base Box ---

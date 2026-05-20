@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "breptopo_c/TopoGraphBuilder.h"
+#include "brepgraph_c/TopoGraphBuilder.h"
 #include "brepkit_c/TopoShape.h"
 
 #include <graph/Graph.h>
@@ -11,7 +11,7 @@
 #include <TopExp.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 
-using namespace breptopo;
+using namespace brepgraph;
 
 static std::shared_ptr<brepkit::TopoShape> make_box(double dx, double dy, double dz)
 {

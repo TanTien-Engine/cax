@@ -1,8 +1,8 @@
 #include "GlobalConfig.h"
 #include "TopoShape.h"
 
-#include <breptopo_c/TopoNaming.h>
-#include <breptopo_c/CompGraph.h>
+#include <brepgraph_c/TopoNaming.h>
+#include <brepgraph_c/CompGraph.h>
 #include <brepdb_c/VersionTree.h>
 #include <brepdb_c/WorldSender.h>
 #include <brepdb_c/WorldReceiver.h>
@@ -24,9 +24,9 @@ GlobalConfig* GlobalConfig::Instance()
 
 GlobalConfig::GlobalConfig()
 {
-	m_topo_naming = std::make_shared<breptopo::TopoNaming>();
+	m_topo_naming = std::make_shared<brepgraph::TopoNaming>();
 	m_version_tree = std::make_shared<brepdb::VersionTree>();
-	m_comp_graph = std::make_shared<breptopo::CompGraph>();
+	m_comp_graph = std::make_shared<brepgraph::CompGraph>();
 
 	// Share the same TopoNaming so direct .ves code and CompGraph::Eval
 	// see the same naming state.
@@ -38,11 +38,11 @@ GlobalConfig::GlobalConfig()
 	auto vt_mutex = std::make_shared<std::mutex>();
 
 	cg->SetCommitFn(
-		[vt, cg, tn, vt_mutex](uint32_t /*nref_id*/, const breptopo::Val& val,
-		                       const std::shared_ptr<breptopo::TopoNaming>& curr_tn) -> uint32_t
+		[vt, cg, tn, vt_mutex](uint32_t /*nref_id*/, const brepgraph::Val& val,
+		                       const std::shared_ptr<brepgraph::TopoNaming>& curr_tn) -> uint32_t
 		{
-			if (!std::holds_alternative<breptopo::ShapeVal>(val)) return UINT32_MAX;
-			const auto& sv = std::get<breptopo::ShapeVal>(val);
+			if (!std::holds_alternative<brepgraph::ShapeVal>(val)) return UINT32_MAX;
+			const auto& sv = std::get<brepgraph::ShapeVal>(val);
 			if (!sv.shape) return UINT32_MAX;
 
 			// Use the evaluator-supplied tn (could be a parallel fork's clone)
@@ -64,7 +64,7 @@ GlobalConfig::GlobalConfig()
 
 	cg->SetRestoreFn(
 		[vt, vt_mutex](uint32_t vt_node_id,
-		               const std::shared_ptr<breptopo::TopoNaming>& curr_tn) -> breptopo::Val
+		               const std::shared_ptr<brepgraph::TopoNaming>& curr_tn) -> brepgraph::Val
 		{
 			if (vt_node_id == UINT32_MAX) return {};
 			std::lock_guard<std::mutex> lk(*vt_mutex);
@@ -84,7 +84,7 @@ GlobalConfig::GlobalConfig()
 				curr_tn->BindShapes(receiver.GetCache());
 
 			auto topo = std::make_shared<brepkit::TopoShape>(shape);
-			return breptopo::ShapeVal{topo, 0};
+			return brepgraph::ShapeVal{topo, 0};
 		});
 }
 

@@ -8,9 +8,9 @@
 #include "deepbrep_data_gen/HistoryGraphLabeler.h"
 #include "deepbrep_data_gen/DatasetWriter.h"
 
-#include "breptopo_c/TopoNaming.h"
-#include "breptopo_c/CompGraph.h"
-#include "breptopo_c/HistGraph.h"
+#include "brepgraph_c/TopoNaming.h"
+#include "brepgraph_c/CompGraph.h"
+#include "brepgraph_c/HistGraph.h"
 #include "brepkit_c/TopoShape.h"
 #include "brepkit_c/GlobalConfig.h"
 
@@ -261,8 +261,8 @@ void w_DataExporter_export_augmented()
         cg->Lower();
         auto val = cg->Eval(last_op_step);
 
-        if (!std::holds_alternative<breptopo::ShapeVal>(val)) continue;
-        auto& sv = std::get<breptopo::ShapeVal>(val);
+        if (!std::holds_alternative<brepgraph::ShapeVal>(val)) continue;
+        auto& sv = std::get<brepgraph::ShapeVal>(val);
         if (!sv.shape) continue;
 
         auto op_map = cg->GetIROpIdMap();

@@ -49,7 +49,7 @@ bool StepFile::Export(const std::string& filename, const BRepWorld& world)
 }
 
 bool StepFile::Import(const std::string& filename, BRepWorld& world,
-                      const std::shared_ptr<breptopo::TopoNaming>& tn)
+                      const std::shared_ptr<brepgraph::TopoNaming>& tn)
 {
     STEPControl_Reader reader;
     IFSelect_ReturnStatus status = reader.ReadFile(filename.c_str());

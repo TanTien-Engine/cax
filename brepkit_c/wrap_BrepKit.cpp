@@ -10,7 +10,7 @@
 #include "GeomDataset.h"
 #include "TransHelper.h"
 #include "GlobalConfig.h"
-#include <breptopo_c/CompGraph.h>
+#include <brepgraph_c/CompGraph.h>
 
 #include <logger/logger.h>
 #include <SM_Vector.h>
@@ -1068,8 +1068,8 @@ void w_GlobalConfig_get_topo_naming()
     ves_pop(ves_argnum());
 
     ves_pushnil();
-    ves_import_class("breptopo", "TopoNaming");
-    auto proxy = (wrapper::Proxy<breptopo::TopoNaming>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<breptopo::TopoNaming>));
+    ves_import_class("brepgraph", "TopoNaming");
+    auto proxy = (wrapper::Proxy<brepgraph::TopoNaming>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<brepgraph::TopoNaming>));
     proxy->obj = brepkit::GlobalConfig::Instance()->GetTopoNaming();
     ves_pop(1);
 }
@@ -1090,8 +1090,8 @@ void w_GlobalConfig_get_comp_graph()
     ves_pop(ves_argnum());
 
     ves_pushnil();
-    ves_import_class("breptopo", "CompGraph");
-    auto proxy = (wrapper::Proxy<breptopo::CompGraph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<breptopo::CompGraph>));
+    ves_import_class("brepgraph", "CompGraph");
+    auto proxy = (wrapper::Proxy<brepgraph::CompGraph>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<brepgraph::CompGraph>));
     proxy->obj = brepkit::GlobalConfig::Instance()->GetCompGraph();
     ves_pop(1);
 }

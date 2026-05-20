@@ -1,6 +1,6 @@
 #include "brepdb_c/BrepDB.h"
-#include "breptopo_c/CompGraph.h"
-#include "breptopo_c/TopoNaming.h"
+#include "brepgraph_c/CompGraph.h"
+#include "brepgraph_c/TopoNaming.h"
 #include "brepdb_c/BrepDBInit.h"
 #include "brepdb_c/NodeVersionInfo.h"
 #include "cadapp_c/store/SketchStore.h"
@@ -257,7 +257,7 @@ void BrepDB::LoadTopoGraph()
     delete[] buf;
 }
 
-void BrepDB::StoreCompGraph(const breptopo::CompGraph& cg)
+void BrepDB::StoreCompGraph(const brepgraph::CompGraph& cg)
 {
     uint8_t* buf = nullptr;
     uint32_t len = 0;
@@ -276,7 +276,7 @@ void BrepDB::StoreCompGraph(const breptopo::CompGraph& cg)
     delete[] buf;
 }
 
-bool BrepDB::LoadCompGraph(breptopo::CompGraph& cg)
+bool BrepDB::LoadCompGraph(brepgraph::CompGraph& cg)
 {
     spatialdb::id_type page = m_rtree->GetMetaPage(META_COMP_GRAPH);
     if (page == spatialdb::NewPage)
@@ -339,7 +339,7 @@ bool BrepDB::LoadVersionTree(VersionTree& vt)
     return true;
 }
 
-void BrepDB::StoreTopoNaming(const breptopo::TopoNaming& tn)
+void BrepDB::StoreTopoNaming(const brepgraph::TopoNaming& tn)
 {
     uint8_t* buf = nullptr;
     uint32_t len = 0;
@@ -358,7 +358,7 @@ void BrepDB::StoreTopoNaming(const breptopo::TopoNaming& tn)
     delete[] buf;
 }
 
-bool BrepDB::LoadTopoNaming(breptopo::TopoNaming& tn)
+bool BrepDB::LoadTopoNaming(brepgraph::TopoNaming& tn)
 {
     spatialdb::id_type page = m_rtree->GetMetaPage(META_TOPO_NAMING);
     if (page == spatialdb::NewPage)

@@ -11,7 +11,7 @@
 //
 // Build a CompGraph from a DocumentIR. The graph encodes every
 // feature as op + const nodes; geometry is materialised lazily by
-// breptopo's evaluator, not by Replayer.
+// brepgraph's evaluator, not by Replayer.
 //
 // Workflow per feature:
 //   1. Sketch          -> $sketch const + 3 Vec3 consts feeding a
@@ -32,7 +32,7 @@
 // The header only depends on cadapp/ir; OCCT stays in the .cpp.
 // ============================================================
 
-namespace breptopo
+namespace brepgraph
 {
 class TopoNaming;
 class CompGraph;
@@ -81,11 +81,11 @@ struct ReplayResult
 
     // History / naming structures created by Replay. The caller
     // forwards them to BrepDB::Flush().
-    std::shared_ptr<breptopo::TopoNaming> naming;
+    std::shared_ptr<brepgraph::TopoNaming> naming;
     std::shared_ptr<brepdb::VersionTree>  vtree;
 
     // Computation graph built during replay (persistent).
-    std::shared_ptr<breptopo::CompGraph>  comp_graph;
+    std::shared_ptr<brepgraph::CompGraph>  comp_graph;
 };
 
 class Replayer
@@ -99,7 +99,7 @@ public:
 
     // Reuse an external naming / version tree. When unset Replay
     // allocates fresh ones.
-    void SetNaming(const std::shared_ptr<breptopo::TopoNaming>& tn);
+    void SetNaming(const std::shared_ptr<brepgraph::TopoNaming>& tn);
     void SetVersionTree(const std::shared_ptr<brepdb::VersionTree>& vt);
 
     // Main entry. doc is in/out: when write_back_resolved is true

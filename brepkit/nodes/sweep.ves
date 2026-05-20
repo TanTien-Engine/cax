@@ -5,7 +5,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_BOOLEAN
 import "brepkit.variant" for VAR_TOPO_SHAPE, VAR_TOPO_WIRE
 import "brepkit" for TopoAlgo, GlobalConfig
-import "breptopo.compiler" for Compiler
+import "brepgraph.compiler" for Compiler
 
 class Sweep is Node
 {
