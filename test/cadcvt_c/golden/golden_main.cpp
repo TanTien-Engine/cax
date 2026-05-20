@@ -275,10 +275,13 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    // Sort fixtures by name so the run order (and thus the log) is
-    // deterministic.
+    // Recursive walk so fixtures organised into subfolders (e.g.
+    // `fixtures/pads/`, `fixtures/dressup/`) are picked up. Each
+    // golden lands in its fixture's own parent dir, so two fixtures
+    // named `blind.xml` in different subdirs do not clobber each
+    // other. Sorted by full path for deterministic run order.
     std::vector<fs::path> fixtures;
-    for (const auto& entry : fs::directory_iterator(dir))
+    for (const auto& entry : fs::recursive_directory_iterator(dir))
     {
         if (entry.is_regular_file() && IsFixture(entry.path())) {
             fixtures.push_back(entry.path());
