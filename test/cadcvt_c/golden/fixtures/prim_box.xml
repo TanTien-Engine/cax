@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Part::Box primitive at document root. Differs from pad_box in
+  two ways the reader treats specially:
+
+    - no PartDesign::Body container, so the Group-walk path is
+      bypassed and the feature emits in <Objects> declaration
+      order;
+    - no Sketcher::SketchObject at all -- the primitive owns its
+      length / width / height directly via App::PropertyLength.
+
+  This isolates the Prim* code branch from the sketch+extrude
+  pipeline; a regression that breaks Sketch parsing leaves this
+  fixture intact, a regression that mishandles Part::Box leaves
+  the others intact.
+
+  Dimensions chosen so each axis differs (30 / 20 / 10 mm), so a
+  swap-bug between length/width/height surfaces immediately in the
+  IR golden.
+-->
+<Document SchemaVersion="4">
+  <Objects Count="1">
+    <Object name="Box" type="Part::Box" />
+  </Objects>
+  <ObjectData Count="1">
+
+    <Object name="Box">
+      <Properties Count="3">
+        <Property name="Length" type="App::PropertyLength">
+          <Float value="30" />
+        </Property>
+        <Property name="Width" type="App::PropertyLength">
+          <Float value="20" />
+        </Property>
+        <Property name="Height" type="App::PropertyLength">
+          <Float value="10" />
+        </Property>
+      </Properties>
+    </Object>
+
+  </ObjectData>
+</Document>

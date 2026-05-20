@@ -1,0 +1,2 @@
+doc source=freecad
+feat 1 name=Box type=PrimBox suppressed=0 payload=box l=0.030 w=0.020 h=0.010

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Opaque baseline. PartDesign::Revolution is not typed yet in the
+  reader (FreeCadReader.cpp's feature dispatch has no Revolution
+  branch), so it falls through to the catch-all FeatPayloadOpaque
+  with strings["freecad_type"]="PartDesign::Revolution" and
+  FeatType::Unknown.
+
+  This is intentional. The IR golden's `payload=opaque
+  freecad_type=PartDesign::Revolution` line is the coverage
+  thermometer the README talks about: the day someone wires
+  Revolution into the dispatch, this line flips from `opaque ...`
+  to `revolve sketch_id=2 axis_o=... axis_d=... angle=...`, and
+  the diff between the old and new golden IS the proof of new
+  coverage.
+
+  The sketch is a single line off-axis -- a degenerate profile
+  but enough to satisfy the dispatcher; the Revolution payload
+  doesn't get parsed yet so its Angle / ReferenceAxis attributes
+  are ignored. Once Revolution becomes typed, swap the file for
+  a meaningful profile + axis ref and re-mint.
+-->
+<Document SchemaVersion="4">
+  <Objects Count="3">
+    <Object name="Body" type="PartDesign::Body" />
+    <Object name="Sketch" type="Sketcher::SketchObject" />
+    <Object name="Revolution" type="PartDesign::Revolution" />
+  </Objects>
+  <ObjectData Count="3">
+
+    <Object name="Body">
+      <Properties Count="1">
+        <Property name="Group" type="App::PropertyLinkList">
+          <LinkList count="2">
+            <Link value="Sketch" />
+            <Link value="Revolution" />
+          </LinkList>
+        </Property>
+      </Properties>
+    </Object>
+
+    <Object name="Sketch">
+      <Properties Count="2">
+        <Property name="Placement" type="App::PropertyPlacement">
+          <PropertyPlacement Px="0" Py="0" Pz="0" Q0="0" Q1="0" Q2="0" Q3="1" />
+        </Property>
+        <Property name="Geometry" type="Sketcher::PropertyGeometryList">
+          <GeometryList count="1">
+            <Geometry type="Part::GeomLineSegment">
+              <LineSegment StartX="10" StartY="0" EndX="10" EndY="20" />
+            </Geometry>
+          </GeometryList>
+        </Property>
+      </Properties>
+    </Object>
+
+    <Object name="Revolution">
+      <Properties Count="2">
+        <Property name="Profile" type="App::PropertyLinkSub">
+          <LinkSub value="Sketch" count="0" />
+        </Property>
+        <Property name="Angle" type="App::PropertyAngle">
+          <Float value="360" />
+        </Property>
+      </Properties>
+    </Object>
+
+  </ObjectData>
+</Document>
