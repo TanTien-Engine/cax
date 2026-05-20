@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.16)
 
 project(cax)
 
+# Enable Solution-Explorer folders in VS so targets can be grouped
+# under logical names via the FOLDER property (e.g. cadcvt_golden
+# lives under "cax/test"). Targets without FOLDER set stay at the
+# solution root, so this is purely additive.
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
 add_definitions(
     -DNO_RTTR
 )
@@ -331,8 +337,22 @@ if(CADCVT_FREECAD_DEPS_OK)
     set(cadcvt__reader_freecad
         "cadcvt_c/reader/FreeCadReader.cpp"
         "cadcvt_c/reader/FreeCadReader.h"
+        # miniz upstream is split into core (miniz.c) + deflate
+        # (miniz_tdef.c) + inflate (miniz_tinfl.c) + zip reader/writer
+        # (miniz_zip.c). FreeCadReader's ExtractDocumentXml uses the
+        # zip half, which in turn pulls in the deflate/inflate
+        # halves -- all four .c files have to be compiled together
+        # or LNK2019 follows the moment anything actually calls
+        # mz_zip_reader_init_file / mz_inflate / mz_deflate.
         "thirdparty/miniz/miniz.c"
         "thirdparty/miniz/miniz.h"
+        "thirdparty/miniz/miniz_tdef.c"
+        "thirdparty/miniz/miniz_tdef.h"
+        "thirdparty/miniz/miniz_tinfl.c"
+        "thirdparty/miniz/miniz_tinfl.h"
+        "thirdparty/miniz/miniz_zip.c"
+        "thirdparty/miniz/miniz_zip.h"
+        "thirdparty/miniz/miniz_common.h"
         "thirdparty/pugixml/src/pugixml.cpp"
         "thirdparty/pugixml/src/pugixml.hpp"
     )
@@ -494,6 +514,12 @@ if(CAX_BUILD_TESTS)
     add_subdirectory(test/brepdb_occt_c)
     add_subdirectory(test/brepgraph_c)
     add_subdirectory(test/deepbrep_c)
+    # cadcvt golden harness needs FreeCadReader (miniz + pugixml).
+    # Skipped silently when the submodules aren't initialized -- the
+    # gate is the same one that compiles the reader into cax.
+    if(CADCVT_FREECAD_DEPS_OK)
+        add_subdirectory(test/cadcvt_c)
+    endif()
 endif()
 
 ################################################################################
