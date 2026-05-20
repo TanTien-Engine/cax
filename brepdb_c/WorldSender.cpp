@@ -4,7 +4,7 @@
 #include "brepkit_c/TopoShape.h"
 #include "brepgraph_c/history/HistGraph.h"
 #include "brepgraph_c/history/TopoNaming.h"
-#include "brepgraph_c/history/NodeId.h"
+#include "brepgraph_c/common/NodeId.h"
 #include "graph/Node.h"
 
 #include <Geom_Line.hxx>

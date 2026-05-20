@@ -1,6 +1,5 @@
 #include "brepgraph_c/topology/TopoGraphBuilder.h"
-#include "brepgraph_c/computation/NodeShape.h"
-#include "brepgraph_c/topology/GraphShape.h"
+#include "brepgraph_c/common/NodeShape.h"
 #include "brepkit_c/TopoShape.h"
 
 #include <graph/Graph.h>
@@ -26,7 +25,7 @@ TopoGraphBuilder::BuildGraph(const std::vector<std::shared_ptr<brepkit::TopoShap
 {
     auto graph = std::make_shared<graph::Graph>();
     graph->SetDirected(false);
-    graph->AddComponent<GraphShape>(shapes);
+    graph->AddComponent<NodeShape>(shapes);
 
     for (auto shape : shapes) {
         AddShapeToGraph(shape, graph);

@@ -10,9 +10,9 @@
 // and have zero graph-lib dependency.
 
 #include "brepgraph_c/history/HistGraph.h"
-#include "brepgraph_c/computation/NodeShape.h"
-#include "brepgraph_c/history/NodeId.h"
-#include "brepgraph_c/history/NodeFlags.h"
+#include "brepgraph_c/common/NodeShape.h"
+#include "brepgraph_c/common/NodeId.h"
+#include "brepgraph_c/common/NodeFlags.h"
 #include "brepgraph_c/common/NodeInfo.h"
 #include "brepkit_c/TopoShape.h"
 

@@ -9,10 +9,17 @@ add_definitions(
 ################################################################################
 # Source groups
 ################################################################################
+set(brepgraph
+    "brepgraph_c/BrepGraph.cpp"
+    "brepgraph_c/BrepGraph.h"
+)
+source_group("brepgraph" FILES ${brepgraph})
+
 set(brepgraph__common
-    "brepgraph_c/common/BrepGraph.cpp"
-    "brepgraph_c/common/BrepGraph.h"
+    "brepgraph_c/common/NodeFlags.h"
+    "brepgraph_c/common/NodeId.h"
     "brepgraph_c/common/NodeInfo.h"
+    "brepgraph_c/common/NodeShape.h"
 )
 source_group("brepgraph\\common" FILES ${brepgraph__common})
 
@@ -25,7 +32,6 @@ set(brepgraph__computation
     "brepgraph_c/computation/ShapeCache.h"
     "brepgraph_c/computation/calc_ops.cpp"
     "brepgraph_c/computation/calc_ops.h"
-    "brepgraph_c/computation/NodeShape.h"
 )
 source_group("brepgraph\\computation" FILES ${brepgraph__computation})
 
@@ -34,8 +40,6 @@ set(brepgraph__history
     "brepgraph_c/history/HistGraph.h"
     "brepgraph_c/history/TopoNaming.cpp"
     "brepgraph_c/history/TopoNaming.h"
-    "brepgraph_c/history/NodeFlags.h"
-    "brepgraph_c/history/NodeId.h"
 )
 source_group("brepgraph\\history" FILES ${brepgraph__history})
 
@@ -60,7 +64,6 @@ set(brepgraph__topology
     "brepgraph_c/topology/TopoGraph.h"
     "brepgraph_c/topology/TopoGraphBuilder.cpp"
     "brepgraph_c/topology/TopoGraphBuilder.h"
-    "brepgraph_c/topology/GraphShape.h"
 )
 source_group("brepgraph\\topology" FILES ${brepgraph__topology})
 
@@ -343,6 +346,7 @@ endif()
 
 
 set(ALL_FILES
+    ${brepgraph}
     ${brepgraph__common}
     ${brepgraph__computation}
     ${brepgraph__history}

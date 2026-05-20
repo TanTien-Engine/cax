@@ -5,8 +5,8 @@
 #include "brepgraph_c/history/TopoNaming.h"
 #include "brepgraph_c/computation/CalcGraph.h"
 #include "brepgraph_c/computation/CalcGraphBuilder.h"
-#include "brepgraph_c/history/NodeId.h"
-#include "brepgraph_c/computation/NodeShape.h"
+#include "brepgraph_c/common/NodeId.h"
+#include "brepgraph_c/common/NodeShape.h"
 
 #include "brepkit_c/TopoShape.h"
 #include "brepkit_c/TransHelper.h"
