@@ -24,6 +24,7 @@
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <gp_Ax2.hxx>
 
 namespace
 {
@@ -478,12 +479,20 @@ std::shared_ptr<TopoShape> TopoAlgo::Mirror(const std::shared_ptr<TopoShape>& sh
                                             uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    gp_Ax1 axis;
-    axis.SetLocation(trans_pnt(pos));
-    axis.SetDirection(trans_vec(dir));
-
+    // PartDesign::Mirrored is a plane reflection: (x,y,z) -> reflect
+    // across the plane through `pos` with normal `dir`. OCCT's
+    // gp_Trsf::SetMirror has two overloads:
+    //   SetMirror(gp_Ax1) : symmetry about a LINE (== 180-degree
+    //     rotation about that line); flips the two axes perpendicular
+    //     to the line, which is the wrong operation here.
+    //   SetMirror(gp_Ax2) : reflection across the plane perpendicular
+    //     to Ax2's main direction at Ax2's location.
+    // We need the second form -- using gp_Ax1 swapped not just X but
+    // also Y/Z, so mirrored arms landed at the wrong height when the
+    // input shape was offset in Z.
+    gp_Ax2 plane(trans_pnt(pos), trans_dir(dir));
     gp_Trsf trsf;
-    trsf.SetMirror(axis);
+    trsf.SetMirror(plane);
 
     auto trans = BRepBuilderAPI_Transform(shape->GetShape(), trsf, Standard_True);
 

@@ -120,6 +120,83 @@ double ExtParam(const FeatureIR& feat, const char* key, double def)
     return (it == feat.ext_params.end()) ? def : it->second;
 }
 
+// Per-feature record of the "tool" sub-graph it contributes to the
+// running body, plus the body it operated on. Pattern features
+// (PolarPattern / LinearPattern / Mirrored / MultiTransform) with
+// an Originals link list pull the originals' (tool, base, op) out
+// of this map so the pattern multiplies just the tool, then fuses /
+// cuts the multiplied tool against base (FreeCAD's semantics).
+//
+// op_kind:
+//   'f' fuse  (additive primitives, BossExtrude)
+//   'c' cut   (subtractive primitives, CutExtrude)
+//   '0' replace (no boolean against a base; first feature in a body)
+struct FeatureToolInfo
+{
+    int  tool_node = -1;
+    int  base_node = -1;
+    char op_kind   = '0';
+};
+
+// Read FeatureIR's ext_params for "originals_id_<i>" entries and
+// return the resolved tool/base records that the pattern op should
+// operate on. Returns empty when Originals is empty or unresolved,
+// which signals the caller to fall back to "apply pattern to
+// last_node".
+std::vector<FeatureToolInfo> ResolveOriginals(
+    const FeatureIR&                                 feat,
+    const std::map<uint32_t, FeatureToolInfo>&       feature_tools)
+{
+    std::vector<FeatureToolInfo> out;
+    auto cnt_it = feat.ext_params.find("originals_count");
+    if (cnt_it == feat.ext_params.end()) return out;
+    int n = (int)cnt_it->second;
+    for (int i = 0; i < n; ++i)
+    {
+        auto id_it = feat.ext_params.find("originals_id_" + std::to_string(i));
+        if (id_it == feat.ext_params.end()) continue;
+        uint32_t id = (uint32_t)id_it->second;
+        auto t_it = feature_tools.find(id);
+        if (t_it == feature_tools.end()) continue;
+        out.push_back(t_it->second);
+    }
+    return out;
+}
+
+// Combine a patterned "tool" node with the original feature's base
+// shape according to the original's op_kind. For 'f' (additive) we
+// fuse; for 'c' (subtractive) we cut; for '0' (first feature in a
+// body) the pattern result IS the new body.
+int CombinePatternedTool(brepgraph::CalcGraph& cg,
+                         const FeatureToolInfo& orig,
+                         int                    pattern_node,
+                         const std::string&     desc)
+{
+    if (orig.op_kind == 'f' && orig.base_node >= 0) {
+        return cg.AddOp("fuse", {orig.base_node, pattern_node}, {}, desc);
+    }
+    if (orig.op_kind == 'c' && orig.base_node >= 0) {
+        return cg.AddOp("cut", {orig.base_node, pattern_node}, {}, desc);
+    }
+    return pattern_node;
+}
+
+// Build a "mirror with original" subtree: mirror the input shape
+// across the given plane and fuse with the original. FreeCAD's
+// PartDesign::Mirrored produces orig + mirror; our `mirror` op only
+// returns the mirror, so we add the fuse here.
+int AddMirrorWithOriginal(brepgraph::CalcGraph& cg,
+                          int                   shape_node,
+                          const brepgraph::Vec3& origin,
+                          const brepgraph::Vec3& normal,
+                          const std::string&    desc)
+{
+    int o_n = cg.AddConst(origin, "origin");
+    int n_n = cg.AddConst(normal, "normal");
+    int m_n = cg.AddOp("mirror", {shape_node, o_n, n_n}, {}, desc + ":mirror");
+    return cg.AddOp("fuse", {shape_node, m_n}, {}, desc + ":fuse_orig");
+}
+
 // Post-process a freshly-built primitive node:
 //   1. Apply the FreeCAD Placement stashed in ext_params (rotate
 //      around the body origin, then translate). This positions
@@ -134,12 +211,18 @@ double ExtParam(const FeatureIR& feat, const char* key, double def)
 // Returns the final node id (possibly the same as `prim_node`) and
 // whether the caller should treat the step as ok. step_ok becomes
 // false only when a subtractive op has no running body to cut from.
+//
+// tool_info_out captures the placed primitive node (the "tool") and
+// the base / op_kind it combined with. A later PolarPattern with
+// Originals = [this feature] uses these to multiply the tool only,
+// then re-apply cut / fuse against the recorded base.
 int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
                           const FeatureIR&     feat,
                           int                  prim_node,
                           int                  last_node,
                           ReplayResult&        out,
-                          bool&                step_ok)
+                          bool&                step_ok,
+                          FeatureToolInfo*     tool_info_out = nullptr)
 {
     int cur = prim_node;
 
@@ -168,6 +251,14 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
         cur = cg.AddOp("translate", {cur, o_n}, {}, feat.name + ":place_tr");
     }
 
+    // `cur` here is the placed tool shape. Record it before fuse/cut
+    // so a downstream pattern can re-use the tool.
+    if (tool_info_out) {
+        tool_info_out->tool_node = cur;
+        tool_info_out->base_node = last_node;
+        tool_info_out->op_kind   = '0';
+    }
+
     auto ft_it = feat.ext_strings.find("freecad_type");
     if (ft_it == feat.ext_strings.end()) {
         return cur;
@@ -184,6 +275,7 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
             out.err_msg = "Subtractive primitive without base shape: " + feat.name;
             return cur;
         }
+        if (tool_info_out) tool_info_out->op_kind = 'c';
         return cg.AddOp("cut", {last_node, cur}, {}, feat.name);
     }
     if (is_add)
@@ -191,6 +283,7 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
         if (last_node < 0) {
             return cur;
         }
+        if (tool_info_out) tool_info_out->op_kind = 'f';
         return cg.AddOp("fuse", {last_node, cur}, {}, feat.name);
     }
     return cur;
@@ -263,6 +356,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // false, in which case the post-pass is a no-op.
     std::vector<ResolveBack> resolve_back;
 
+    // feature_id -> the (tool, base, op_kind) record for that feature.
+    // Populated by primitive / extrude handlers; consumed by pattern
+    // / mirror / MultiTransform handlers that carry an Originals list.
+    std::map<uint32_t, FeatureToolInfo> feature_tools;
+
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
         auto& feat = doc.features[i];
@@ -300,20 +398,27 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // applies the FreeCAD Placement and turns
             // PartDesign::Additive*/Subtractive* into the
             // corresponding fuse/cut against the running body shape.
+            // tool_info captures the placed tool and the fuse/cut
+            // kind so a downstream pattern with Originals = [this]
+            // can multiply just the tool.
             else if constexpr (std::is_same_v<T, FeatPayloadPrimBox>)
             {
                 int l = cg->AddConst(p.length, "length");
                 int w = cg->AddConst(p.width,  "width");
                 int h = cg->AddConst(p.height, "height");
                 int prim = cg->AddOp("box", {l, w, h}, {}, feat.name);
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
+                FeatureToolInfo ti;
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCylinder>)
             {
                 int r = cg->AddConst(p.radius, "radius");
                 int h = cg->AddConst(p.height, "height");
                 int prim = cg->AddOp("cylinder", {r, h}, {}, feat.name);
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
+                FeatureToolInfo ti;
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCone>)
             {
@@ -321,20 +426,26 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int r2 = cg->AddConst(p.radius2, "radius2");
                 int h  = cg->AddConst(p.height,  "height");
                 int prim = cg->AddOp("cone", {r1, r2, h}, {}, feat.name);
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
+                FeatureToolInfo ti;
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimSphere>)
             {
                 int r = cg->AddConst(p.radius, "radius");
                 int prim = cg->AddOp("sphere", {r}, {}, feat.name);
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
+                FeatureToolInfo ti;
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimTorus>)
             {
                 int r1 = cg->AddConst(p.major_radius, "major_radius");
                 int r2 = cg->AddConst(p.minor_radius, "minor_radius");
                 int prim = cg->AddOp("torus", {r1, r2}, {}, feat.name);
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
+                FeatureToolInfo ti;
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                feature_tools[feat.id] = ti;
             }
 
             // ---- Extrude (Boss / Cut) ----
@@ -404,16 +515,25 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     tool_n = cg->AddOp("prism", {face_n, dir_n}, {}, feat.name);
                 }
 
+                // Track the extrude tool so a downstream pattern with
+                // Originals = [this Pad/Pocket] can multiply just the
+                // prism instead of the whole body.
+                FeatureToolInfo ti;
+                ti.tool_node = tool_n;
+                ti.base_node = last_node;
+
                 if (feat.type == FeatType::BossExtrude)
                 {
                     if (last_node < 0)
                     {
                         node = tool_n;
+                        ti.op_kind = '0';
                     }
                     else
                     {
                         node = cg->AddOp("fuse", {last_node, tool_n},
                                           {}, feat.name);
+                        ti.op_kind = 'f';
                     }
                 }
                 else
@@ -426,7 +546,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     }
                     node = cg->AddOp("cut", {last_node, tool_n},
                                       {}, feat.name);
+                    ti.op_kind = 'c';
                 }
+                feature_tools[feat.id] = ti;
             }
 
             // ---- Fillet / Chamfer ----
@@ -498,33 +620,47 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             }
 
             // ---- Mirror ----
+            //
+            // FreeCAD's PartDesign::Mirrored produces orig + mirror,
+            // but our `mirror` op only returns the mirror image. We
+            // add the fuse here. When Originals is set the mirror
+            // applies to the originals' tool, then combines with
+            // their base via the originals' op_kind (FreeCAD: replace
+            // the original feature's effect with the doubled effect).
             else if constexpr (std::is_same_v<T, FeatPayloadMirror>)
             {
-                if (last_node < 0)
-                {
-                    step_ok = false;
-                    return;
-                }
                 brepgraph::Vec3 origin = {p.plane_origin[0],
                                          p.plane_origin[1],
                                          p.plane_origin[2]};
                 brepgraph::Vec3 normal = {p.plane_normal[0],
                                          p.plane_normal[1],
                                          p.plane_normal[2]};
-                int o = cg->AddConst(origin, "origin");
-                int n = cg->AddConst(normal, "normal");
-                node = cg->AddOp("mirror", {last_node, o, n},
-                                  {}, feat.name);
-            }
 
-            // ---- LinearPattern ----
-            else if constexpr (std::is_same_v<T, FeatPayloadLinearPattern>)
-            {
-                if (last_node < 0)
+                auto origs = ResolveOriginals(feat, feature_tools);
+                if (!origs.empty())
+                {
+                    int patterned = AddMirrorWithOriginal(*cg, origs[0].tool_node,
+                                                          origin, normal, feat.name);
+                    node = CombinePatternedTool(*cg, origs[0], patterned, feat.name);
+                }
+                else if (last_node >= 0)
+                {
+                    node = AddMirrorWithOriginal(*cg, last_node, origin, normal,
+                                                  feat.name);
+                }
+                else
                 {
                     step_ok = false;
                     return;
                 }
+            }
+
+            // ---- LinearPattern ----
+            //
+            // When Originals = [X] is set, multiply X's tool only and
+            // combine with X's base; otherwise pattern the whole body.
+            else if constexpr (std::is_same_v<T, FeatPayloadLinearPattern>)
+            {
                 brepgraph::Vec3 dir1 = {p.dir1[0], p.dir1[1], p.dir1[2]};
                 brepgraph::Vec3 dir2 = {p.dir2[0], p.dir2[1], p.dir2[2]};
                 int d1 = cg->AddConst(dir1, "dir1");
@@ -533,19 +669,28 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int d2 = cg->AddConst(dir2, "dir2");
                 int c2 = cg->AddConst((int)p.count2, "count2");
                 int s2 = cg->AddConst(p.spacing2, "spacing2");
-                node = cg->AddOp("linear_pattern",
-                                  {last_node, d1, c1, s1, d2, c2, s2},
-                                  {}, feat.name);
+
+                auto origs = ResolveOriginals(feat, feature_tools);
+                int target = -1;
+                if (!origs.empty()) {
+                    target = origs[0].tool_node;
+                } else if (last_node >= 0) {
+                    target = last_node;
+                } else {
+                    step_ok = false;
+                    return;
+                }
+                int pat = cg->AddOp("linear_pattern",
+                                     {target, d1, c1, s1, d2, c2, s2},
+                                     {}, feat.name);
+                node = origs.empty()
+                        ? pat
+                        : CombinePatternedTool(*cg, origs[0], pat, feat.name);
             }
 
             // ---- CircularPattern ----
             else if constexpr (std::is_same_v<T, FeatPayloadCircularPattern>)
             {
-                if (last_node < 0)
-                {
-                    step_ok = false;
-                    return;
-                }
                 brepgraph::Vec3 origin = {p.axis_origin[0],
                                          p.axis_origin[1],
                                          p.axis_origin[2]};
@@ -556,25 +701,54 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int a = cg->AddConst(axis,   "axis_dir");
                 int c = cg->AddConst((int)p.count, "count");
                 int t = cg->AddConst(p.total_angle, "total_angle");
-                node = cg->AddOp("circular_pattern",
-                                  {last_node, o, a, c, t},
-                                  {}, feat.name);
+
+                auto origs = ResolveOriginals(feat, feature_tools);
+                int target = -1;
+                if (!origs.empty()) {
+                    target = origs[0].tool_node;
+                } else if (last_node >= 0) {
+                    target = last_node;
+                } else {
+                    step_ok = false;
+                    return;
+                }
+                int pat = cg->AddOp("circular_pattern",
+                                     {target, o, a, c, t},
+                                     {}, feat.name);
+                node = origs.empty()
+                        ? pat
+                        : CombinePatternedTool(*cg, origs[0], pat, feat.name);
             }
 
             // ---- MultiTransform ----
             //
             // FreeCAD's MultiTransform applies a chain of Mirror /
-            // LinearPattern / CircularPattern in order; each step
-            // operates on the full result of the previous step, so
-            // we just feed the running shape through op-per-step.
+            // LinearPattern / CircularPattern in order. Each step's
+            // effect must include the result of the previous step
+            // (FreeCAD's cartesian-product trsf semantics is order-
+            // equivalent to "chain ops whose result includes the
+            // input"), so each Mirror step here is materialised as
+            // fuse(cur, mirror(cur)) -- mirror op alone returns only
+            // the mirror image. LinearPattern / CircularPattern ops
+            // already include the original in their result.
+            //
+            // When Originals = [X] is set the chain starts from X's
+            // tool (not last_node) and the final result is combined
+            // with X's base via X's op_kind. This matches FreeCAD's
+            // "replace Originals' effect with the multiplied effect".
             else if constexpr (std::is_same_v<T, FeatPayloadMultiTransform>)
             {
-                if (last_node < 0)
-                {
+                auto origs = ResolveOriginals(feat, feature_tools);
+                int  cur   = -1;
+                if (!origs.empty()) {
+                    cur = origs[0].tool_node;
+                } else if (last_node >= 0) {
+                    cur = last_node;
+                } else {
                     step_ok = false;
                     return;
                 }
-                int cur = last_node;
+
                 for (size_t si = 0; si < p.steps.size(); ++si)
                 {
                     const auto& s = p.steps[si];
@@ -587,9 +761,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         brepgraph::Vec3 normal = {s.plane_normal[0],
                                                  s.plane_normal[1],
                                                  s.plane_normal[2]};
-                        int o = cg->AddConst(origin, "origin");
-                        int n = cg->AddConst(normal, "normal");
-                        cur = cg->AddOp("mirror", {cur, o, n}, {}, step_name);
+                        cur = AddMirrorWithOriginal(*cg, cur, origin, normal,
+                                                    step_name);
                     }
                     else if (s.kind == MultiTransformStep::Kind::LinearPattern)
                     {
@@ -622,7 +795,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                          {}, step_name);
                     }
                 }
-                node = cur;
+
+                node = origs.empty()
+                        ? cur
+                        : CombinePatternedTool(*cg, origs[0], cur, feat.name);
             }
 
             // ---- Not implemented yet ----

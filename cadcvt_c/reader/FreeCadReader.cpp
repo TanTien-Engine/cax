@@ -237,16 +237,153 @@ bool LookupOriginPlaneNormal(const std::string& sub_name, double out[3])
     return false;
 }
 
+// Quaternion (qx, qy, qz, qw) -> world X axis and Z axis (sketch
+// plane x_dir and normal).
+void QuatToAxes(double qx, double qy, double qz, double qw,
+                double x_axis[3],
+                double z_axis[3])
+{
+    x_axis[0] = 1.0 - 2.0 * (qy * qy + qz * qz);
+    x_axis[1] =       2.0 * (qx * qy + qz * qw);
+    x_axis[2] =       2.0 * (qx * qz - qy * qw);
+
+    z_axis[0] =       2.0 * (qx * qz + qy * qw);
+    z_axis[1] =       2.0 * (qy * qz - qx * qw);
+    z_axis[2] = 1.0 - 2.0 * (qx * qx + qy * qy);
+}
+
+
+// Resolve a (object_name, sub_name) ref to a world-frame plane
+// normal. Recognised forms:
+//   - "" / Origin + ("XY_Plane" | "XZ_Plane" | "YZ_Plane")
+//     -> body origin plane
+//   - <Sketch> + ("V_Axis" | "H_Axis" | "Normal")
+//     -> derived from the sketch's Placement quaternion. V_Axis as
+//     a mirror "plane" is FreeCAD shorthand for "plane perpendicular
+//     to the sketch's H direction, containing V_Axis and the sketch
+//     normal"; its world normal is the sketch's H direction. H_Axis
+//     is the symmetric case.
+bool LookupRefPlaneNormal(
+    const std::string& object_name,
+    const std::string& sub_name,
+    const std::unordered_map<std::string, pugi::xml_node>& data_by_name,
+    double out_normal[3])
+{
+    // Body origin plane (object is "Origin" or omitted).
+    if (LookupOriginPlaneNormal(sub_name, out_normal)) {
+        return true;
+    }
+
+    // Sketch-local axis (V_Axis / H_Axis / Normal). Resolve through
+    // the referenced sketch's Placement.
+    if (sub_name == "V_Axis" || sub_name == "H_Axis" || sub_name == "Normal")
+    {
+        auto it = data_by_name.find(object_name);
+        if (it == data_by_name.end()) {
+            return false;
+        }
+        auto props = it->second.child("Properties");
+        auto place_prop = FindProperty(props, "Placement");
+        if (!place_prop) return false;
+        auto place = place_prop.child("PropertyPlacement");
+        if (!place) return false;
+
+        double qx = AttrDouble(place, "Q0", 0.0);
+        double qy = AttrDouble(place, "Q1", 0.0);
+        double qz = AttrDouble(place, "Q2", 0.0);
+        double qw = AttrDouble(place, "Q3", 1.0);
+
+        double x_axis[3];
+        double z_axis[3];
+        QuatToAxes(qx, qy, qz, qw, x_axis, z_axis);
+
+        // V_Axis direction in world = z_axis x x_axis (right-handed).
+        double y_axis[3] = {
+            z_axis[1] * x_axis[2] - z_axis[2] * x_axis[1],
+            z_axis[2] * x_axis[0] - z_axis[0] * x_axis[2],
+            z_axis[0] * x_axis[1] - z_axis[1] * x_axis[0]
+        };
+
+        if (sub_name == "V_Axis") {
+            // Plane through V_Axis + sketch normal; world normal = H.
+            out_normal[0] = x_axis[0];
+            out_normal[1] = x_axis[1];
+            out_normal[2] = x_axis[2];
+        } else if (sub_name == "H_Axis") {
+            // Plane through H_Axis + sketch normal; world normal = V.
+            out_normal[0] = y_axis[0];
+            out_normal[1] = y_axis[1];
+            out_normal[2] = y_axis[2];
+        } else {
+            // "Normal" -> mirror across the sketch plane itself.
+            out_normal[0] = z_axis[0];
+            out_normal[1] = z_axis[1];
+            out_normal[2] = z_axis[2];
+        }
+        return true;
+    }
+
+    return false;
+}
+
+// Resolve a (object_name, sub_name) ref to a world-frame axis
+// direction. Recognises body-origin axes and sketch axes.
+bool LookupRefAxisDir(
+    const std::string& object_name,
+    const std::string& sub_name,
+    const std::unordered_map<std::string, pugi::xml_node>& data_by_name,
+    double out_dir[3])
+{
+    if (LookupOriginAxisDir(sub_name, out_dir)) {
+        return true;
+    }
+    if (sub_name == "V_Axis" || sub_name == "H_Axis" || sub_name == "Normal")
+    {
+        auto it = data_by_name.find(object_name);
+        if (it == data_by_name.end()) return false;
+        auto props = it->second.child("Properties");
+        auto place_prop = FindProperty(props, "Placement");
+        if (!place_prop) return false;
+        auto place = place_prop.child("PropertyPlacement");
+        if (!place) return false;
+
+        double qx = AttrDouble(place, "Q0", 0.0);
+        double qy = AttrDouble(place, "Q1", 0.0);
+        double qz = AttrDouble(place, "Q2", 0.0);
+        double qw = AttrDouble(place, "Q3", 1.0);
+
+        double x_axis[3];
+        double z_axis[3];
+        QuatToAxes(qx, qy, qz, qw, x_axis, z_axis);
+        double y_axis[3] = {
+            z_axis[1] * x_axis[2] - z_axis[2] * x_axis[1],
+            z_axis[2] * x_axis[0] - z_axis[0] * x_axis[2],
+            z_axis[0] * x_axis[1] - z_axis[1] * x_axis[0]
+        };
+
+        if (sub_name == "H_Axis") {
+            out_dir[0] = x_axis[0]; out_dir[1] = x_axis[1]; out_dir[2] = x_axis[2];
+        } else if (sub_name == "V_Axis") {
+            out_dir[0] = y_axis[0]; out_dir[1] = y_axis[1]; out_dir[2] = y_axis[2];
+        } else {
+            out_dir[0] = z_axis[0]; out_dir[1] = z_axis[1]; out_dir[2] = z_axis[2];
+        }
+        return true;
+    }
+    return false;
+}
 
 // Translate a FreeCAD Transformed child (Mirrored / LinearPattern /
 // PolarPattern) into one MultiTransformStep. Returns false when the
 // type is not a recognised transformation kind. Used by the
 // PartDesign::MultiTransform path which carries an ordered list of
 // such child features in its Transformations property.
-bool ReadTransformedStep(const std::string&    child_type,
-                         const pugi::xml_node& props,
-                         double                unit_scale,
-                         MultiTransformStep&   out)
+bool ReadTransformedStep(
+    const std::string&    child_type,
+    const pugi::xml_node& props,
+    double                unit_scale,
+    const std::unordered_map<std::string, pugi::xml_node>& data_by_name,
+    MultiTransformStep&   out)
 {
     if (child_type == "PartDesign::Mirrored")
     {
@@ -262,7 +399,8 @@ bool ReadTransformedStep(const std::string&    child_type,
         if (!mp.sub_names.empty())
         {
             double n[3];
-            if (LookupOriginPlaneNormal(mp.sub_names[0], n))
+            if (LookupRefPlaneNormal(mp.object_name, mp.sub_names[0],
+                                     data_by_name, n))
             {
                 out.plane_normal[0] = n[0];
                 out.plane_normal[1] = n[1];
@@ -288,7 +426,8 @@ bool ReadTransformedStep(const std::string&    child_type,
         if (!dir.sub_names.empty())
         {
             double d[3];
-            if (LookupOriginAxisDir(dir.sub_names[0], d))
+            if (LookupRefAxisDir(dir.object_name, dir.sub_names[0],
+                                 data_by_name, d))
             {
                 out.dir1[0] = d[0];
                 out.dir1[1] = d[1];
@@ -327,7 +466,20 @@ bool ReadTransformedStep(const std::string&    child_type,
         if (!axis.sub_names.empty())
         {
             double d[3];
-            if (LookupOriginAxisDir(axis.sub_names[0], d))
+            if (LookupRefAxisDir(axis.object_name, axis.sub_names[0],
+                                 data_by_name, d))
+            {
+                out.axis_dir[0] = d[0];
+                out.axis_dir[1] = d[1];
+                out.axis_dir[2] = d[2];
+            }
+        }
+        else if (!axis.object_name.empty())
+        {
+            // Axis link with empty sub: object_name is the axis itself,
+            // e.g. <LinkSub value="Z_Axis"><Sub value=""/></LinkSub>.
+            double d[3];
+            if (LookupOriginAxisDir(axis.object_name, d))
             {
                 out.axis_dir[0] = d[0];
                 out.axis_dir[1] = d[1];
@@ -379,21 +531,6 @@ bool IsContainerType(const std::string& t)
 {
     if (t == "PartDesign::Body") { return true; }
     return false;
-}
-
-// Quaternion (qx, qy, qz, qw) -> world X axis and Z axis (sketch
-// plane x_dir and normal).
-void QuatToAxes(double qx, double qy, double qz, double qw,
-                double x_axis[3],
-                double z_axis[3])
-{
-    x_axis[0] = 1.0 - 2.0 * (qy * qy + qz * qz);
-    x_axis[1] =       2.0 * (qx * qy + qz * qw);
-    x_axis[2] =       2.0 * (qx * qz - qy * qw);
-
-    z_axis[0] =       2.0 * (qx * qz + qy * qw);
-    z_axis[1] =       2.0 * (qy * qz - qx * qw);
-    z_axis[2] = 1.0 - 2.0 * (qx * qx + qy * qy);
 }
 
 // Read FreeCAD's PropertyPlacement (translation + axis-angle rotation)
@@ -832,6 +969,31 @@ void StashRefNames(FeatureIR&                       feat,
 
         std::string key = prefix + "_" + std::to_string(i) + "_name";
         feat.ext_strings[key] = object_name + "." + sub_names[i];
+    }
+}
+
+// Record an "Originals" link list (the features a Transformed
+// feature operates on) into FeatureIR ext_params:
+//   originals_count            -> N
+//   originals_id_<i>           -> feature_id of i-th original
+//   originals_name_<i>         -> name (ext_strings, for diagnostics)
+// The Replayer reads these to apply the pattern to each Original's
+// tool shape rather than to the whole running body.
+void StashOriginals(FeatureIR&                                          feat,
+                    const std::vector<std::string>&                     originals,
+                    const std::unordered_map<std::string, uint32_t>&    name_to_id)
+{
+    if (originals.empty()) return;
+    feat.ext_params["originals_count"] = (double)originals.size();
+    for (size_t i = 0; i < originals.size(); ++i)
+    {
+        auto it = name_to_id.find(originals[i]);
+        if (it != name_to_id.end())
+        {
+            feat.ext_params["originals_id_" + std::to_string(i)] =
+                (double)it->second;
+        }
+        feat.ext_strings["originals_name_" + std::to_string(i)] = originals[i];
     }
 }
 
@@ -1359,10 +1521,11 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         {
             // FreeCAD mirror feature. MirrorPlane is a LinkSub
             // pointing at a body-origin plane (XY_Plane / XZ_Plane /
-            // YZ_Plane) or a face on the base feature. Origin planes
-            // map to a fixed normal; non-origin refs fall back to
-            // the YZ plane (mirror across X) and the original
-            // reference is preserved in ext_strings.
+            // YZ_Plane), a sketch axis (V_Axis / H_Axis / Normal),
+            // or a face on the base feature. Recognised refs resolve
+            // to a world-frame plane normal; unknown ones fall back
+            // to the YZ plane and the original ref is preserved in
+            // ext_strings.
             FeatPayloadMirror pl;
             // sensible default: mirror across the YZ plane.
             pl.plane_origin[0] = 0.0;
@@ -1376,7 +1539,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             if (!mp.sub_names.empty())
             {
                 double n[3];
-                if (LookupOriginPlaneNormal(mp.sub_names[0], n))
+                if (LookupRefPlaneNormal(mp.object_name, mp.sub_names[0],
+                                         data_by_name, n))
                 {
                     pl.plane_normal[0] = n[0];
                     pl.plane_normal[1] = n[1];
@@ -1390,13 +1554,17 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 feat.ext_strings["mirror_plane_ref"] = mp.object_name;
             }
 
+            // Originals: list of features to mirror. Stored as
+            // ext_params so the Replayer can resolve them by id.
+            StashOriginals(feat, PropLinkList(props, "Originals"), m_name_to_id);
+
             feat.type = FeatType::Mirror;
             feat.data = std::move(pl);
         }
         else if (pending.type == "PartDesign::LinearPattern")
         {
             // FreeCAD linear pattern. Direction is a LinkSub to an
-            // origin axis or an edge; Length is total length;
+            // origin axis or sketch axis; Length is total length;
             // Occurrences is the count (including original).
             FeatPayloadLinearPattern pl;
             pl.dir1[0] = 1.0;
@@ -1412,7 +1580,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             if (!dir.sub_names.empty())
             {
                 double d[3];
-                if (LookupOriginAxisDir(dir.sub_names[0], d))
+                if (LookupRefAxisDir(dir.object_name, dir.sub_names[0],
+                                     data_by_name, d))
                 {
                     pl.dir1[0] = d[0];
                     pl.dir1[1] = d[1];
@@ -1423,6 +1592,13 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             }
             else if (!dir.object_name.empty())
             {
+                double d[3];
+                if (LookupOriginAxisDir(dir.object_name, d))
+                {
+                    pl.dir1[0] = d[0];
+                    pl.dir1[1] = d[1];
+                    pl.dir1[2] = d[2];
+                }
                 feat.ext_strings["pattern_dir_ref"] = dir.object_name;
             }
 
@@ -1442,14 +1618,16 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 pl.dir1[2] = -pl.dir1[2];
             }
 
+            StashOriginals(feat, PropLinkList(props, "Originals"), m_name_to_id);
+
             feat.type = FeatType::LinearPattern;
             feat.data = std::move(pl);
         }
         else if (pending.type == "PartDesign::PolarPattern")
         {
             // FreeCAD polar pattern. Axis is a LinkSub to an origin
-            // axis or an edge; Angle is total angle in degrees;
-            // Occurrences is the count (including original).
+            // axis, sketch axis, or edge; Angle is total angle in
+            // degrees; Occurrences is the count (including original).
             FeatPayloadCircularPattern pl;
             pl.axis_origin[0] = 0.0;
             pl.axis_origin[1] = 0.0;
@@ -1462,7 +1640,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             if (!axis.sub_names.empty())
             {
                 double d[3];
-                if (LookupOriginAxisDir(axis.sub_names[0], d))
+                if (LookupRefAxisDir(axis.object_name, axis.sub_names[0],
+                                     data_by_name, d))
                 {
                     pl.axis_dir[0] = d[0];
                     pl.axis_dir[1] = d[1];
@@ -1473,6 +1652,15 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             }
             else if (!axis.object_name.empty())
             {
+                // Axis link with empty sub: object_name IS the axis,
+                // e.g. <LinkSub value="Z_Axis"><Sub value=""/></LinkSub>.
+                double d[3];
+                if (LookupOriginAxisDir(axis.object_name, d))
+                {
+                    pl.axis_dir[0] = d[0];
+                    pl.axis_dir[1] = d[1];
+                    pl.axis_dir[2] = d[2];
+                }
                 feat.ext_strings["pattern_axis_ref"] = axis.object_name;
             }
 
@@ -1485,6 +1673,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             if (rev) {
                 pl.total_angle = -pl.total_angle;
             }
+
+            StashOriginals(feat, PropLinkList(props, "Originals"), m_name_to_id);
 
             feat.type = FeatType::CircularPattern;
             feat.data = std::move(pl);
@@ -1517,6 +1707,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 if (ReadTransformedStep(cqit->second->type,
                                         child_props,
                                         m_unit_scale,
+                                        data_by_name,
                                         step))
                 {
                     pl.steps.push_back(step);
@@ -1526,6 +1717,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type = FeatType::MultiTransform;
             feat.data = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+            StashOriginals(feat, PropLinkList(props, "Originals"), m_name_to_id);
         }
         else
         {

@@ -1,13 +1,13 @@
 var node0 = ::blueprint::nodes::camera3d::Camera3d()
 
-node0.cam.position.set(-0.035309201831893, -0.31726515389588, 0.25840701518655)
-node0.cam.yaw = -90.2
-node0.cam.pitch = 44.6
+node0.cam.position.set(-0.040873728433421, -0.16559463604746, 0.13522943870175)
+node0.cam.yaw = -90.8
+node0.cam.pitch = 49.5
 node0.cam.zoom = 45
 node0.cam.update_vectors()
-node0.speed = 0.097699411213398
+node0.speed = 0.086070030927658
 
-_editor.add_node(node0, 537.95018571588, -34.75814028784)
+_editor.add_node(node0, 537.95018571588, -33.65814028784)
 
 var node1 = ::blueprint::nodes::subgraph::Subgraph()
 node1.load_from_file(_editor, "../../assets/blueprints/render/draw_mesh.ves")
