@@ -90,6 +90,11 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
 
 Handle(Poly_Polygon3D) PolygonOfEdge(const TopoDS_Edge& edge, TopLoc_Location& loc)
 {
+    // Degenerate edges (e.g. sphere poles, sketch helper edges) carry no 3D
+    // curve and would crash BRepBuilderAPI_MakeEdge below.
+    if (BRep_Tool::Degenerated(edge))
+        return Handle(Poly_Polygon3D)();
+
     BRepAdaptor_Curve adapt(edge);
     double u = adapt.FirstParameter();
     double v = adapt.LastParameter();
@@ -103,6 +108,8 @@ Handle(Poly_Polygon3D) PolygonOfEdge(const TopoDS_Edge& edge, TopLoc_Location& l
 
     double uv;
     Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, uv, uv);
+    if (curve.IsNull())
+        return Handle(Poly_Polygon3D)();
 
     BRepBuilderAPI_MakeEdge mkBuilder(curve, u, v);
     TopoDS_Shape shape = mkBuilder.Shape();
