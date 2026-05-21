@@ -396,6 +396,53 @@ void QuatToAxes(double qx, double qy, double qz, double qw,
     z_axis[2] = 1.0 - 2.0 * (qx * qx + qy * qy);
 }
 
+// Read FreeCAD's PropertyPlacement (translation + axis-angle rotation)
+// and stash it on the FeatureIR via ext_params. The Replayer applies
+// it as rotate-then-translate when emitting a primitive. Keys:
+//   placement_px / py / pz  : translation
+//   placement_ox / oy / oz  : rotation axis (unit vector)
+//   placement_angle         : rotation angle in radians
+// All keys are absent when the placement is identity.
+void StashPlacement(FeatureIR&            feat,
+                    const pugi::xml_node& props_node,
+                    double                unit_scale)
+{
+    auto p = FindProperty(props_node, "Placement");
+    if (!p) {
+        return;
+    }
+    auto v = p.child("PropertyPlacement");
+    if (!v) {
+        return;
+    }
+    double px = AttrDouble(v, "Px", 0.0) * unit_scale;
+    double py = AttrDouble(v, "Py", 0.0) * unit_scale;
+    double pz = AttrDouble(v, "Pz", 0.0) * unit_scale;
+    double a  = AttrDouble(v, "A",  0.0);
+    double ox = AttrDouble(v, "Ox", 0.0);
+    double oy = AttrDouble(v, "Oy", 0.0);
+    double oz = AttrDouble(v, "Oz", 1.0);
+
+    bool has_t = (px != 0.0) || (py != 0.0) || (pz != 0.0);
+    bool has_r = (a  != 0.0);
+    if (!has_t && !has_r) {
+        return;
+    }
+    if (has_t)
+    {
+        feat.ext_params["placement_px"] = px;
+        feat.ext_params["placement_py"] = py;
+        feat.ext_params["placement_pz"] = pz;
+    }
+    if (has_r)
+    {
+        feat.ext_params["placement_angle"] = a;
+        feat.ext_params["placement_ox"]    = ox;
+        feat.ext_params["placement_oy"]    = oy;
+        feat.ext_params["placement_oz"]    = oz;
+    }
+}
+
 
 // ============================================================
 // Section B: .FCStd zip extractor
@@ -1250,10 +1297,11 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                  pending.type == "PartDesign::SubtractiveBox")
         {
             // PartDesign additive/subtractive box: same params as
-            // Part::Box. The additive/subtractive flavour controls
-            // whether the result fuses with or cuts the previous
-            // body feature; the Replayer currently treats both as
-            // a standalone primitive emission.
+            // Part::Box. The additive/subtractive flavour and the
+            // primitive's Placement (origin + axis-angle rotation)
+            // are forwarded to the Replayer via ext_strings /
+            // ext_params, which then fuses or cuts against the
+            // running body shape.
             FeatPayloadPrimBox pl;
             pl.length = PropDouble(props, "Length", 1.0) * m_unit_scale;
             pl.width  = PropDouble(props, "Width",  1.0) * m_unit_scale;
@@ -1261,6 +1309,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type = FeatType::PrimBox;
             feat.data = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "PartDesign::AdditiveCylinder" ||
                  pending.type == "PartDesign::SubtractiveCylinder")
@@ -1271,6 +1320,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type = FeatType::PrimCylinder;
             feat.data = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "PartDesign::AdditiveSphere" ||
                  pending.type == "PartDesign::SubtractiveSphere")
@@ -1280,6 +1330,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type = FeatType::PrimSphere;
             feat.data = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "PartDesign::AdditiveCone" ||
                  pending.type == "PartDesign::SubtractiveCone")
@@ -1291,6 +1342,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type  = FeatType::PrimCone;
             feat.data  = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "PartDesign::AdditiveTorus" ||
                  pending.type == "PartDesign::SubtractiveTorus")
@@ -1301,6 +1353,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type       = FeatType::PrimTorus;
             feat.data       = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "PartDesign::Mirrored")
         {

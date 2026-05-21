@@ -113,6 +113,89 @@ struct ResolveBack
     TopoRefIR* ref          = nullptr;
 };
 
+// Look up an ext_params key; return def when absent.
+double ExtParam(const FeatureIR& feat, const char* key, double def)
+{
+    auto it = feat.ext_params.find(key);
+    return (it == feat.ext_params.end()) ? def : it->second;
+}
+
+// Post-process a freshly-built primitive node:
+//   1. Apply the FreeCAD Placement stashed in ext_params (rotate
+//      around the body origin, then translate). This positions
+//      PartDesign primitives inside their parent body so the
+//      subsequent boolean lands in the right spot.
+//   2. Fuse with the running body shape for PartDesign::Additive*,
+//      or cut from it for PartDesign::Subtractive*. Plain Part::*
+//      primitives (no freecad_type tag) keep the legacy "replace
+//      last_node" behavior since they are independent objects in
+//      FreeCAD.
+//
+// Returns the final node id (possibly the same as `prim_node`) and
+// whether the caller should treat the step as ok. step_ok becomes
+// false only when a subtractive op has no running body to cut from.
+int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
+                          const FeatureIR&     feat,
+                          int                  prim_node,
+                          int                  last_node,
+                          ReplayResult&        out,
+                          bool&                step_ok)
+{
+    int cur = prim_node;
+
+    bool   has_t   = feat.ext_params.count("placement_px") > 0;
+    bool   has_r   = feat.ext_params.count("placement_angle") > 0;
+    if (has_r)
+    {
+        brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
+        brepgraph::Vec3 axis   = {
+            ExtParam(feat, "placement_ox", 0.0),
+            ExtParam(feat, "placement_oy", 0.0),
+            ExtParam(feat, "placement_oz", 1.0)};
+        double angle = ExtParam(feat, "placement_angle", 0.0);
+        int o_n = cg.AddConst(origin, "place_origin");
+        int d_n = cg.AddConst(axis,   "place_axis");
+        int a_n = cg.AddConst(angle,  "place_angle");
+        cur = cg.AddOp("rotate", {cur, o_n, d_n, a_n}, {}, feat.name + ":place_rot");
+    }
+    if (has_t)
+    {
+        brepgraph::Vec3 off = {
+            ExtParam(feat, "placement_px", 0.0),
+            ExtParam(feat, "placement_py", 0.0),
+            ExtParam(feat, "placement_pz", 0.0)};
+        int o_n = cg.AddConst(off, "place_offset");
+        cur = cg.AddOp("translate", {cur, o_n}, {}, feat.name + ":place_tr");
+    }
+
+    auto ft_it = feat.ext_strings.find("freecad_type");
+    if (ft_it == feat.ext_strings.end()) {
+        return cur;
+    }
+    const std::string& ft = ft_it->second;
+    bool is_sub = ft.rfind("PartDesign::Subtractive", 0) == 0;
+    bool is_add = ft.rfind("PartDesign::Additive",    0) == 0;
+
+    if (is_sub)
+    {
+        if (last_node < 0)
+        {
+            step_ok     = false;
+            out.err_msg = "Subtractive primitive without base shape: " + feat.name;
+            return cur;
+        }
+        return cg.AddOp("cut", {last_node, cur}, {}, feat.name);
+    }
+    if (is_add)
+    {
+        if (last_node < 0) {
+            return cur;
+        }
+        return cg.AddOp("fuse", {last_node, cur}, {}, feat.name);
+    }
+    return cur;
+}
+
 } // anonymous namespace
 
 // ============================================================
@@ -212,36 +295,46 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             }
 
             // ---- Primitives ----
+            //
+            // After building the bare primitive op, FinalizePrimitiveNode
+            // applies the FreeCAD Placement and turns
+            // PartDesign::Additive*/Subtractive* into the
+            // corresponding fuse/cut against the running body shape.
             else if constexpr (std::is_same_v<T, FeatPayloadPrimBox>)
             {
                 int l = cg->AddConst(p.length, "length");
                 int w = cg->AddConst(p.width,  "width");
                 int h = cg->AddConst(p.height, "height");
-                node = cg->AddOp("box", {l, w, h}, {}, feat.name);
+                int prim = cg->AddOp("box", {l, w, h}, {}, feat.name);
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCylinder>)
             {
                 int r = cg->AddConst(p.radius, "radius");
                 int h = cg->AddConst(p.height, "height");
-                node = cg->AddOp("cylinder", {r, h}, {}, feat.name);
+                int prim = cg->AddOp("cylinder", {r, h}, {}, feat.name);
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCone>)
             {
                 int r1 = cg->AddConst(p.radius1, "radius1");
                 int r2 = cg->AddConst(p.radius2, "radius2");
                 int h  = cg->AddConst(p.height,  "height");
-                node = cg->AddOp("cone", {r1, r2, h}, {}, feat.name);
+                int prim = cg->AddOp("cone", {r1, r2, h}, {}, feat.name);
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimSphere>)
             {
                 int r = cg->AddConst(p.radius, "radius");
-                node = cg->AddOp("sphere", {r}, {}, feat.name);
+                int prim = cg->AddOp("sphere", {r}, {}, feat.name);
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimTorus>)
             {
                 int r1 = cg->AddConst(p.major_radius, "major_radius");
                 int r2 = cg->AddConst(p.minor_radius, "minor_radius");
-                node = cg->AddOp("torus", {r1, r2}, {}, feat.name);
+                int prim = cg->AddOp("torus", {r1, r2}, {}, feat.name);
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok);
             }
 
             // ---- Extrude (Boss / Cut) ----

@@ -41,6 +41,20 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		});
 
+	reg.Define("rotate", {"shape", "axis_origin", "axis_dir", "angle"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto o = ctx.GetVec3(1);
+			auto d = ctx.GetVec3(2);
+			double a = ctx.Num(3);
+			auto shp = brepkit::TopoAlgo::Rotate(sv.shape,
+				sm::vec3((float)o[0], (float)o[1], (float)o[2]),
+				sm::vec3((float)d[0], (float)d[1], (float)d[2]),
+				a, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
 	reg.Define("offset", {"shape", "offset", "is_solid"}, {},
 		[](EvalCtx& ctx) -> Val {
 			auto sv = ctx.GetShape(0);

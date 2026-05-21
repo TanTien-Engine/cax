@@ -2,11 +2,23 @@ cmake_minimum_required(VERSION 3.16)
 
 project(cax)
 
-# Enable Solution-Explorer folders in VS so targets can be grouped
-# under logical names via the FOLDER property (e.g. cadcvt_golden
-# lives under "cax/test"). Targets without FOLDER set stay at the
-# solution root, so this is purely additive.
+# Enable Solution-Explorer folders in VS so all cax-produced targets
+# group under one node ("cax_all") in the parent tantien.sln, with
+# tests further nested under "cax_all/tests". FOLDER assignments live
+# at the bottom of this file (after each target is created) so they
+# all stay in one place.
+#
+# NOTE on naming: a solution folder must NOT share its name with any
+# target in the same .sln -- VS rejects the load with "solution
+# already contains an item named 'X'". That's why we use "cax_all"
+# rather than literally "cax" (the cax static lib target already
+# owns that name).
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+# All cax-produced targets get FOLDER = ${CAX_VS_FOLDER}. Tests get
+# ${CAX_VS_FOLDER}/tests. Centralized so adding a new target is one
+# line at the bottom, not scattered set_target_properties calls.
+set(CAX_VS_FOLDER "cax_all")
 
 add_definitions(
     -DNO_RTTR
@@ -431,6 +443,10 @@ set(CMAKE_CXX_STANDARD 17)
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE . ${OpenCASCADE_INCLUDE_DIR})
+# PlaneGCS uses Boost.Graph headers. find_package(Boost) above sets these.
+if(Boost_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Boost::headers Boost::graph)
+endif()
 if(TARGET sm)
     target_link_libraries(${PROJECT_NAME} PRIVATE sm)
 else()
@@ -590,3 +606,31 @@ if(CAX_BUILD_DEEPBREP_DATAGEN)
     target_link_libraries(deepbrep_data_gen PRIVATE OGDF)
     target_compile_features(deepbrep_data_gen PRIVATE cxx_std_17)
 endif()
+
+################################################################################
+# VS Solution Explorer grouping
+#
+# Park every cax-owned target under one folder so the parent tantien.sln
+# stays tidy. Optional tools/tests are guarded by if(TARGET) so this block
+# survives any of the CAX_BUILD_* options being turned off.
+################################################################################
+foreach(_cax_tgt cax deepbrep_demo deepbrep_train deepbrep_data_gen)
+    if(TARGET ${_cax_tgt})
+        set_target_properties(${_cax_tgt} PROPERTIES FOLDER "${CAX_VS_FOLDER}")
+    endif()
+endforeach()
+foreach(_cax_test_tgt
+        brepdb_test
+        brepdb_occt_test
+        brepgraph_test
+        deepbrep_test
+        cadcvt_golden)
+    if(TARGET ${_cax_test_tgt})
+        # NOTE: sub-folder is "cax_tests" not "tests" -- ogdf creates a
+        # vcxproj literally named "tests" elsewhere in tantien.sln, and
+        # VS errors on folder/target name collisions even across nesting
+        # levels (proven by the earlier glslang case).
+        set_target_properties(${_cax_test_tgt}
+            PROPERTIES FOLDER "${CAX_VS_FOLDER}/cax_tests")
+    endif()
+endforeach()

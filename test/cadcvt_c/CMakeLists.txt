@@ -78,11 +78,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     CADCVT_GOLDEN_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/golden/fixtures"
 )
 
-# Group this project under the "cax" folder in the VS solution
-# (USE_FOLDERS is enabled at the root). Keeps the solution tidy as
-# more cadcvt test executables get added.
-set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "cax")
-
 include(CTest)
 add_test(
     NAME cadcvt_golden
