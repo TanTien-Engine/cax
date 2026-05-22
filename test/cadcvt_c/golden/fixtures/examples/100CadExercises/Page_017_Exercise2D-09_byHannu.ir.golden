@@ -1,0 +1,20 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=14 cons=0
+  geo 1 type=Line constr=0 params=[0.051,-0.029,0.051,0.029]
+  geo 2 type=Line constr=0 params=[0.051,0.029,0.000,0.059]
+  geo 3 type=Line constr=1 params=[0.000,0.059,-0.051,0.029]
+  geo 4 type=Line constr=1 params=[-0.051,0.029,-0.051,-0.029]
+  geo 5 type=Line constr=1 params=[-0.051,-0.029,0.000,-0.059]
+  geo 6 type=Line constr=1 params=[0.000,-0.059,0.051,-0.029]
+  geo 7 type=Circle constr=1 params=[0.000,0.000,0.059]
+  geo 8 type=Arc constr=0 params=[0.000,0.198,0.040,6.1760,7.8540]
+  geo 9 type=Arc constr=0 params=[0.288,0.166,0.250,3.0344,3.8693]
+  geo 10 type=Arc constr=0 params=[0.000,0.198,0.020,4.7124,7.8540]
+  geo 11 type=Line constr=0 params=[0.051,-0.029,0.102,0.000]
+  geo 12 type=Line constr=0 params=[0.000,0.059,0.000,0.178]
+  geo 13 type=Line constr=0 params=[0.000,0.218,0.000,0.238]
+  geo 14 type=Line constr=1 params=[0.051,0.029,0.072,0.041]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+feat 11 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:mirror plane_n=(1.000,0.000,0.000)] [1:circpat axis_d=(0.000,0.000,1.000) count=3 total_angle=6.2832]
+feat 14 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.005 edges=6

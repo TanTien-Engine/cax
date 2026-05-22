@@ -1,0 +1,28 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=11 cons=0
+  geo 1 type=Arc constr=0 params=[0.040,0.000,0.011,0.0000,3.1416]
+  geo 2 type=Arc constr=0 params=[-0.040,0.000,0.008,0.0000,3.1416]
+  geo 3 type=Circle constr=0 params=[0.000,0.034,0.016]
+  geo 4 type=Line constr=0 params=[-0.048,0.000,-0.052,0.000]
+  geo 5 type=Arc constr=0 params=[-0.040,0.000,0.012,2.3896,3.1416]
+  geo 6 type=Arc constr=0 params=[-0.122,0.077,0.100,5.5312,5.9474]
+  geo 7 type=Arc constr=0 params=[0.000,0.034,0.029,0.3303,2.8058]
+  geo 8 type=Arc constr=0 params=[0.075,0.060,0.050,3.4719,4.1849]
+  geo 9 type=Arc constr=0 params=[0.040,0.000,0.019,0.0000,1.0434]
+  geo 10 type=Line constr=0 params=[0.059,0.000,0.051,0.000]
+  geo 11 type=Line constr=0 params=[0.029,0.000,-0.032,0.000]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 12 type=Circle constr=0 params=[0.000,0.034,0.029]
+sketch 14 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 13 type=Circle constr=0 params=[0.000,0.034,0.016]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=4 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.000 end=4 flip=0
+feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
+feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.011 dist2=0.000 end=0 flip=0
+feat 13 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(0.000,1.000,0.000)
+feat 16 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.003 h=0.026
+feat 18 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.034,0.000) axis_d=(0.000,0.000,1.000) count=6 total_angle=6.2832
+feat 20 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.013
+feat 21 name=PolarPattern001 type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,-0.034,-0.006) axis_d=(0.000,0.000,1.000) count=8 total_angle=6.2832
