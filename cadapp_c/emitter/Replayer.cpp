@@ -548,8 +548,20 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 double sign = p.flip_direction ? -1.0 : 1.0;
 
+                // FreeCAD TwoLengths (Pad Type=4) lands here with
+                // end_type == Blind but distance2 > 0: the reader has
+                // stashed the second-side length in distance2 and left
+                // end_type2 at Blind. The simple `prism` op below only
+                // consumes `distance`, so without this distance2 > 0
+                // gate the second half of the extrusion disappears
+                // silently (see Page_077 Pad002: the 42mm +Z half of
+                // the central cylinder went missing because the only
+                // visible 6mm half was buried inside the base body).
+                bool two_sided = (p.distance2 > 1e-15) ||
+                                 (p.end_type2 != ExtrudeEndType::Blind);
+
                 int tool_n;
-                if (p.end_type != ExtrudeEndType::Blind)
+                if (p.end_type != ExtrudeEndType::Blind || two_sided)
                 {
                     brepgraph::Vec3 dir = {sign * world_dir[0],
                                           sign * world_dir[1],
