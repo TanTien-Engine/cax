@@ -2,4 +2,4 @@ doc source=freecad
 sketch 2 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
   geo 1 type=Line constr=0 params=[0.010,0.000,0.010,0.020]
 feat 2 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=2
-feat 3 name=Revolution type=Unknown suppressed=0 payload=opaque freecad_type=PartDesign::Revolution
+feat 3 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=2 axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) angle=6.2832 flip=0

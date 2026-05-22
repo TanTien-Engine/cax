@@ -25,7 +25,7 @@ node3.query_param("disable").value = false
 _editor.add_node(node3, 392.18895050427, 211.79090897199)
 
 var node4 = ::cadcvt::nodes::load_freecad::LoadFreecad()
-node4.query_param("path").value = "Y:/cad/Examples/100CadExercises/Page_009_Exercise2D-01_byHannu.fcstd"
+node4.query_param("path").value = "Y:/cad/Examples/100CadExercises/Page_011_Exercise2D-03_byHannu.fcstd"
 node4.query_param("unit_scale").value = 0.001
 node4.query_param("strict").value = false
 

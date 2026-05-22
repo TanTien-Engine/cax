@@ -297,14 +297,23 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
                                           uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                           const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    BRepAlgoAPI_Fuse algo(s1->GetShape(), s2->GetShape());
+    // 1e-6 m fuzzy absorbs precision noise so face-coincident operands
+    // (e.g. an extruded pad with an r=R cylindrical hole fused against
+    // an annulus whose inner radius is also R) intersect correctly
+    // rather than silently returning an empty COMPOUND.
+    BRepAlgoAPI_Fuse algo;
+    TopTools_ListOfShape args;  args.Append(s1->GetShape());
+    TopTools_ListOfShape tools; tools.Append(s2->GetShape());
+    algo.SetArguments(args);
+    algo.SetTools(tools);
+    algo.SetFuzzyValue(1e-6);
     algo.Build();
 
     if (!algo.IsDone()) {
-        algo.DumpErrors(std::cout);
+        algo.DumpErrors(std::cerr);
     }
     if (algo.HasWarnings()) {
-        algo.DumpErrors(std::cout);
+        algo.DumpWarnings(std::cerr);
     }
 
     brepdb::BRepWorld tool_world;

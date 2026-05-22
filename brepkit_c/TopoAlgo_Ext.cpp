@@ -145,9 +145,32 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
     {
     case ExtrudeEndType::MidPlane:
     {
-        // Build symmetric: half forward + half backward
-        s1 = build_one(dist1 * 0.5, ExtrudeEndType::Blind, false);
-        s2 = build_one(dist1 * 0.5, ExtrudeEndType::Blind, true);
+        // Shift the base face by -dir*dist/2, then prism +dir*dist as
+        // a single solid. The previous "two halves + fuse" approach
+        // left the sketch plane buried inside the solid as an INTERNAL
+        // face, plus seam edges around its boundary. Downstream BOPs
+        // could see those internal sub-shapes either as legitimate
+        // geometry (wrong result) or silently bail out (empty
+        // COMPOUND). UnifySameDomain papered over the cap-merge case
+        // but the seam edges still tripped subsequent face-coincident
+        // fuses. A single prism off a shifted face has no internal
+        // sub-shapes to begin with.
+        gp_Trsf shift;
+        shift.SetTranslation(gp_Vec(
+            -dir_x * dist1 * 0.5,
+            -dir_y * dist1 * 0.5,
+            -dir_z * dist1 * 0.5));
+        BRepBuilderAPI_Transform shifter(shape->GetShape(), shift, Standard_True);
+        if (shifter.IsDone()) {
+            BRepPrimAPI_MakePrism prism(
+                shifter.Shape(),
+                gp_Vec(dir_x * dist1, dir_y * dist1, dir_z * dist1),
+                Standard_True);
+            prism.Build();
+            if (prism.IsDone()) {
+                s1 = prism.Shape();
+            }
+        }
         break;
     }
     case ExtrudeEndType::Blind:
