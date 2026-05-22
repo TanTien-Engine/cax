@@ -367,10 +367,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
     algo.Build();
 
     if (!algo.IsDone()) {
-        algo.DumpErrors(std::cout);
-    }
-    if (algo.HasWarnings()) {
-        algo.DumpErrors(std::cout);
+        algo.DumpErrors(std::cerr);
     }
 
     // Serialize tool BEFORE tn->Update() unbinds its shapes
@@ -397,10 +394,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     algo.Build();
 
     if (!algo.IsDone()) {
-        algo.DumpErrors(std::cout);
-    }
-    if (algo.HasWarnings()) {
-        algo.DumpErrors(std::cout);
+        algo.DumpErrors(std::cerr);
     }
 
     brepdb::BRepWorld tool_world;
@@ -437,9 +431,6 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
     if (!algo.IsDone()) {
         algo.DumpErrors(std::cerr);
     }
-    if (algo.HasWarnings()) {
-        algo.DumpWarnings(std::cerr);
-    }
 
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
@@ -464,10 +455,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
     //algo.Build();
 
     if (!algo.IsDone()) {
-        algo.DumpErrors(std::cout);
-    }
-    if (algo.HasWarnings()) {
-        algo.DumpErrors(std::cout);
+        algo.DumpErrors(std::cerr);
     }
 
     brepdb::BRepWorld tool_world;
@@ -496,10 +484,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Section(const std::shared_ptr<TopoShape>& s
     algo.Build();
 
     if (!algo.IsDone()) {
-        algo.DumpErrors(std::cout);
-    }
-    if (algo.HasWarnings()) {
-        algo.DumpErrors(std::cout);
+        algo.DumpErrors(std::cerr);
     }
 
     brepdb::BRepWorld tool_world;

@@ -1499,12 +1499,28 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     // referent feature's authored geometry while processing
     // Fillet/Chamfer/Shell refs later.
     //
+    // Pad/Pocket features carry TWO Part::PropertyPartShape entries:
+    //   AddSubShape -- the standalone extrusion tool (pre-fuse prism)
+    //   Shape       -- the running body after fuse with the previous
+    //                  feature; this is what downstream refs like
+    //                  Fillet's "Pad002.Face5" actually index into.
+    // FreeCAD writes AddSubShape FIRST in XML order, so a naive
+    // first-match loop would store the tool's brep. That populates
+    // ref geometry from the wrong shape (the tool has fewer faces and
+    // an unrelated topology), making nearly every Fillet/Chamfer ref
+    // miss the resolver's tolerance window. Always prefer the "Shape"
+    // property, falling back to any other PropertyPartShape only if
+    // "Shape" is absent (e.g. sketches store their wire under a
+    // different name).
+    //
     // For raw .xml fixtures this loop simply finds no Shape
     // properties (FreeCAD only writes them alongside the binary
     // brep entries in real .FCStd files) and the map stays empty.
     for (const auto& [name, obj_node] : data_by_name)
     {
         auto props = obj_node.child("Properties");
+        std::string shape_file;
+        std::string fallback_file;
         for (auto prop = props.child("Property"); prop; prop = prop.next_sibling("Property"))
         {
             if (std::string(prop.attribute("type").value()) != "Part::PropertyPartShape") {
@@ -1515,10 +1531,20 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 continue;
             }
             std::string file = part.attribute("file").value();
-            if (!file.empty()) {
-                m_feat_brep_path[name] = file;
+            if (file.empty()) {
+                continue;
             }
-            break;   // one Shape property per object
+            if (std::string(prop.attribute("name").value()) == "Shape") {
+                shape_file = std::move(file);
+                break;
+            }
+            if (fallback_file.empty()) {
+                fallback_file = std::move(file);
+            }
+        }
+        const std::string& chosen = shape_file.empty() ? fallback_file : shape_file;
+        if (!chosen.empty()) {
+            m_feat_brep_path[name] = chosen;
         }
     }
 
