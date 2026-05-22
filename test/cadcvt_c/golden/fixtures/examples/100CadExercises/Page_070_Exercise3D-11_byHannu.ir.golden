@@ -1,0 +1,16 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=10 cons=0
+  geo 1 type=Line constr=0 params=[-0.034,0.020,-0.044,0.020]
+  geo 2 type=Line constr=0 params=[-0.044,0.020,-0.044,-0.020]
+  geo 3 type=Arc constr=0 params=[-0.044,-0.040,0.020,5.5851,7.8540]
+  geo 4 type=Arc constr=0 params=[0.000,-0.077,0.038,2.4435,4.7124]
+  geo 5 type=Line constr=0 params=[0.000,-0.114,0.000,-0.099]
+  geo 6 type=Arc constr=0 params=[0.000,-0.077,0.023,1.5708,4.7124]
+  geo 7 type=Line constr=0 params=[0.000,-0.054,0.000,0.000]
+  geo 8 type=Line constr=1 params=[-0.029,-0.053,0.000,-0.077]
+  geo 9 type=Line constr=0 params=[0.000,0.000,-0.005,0.000]
+  geo 10 type=Line constr=0 params=[-0.005,0.000,-0.034,0.020]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=4 flip=0
+feat 11 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
+feat 12 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.005 h=0.070

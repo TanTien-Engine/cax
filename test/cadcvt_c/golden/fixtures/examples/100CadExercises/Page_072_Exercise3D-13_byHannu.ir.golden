@@ -1,0 +1,15 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=11 cons=0
+  geo 1 type=Line constr=0 params=[0.000,-0.024,0.000,0.036]
+  geo 2 type=Line constr=0 params=[0.000,0.036,0.025,0.057]
+  geo 3 type=Arc constr=0 params=[0.038,0.042,0.020,5.4105,8.5521]
+  geo 4 type=Line constr=0 params=[0.051,0.027,0.019,0.000]
+  geo 5 type=Line constr=0 params=[0.019,0.000,0.091,-0.072]
+  geo 6 type=Arc constr=0 params=[0.081,-0.083,0.015,3.9270,7.0686]
+  geo 7 type=Line constr=0 params=[0.070,-0.094,0.000,-0.024]
+  geo 8 type=Circle constr=0 params=[0.081,-0.083,0.007]
+  geo 9 type=Circle constr=0 params=[0.051,-0.053,0.007]
+  geo 10 type=Circle constr=0 params=[0.021,-0.023,0.007]
+  geo 11 type=Line constr=1 params=[0.081,-0.083,0.021,-0.023]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
