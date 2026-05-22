@@ -7,7 +7,11 @@
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/VersionTree.h"
 
+#include <cstdio>
+#include <cstdlib>
+
 // OCCT
+#include <OSD.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepOffsetAPI_MakeDraft.hxx>
@@ -107,58 +111,179 @@ brepdb::BRepWorld serialize_world(const std::shared_ptr<brepgraph::TopoNaming>& 
 namespace brepkit
 {
 
+namespace
+{
+
+// If `s` is a COMPOUND that wraps exactly one SOLID, return that
+// SOLID. Otherwise return `s` untouched. Downstream BOPs prefer
+// SOLID args; OCCT routinely wraps Fuse / Fillet results in a
+// COMPOUND that callers then have to peel.
+TopoDS_Shape UnwrapSingleSolid(const TopoDS_Shape& s)
+{
+    if (s.IsNull() || s.ShapeType() != TopAbs_COMPOUND) {
+        return s;
+    }
+    TopExp_Explorer ex(s, TopAbs_SOLID);
+    if (!ex.More()) {
+        return s;
+    }
+    TopoDS_Shape first = ex.Current();
+    ex.Next();
+    if (ex.More()) {
+        return s;   // multiple solids -> keep as compound
+    }
+    return first;
+}
+
+// Collect the leaf TopoDS_Edges from a list that may contain plain
+// TopoDS_Edge sub-shapes or compounds. Used by both fillet entry
+// paths so the retry-one-at-a-time fallback sees the same units
+// the batch attempt did.
+std::vector<TopoDS_Edge> CollectLeafEdges(
+    const std::vector<std::shared_ptr<brepkit::TopoShape>>& edges)
+{
+    std::vector<TopoDS_Edge> out;
+    for (auto& edge : edges) {
+        if (!edge) continue;
+        const TopoDS_Shape& s = edge->GetShape();
+        if (s.ShapeType() == TopAbs_EDGE) {
+            out.push_back(TopoDS::Edge(s));
+        } else {
+            for (TopExp_Explorer ex(s, TopAbs_EDGE); ex.More(); ex.Next()) {
+                out.push_back(TopoDS::Edge(ex.Current()));
+            }
+        }
+    }
+    return out;
+}
+
+} // anonymous namespace
+
 std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& shape, double radius,
                                             const std::vector<std::shared_ptr<TopoShape>>& edges, uint32_t op_id,
                                             const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    BRepFilletAPI_MakeFillet fillet(shape->GetShape());
+    // Convert Windows SEH (access violations, divide-by-zero, FP)
+    // from OCCT's inner loops into Standard_Failure so catch(...)
+    // below actually catches them. Standard_True enables FP signals
+    // too (CHFI3D's circle-circle intersection can divide by zero
+    // when two pattern stripes overlap). Idempotent; cheap to call
+    // again. MSVC also needs /EHa for catch(...) to wrap SEH; if
+    // your build uses /EHsc the catch below misses raw SEH even
+    // after this call -- in that case force the per-edge path with
+    // the env var below.
+    OSD::SetSignal(Standard_True);
 
+    // Escape hatch: BRepKit_FILLET_FORCE_SINGLE=1 skips the batch
+    // attempt entirely. ChFi3d's multi-stripe path is what blows
+    // up on Page_017_Exercise2D-09 (StripeEdgeInter dereferences
+    // when two stripes overlap geometrically); per-edge mode never
+    // builds more than one stripe, sidestepping the bug.
+    const char* force_single_env = std::getenv("BREPKIT_FILLET_FORCE_SINGLE");
+    bool        force_single     = force_single_env && force_single_env[0] != '0';
+
+    // ---- Collect the input edges ----
+    std::vector<TopoDS_Edge> leaf_edges;
     if (edges.empty())
     {
-        for (TopExp_Explorer ex(shape->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
-            fillet.Add(radius, TopoDS::Edge(ex.Current()));
+        for (TopExp_Explorer ex(shape->GetShape(), TopAbs_EDGE); ex.More(); ex.Next()) {
+            leaf_edges.push_back(TopoDS::Edge(ex.Current()));
+        }
     }
     else
     {
-        for (auto& edge : edges) {
-            if (!edge) continue;
-            if (edge->GetShape().ShapeType() == TopAbs_EDGE) {
-                fillet.Add(radius, TopoDS::Edge(edge->GetShape()));
-            } else {
-                for (TopExp_Explorer ex(edge->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
-                    fillet.Add(radius, TopoDS::Edge(ex.Current()));
-            }
-        }
+        leaf_edges = CollectLeafEdges(edges);
     }
-
-    // Nothing to fillet (all refs failed to resolve, or input edges
-    // were null). Skip the op rather than calling fillet.Shape(),
-    // which throws StdFail_NotDone when NbContours()==0.
-    if (fillet.NbContours() == 0) {
+    if (leaf_edges.empty()) {
+        // All refs failed to resolve, or no real edges. Skip the
+        // op rather than calling fillet.Shape(), which would throw
+        // StdFail_NotDone when NbContours()==0.
         return shape;
     }
 
+    // ---- Batch attempt: add all edges in one MakeFillet call ----
+    BRepFilletAPI_MakeFillet batch(shape->GetShape());
+    bool         batch_ok = false;
     TopoDS_Shape result;
-    try {
-        fillet.Build();
-        if (!fillet.IsDone()) {
-            return shape;
+    if (!force_single)
+    {
+        for (const auto& e : leaf_edges) {
+            batch.Add(radius, e);
         }
-        result = fillet.Shape();
-    } catch (const Standard_Failure&) {
-        // OCCT throws when fillets self-intersect or radius is too
-        // large for the geometry. Leave the body unchanged so the
-        // rest of the model still replays.
+        try {
+            batch.Build();
+            if (batch.IsDone()) {
+                result   = batch.Shape();
+                batch_ok = true;
+            }
+        } catch (...) {
+            // OCCT throws Standard_Failure subclasses on numeric
+            // pathologies, and SEH (converted by OSD::SetSignal)
+            // when ChFi3d_StripeEdgeInter dereferences something
+            // it shouldn't. Either way: bail to the per-edge path.
+            batch_ok = false;
+        }
+    }
+
+    if (batch_ok)
+    {
+        result = UnwrapSingleSolid(result);
+        brepgraph::TopoNaming::PidMap pid_map;
+        if (tn) {
+            pid_map = tn->Update(batch, result, shape->GetShape(), op_id);
+        }
+        auto dst = std::make_shared<brepkit::TopoShape>(result);
+        commit_to_vt(tn, vt, shape, dst, pid_map, "fillet");
+        return dst;
+    }
+
+    // ---- Per-edge fallback ----
+    //
+    // Apply edges one at a time. Bad edges are logged and skipped;
+    // good edges accumulate into `running`. Not topologically
+    // identical to a batch fillet (corner blends would chain
+    // differently), but the safest way to keep the rest of the
+    // model alive when one edge has an OCCT pathology -- and the
+    // log names the offender so it can be inspected separately.
+    //
+    // TopoNaming is bypassed in this path: chaining history through
+    // N MakeFillet instances correctly is non-trivial, and the user
+    // is checking visual geometry here, not ref stability across
+    // saves.
+    std::fprintf(stderr,
+        "[FILLET] op_id=%u batch failed, retrying %zu edges singly\n",
+        op_id, leaf_edges.size());
+
+    TopoDS_Shape running = shape->GetShape();
+    int          ok_count = 0;
+    for (size_t i = 0; i < leaf_edges.size(); ++i)
+    {
+        try {
+            BRepFilletAPI_MakeFillet f(running);
+            f.Add(radius, leaf_edges[i]);
+            f.Build();
+            if (f.IsDone()) {
+                running = UnwrapSingleSolid(f.Shape());
+                ++ok_count;
+                std::fprintf(stderr, "[FILLET]   edge[%zu] ok\n", i);
+            } else {
+                std::fprintf(stderr, "[FILLET]   edge[%zu] IsDone=false\n", i);
+            }
+        } catch (...) {
+            std::fprintf(stderr, "[FILLET]   edge[%zu] threw\n", i);
+        }
+    }
+    std::fprintf(stderr,
+        "[FILLET] op_id=%u per-edge retry: %d/%zu applied\n",
+        op_id, ok_count, leaf_edges.size());
+
+    if (ok_count == 0) {
         return shape;
     }
 
-    brepgraph::TopoNaming::PidMap pid_map;
-    if (tn) {
-        pid_map = tn->Update(fillet, result, shape->GetShape(), op_id);
-    }
-    auto dst = std::make_shared<brepkit::TopoShape>(result);
-    commit_to_vt(tn, vt, shape, dst, pid_map, "fillet");
+    auto dst = std::make_shared<brepkit::TopoShape>(running);
+    commit_to_vt(tn, vt, shape, dst, {}, "fillet");
     return dst;
 }
 

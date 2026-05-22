@@ -1,11 +1,29 @@
 #include "cadcvt_c/reader/FreeCadReader.h"
 
+#include "cadapp_c/ir/TopoRefIR.h"
+#include "cadapp_c/resolve/TopoGeomUtils.h"
+
 // Single-file deps in thirdparty/. See PLACE_*_HERE.txt in each dir
 // for how to drop them in.
 #include "miniz.h"
 #include "pugixml.hpp"
 
+#include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Shape.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <TopExp.hxx>
+#include <TopAbs.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
+#include <gp_Pnt.hxx>
+#include <gp_Dir.hxx>
+
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -716,6 +734,39 @@ bool LoadFileBytes(const std::string& path, std::vector<char>& out)
 } // anonymous namespace
 
 
+bool FreeCadReader::OpenArchive(const std::string& path, std::string* err_msg)
+{
+    CloseArchive();
+    if (!EndsWithICase(path, ".fcstd")) {
+        return true;   // bare .xml -> nothing to open, not an error
+    }
+
+    auto* zip = new mz_zip_archive;
+    std::memset(zip, 0, sizeof(*zip));
+
+    if (!mz_zip_reader_init_file(zip, path.c_str(), 0))
+    {
+        delete zip;
+        if (err_msg) {
+            *err_msg = "miniz: cannot open zip: " + path;
+        }
+        return false;
+    }
+    m_zip = zip;
+    return true;
+}
+
+void FreeCadReader::CloseArchive()
+{
+    if (m_zip)
+    {
+        auto* zip = static_cast<mz_zip_archive*>(m_zip);
+        mz_zip_reader_end(zip);
+        delete zip;
+        m_zip = nullptr;
+    }
+}
+
 bool FreeCadReader::ExtractDocumentXml(const std::string& path,
                                        char**             out_text,
                                        size_t*            out_size,
@@ -724,30 +775,26 @@ bool FreeCadReader::ExtractDocumentXml(const std::string& path,
     *out_text = nullptr;
     *out_size = 0;
 
-    mz_zip_archive zip;
-    std::memset(&zip, 0, sizeof(zip));
-
-    if (!mz_zip_reader_init_file(&zip, path.c_str(), 0))
+    if (!m_zip)
     {
         if (err_msg) {
-            *err_msg = "miniz: cannot open zip: " + path;
+            *err_msg = "ExtractDocumentXml: archive not open";
         }
         return false;
     }
+    auto* zip = static_cast<mz_zip_archive*>(m_zip);
 
-    int idx = mz_zip_reader_locate_file(&zip, "Document.xml", nullptr, 0);
+    int idx = mz_zip_reader_locate_file(zip, "Document.xml", nullptr, 0);
     if (idx < 0)
     {
         if (err_msg) {
             *err_msg = "FCStd has no Document.xml inside: " + path;
         }
-        mz_zip_reader_end(&zip);
         return false;
     }
 
     size_t out_sz = 0;
-    void*  buf    = mz_zip_reader_extract_to_heap(&zip, idx, &out_sz, 0);
-    mz_zip_reader_end(&zip);
+    void*  buf    = mz_zip_reader_extract_to_heap(zip, idx, &out_sz, 0);
 
     if (!buf)
     {
@@ -768,6 +815,152 @@ void FreeCadReader::FreeXmlBuffer(char* buf)
         mz_free(buf);
     }
 }
+
+namespace
+{
+
+// Lift `brep_filename` out of the open zip and BRepTools::Read it
+// into `out`. Returns true on success; `out` is left untouched on
+// any failure.
+bool LoadAuthoredShape(void*               opaque_zip,
+                       const std::string&  brep_filename,
+                       TopoDS_Shape&       out)
+{
+    if (!opaque_zip || brep_filename.empty()) {
+        return false;
+    }
+    auto* zip = static_cast<mz_zip_archive*>(opaque_zip);
+
+    int idx = mz_zip_reader_locate_file(zip, brep_filename.c_str(), nullptr, 0);
+    if (idx < 0) {
+        return false;
+    }
+
+    size_t sz  = 0;
+    void*  buf = mz_zip_reader_extract_to_heap(zip, idx, &sz, 0);
+    if (!buf) {
+        return false;
+    }
+
+    // BRepTools::Read takes an istream. Wrap the in-memory bytes.
+    std::string body(static_cast<const char*>(buf), sz);
+    mz_free(buf);
+
+    std::istringstream iss(body);
+    BRep_Builder        builder;
+    TopoDS_Shape        shape;
+    try {
+        BRepTools::Read(shape, iss, builder);
+    } catch (...) {
+        return false;
+    }
+    if (shape.IsNull()) {
+        return false;
+    }
+
+    out = shape;
+    return true;
+}
+
+// "Face5" -> 5. Returns 0 if the tail isn't a positive integer.
+int ParseTrailingInt(const std::string& s)
+{
+    size_t i = 0;
+    while (i < s.size() && !std::isdigit((unsigned char)s[i])) {
+        ++i;
+    }
+    if (i >= s.size()) {
+        return 0;
+    }
+    int n = 0;
+    for (; i < s.size(); ++i)
+    {
+        char c = s[i];
+        if (!std::isdigit((unsigned char)c)) {
+            return 0;
+        }
+        n = n * 10 + (c - '0');
+    }
+    return n;
+}
+
+// Pull the centroid / normal / measure off the `index`th sub-shape
+// of `shape` (1-based MapShapes order) and stuff them into `r`,
+// converting lengths by `unit_scale`. Returns true on a clean fill;
+// false if the index is out of range or the sub-shape is degenerate
+// (centroid / normal undefined).
+bool FillRefFromShape(TopoDS_Shape&        shape,
+                      TopoRefIR::Kind      kind,
+                      int                  index,
+                      double               unit_scale,
+                      TopoRefIR&           r)
+{
+    if (shape.IsNull() || index <= 0) {
+        return false;
+    }
+
+    TopAbs_ShapeEnum t = (kind == TopoRefIR::Kind::Face)   ? TopAbs_FACE
+                       : (kind == TopoRefIR::Kind::Edge)   ? TopAbs_EDGE
+                                                            : TopAbs_VERTEX;
+    TopTools_IndexedMapOfShape m;
+    TopExp::MapShapes(shape, t, m);
+    if (index > m.Extent()) {
+        return false;
+    }
+    const TopoDS_Shape& sub = m.FindKey(index);
+
+    switch (kind)
+    {
+    case TopoRefIR::Kind::Face:
+    {
+        const TopoDS_Face& f = TopoDS::Face(sub);
+        gp_Pnt c; gp_Dir n;
+        if (!cadapp::FaceCenter(f, c, n)) {
+            return false;
+        }
+        r.point[0]   = c.X() * unit_scale;
+        r.point[1]   = c.Y() * unit_scale;
+        r.point[2]   = c.Z() * unit_scale;
+        r.normal[0]  = n.X();
+        r.normal[1]  = n.Y();
+        r.normal[2]  = n.Z();
+        r.measure    = cadapp::FaceArea(f) * unit_scale * unit_scale;
+        break;
+    }
+    case TopoRefIR::Kind::Edge:
+    {
+        const TopoDS_Edge& e = TopoDS::Edge(sub);
+        gp_Pnt mid; gp_Dir tan;
+        if (!cadapp::EdgeMidpoint(e, mid, tan)) {
+            return false;
+        }
+        r.point[0]  = mid.X() * unit_scale;
+        r.point[1]  = mid.Y() * unit_scale;
+        r.point[2]  = mid.Z() * unit_scale;
+        r.normal[0] = tan.X();
+        r.normal[1] = tan.Y();
+        r.normal[2] = tan.Z();
+        r.measure   = cadapp::EdgeArcLength(e) * unit_scale;
+        break;
+    }
+    case TopoRefIR::Kind::Vertex:
+    {
+        const TopoDS_Vertex& v = TopoDS::Vertex(sub);
+        gp_Pnt p = BRep_Tool::Pnt(v);
+        r.point[0]  = p.X() * unit_scale;
+        r.point[1]  = p.Y() * unit_scale;
+        r.point[2]  = p.Z() * unit_scale;
+        r.normal[0] = 0.0;
+        r.normal[1] = 0.0;
+        r.normal[2] = 0.0;
+        r.measure   = 0.0;
+        break;
+    }
+    }
+    return true;
+}
+
+} // anonymous namespace
 
 
 // ============================================================
@@ -1083,20 +1276,63 @@ TopoRefIR::Kind ClassifySubName(const std::string& sub, TopoRefIR::Kind fallback
 
 // Stash a list of FreeCAD sub-names (e.g. "Edge1", "Edge2") into
 // ext_strings keyed "<prefix>_<i>_name", and emit matching stub
-// TopoRefIRs into out_refs. The kind of each ref is inferred from
-// the sub-name prefix; `fallback_kind` only applies to unknown
-// shapes (e.g. "Anything1").
-void StashRefNames(FeatureIR&                       feat,
-                   const std::vector<std::string>&  sub_names,
-                   const std::string&               object_name,
-                   const std::string&               prefix,
-                   TopoRefIR::Kind                  fallback_kind,
-                   std::vector<TopoRefIR>&          out_refs)
+// TopoRefIRs into out_refs.
+//
+// The kind of each ref is inferred from the sub-name prefix;
+// `fallback_kind` only applies to unknown shapes (e.g. "Anything1").
+//
+// When `archive` is non-null AND the referent object has an
+// authored Shape entry in `feat_brep_path`, the ref's
+// point / normal / measure are populated from the centroid +
+// surface normal + area of the matching sub-shape in that authored
+// BRep, scaled by `unit_scale`. This is what lets TopoRefResolver
+// match the ref against cax's replayed body via the existing
+// geometric MatchScore -- no new naming engine, no element-map
+// porting.
+//
+// When `archive` is null (raw .xml fixtures) the refs stay zero-geo
+// and resolution returns 0 downstream -- Fillet/Chamfer skip cleanly,
+// matching pre-FCStd behaviour.
+void StashRefNames(FeatureIR&                                          feat,
+                   const std::vector<std::string>&                     sub_names,
+                   const std::string&                                  object_name,
+                   const std::string&                                  prefix,
+                   TopoRefIR::Kind                                     fallback_kind,
+                   std::vector<TopoRefIR>&                             out_refs,
+                   void*                                               archive,
+                   const std::unordered_map<std::string, std::string>& feat_brep_path,
+                   double                                              unit_scale)
 {
+    // Lazy-load the referent BRep once per call: most Fillet/Chamfer
+    // properties reference one feature with several sub-names.
+    TopoDS_Shape authored;
+    bool         authored_tried = false;
+
     for (size_t i = 0; i < sub_names.size(); ++i)
     {
         TopoRefIR r = MakeStubTopoRef(
             ClassifySubName(sub_names[i], fallback_kind));
+
+        if (archive)
+        {
+            if (!authored_tried)
+            {
+                authored_tried = true;
+                auto it = feat_brep_path.find(object_name);
+                if (it != feat_brep_path.end()) {
+                    LoadAuthoredShape(archive, it->second, authored);
+                }
+            }
+            if (!authored.IsNull())
+            {
+                int idx = ParseTrailingInt(sub_names[i]);
+                FillRefFromShape(authored, r.kind, idx, unit_scale, r);
+                // No assignment of r.topo_index / r.uid: resolver
+                // does geometric matching on r.point / normal / measure
+                // against cax's replayed body.
+            }
+        }
+
         out_refs.push_back(r);
 
         std::string key = prefix + "_" + std::to_string(i) + "_name";
@@ -1149,6 +1385,7 @@ bool FreeCadReader::ReadFile(const std::string& path,
 
     m_name_to_id.clear();
     m_sk_geo_idx_to_id.clear();
+    m_feat_brep_path.clear();
     m_next_feature_id     = 1;
     m_next_sketch_geo_id  = 1;
     m_next_sketch_cons_id = 1;
@@ -1157,13 +1394,17 @@ bool FreeCadReader::ReadFile(const std::string& path,
     // directly.
     if (EndsWithICase(path, ".fcstd"))
     {
-        char*  buf  = nullptr;
-        size_t size = 0;
-        if (!ExtractDocumentXml(path, &buf, &size, err_msg)) {
+        if (!OpenArchive(path, err_msg)) {
             return false;
         }
-        bool ok = ParseDocumentXml(buf, size, out, err_msg);
-        FreeXmlBuffer(buf);
+        char*  buf  = nullptr;
+        size_t size = 0;
+        bool ok = ExtractDocumentXml(path, &buf, &size, err_msg)
+               && ParseDocumentXml(buf, size, out, err_msg);
+        if (buf) {
+            FreeXmlBuffer(buf);
+        }
+        CloseArchive();
         return ok;
     }
 
@@ -1177,6 +1418,8 @@ bool FreeCadReader::ReadFile(const std::string& path,
             }
             return false;
         }
+        // No archive: .brp reads will short-circuit, StashRefNames
+        // emits zero-geometry stubs, Fillet/Chamfer skip cleanly.
         return ParseDocumentXml(bytes.data(), bytes.size(), out, err_msg);
     }
 
@@ -1245,6 +1488,38 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     for (auto obj = object_data_node.child("Object"); obj; obj = obj.next_sibling("Object"))
     {
         data_by_name[AttrStr(obj, "name")] = obj;
+    }
+
+    // ---- Map object name -> authored .brp filename ----
+    //
+    // PartDesign features carry a "Shape" property of type
+    // Part::PropertyPartShape with a <Part file="..."> child naming
+    // the OCCT binary BRep entry inside the .FCStd zip. We harvest
+    // those filenames up-front so StashRefNames can lift the
+    // referent feature's authored geometry while processing
+    // Fillet/Chamfer/Shell refs later.
+    //
+    // For raw .xml fixtures this loop simply finds no Shape
+    // properties (FreeCAD only writes them alongside the binary
+    // brep entries in real .FCStd files) and the map stays empty.
+    for (const auto& [name, obj_node] : data_by_name)
+    {
+        auto props = obj_node.child("Properties");
+        for (auto prop = props.child("Property"); prop; prop = prop.next_sibling("Property"))
+        {
+            if (std::string(prop.attribute("type").value()) != "Part::PropertyPartShape") {
+                continue;
+            }
+            auto part = prop.child("Part");
+            if (!part) {
+                continue;
+            }
+            std::string file = part.attribute("file").value();
+            if (!file.empty()) {
+                m_feat_brep_path[name] = file;
+            }
+            break;   // one Shape property per object
+        }
     }
 
     // ---- Collect MultiTransform children ----
@@ -1636,7 +1911,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
             LinkRef base = PropLink(props, "Base");
             StashRefNames(feat, base.sub_names, base.object_name,
-                          "edge_ref", TopoRefIR::Kind::Edge, pl.edges);
+                          "edge_ref", TopoRefIR::Kind::Edge, pl.edges,
+                          m_zip, m_feat_brep_path, m_unit_scale);
 
             feat.type = FeatType::Fillet;
             feat.data = std::move(pl);
@@ -1658,7 +1934,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
             LinkRef base = PropLink(props, "Base");
             StashRefNames(feat, base.sub_names, base.object_name,
-                          "edge_ref", TopoRefIR::Kind::Edge, pl.edges);
+                          "edge_ref", TopoRefIR::Kind::Edge, pl.edges,
+                          m_zip, m_feat_brep_path, m_unit_scale);
 
             feat.type = FeatType::Chamfer;
             feat.data = std::move(pl);
@@ -1671,7 +1948,8 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
             LinkRef base = PropLink(props, "Base");
             StashRefNames(feat, base.sub_names, base.object_name,
-                          "face_ref", TopoRefIR::Kind::Face, pl.faces_to_open);
+                          "face_ref", TopoRefIR::Kind::Face, pl.faces_to_open,
+                          m_zip, m_feat_brep_path, m_unit_scale);
 
             feat.type = FeatType::Shell;
             feat.data = std::move(pl);

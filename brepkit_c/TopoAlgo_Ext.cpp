@@ -27,6 +27,9 @@
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
+#include <BOPAlgo_GlueEnum.hxx>
+#include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <TopTools_ListOfShape.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
 #include <BRepTools_History.hxx>
@@ -51,6 +54,123 @@
 
 namespace brepkit
 {
+
+namespace
+{
+
+// Fuse a vector of pattern instances (each a SOLID coming out of a
+// BRepBuilderAPI_Transform) into a single clean SOLID. Mirrors the
+// fix already applied in TopoAlgo::Fuse:
+//
+//   1. Use the new BOP API (SetArguments / SetTools) -- the legacy
+//      two-arg constructor sometimes returns an empty COMPOUND when
+//      operands have coincident sub-faces.
+//   2. SetFuzzyValue(1e-6) + SetGlue(BOPAlgo_GlueShift) so coincident
+//      faces between adjacent pattern instances are treated as glued
+//      rather than re-intersected (which fails silently and leaves
+//      an unfused COMPOUND result).
+//   3. After all pairwise fuses, run ShapeUpgrade_UnifySameDomain to
+//      merge coplanar adjacent faces into one (FreeCAD's pattern
+//      output is already unified; cax used to leave the raw
+//      seam-split faces, which broke fillet refs downstream).
+//   4. If the final result is a COMPOUND wrapping exactly one SOLID
+//      (BOP convention), unwrap it so callers receive a SOLID --
+//      otherwise downstream fuse/cut hits the COMPOUND-input quirk.
+//
+// Returns the (possibly empty) input shape unchanged when there's
+// only one instance.
+TopoDS_Shape FuseInstancesAndUnify(const std::vector<TopoDS_Shape>& instances)
+{
+    if (instances.empty()) {
+        return TopoDS_Shape();
+    }
+    TopoDS_Shape result = instances[0];
+
+    for (size_t i = 1; i < instances.size(); ++i)
+    {
+        BRepAlgoAPI_Fuse algo;
+        TopTools_ListOfShape args;  args.Append(result);
+        TopTools_ListOfShape tools; tools.Append(instances[i]);
+        algo.SetArguments(args);
+        algo.SetTools(tools);
+        algo.SetFuzzyValue(1e-6);
+        algo.SetGlue(BOPAlgo_GlueShift);
+        algo.Build();
+
+        if (algo.IsDone() && !algo.Shape().IsNull()) {
+            result = algo.Shape();
+            continue;
+        }
+
+        // Glue mode is wrong for the geometry of this pair; fall
+        // back to plain fuse rather than abandoning the step.
+        BRepAlgoAPI_Fuse retry;
+        retry.SetArguments(args);
+        retry.SetTools(tools);
+        retry.SetFuzzyValue(1e-6);
+        retry.Build();
+        if (retry.IsDone() && !retry.Shape().IsNull()) {
+            result = retry.Shape();
+        }
+    }
+
+    if (result.IsNull()) {
+        return result;
+    }
+
+    // ---- Unify coplanar faces ----
+    //
+    // Default tolerances of UnifySameDomain are sub-micrometre and
+    // refuse to merge most cross-instance seam faces (BOP output
+    // between rotated copies has ~1e-7 m drift on the seam normal).
+    // Without aggressive merging, the body keeps the raw pattern
+    // fragments; downstream face-ref resolution then can't find a
+    // face whose centroid is at the FreeCAD-authored ref point,
+    // because that point is the symmetric centre of N fragments
+    // rather than the centroid of any single fragment.
+    //
+    // Bumping LinearTolerance to 0.1mm + AngularTolerance to 1e-3
+    // rad reliably merges those seams. Side-effect: small in-
+    // instance features can also get filled, costing ~1.5-2% volume
+    // on heavily-patterned bodies (e.g. Page_017_Exercise2D-09).
+    // That's an acceptable trade for getting Fillet / Chamfer refs
+    // to resolve, which would otherwise no-op silently.
+    try {
+        ShapeUpgrade_UnifySameDomain unify(result,
+                                          /*UnifyEdges=*/Standard_True,
+                                          /*UnifyFaces=*/Standard_True,
+                                          /*ConcatBSplines=*/Standard_False);
+        unify.SetLinearTolerance (1e-4);
+        unify.SetAngularTolerance(1e-3);
+        unify.Build();
+        TopoDS_Shape unified = unify.Shape();
+        if (!unified.IsNull()) {
+            result = unified;
+        }
+    } catch (...) {
+        // Leave `result` as the un-unified fuse output -- still
+        // better than a raw compound of instances.
+    }
+
+    // ---- Unwrap a single-SOLID COMPOUND ----
+    if (result.ShapeType() == TopAbs_COMPOUND)
+    {
+        TopExp_Explorer ex(result, TopAbs_SOLID);
+        if (ex.More())
+        {
+            TopoDS_Shape first = ex.Current();
+            ex.Next();
+            if (!ex.More()) {
+                // Exactly one SOLID in the compound: hand it back
+                // directly. Downstream fuse/cut prefers SOLID args.
+                result = first;
+            }
+        }
+    }
+    return result;
+}
+
+} // anonymous namespace
 
 // ============================================================
 // ExtrudeEx -Boss-Extrude with end conditions
@@ -378,16 +498,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::LinearPattern(
         }
     }
 
-    // Fuse all instances together
-    TopoDS_Shape result = instances[0];
-    for (size_t i = 1; i < instances.size(); ++i) {
-        BRepAlgoAPI_Fuse fuse(result, instances[i]);
-        fuse.Build();
-        if (fuse.IsDone()) {
-            result = fuse.Shape();
-        }
-    }
-
+    TopoDS_Shape result = FuseInstancesAndUnify(instances);
     auto result_shape = std::make_shared<TopoShape>(result);
 
     // Note: TopoNaming for pattern is complex -each instance produces
@@ -439,16 +550,7 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::CircularPattern(
         instances.push_back(xform.Shape());
     }
 
-    // Fuse all
-    TopoDS_Shape result = instances[0];
-    for (size_t i = 1; i < instances.size(); ++i) {
-        BRepAlgoAPI_Fuse fuse(result, instances[i]);
-        fuse.Build();
-        if (fuse.IsDone()) {
-            result = fuse.Shape();
-        }
-    }
-
+    TopoDS_Shape result = FuseInstancesAndUnify(instances);
     return std::make_shared<TopoShape>(result);
 }
 

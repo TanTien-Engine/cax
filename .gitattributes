@@ -1,2 +1,8 @@
 *.jpg filter=lfs diff=lfs merge=lfs -text
 *.golden text eol=lf
+
+# FreeCAD project files are deflate zips containing OCCT binary
+# BRep entries. Mark them binary so git skips CRLF normalisation,
+# textconv diff attempts (which would be noise), and merges.
+*.FCStd binary
+*.fcstd binary

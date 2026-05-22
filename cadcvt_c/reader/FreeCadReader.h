@@ -39,11 +39,18 @@
 //     order, which is the FreeCAD default)
 //
 // Topo references:
-//   FreeCAD names edges / faces by string ("Sketch.Edge3"). v1
-//   stashes those names in FeatureIR::ext_strings keyed
-//   "<edge|face>_ref_<i>_name" so a future FreeCAD-aware
-//   TopoRefResolver can resolve them. The generic geo-match path
-//   inside TopoRefResolver will not match (point/normal are 0).
+//   FreeCAD names edges / faces by string ("Sketch.Edge3"). The
+//   names get stashed in FeatureIR::ext_strings keyed
+//   "<edge|face>_ref_<i>_name" for diagnostics.
+//
+//   For .FCStd inputs the reader additionally seeds TopoRefIR with
+//   geometry (point / normal / measure) read from the referent
+//   feature's authored BRep (.brp inside the zip): MapShapes the
+//   target sub-shape and lift centroid / normal / area, scaled to
+//   project metres. The generic geo-match path in TopoRefResolver
+//   then finds the corresponding sub-shape on cax's replayed body
+//   within tolerance. For raw .xml fixtures (no .brp), refs stay
+//   zero and resolution returns 0 -- Fillet/Chamfer skip cleanly.
 //
 // Units:
 //   FreeCAD stores lengths in millimetres internally. We multiply
@@ -91,13 +98,20 @@ private:
 
     // Unzip path's Document.xml into a memory buffer. Returns true
     // on success and fills out_text + out_size. Caller frees with
-    // FreeXmlBuffer.
+    // FreeXmlBuffer. Implementation reuses m_zip if already open.
     bool ExtractDocumentXml(const std::string& path,
                             char**             out_text,
                             size_t*            out_size,
                             std::string*       err_msg);
 
     static void FreeXmlBuffer(char* buf);
+
+    // Open / close the .FCStd zip backing m_zip. Open is a no-op
+    // if path is not .FCStd; close is idempotent. Called by ReadFile
+    // around ParseDocumentXml so StashRefNames can pull .brp entries
+    // on demand.
+    bool OpenArchive(const std::string& path, std::string* err_msg);
+    void CloseArchive();
 
 private:
     double m_unit_scale = 0.001;
@@ -110,6 +124,16 @@ private:
     // Used by sketches to convert the FreeCAD "geometry index" into
     // the cadapp::SkGeoIR::id we assign at read time.
     std::unordered_map<int, uint32_t> m_sk_geo_idx_to_id;
+
+    // freecad object name -> "PartShape3.brp" (filename inside the
+    // .FCStd zip carrying that feature's serialized OCCT shape).
+    // Populated from Part::PropertyPartShape properties during the
+    // ObjectData scan; empty for raw .xml fixtures.
+    std::unordered_map<std::string, std::string> m_feat_brep_path;
+
+    // Opaque mz_zip_archive*; non-null only while a .FCStd is being
+    // parsed. Owned by OpenArchive/CloseArchive.
+    void* m_zip = nullptr;
 
     uint32_t m_next_feature_id = 1;
     uint32_t m_next_sketch_geo_id = 1;

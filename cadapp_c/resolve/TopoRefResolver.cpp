@@ -1,4 +1,5 @@
 #include "cadapp_c/resolve/TopoRefResolver.h"
+#include "cadapp_c/resolve/TopoGeomUtils.h"
 
 #include "brepgraph_c/history/TopoNaming.h"
 #include "brepgraph_c/history/HistGraph.h"
@@ -11,12 +12,7 @@
 #include <TopExp.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <BRep_Tool.hxx>
-#include <BRepAdaptor_Curve.hxx>
-#include <BRepAdaptor_Surface.hxx>
-#include <BRepGProp.hxx>
-#include <GProp_GProps.hxx>
 #include <gp_Pnt.hxx>
-#include <gp_Vec.hxx>
 #include <gp_Dir.hxx>
 
 #include <cmath>
@@ -67,66 +63,6 @@ double MatchScore(const double  a_pt[3],
     double dot       = an[0] * b_n.X() + an[1] * b_n.Y() + an[2] * b_n.Z();
     double norm_diff = 1.0 - std::fabs(dot);  // 0 colinear, 1 perpendicular
     return pos + normal_weight * norm_diff;
-}
-
-bool EdgeMidpoint(const TopoDS_Edge& edge, gp_Pnt& mid, gp_Dir& tangent)
-{
-    if (BRep_Tool::Degenerated(edge)) {
-        return false;
-    }
-
-    BRepAdaptor_Curve curve(edge);
-    double first = curve.FirstParameter();
-    double last  = curve.LastParameter();
-    double t     = (first + last) * 0.5;
-
-    gp_Pnt p;
-    gp_Vec dv;
-    curve.D1(t, p, dv);
-
-    if (dv.Magnitude() < 1e-12) {
-        return false;
-    }
-    mid     = p;
-    tangent = gp_Dir(dv);
-    return true;
-}
-
-bool FaceCenter(const TopoDS_Face& face, gp_Pnt& center, gp_Dir& normal)
-{
-    BRepAdaptor_Surface surf(face);
-    double u = (surf.FirstUParameter() + surf.LastUParameter()) * 0.5;
-    double v = (surf.FirstVParameter() + surf.LastVParameter()) * 0.5;
-
-    gp_Pnt p;
-    gp_Vec du;
-    gp_Vec dv;
-    surf.D1(u, v, p, du, dv);
-
-    gp_Vec n = du.Crossed(dv);
-    if (n.Magnitude() < 1e-12) {
-        return false;
-    }
-    center = p;
-    normal = gp_Dir(n);
-    return true;
-}
-
-double EdgeArcLength(const TopoDS_Edge& edge)
-{
-    if (BRep_Tool::Degenerated(edge)) {
-        return 0.0;
-    }
-    GProp_GProps props;
-    BRepGProp::LinearProperties(edge, props);
-    return props.Mass();
-}
-
-double FaceArea(const TopoDS_Face& face)
-{
-    GProp_GProps props;
-    BRepGProp::SurfaceProperties(face, props);
-    return props.Mass();
 }
 
 uint32_t LookupUid(brepgraph::TopoNaming* naming,
@@ -206,12 +142,17 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
                 double s = MatchScore(ref.point, ref.normal, mid, tan);
 
                 // Tie-breaker: prefer edges with similar arc length.
+                // Weight stays well below any reasonable position
+                // tolerance so a length mismatch alone cannot reject
+                // a face whose midpoint + tangent already match (the
+                // common case when FreeCAD and cax disagree on how
+                // many co-linear edges to merge after a BOP).
                 if (ref.measure > 0.0)
                 {
                     double len       = EdgeArcLength(e);
                     double meas_diff = std::fabs(len - ref.measure)
                                      / std::max(len, ref.measure);
-                    s += 0.05 * meas_diff;
+                    s += 0.0005 * meas_diff;
                 }
 
                 if (s < r.match_dist)
@@ -246,12 +187,19 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
 
                 double s = MatchScore(ref.point, ref.normal, c, n);
 
+                // Tie-breaker only. Same rationale as the edge case
+                // above: FreeCAD's authored shape can have N
+                // coplanar faces merged into one (area Nx larger
+                // than cax's per-instance face), but the centroid +
+                // normal still identify the right physical place.
+                // Keep the area term tiny so it ranks among ties
+                // without ever rejecting a position-perfect match.
                 if (ref.measure > 0.0)
                 {
                     double a         = FaceArea(f);
                     double meas_diff = std::fabs(a - ref.measure)
                                      / std::max(a, ref.measure);
-                    s += 0.05 * meas_diff;
+                    s += 0.0005 * meas_diff;
                 }
 
                 if (s < r.match_dist)

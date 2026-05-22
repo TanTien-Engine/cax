@@ -38,21 +38,43 @@ Each fixture produces two goldens:
 If you only touched the parser and don't have OCCT handy, run with
 `--ir-only` to skip the geometry layer.
 
-## Prefer committing `Document.xml`, not `.FCStd`
+## `.FCStd` vs raw `Document.xml`: pick by what the feature needs
 
-A `.FCStd` is a binary zip; it bloats the repo and can't be reviewed
-in a diff. The reader accepts a bare `Document.xml` too. To turn a
-FreeCAD file into a reviewable fixture:
+Both formats are accepted; the harness's `IsFixture` walks .fcstd
+and .xml alike, and `FreeCadReader::ReadFile` branches by suffix.
 
-```
-unzip -p MyPart.FCStd Document.xml > fixtures/my_part.xml
-```
+Which one to commit depends on the features in the fixture:
 
-Commit `my_part.xml`. Now both the fixture and its goldens are plain
-text, and a reviewer can see exactly what changed.
+- **Bare `.xml` (preferred for parser-only coverage)** -- a single
+  reviewable text file. Goldens diff cleanly in PRs. Use this for
+  sketches, Pad / Pocket / Revolution / Groove, Primitives, and any
+  feature whose IR is fully determined by the XML properties.
+  Extract with:
 
-Keep a `.FCStd` only when the test specifically needs the zip path
-(the miniz extraction) exercised.
+  ```
+  unzip -p MyPart.FCStd Document.xml > fixtures/my_part.xml
+  ```
+
+- **`.FCStd` (required for face / edge ref features)** -- Fillet,
+  Chamfer, Shell, and any future feature that holds `LinkSub` refs
+  like `"PolarPattern.Face5"` need the authored OCCT BRep entries
+  inside the zip. The reader lifts the referent face's
+  centroid / normal / area out of those entries to seed
+  `TopoRefIR.point / normal / measure`, and `TopoRefResolver` then
+  matches geometrically against cax's replayed body. A bare `.xml`
+  fixture for such features parses fine but every ref stays a
+  zero-geometry stub, so Fillet / Chamfer / Shell silently skip
+  -- the IR golden looks right but the geo golden is wrong.
+
+  `.FCStd` files are marked `binary` in `.gitattributes` so git
+  skips CRLF and diff attempts.
+
+Rule of thumb: if the IR has any `*_ref_<i>_name` ext_string, commit
+`.FCStd`. Otherwise commit `.xml`.
+
+When in doubt, commit `.FCStd`. The extra repo weight is small (a
+typical fixture is tens of KB) and the geometric anchor still works
+even if you don't end up using a ref-bearing feature.
 
 ## Workflow
 

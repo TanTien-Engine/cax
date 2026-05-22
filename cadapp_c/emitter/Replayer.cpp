@@ -7,7 +7,12 @@
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 
+#include <BRepTools.hxx>
+#include <TopoDS_Shape.hxx>
+
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <sstream>
 #include <type_traits>
@@ -944,6 +949,29 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         {
             last_node = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
+
+            // Dump-bodies hook: when CAX_DUMP_BODIES is set in the
+            // environment, write each feature's running body to a
+            // .brp file in the current working directory. Filename
+            // "cax_<id>_<name>.brp"; pair with FreeCAD's PartShapeN
+            // entries inside the source .FCStd zip via the brp_diff
+            // tool (tools/brp_diff/) to localise where cax replay
+            // diverges from FreeCAD's authored geometry. Off by
+            // default so production loads don't litter CWD.
+            if (const char* dump = std::getenv("CAX_DUMP_BODIES");
+                dump && dump[0] != '\0' && dump[0] != '0')
+            {
+                auto val = cg->Eval(node);
+                if (auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
+                    sv && sv->shape && !sv->shape->GetShape().IsNull())
+                {
+                    char path[256];
+                    std::snprintf(path, sizeof(path),
+                                  "cax_%u_%s.brp",
+                                  feat.id, feat.name.c_str());
+                    BRepTools::Write(sv->shape->GetShape(), path);
+                }
+            }
         }
         else
         {

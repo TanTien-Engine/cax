@@ -285,6 +285,8 @@ source_group("cadapp\\store" FILES ${cadapp__store})
 set(cadapp__resolve
     "cadapp_c/resolve/TopoRefResolver.cpp"
     "cadapp_c/resolve/TopoRefResolver.h"
+    "cadapp_c/resolve/TopoGeomUtils.cpp"
+    "cadapp_c/resolve/TopoGeomUtils.h"
 )
 source_group("cadapp\\resolve" FILES ${cadapp__resolve})
 
@@ -536,6 +538,16 @@ if(CAX_BUILD_TESTS)
     if(CADCVT_FREECAD_DEPS_OK)
         add_subdirectory(test/cadcvt_c)
     endif()
+endif()
+
+################################################################################
+# Diagnostic tools
+################################################################################
+option(CAX_BUILD_BRP_DIFF "Build brp_diff: compare cax body dumps to FCStd .brp entries" ON)
+
+if(CAX_BUILD_BRP_DIFF AND CADCVT_FREECAD_DEPS_OK)
+    # Needs miniz + pugixml + cax + OCCT, same gate as the golden harness.
+    add_subdirectory(tools/brp_diff)
 endif()
 
 ################################################################################
