@@ -348,6 +348,45 @@ void RegisterSketchOps(brepgraph::OpRegistry& reg)
 
 			return MakeShapeVal(face);
 		});
+
+	// sketch_wire: like sketch_face but returns the stitched wire
+	// directly without face filling. Used as the spine/path input to
+	// Sweep. When the solved sketch chains into a single wire we
+	// return that wire; multiple wires fall back to a compound and
+	// the caller (TopoAlgo_Ext::Sweep) picks the first usable one.
+	reg.Define("sketch_wire", {"sketch", "origin", "x_dir", "normal"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetSketch(0);
+			if (!sv.handle) return {};
+			auto* sk = static_cast<const cadapp::SketchIR*>(sv.handle.get());
+
+			Vec3 origin_v = ctx.GetVec3(1);
+			Vec3 x_dir_v  = ctx.GetVec3(2);
+			Vec3 normal_v = ctx.GetVec3(3);
+
+			sketchlib::Scene                 scene;
+			cadapp::SketchBridge::GeoShapes  solved;
+			if (!cadapp::SketchBridge::ImportToScene(*sk, scene, solved)) return {};
+			if (solved.empty()) return {};
+			scene.Solve(solved);
+
+			auto wires = BuildWiresFromSolved(
+				solved, origin_v.data(), x_dir_v.data(), normal_v.data());
+			if (wires.IsNull() || wires->IsEmpty()) return {};
+
+			if (wires->Length() == 1) {
+				return MakeShapeVal(std::make_shared<brepkit::TopoShape>(
+					TopoDS::Wire(wires->Value(1))));
+			}
+
+			BRep_Builder    bb;
+			TopoDS_Compound comp;
+			bb.MakeCompound(comp);
+			for (int i = 1; i <= wires->Length(); ++i) {
+				bb.Add(comp, TopoDS::Wire(wires->Value(i)));
+			}
+			return MakeShapeVal(std::make_shared<brepkit::TopoShape>(comp));
+		});
 }
 
 } // namespace cadapp

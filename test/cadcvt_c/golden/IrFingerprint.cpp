@@ -233,6 +233,18 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
                << " angle=" << Num(p.angle, adec)
                << " flip=" << (p.flip_direction ? 1 : 0);
         }
+        else if constexpr (std::is_same_v<T, cadapp::FeatPayloadSweep>) {
+            // Spine sketch id rides in ext_params (see reader notes);
+            // surface it here so the golden line carries both the
+            // profile and the path the sweep follows.
+            uint32_t spine_id = 0xFFFFFFFF;
+            auto sit = feat.ext_params.find("spine_sketch_id");
+            if (sit != feat.ext_params.end()) {
+                spine_id = (uint32_t)sit->second;
+            }
+            os << "sweep profile_sketch_id=" << p.profile_sketch_id
+               << " spine_sketch_id=" << spine_id;
+        }
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadFillet>) {
             os << "fillet radius=" << Num(p.radius, dec)
                << " edges=" << p.edges.size();

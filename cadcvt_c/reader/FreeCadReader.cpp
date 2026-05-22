@@ -1930,6 +1930,66 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                           : FeatType::CutRevolve;
             feat.data = std::move(pl);
         }
+        else if (pending.type == "PartDesign::AdditivePipe" ||
+                 pending.type == "PartDesign::SubtractivePipe")
+        {
+            // FreeCAD Pipe (sweep). Properties of interest:
+            //   Profile -> LinkSub(sketch)         cross-section
+            //   Spine   -> LinkSub(sketch, Edge*)  path
+            //   Reversed                           flip sweep direction
+            // We map both Profile and Spine to sketches; the spine
+            // sketch id rides in ext_params because FeatPayloadSweep's
+            // path_ref is a TopoRefIR built for 3D edge refs and we
+            // don't want to bump FEAT_VERSION just for this one extra
+            // field. The Replayer reads it back when building the
+            // sweep subtree.
+            FeatPayloadSweep pl;
+
+            LinkRef profile = PropLink(props, "Profile");
+            if (!profile.object_name.empty())
+            {
+                auto sid = m_name_to_id.find(profile.object_name);
+                if (sid != m_name_to_id.end()) {
+                    pl.profile_sketch_id = sid->second;
+                }
+            }
+
+            LinkRef spine = PropLink(props, "Spine");
+            if (!spine.object_name.empty())
+            {
+                auto sid = m_name_to_id.find(spine.object_name);
+                if (sid != m_name_to_id.end()) {
+                    feat.ext_params["spine_sketch_id"] =
+                        (double)sid->second;
+                }
+                // Sub-edge selections (Edge1/Edge2/...) are stashed
+                // for diagnostics; the Replayer currently uses the
+                // whole non-construction wire from the spine sketch.
+                if (!spine.sub_names.empty())
+                {
+                    std::ostringstream oss;
+                    oss << spine.object_name;
+                    for (size_t k = 0; k < spine.sub_names.size(); ++k) {
+                        oss << "," << spine.sub_names[k];
+                    }
+                    feat.ext_strings["spine_ref"] = oss.str();
+                }
+                else
+                {
+                    feat.ext_strings["spine_ref"] = spine.object_name;
+                }
+            }
+
+            if (PropBool(props, "Reversed", false)) {
+                feat.ext_params["reversed"] = 1.0;
+            }
+
+            feat.type = FeatType::Sweep;
+            feat.data = std::move(pl);
+            // PartDesign::AdditivePipe vs PartDesign::SubtractivePipe
+            // is read back by the Replayer to pick fuse vs cut.
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
         else if (pending.type == "PartDesign::Fillet")
         {
             FeatPayloadFillet pl;

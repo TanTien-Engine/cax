@@ -237,6 +237,17 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		});
 
+	reg.Define("sweep", {"profile", "path", "is_solid"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto profile = ctx.GetShape(0);
+			auto path    = ctx.GetShape(1);
+			if (!profile.shape || !path.shape) return {};
+			bool is_solid = ctx.Bool(2);
+			auto shp = brepkit::TopoAlgo_Ext::Sweep(
+				profile.shape, path.shape, is_solid, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
 	reg.Define("mirror", {"shape", "origin", "normal"}, {},
 		[](EvalCtx& ctx) -> Val {
 			auto sv = ctx.GetShape(0);

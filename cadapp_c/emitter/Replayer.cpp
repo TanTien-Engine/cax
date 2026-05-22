@@ -32,7 +32,8 @@
 //   LinearPattern / CircularPattern              OK
 //   MultiTransform                               OK
 //   BossRevolve / CutRevolve                     OK
-//   Loft / Sweep                                 TODO
+//   Sweep (FreeCAD AdditivePipe / SubtractivePipe) OK
+//   Loft                                         TODO
 //
 // The Replay path now builds a CalcGraph: each feature becomes a
 // graph subtree of typed const + op nodes. Sketches enter the graph
@@ -107,6 +108,29 @@ int AddSketchFaceNode(brepgraph::CalcGraph& cg, const SketchIR& sk)
     return cg.AddOp("sketch_face",
         {sketch_n, sk_o_n, sk_x_n, sk_n_n},
         {}, sk.name);
+}
+
+// Build the sketch_wire graph subtree -- same plane-param wiring as
+// AddSketchFaceNode but the op returns the stitched wire (no face
+// filling). Sweep uses this for the spine.
+int AddSketchWireNode(brepgraph::CalcGraph& cg, const SketchIR& sk)
+{
+    auto sk_copy = std::make_shared<SketchIR>(sk);
+    int sketch_n = cg.AddConst(
+        std::shared_ptr<void>(sk_copy),
+        "sketch:" + sk.name);
+    brepgraph::Vec3 sk_origin = {
+        sk.plane_origin[0], sk.plane_origin[1], sk.plane_origin[2]};
+    brepgraph::Vec3 sk_x_dir  = {
+        sk.plane_x_dir[0],  sk.plane_x_dir[1],  sk.plane_x_dir[2]};
+    brepgraph::Vec3 sk_normal = {
+        sk.plane_normal[0], sk.plane_normal[1], sk.plane_normal[2]};
+    int sk_o_n = cg.AddConst(sk_origin, "plane_origin");
+    int sk_x_n = cg.AddConst(sk_x_dir,  "plane_x_dir");
+    int sk_n_n = cg.AddConst(sk_normal, "plane_normal");
+    return cg.AddOp("sketch_wire",
+        {sketch_n, sk_o_n, sk_x_n, sk_n_n},
+        {}, sk.name + ":wire");
 }
 
 // Pair recording which TopoRefIR in the user's DocumentIR should
@@ -658,6 +682,95 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     {
                         step_ok     = false;
                         out.err_msg = "CutRevolve without base shape: " + feat.name;
+                        return;
+                    }
+                    node = cg->AddOp("cut", {last_node, tool_n},
+                                      {}, feat.name);
+                    ti.op_kind = 'c';
+                }
+                feature_tools[feat.id] = ti;
+            }
+
+            // ---- Sweep (FreeCAD PartDesign::AdditivePipe /
+            //              SubtractivePipe) ----
+            //
+            // Build the profile face from the profile sketch (re-using
+            // any already-built sketch_face node), build the spine
+            // wire from the spine sketch (id is stashed in ext_params
+            // by the reader because FeatPayloadSweep::path_ref is
+            // shaped for 3D edge refs, not sketches), then either
+            // fuse (Additive) or cut (Subtractive) the swept tool
+            // against the running body.
+            else if constexpr (std::is_same_v<T, FeatPayloadSweep>)
+            {
+                const SketchIR* profile_sk = FindSketch(doc, p.profile_sketch_id);
+                if (!profile_sk)
+                {
+                    step_ok     = false;
+                    out.err_msg = "missing profile sketch for sweep: " + feat.name;
+                    return;
+                }
+
+                int face_n;
+                auto fit = sketch_face_nodes.find(p.profile_sketch_id);
+                if (fit != sketch_face_nodes.end()) {
+                    face_n = fit->second;
+                } else {
+                    face_n = AddSketchFaceNode(*cg, *profile_sk);
+                    sketch_face_nodes[p.profile_sketch_id] = face_n;
+                }
+
+                uint32_t spine_id = 0xFFFFFFFF;
+                auto sit = feat.ext_params.find("spine_sketch_id");
+                if (sit != feat.ext_params.end()) {
+                    spine_id = (uint32_t)sit->second;
+                }
+                const SketchIR* spine_sk = FindSketch(doc, spine_id);
+                if (!spine_sk)
+                {
+                    step_ok     = false;
+                    out.err_msg = "missing spine sketch for sweep: " + feat.name;
+                    return;
+                }
+
+                int wire_n   = AddSketchWireNode(*cg, *spine_sk);
+                int solid_n  = cg->AddConst(true, "is_solid");
+                int tool_n   = cg->AddOp("sweep",
+                                          {face_n, wire_n, solid_n},
+                                          {}, feat.name);
+
+                bool subtractive = false;
+                auto tit = feat.ext_strings.find("freecad_type");
+                if (tit != feat.ext_strings.end()
+                    && tit->second == "PartDesign::SubtractivePipe")
+                {
+                    subtractive = true;
+                }
+
+                FeatureToolInfo ti;
+                ti.tool_node = tool_n;
+                ti.base_node = last_node;
+
+                if (!subtractive)
+                {
+                    if (last_node < 0)
+                    {
+                        node = tool_n;
+                        ti.op_kind = '0';
+                    }
+                    else
+                    {
+                        node = cg->AddOp("fuse", {last_node, tool_n},
+                                          {}, feat.name);
+                        ti.op_kind = 'f';
+                    }
+                }
+                else
+                {
+                    if (last_node < 0)
+                    {
+                        step_ok     = false;
+                        out.err_msg = "SubtractivePipe without base shape: " + feat.name;
                         return;
                     }
                     node = cg->AddOp("cut", {last_node, tool_n},

@@ -22,17 +22,19 @@
 //     Coincident / Horizontal / Vertical / Parallel / Perpendicular
 //     / Tangent / Equal / Distance / DistanceX / DistanceY / Angle
 //     / Radius / Diameter / PointOnObject / Symmetric)
-//   - PartDesign::Pad        -> FeatPayloadExtrude (BossExtrude)
-//   - PartDesign::Pocket     -> FeatPayloadExtrude (CutExtrude)
-//   - PartDesign::Revolution -> FeatPayloadRevolve (BossRevolve)
-//   - PartDesign::Groove     -> FeatPayloadRevolve (CutRevolve)
-//   - PartDesign::Fillet     -> FeatPayloadFillet
-//   - PartDesign::Chamfer    -> FeatPayloadChamfer
-//   - PartDesign::Thickness  -> FeatPayloadShell
+//   - PartDesign::Pad             -> FeatPayloadExtrude (BossExtrude)
+//   - PartDesign::Pocket          -> FeatPayloadExtrude (CutExtrude)
+//   - PartDesign::Revolution      -> FeatPayloadRevolve (BossRevolve)
+//   - PartDesign::Groove          -> FeatPayloadRevolve (CutRevolve)
+//   - PartDesign::AdditivePipe /
+//     SubtractivePipe             -> FeatPayloadSweep
+//   - PartDesign::Fillet          -> FeatPayloadFillet
+//   - PartDesign::Chamfer         -> FeatPayloadChamfer
+//   - PartDesign::Thickness       -> FeatPayloadShell
 //   - Part::Box / Cylinder / Sphere / Cone / Torus -> Prim*
 //
 // Out of scope in v1 (logged into DocumentIR via Opaque):
-//   - Loft, Pipe (Sweep)
+//   - Loft
 //   - Mirrored / LinearPattern / PolarPattern
 //   - Body / Part container hierarchy (we process features in
 //     document order; assumes the file lists features in modeling
