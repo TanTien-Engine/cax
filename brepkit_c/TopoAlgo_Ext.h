@@ -13,15 +13,20 @@ namespace brepgraph { class TopoNaming; }
 namespace brepkit
 {
 
-// Extrude end-condition type, matches SolidWorks endCondition semantics
+// Extrude end-condition type, matches SolidWorks endCondition semantics.
+// Integer values must stay in lock-step with cadapp::ExtrudeEndType
+// (cadapp_c/ir/Enums.h): the Replayer forwards the cadapp value
+// straight into a const node that calc_ops static_cast<>s back to
+// this enum, and cadapp's values are pinned by FeatureStore's U8
+// serialization. Append new entries at the bottom on both sides.
 enum class ExtrudeEndType : uint8_t
 {
-    Blind = 0,             // Fixed distance
-    ThroughAll,            // Cut through all
-    UpToVertex,            // Up to a reference vertex
-    UpToSurface,           // Up to a reference surface/face
-    OffsetFromSurface,     // Offset from a reference surface
-    MidPlane               // Symmetric, half on each side
+    Blind             = 0, // Fixed distance
+    ThroughAll        = 1, // Cut through all
+    UpToSurface       = 2, // Up to a reference surface/face
+    UpToVertex        = 3, // Up to a reference vertex
+    MidPlane          = 4, // Symmetric, half on each side
+    OffsetFromSurface = 5, // Offset from a reference surface
 };
 
 class TopoAlgo_Ext

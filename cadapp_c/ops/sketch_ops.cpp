@@ -17,13 +17,20 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepGProp.hxx>
+#include <BRepTopAdaptor_FClass2d.hxx>
+#include <BRep_Builder.hxx>
+#include <ElSLib.hxx>
 #include <GProp_GProps.hxx>
+#include <Precision.hxx>
 #include <gp_Pnt.hxx>
+#include <gp_Pnt2d.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Circ.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Wire.hxx>
@@ -159,20 +166,60 @@ BuildWiresFromSolved(const cadapp::SketchBridge::GeoShapes& solved,
 	return wires_seq;
 }
 
-// Face area on the sketch plane, used to pick the outer wire when a
-// sketch has holes. Builds a throwaway face just to measure -- cheap
-// for a single wire and avoids re-implementing polygon shoelace in
-// 3D world coords.
-double WireFaceArea(const TopoDS_Wire& wire, const gp_Pln& plane)
+// Per-wire scratch used by WiresToFace's containment classifier:
+// a wire-only face for point-in classification, that face's area
+// (cheaper than recomputing each pass), an interior sample point
+// (centroid of the bounded region), and the depth in the
+// containment forest (0 = outer region, 1 = hole, 2 = island inside
+// a hole, ...).
+struct WireRec
 {
-	if (wire.IsNull()) return 0.0;
-	BRepBuilderAPI_MakeFace mk(plane, wire);
-	if (!mk.IsDone()) return 0.0;
+	TopoDS_Wire wire;
+	TopoDS_Face face;       // wire-only, no holes - used for classification + area
+	double      area = 0.0;
+	gp_Pnt      sample;
+	int         depth = 0;
+};
+
+// Build a WireRec from a single TopoDS_Wire. Returns false when the
+// wire degenerates (open, zero area, MakeFace failed) and the caller
+// should drop it.
+bool BuildWireRec(const TopoDS_Wire& w, const gp_Pln& plane, WireRec& out)
+{
+	BRepBuilderAPI_MakeFace mk(plane, w);
+	if (!mk.IsDone()) return false;
+	out.face = mk.Face();
 	GProp_GProps props;
-	BRepGProp::SurfaceProperties(mk.Face(), props);
-	return std::abs(props.Mass());
+	BRepGProp::SurfaceProperties(out.face, props);
+	out.area = std::abs(props.Mass());
+	if (out.area == 0.0) return false;
+	out.sample = props.CentreOfMass();
+	out.wire   = w;
+	return true;
 }
 
+// Classify a 3D world point against a planar face by projecting
+// onto the plane's UV and running BRepTopAdaptor_FClass2d. The face
+// must be supported by `plane` (its UV system); since we build all
+// faces here from the same gp_Pln this holds.
+bool PointInsideFace(const TopoDS_Face& face, const gp_Pln& plane,
+                      const gp_Pnt& p, double tol)
+{
+	double u, v;
+	ElSLib::Parameters(plane, p, u, v);
+	BRepTopAdaptor_FClass2d cls(face, tol);
+	return cls.Perform(gp_Pnt2d(u, v)) == TopAbs_IN;
+}
+
+// Stitch wires into faces honoring containment. A sketch with two
+// disjoint annuli (e.g. FreeCAD pocket with two through-holes drawn
+// in one sketch) produces four wires here - two outer R, two inner
+// r - and the previous "largest = outer, rest = holes" heuristic
+// collapsed them into one bogus face. The forest below classifies
+// each wire by depth and emits one face per even-depth wire with
+// its immediate odd-depth children as holes; disjoint regions land
+// as separate faces inside a compound, and nested cases (island
+// inside hole inside outer) are handled by the same rule.
 std::shared_ptr<brepkit::TopoShape> WiresToFace(
 	const Handle(TopTools_HSequenceOfShape)& wires,
 	const double                              origin[3],
@@ -184,49 +231,86 @@ std::shared_ptr<brepkit::TopoShape> WiresToFace(
 	gp_Dir n(normal[0], normal[1], normal[2]);
 	gp_Pln plane(o, n);
 
-	// Find the largest-area wire and treat it as the outer boundary.
-	// The rest are inner wires (holes). When there's only one wire,
-	// outer_idx == 1 and the inner loop is a no-op.
-	int    outer_idx  = 1;
-	double outer_area = -1.0;
+	std::vector<WireRec> recs;
+	recs.reserve(wires->Length());
 	for (int i = 1; i <= wires->Length(); ++i)
 	{
-		const TopoDS_Wire& w = TopoDS::Wire(wires->Value(i));
-		double a = WireFaceArea(w, plane);
-		if (a > outer_area) {
-			outer_area = a;
-			outer_idx  = i;
+		WireRec r;
+		if (BuildWireRec(TopoDS::Wire(wires->Value(i)), plane, r))
+			recs.push_back(std::move(r));
+	}
+	if (recs.empty()) return {};
+
+	// Depth = number of OTHER wires that strictly contain me. Skip
+	// pairs where the candidate container's area is no larger than
+	// mine -- closed planar regions can only contain strictly
+	// smaller ones.
+	const double tol = Precision::Confusion();
+	for (size_t i = 0; i < recs.size(); ++i)
+	{
+		for (size_t j = 0; j < recs.size(); ++j)
+		{
+			if (i == j) continue;
+			if (recs[j].area <= recs[i].area) continue;
+			if (PointInsideFace(recs[j].face, plane, recs[i].sample, tol))
+				++recs[i].depth;
 		}
 	}
 
-	const TopoDS_Wire& outer = TopoDS::Wire(wires->Value(outer_idx));
-
+	// Emit one face per even-depth wire (outer boundary), pulling in
+	// every wire at depth+1 that lies strictly inside it as a hole.
 	// Do NOT call ShapeFix_Face::FixAddNaturalBound: for a plane the
-	// natural bound is an infinite box, the fixer would treat our
-	// wire as an inner hole, and Prism then sweeps it into an
+	// natural bound is an infinite box, the fixer would treat the
+	// outer wire as an inner hole, and Prism then sweeps it into an
 	// annular slab with the inner top cap missing.
-	BRepBuilderAPI_MakeFace mkFace(plane, outer);
-	if (!mkFace.IsDone()) return {};
-
-	for (int i = 1; i <= wires->Length(); ++i)
+	BRep_Builder    bb;
+	TopoDS_Compound comp;
+	bb.MakeCompound(comp);
+	int built = 0;
+	for (size_t i = 0; i < recs.size(); ++i)
 	{
-		if (i == outer_idx) continue;
-		const TopoDS_Wire& hole = TopoDS::Wire(wires->Value(i));
-		mkFace.Add(hole);
+		if (recs[i].depth % 2 != 0) continue;
+
+		BRepBuilderAPI_MakeFace mk(plane, recs[i].wire);
+		if (!mk.IsDone()) continue;
+
+		for (size_t j = 0; j < recs.size(); ++j)
+		{
+			if (i == j) continue;
+			if (recs[j].depth != recs[i].depth + 1) continue;
+			if (recs[j].area >= recs[i].area) continue;
+			if (PointInsideFace(recs[i].face, plane, recs[j].sample, tol))
+				mk.Add(recs[j].wire);
+		}
+
+		// FixOrientation flips CW wires so the face normal lines up
+		// with the plane normal -- without this Prism's caps may
+		// end up with inward normals (renderer hides them, looks
+		// like a missing cap). It also re-orients inner wires
+		// opposite to the outer, which is what OCCT expects for a
+		// face with holes.
+		TopoDS_Face   face = mk.Face();
+		ShapeFix_Face fixer(face);
+		fixer.FixOrientation();
+		fixer.Perform();
+		bb.Add(comp, fixer.Face());
+		++built;
 	}
 
-	// FixOrientation flips CW wires so the face normal lines up with
-	// the plane normal -- without this Prism's caps may end up with
-	// inward normals (renderer hides them, looks like a missing cap).
-	// It also re-orients inner wires opposite to the outer, which is
-	// what OCCT expects for a face with holes.
-	TopoDS_Face   face = mkFace.Face();
-	ShapeFix_Face fixer(face);
-	fixer.FixOrientation();
-	fixer.Perform();
-	face = fixer.Face();
+	if (built == 0) return {};
 
-	return std::make_shared<brepkit::TopoShape>(face);
+	// Single-region sketches (the common case) keep returning a
+	// bare Face -- avoids wrapping it in a Compound just so the
+	// downstream Prism gets a face it could otherwise have received
+	// directly, and preserves the existing topology-naming behavior
+	// for single-region pads/pockets.
+	if (built == 1)
+	{
+		TopExp_Explorer ex(comp, TopAbs_FACE);
+		if (ex.More())
+			return std::make_shared<brepkit::TopoShape>(ex.Current());
+	}
+	return std::make_shared<brepkit::TopoShape>(comp);
 }
 
 } // anonymous namespace

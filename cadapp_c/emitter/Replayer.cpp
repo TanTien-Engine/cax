@@ -7,6 +7,7 @@
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 
+#include <cmath>
 #include <map>
 #include <sstream>
 #include <type_traits>
@@ -25,7 +26,7 @@
 //   Mirror                                       OK
 //   LinearPattern / CircularPattern              OK
 //   MultiTransform                               OK
-//   BossRevolve / CutRevolve                     TODO
+//   BossRevolve / CutRevolve                     OK
 //   Loft / Sweep                                 TODO
 //
 // The Replay path now builds a CalcGraph: each feature becomes a
@@ -195,6 +196,37 @@ int AddMirrorWithOriginal(brepgraph::CalcGraph& cg,
     int n_n = cg.AddConst(normal, "normal");
     int m_n = cg.AddOp("mirror", {shape_node, o_n, n_n}, {}, desc + ":mirror");
     return cg.AddOp("fuse", {shape_node, m_n}, {}, desc + ":fuse_orig");
+}
+
+// Apply mirror(Fi.tool) to `body` for each original Fi, using Fi's
+// op_kind. Used for FreeCAD Mirrored with Originals = [F1..Fn]:
+// each Fi's tool effect already lives in `body` (it was applied when
+// Fi was replayed), so we just add the mirrored copy on top.
+//
+// op_kind dispatch:
+//   '0' (no base, first feature in body) -> treat as fuse
+//   'f' (additive)                       -> fuse(body, mirror(tool))
+//   'c' (subtractive)                    -> cut (body, mirror(tool))
+int AddMirroredOriginals(brepgraph::CalcGraph&              cg,
+                         int                                body,
+                         const std::vector<FeatureToolInfo>& origs,
+                         const brepgraph::Vec3&             origin,
+                         const brepgraph::Vec3&             normal,
+                         const std::string&                 desc)
+{
+    int o_n = cg.AddConst(origin, "origin");
+    int n_n = cg.AddConst(normal, "normal");
+    int node = body;
+    for (size_t i = 0; i < origs.size(); ++i)
+    {
+        const auto& orig = origs[i];
+        std::string tag  = desc + ":orig" + std::to_string(i);
+        int m_n = cg.AddOp("mirror",
+                            {orig.tool_node, o_n, n_n}, {}, tag + ":mirror");
+        const char* op = (orig.op_kind == 'c') ? "cut" : "fuse";
+        node = cg.AddOp(op, {node, m_n}, {}, tag + ":" + op);
+    }
+    return node;
 }
 
 // Post-process a freshly-built primitive node:
@@ -551,6 +583,85 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 feature_tools[feat.id] = ti;
             }
 
+            // ---- Revolve (Boss / Cut) ----
+            //
+            // Mirror of the Extrude branch: reuse / build the sketch's
+            // face, add a `revolve` op around the axis carried by the
+            // payload, and fuse / cut against the running body.
+            //
+            // Negative angle (or Reversed=true via flip_direction) flips
+            // the sweep direction; angle near 2*PI is treated as a full
+            // revolution via the `is_full` flag so OCCT closes the
+            // resulting solid instead of leaving a hairline seam.
+            else if constexpr (std::is_same_v<T, FeatPayloadRevolve>)
+            {
+                const SketchIR* sk = FindSketch(doc, p.sketch_id);
+                if (!sk)
+                {
+                    step_ok     = false;
+                    out.err_msg = "missing sketch for feature " + feat.name;
+                    return;
+                }
+
+                int face_n;
+                auto it = sketch_face_nodes.find(p.sketch_id);
+                if (it != sketch_face_nodes.end()) {
+                    face_n = it->second;
+                } else {
+                    face_n = AddSketchFaceNode(*cg, *sk);
+                    sketch_face_nodes[p.sketch_id] = face_n;
+                }
+
+                double sign = p.flip_direction ? -1.0 : 1.0;
+                brepgraph::Vec3 ax_o = {p.axis_origin[0],
+                                       p.axis_origin[1],
+                                       p.axis_origin[2]};
+                brepgraph::Vec3 ax_d = {p.axis_dir[0],
+                                       p.axis_dir[1],
+                                       p.axis_dir[2]};
+                int o_n = cg->AddConst(ax_o, "axis_origin");
+                int d_n = cg->AddConst(ax_d, "axis_dir");
+                int a_n = cg->AddConst(sign * p.angle, "angle");
+                bool is_full = std::abs(p.angle - 2.0 * 3.14159265358979323846)
+                                < 1e-6;
+                int f_n = cg->AddConst(is_full, "is_full");
+                int tool_n = cg->AddOp("revolve",
+                                        {face_n, o_n, d_n, a_n, f_n},
+                                        {}, feat.name);
+
+                FeatureToolInfo ti;
+                ti.tool_node = tool_n;
+                ti.base_node = last_node;
+
+                if (feat.type == FeatType::BossRevolve)
+                {
+                    if (last_node < 0)
+                    {
+                        node = tool_n;
+                        ti.op_kind = '0';
+                    }
+                    else
+                    {
+                        node = cg->AddOp("fuse", {last_node, tool_n},
+                                          {}, feat.name);
+                        ti.op_kind = 'f';
+                    }
+                }
+                else
+                {
+                    if (last_node < 0)
+                    {
+                        step_ok     = false;
+                        out.err_msg = "CutRevolve without base shape: " + feat.name;
+                        return;
+                    }
+                    node = cg->AddOp("cut", {last_node, tool_n},
+                                      {}, feat.name);
+                    ti.op_kind = 'c';
+                }
+                feature_tools[feat.id] = ti;
+            }
+
             // ---- Fillet / Chamfer ----
             else if constexpr (std::is_same_v<T, FeatPayloadFillet> ||
                                std::is_same_v<T, FeatPayloadChamfer>)
@@ -561,15 +672,25 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                // Build a resolve_edge_ref op per ref and feed the
-                // resulting sub-shape nodes as variadic edge inputs
+                // Build a resolve_(edge|face)_ref op per ref and feed
+                // the resulting sub-shape nodes as variadic edge inputs
                 // to fillet / chamfer. The match itself happens at
                 // Eval time -- Replayer stays a pure graph builder.
+                //
+                // FreeCAD lets users pick faces for a fillet (round
+                // every edge of the face). Those refs arrive with
+                // kind=Face; route them through resolve_face_ref so
+                // the resolver searches the face map, and TopoAlgo
+                // explodes the resolved face into its edges via
+                // TopExp_Explorer at apply time.
                 std::vector<int> edge_nodes;
                 edge_nodes.reserve(p.edges.size());
                 for (size_t k = 0; k < p.edges.size(); ++k)
                 {
-                    int rn = AddResolveRefNode(*cg, "resolve_edge_ref",
+                    const char* op = (p.edges[k].kind == TopoRefIR::Kind::Face)
+                                       ? "resolve_face_ref"
+                                       : "resolve_edge_ref";
+                    int rn = AddResolveRefNode(*cg, op,
                                                 last_node, p.edges[k],
                                                 opt.topo_tolerance,
                                                 feat.name + ":edge");
@@ -621,12 +742,18 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
             // ---- Mirror ----
             //
-            // FreeCAD's PartDesign::Mirrored produces orig + mirror,
-            // but our `mirror` op only returns the mirror image. We
-            // add the fuse here. When Originals is set the mirror
-            // applies to the originals' tool, then combines with
-            // their base via the originals' op_kind (FreeCAD: replace
-            // the original feature's effect with the doubled effect).
+            // FreeCAD's PartDesign::Mirrored produces orig + mirror.
+            // Our `mirror` op only returns the mirror image, so we
+            // always add the original back ourselves.
+            //
+            // Originals = [F1..Fn]: each Fi's tool effect already
+            // lives in last_node (it was applied when Fi was replayed).
+            // We add mirror(Fi.tool) for every Fi using Fi.op_kind so
+            // every original contributes its mirror -- previously only
+            // origs[0] was honored, which silently dropped pads/pockets
+            // when users mirrored multiple features together.
+            //
+            // Originals empty: mirror the whole running body and fuse.
             else if constexpr (std::is_same_v<T, FeatPayloadMirror>)
             {
                 brepgraph::Vec3 origin = {p.plane_origin[0],
@@ -637,11 +764,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                          p.plane_normal[2]};
 
                 auto origs = ResolveOriginals(feat, feature_tools);
-                if (!origs.empty())
+                if (!origs.empty() && last_node >= 0)
                 {
-                    int patterned = AddMirrorWithOriginal(*cg, origs[0].tool_node,
-                                                          origin, normal, feat.name);
-                    node = CombinePatternedTool(*cg, origs[0], patterned, feat.name);
+                    node = AddMirroredOriginals(*cg, last_node, origs,
+                                                origin, normal, feat.name);
                 }
                 else if (last_node >= 0)
                 {

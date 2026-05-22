@@ -326,6 +326,111 @@ bool LookupRefPlaneNormal(
     return false;
 }
 
+// Resolve a PartDesign::Line (datum line) reference to its world-
+// frame origin and direction. The line's "down the line" direction
+// is the local +Z, rotated by the Placement quaternion; the line's
+// origin is Placement.Px/Py/Pz (in FreeCAD's mm units, so the
+// caller scales). Used by Polar/Linear pattern readers when the
+// Axis link points at a datum line instead of an Origin axis --
+// previously only the direction defaulted (correct by accident for
+// identity-quat datums) but axis_origin stayed at (0,0,0) which
+// shoved every patterned cylinder onto the wrong circle.
+bool LookupDatumLineAxis(
+    const std::string& object_name,
+    const std::unordered_map<std::string, pugi::xml_node>& data_by_name,
+    double             unit_scale,
+    double             out_origin[3],
+    double             out_dir[3])
+{
+    auto it = data_by_name.find(object_name);
+    if (it == data_by_name.end()) return false;
+    auto props = it->second.child("Properties");
+    auto place_prop = FindProperty(props, "Placement");
+    if (!place_prop) return false;
+    auto place = place_prop.child("PropertyPlacement");
+    if (!place) return false;
+
+    out_origin[0] = AttrDouble(place, "Px", 0.0) * unit_scale;
+    out_origin[1] = AttrDouble(place, "Py", 0.0) * unit_scale;
+    out_origin[2] = AttrDouble(place, "Pz", 0.0) * unit_scale;
+
+    double qx = AttrDouble(place, "Q0", 0.0);
+    double qy = AttrDouble(place, "Q1", 0.0);
+    double qz = AttrDouble(place, "Q2", 0.0);
+    double qw = AttrDouble(place, "Q3", 1.0);
+    double x_axis[3], z_axis[3];
+    QuatToAxes(qx, qy, qz, qw, x_axis, z_axis);
+    out_dir[0] = z_axis[0];
+    out_dir[1] = z_axis[1];
+    out_dir[2] = z_axis[2];
+    return true;
+}
+
+// Resolve a (object_name, sub_name) ref to BOTH a world-frame axis
+// origin and direction. Recognises:
+//   - "Origin" / "" + X_Axis|Y_Axis|Z_Axis -> body origin (0,0,0) + axis
+//   - <Sketch> + V_Axis|H_Axis|Normal      -> sketch placement origin + axis
+// Returns false on unknown refs (caller falls back / leaves defaults).
+//
+// Used by Groove/Revolution which take a ReferenceAxis link that
+// must produce a full gp_Ax1 (both location and direction). The
+// pre-existing LookupRefAxisDir only returns direction, which is fine
+// for patterns that rotate about an origin set elsewhere but loses
+// the sketch placement origin needed by revolve.
+bool LookupRefAxisOriginDir(
+    const std::string& object_name,
+    const std::string& sub_name,
+    const std::unordered_map<std::string, pugi::xml_node>& data_by_name,
+    double             unit_scale,
+    double             out_origin[3],
+    double             out_dir[3])
+{
+    out_origin[0] = 0.0;
+    out_origin[1] = 0.0;
+    out_origin[2] = 0.0;
+
+    if (LookupOriginAxisDir(sub_name, out_dir)) {
+        return true;
+    }
+    if (sub_name == "V_Axis" || sub_name == "H_Axis" || sub_name == "Normal")
+    {
+        auto it = data_by_name.find(object_name);
+        if (it == data_by_name.end()) return false;
+        auto props = it->second.child("Properties");
+        auto place_prop = FindProperty(props, "Placement");
+        if (!place_prop) return false;
+        auto place = place_prop.child("PropertyPlacement");
+        if (!place) return false;
+
+        out_origin[0] = AttrDouble(place, "Px", 0.0) * unit_scale;
+        out_origin[1] = AttrDouble(place, "Py", 0.0) * unit_scale;
+        out_origin[2] = AttrDouble(place, "Pz", 0.0) * unit_scale;
+
+        double qx = AttrDouble(place, "Q0", 0.0);
+        double qy = AttrDouble(place, "Q1", 0.0);
+        double qz = AttrDouble(place, "Q2", 0.0);
+        double qw = AttrDouble(place, "Q3", 1.0);
+
+        double x_axis[3], z_axis[3];
+        QuatToAxes(qx, qy, qz, qw, x_axis, z_axis);
+        double y_axis[3] = {
+            z_axis[1] * x_axis[2] - z_axis[2] * x_axis[1],
+            z_axis[2] * x_axis[0] - z_axis[0] * x_axis[2],
+            z_axis[0] * x_axis[1] - z_axis[1] * x_axis[0]
+        };
+
+        if (sub_name == "H_Axis") {
+            out_dir[0] = x_axis[0]; out_dir[1] = x_axis[1]; out_dir[2] = x_axis[2];
+        } else if (sub_name == "V_Axis") {
+            out_dir[0] = y_axis[0]; out_dir[1] = y_axis[1]; out_dir[2] = y_axis[2];
+        } else {
+            out_dir[0] = z_axis[0]; out_dir[1] = z_axis[1]; out_dir[2] = z_axis[2];
+        }
+        return true;
+    }
+    return false;
+}
+
 // Resolve a (object_name, sub_name) ref to a world-frame axis
 // direction. Recognises body-origin axes and sketch axes.
 bool LookupRefAxisDir(
@@ -915,20 +1020,30 @@ namespace
 //   3 = UpToFace    (UpToSurface)
 //   4 = TwoLengths  (Blind on both sides; deprecated upstream)
 //   5 = UpToShape   (no target -> ThroughAll fallback)
+//
+// Midplane is NOT a Type value -- it's a separate boolean that
+// shifts the prism start by -L/2 so the extrusion straddles the
+// sketch plane. When Type == ThroughAll/UpToLast/UpToFirst/UpToShape
+// FreeCAD still computes a "through all" L and applies the midplane
+// shift, giving a symmetric cut/pad that goes through material on
+// both sides. We previously short-circuited to MidPlane on midplane
+// regardless of Type, so a Type=ThroughAll + Midplane=true pocket
+// (Page_015_Exercise2D-07: 5mm midplane "through all" in a 10mm
+// midplane pad) became a 5mm symmetric slot stuck inside the pad
+// with 2.5mm caps on each side, and the holes never punched through.
+// Now ThroughAll wins; the caller mirrors the second side via
+// end_type2 so the engine builds both halves.
 ExtrudeEndType MapPadEndType(int t, bool midplane)
 {
-    if (midplane) {
-        return ExtrudeEndType::MidPlane;
-    }
     switch (t)
     {
-    case 0:  return ExtrudeEndType::Blind;
+    case 0:  return midplane ? ExtrudeEndType::MidPlane : ExtrudeEndType::Blind;
     case 1:  return ExtrudeEndType::ThroughAll;
     case 2:  return ExtrudeEndType::ThroughAll;
     case 3:  return ExtrudeEndType::UpToSurface;
-    case 4:  return ExtrudeEndType::Blind;  // TwoLengths: handled via distance2
+    case 4:  return midplane ? ExtrudeEndType::MidPlane : ExtrudeEndType::Blind;  // TwoLengths: handled via distance2
     case 5:  return ExtrudeEndType::ThroughAll;
-    default: return ExtrudeEndType::Blind;
+    default: return midplane ? ExtrudeEndType::MidPlane : ExtrudeEndType::Blind;
     }
 }
 
@@ -952,19 +1067,36 @@ TopoRefIR MakeStubTopoRef(TopoRefIR::Kind kind)
     return r;
 }
 
+// Map a FreeCAD sub-name like "Edge1" / "Face3" / "Vertex2" to the
+// matching TopoRefIR::Kind. Fillet/Chamfer accept either edges (the
+// edge gets rounded directly) or faces (every edge of the face gets
+// rounded). Treating a Face<N> ref as an edge made the resolver miss
+// it entirely and the engine fall through to "fillet all edges",
+// which crashes on non-trivial bodies.
+TopoRefIR::Kind ClassifySubName(const std::string& sub, TopoRefIR::Kind fallback)
+{
+    if (sub.rfind("Edge",   0) == 0) return TopoRefIR::Kind::Edge;
+    if (sub.rfind("Face",   0) == 0) return TopoRefIR::Kind::Face;
+    if (sub.rfind("Vertex", 0) == 0) return TopoRefIR::Kind::Vertex;
+    return fallback;
+}
+
 // Stash a list of FreeCAD sub-names (e.g. "Edge1", "Edge2") into
 // ext_strings keyed "<prefix>_<i>_name", and emit matching stub
-// TopoRefIRs into out_refs.
+// TopoRefIRs into out_refs. The kind of each ref is inferred from
+// the sub-name prefix; `fallback_kind` only applies to unknown
+// shapes (e.g. "Anything1").
 void StashRefNames(FeatureIR&                       feat,
                    const std::vector<std::string>&  sub_names,
                    const std::string&               object_name,
                    const std::string&               prefix,
-                   TopoRefIR::Kind                  kind,
+                   TopoRefIR::Kind                  fallback_kind,
                    std::vector<TopoRefIR>&          out_refs)
 {
     for (size_t i = 0; i < sub_names.size(); ++i)
     {
-        TopoRefIR r = MakeStubTopoRef(kind);
+        TopoRefIR r = MakeStubTopoRef(
+            ClassifySubName(sub_names[i], fallback_kind));
         out_refs.push_back(r);
 
         std::string key = prefix + "_" + std::to_string(i) + "_name";
@@ -1345,6 +1477,18 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 pl.distance2 = PropDouble(props, "Length2", 0.0) * m_unit_scale;
                 pl.end_type2 = ExtrudeEndType::Blind;
             }
+            // ThroughAll + Midplane: FreeCAD cuts through material on
+            // BOTH sides of the sketch plane (a "symmetric through
+            // all"). Our engine's ThroughAll only sweeps one side,
+            // so mirror the second direction explicitly via end_type2.
+            // Without this, midplane through-all pockets only punch
+            // half-way, and patterned versions of them (see
+            // Page_015_Exercise2D-07's PolarPattern of the central
+            // hole) leave the part visually un-drilled.
+            else if (midplane && pl.end_type == ExtrudeEndType::ThroughAll)
+            {
+                pl.end_type2 = ExtrudeEndType::ThroughAll;
+            }
 
             // UpToFace target (only meaningful for Type == 3).
             if (pl.end_type == ExtrudeEndType::UpToSurface)
@@ -1365,6 +1509,124 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type = (pending.type == "PartDesign::Pad")
                           ? FeatType::BossExtrude
                           : FeatType::CutExtrude;
+            feat.data = std::move(pl);
+        }
+        else if (pending.type == "PartDesign::Revolution" ||
+                 pending.type == "PartDesign::Groove")
+        {
+            // Boss-Revolve (Revolution, additive) and Cut-Revolve
+            // (Groove, subtractive). FreeCAD properties:
+            //   Profile        -> LinkSub(sketch object)
+            //   ReferenceAxis  -> LinkSub(axis object + sub-name)
+            //   Angle          -> degrees
+            //   Reversed       -> flip sweep direction (negate angle)
+            //   Midplane       -> symmetric sweep (TODO: not yet honored
+            //                     by the revolve op; one-sided for now,
+            //                     stashed in ext_params for a future pass)
+            //   Base           -> additional Vector offset added to the
+            //                     resolved axis origin (rarely non-zero
+            //                     in PartDesign; FreeCAD almost always
+            //                     leaves it (0,0,0) and lets the
+            //                     ReferenceAxis carry the location)
+            FeatPayloadRevolve pl;
+
+            LinkRef profile = PropLink(props, "Profile");
+            if (!profile.object_name.empty())
+            {
+                auto sid = m_name_to_id.find(profile.object_name);
+                if (sid != m_name_to_id.end()) {
+                    pl.sketch_id = sid->second;
+                }
+            }
+
+            // Defaults: rotate about world Z through the body origin.
+            pl.axis_origin[0] = 0.0;
+            pl.axis_origin[1] = 0.0;
+            pl.axis_origin[2] = 0.0;
+            pl.axis_dir[0]    = 0.0;
+            pl.axis_dir[1]    = 0.0;
+            pl.axis_dir[2]    = 1.0;
+
+            LinkRef axis = PropLink(props, "ReferenceAxis");
+            std::string sub0 = axis.sub_names.empty() ? std::string()
+                                                       : axis.sub_names[0];
+            bool axis_resolved = false;
+            double ao[3], ad[3];
+            if (!sub0.empty()
+                && LookupRefAxisOriginDir(axis.object_name, sub0,
+                                          data_by_name, m_unit_scale,
+                                          ao, ad))
+            {
+                pl.axis_origin[0] = ao[0];
+                pl.axis_origin[1] = ao[1];
+                pl.axis_origin[2] = ao[2];
+                pl.axis_dir[0]    = ad[0];
+                pl.axis_dir[1]    = ad[1];
+                pl.axis_dir[2]    = ad[2];
+                axis_resolved = true;
+            }
+            else if (!axis.object_name.empty()
+                     && LookupOriginAxisDir(axis.object_name, ad))
+            {
+                pl.axis_dir[0] = ad[0];
+                pl.axis_dir[1] = ad[1];
+                pl.axis_dir[2] = ad[2];
+                axis_resolved = true;
+            }
+            if (!axis_resolved && !axis.object_name.empty())
+            {
+                // Fallback: ReferenceAxis pointing at a PartDesign::Line
+                // datum -- its Placement carries both origin and dir.
+                if (LookupDatumLineAxis(axis.object_name, data_by_name,
+                                        m_unit_scale, ao, ad))
+                {
+                    pl.axis_origin[0] = ao[0];
+                    pl.axis_origin[1] = ao[1];
+                    pl.axis_origin[2] = ao[2];
+                    pl.axis_dir[0]    = ad[0];
+                    pl.axis_dir[1]    = ad[1];
+                    pl.axis_dir[2]    = ad[2];
+                }
+            }
+            if (!axis.object_name.empty())
+            {
+                feat.ext_strings["revolve_axis_ref"] = sub0.empty()
+                    ? axis.object_name
+                    : axis.object_name + "." + sub0;
+            }
+
+            // Base offset (PropertyVector). Almost always (0,0,0) but
+            // FreeCAD will write a non-zero Base when the user types it
+            // by hand instead of picking a ReferenceAxis.
+            auto base_prop = FindProperty(props, "Base");
+            if (base_prop)
+            {
+                auto pv = base_prop.child("PropertyVector");
+                if (pv)
+                {
+                    pl.axis_origin[0] += AttrDouble(pv, "valueX", 0.0) * m_unit_scale;
+                    pl.axis_origin[1] += AttrDouble(pv, "valueY", 0.0) * m_unit_scale;
+                    pl.axis_origin[2] += AttrDouble(pv, "valueZ", 0.0) * m_unit_scale;
+                }
+            }
+
+            double ang_deg = PropDouble(props, "Angle", 360.0);
+            bool   reversed = PropBool(props, "Reversed", false);
+            pl.angle = ang_deg * 3.14159265358979323846 / 180.0;
+            pl.flip_direction = reversed;
+
+            bool midplane = PropBool(props, "Midplane", false);
+            if (midplane) {
+                // Preserve the intent for a future Replayer pass; the
+                // current revolve op is one-sided so the geometry will
+                // be off-centered by half the angle until midplane is
+                // wired through.
+                feat.ext_params["midplane"] = 1.0;
+            }
+
+            feat.type = (pending.type == "PartDesign::Revolution")
+                          ? FeatType::BossRevolve
+                          : FeatType::CutRevolve;
             feat.data = std::move(pl);
         }
         else if (pending.type == "PartDesign::Fillet")
@@ -1637,31 +1899,61 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.axis_dir[2]    = 1.0;
 
             LinkRef axis = PropLink(props, "Axis");
-            if (!axis.sub_names.empty())
+            // PolarPattern axis comes in three flavours, all of which
+            // we used to half-resolve:
+            //   (1) Origin sub-axis: <LinkSub value="Origin"><Sub
+            //       value="X_Axis"/></LinkSub> -- handled by
+            //       LookupRefAxisDir; origin is body origin (0,0,0).
+            //   (2) Bare X_Axis/Y_Axis/Z_Axis name with empty Sub --
+            //       same as (1), origin still (0,0,0).
+            //   (3) PartDesign::Line datum -- the line's Placement
+            //       carries BOTH a non-zero origin and a possibly
+            //       non-Z direction. Previously we fell through
+            //       without reading either, so axis_origin stayed
+            //       (0,0,0) and the patterned cylinders rotated
+            //       around the wrong column.
+            // sub_names is [""] for the empty-Sub case (PropLink keeps
+            // empty Sub elements), so case (1) is "sub_names[0] is a
+            // known axis token".
+            std::string sub0 = axis.sub_names.empty() ? std::string()
+                                                       : axis.sub_names[0];
+            bool dir_set = false;
+            double d[3];
+            if (!sub0.empty()
+                && LookupRefAxisDir(axis.object_name, sub0, data_by_name, d))
             {
-                double d[3];
-                if (LookupRefAxisDir(axis.object_name, axis.sub_names[0],
-                                     data_by_name, d))
-                {
-                    pl.axis_dir[0] = d[0];
-                    pl.axis_dir[1] = d[1];
-                    pl.axis_dir[2] = d[2];
-                }
-                feat.ext_strings["pattern_axis_ref"] =
-                    axis.object_name + "." + axis.sub_names[0];
+                pl.axis_dir[0] = d[0];
+                pl.axis_dir[1] = d[1];
+                pl.axis_dir[2] = d[2];
+                dir_set = true;
             }
-            else if (!axis.object_name.empty())
+            else if (!axis.object_name.empty()
+                     && LookupOriginAxisDir(axis.object_name, d))
             {
-                // Axis link with empty sub: object_name IS the axis,
-                // e.g. <LinkSub value="Z_Axis"><Sub value=""/></LinkSub>.
-                double d[3];
-                if (LookupOriginAxisDir(axis.object_name, d))
+                pl.axis_dir[0] = d[0];
+                pl.axis_dir[1] = d[1];
+                pl.axis_dir[2] = d[2];
+                dir_set = true;
+            }
+            if (!dir_set && !axis.object_name.empty())
+            {
+                double o[3];
+                if (LookupDatumLineAxis(axis.object_name, data_by_name,
+                                        m_unit_scale, o, d))
                 {
-                    pl.axis_dir[0] = d[0];
-                    pl.axis_dir[1] = d[1];
-                    pl.axis_dir[2] = d[2];
+                    pl.axis_origin[0] = o[0];
+                    pl.axis_origin[1] = o[1];
+                    pl.axis_origin[2] = o[2];
+                    pl.axis_dir[0]    = d[0];
+                    pl.axis_dir[1]    = d[1];
+                    pl.axis_dir[2]    = d[2];
                 }
-                feat.ext_strings["pattern_axis_ref"] = axis.object_name;
+            }
+            if (!axis.object_name.empty())
+            {
+                feat.ext_strings["pattern_axis_ref"] = sub0.empty()
+                    ? axis.object_name
+                    : axis.object_name + "." + sub0;
             }
 
             int    count   = PropInt   (props, "Occurrences", 2);

@@ -96,6 +96,14 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			for (auto& ev : edge_vals) {
 				if (ev.shape) edges.push_back(ev.shape);
 			}
+			// Edge refs were declared but none resolved (e.g. FreeCAD
+			// Fillet referencing faces our resolver can't match).
+			// Skip rather than fall through to TopoAlgo's "empty edges
+			// = fillet all" path, which tries to round every edge of
+			// the body and crashes on non-trivial shapes.
+			if (!edge_vals.empty() && edges.empty()) {
+				return MakeShapeVal(sv.shape);
+			}
 			auto shp = brepkit::TopoAlgo::Fillet(sv.shape, radius, edges, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		},
@@ -110,6 +118,9 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			std::vector<std::shared_ptr<brepkit::TopoShape>> edges;
 			for (auto& ev : edge_vals) {
 				if (ev.shape) edges.push_back(ev.shape);
+			}
+			if (!edge_vals.empty() && edges.empty()) {
+				return MakeShapeVal(sv.shape);
 			}
 			auto shp = brepkit::TopoAlgo::Chamfer(sv.shape, dist, edges, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
@@ -206,6 +217,23 @@ void RegisterBuiltinOps(OpRegistry& reg)
 				face.shape, dir[0], dir[1], dir[2],
 				d1, d2, e1, e2,
 				ref.shape, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
+	reg.Define("revolve",
+		{"face", "axis_origin", "axis_dir", "angle", "is_full"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto face = ctx.GetShape(0);
+			if (!face.shape) return {};
+			auto o = ctx.GetVec3(1);
+			auto d = ctx.GetVec3(2);
+			double a = ctx.Num(3);
+			bool   is_full = ctx.Bool(4);
+			auto shp = brepkit::TopoAlgo_Ext::Revolve(
+				face.shape,
+				sm::vec3((float)o[0], (float)o[1], (float)o[2]),
+				sm::vec3((float)d[0], (float)d[1], (float)d[2]),
+				a, is_full, ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
 		});
 

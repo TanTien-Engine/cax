@@ -1,24 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Opaque baseline. PartDesign::Revolution is not typed yet in the
-  reader (FreeCadReader.cpp's feature dispatch has no Revolution
-  branch), so it falls through to the catch-all FeatPayloadOpaque
-  with strings["freecad_type"]="PartDesign::Revolution" and
-  FeatType::Unknown.
+  PartDesign::Revolution is now typed in the reader and emits a
+  FeatPayloadRevolve / FeatType::BossRevolve. The .ir.golden line
+  should read `revolve sketch_id=2 axis_o=(0.000,0.000,0.000)
+  axis_d=(0.000,0.000,1.000) angle=6.283 flip=0` (defaults: no
+  ReferenceAxis -> world Z through origin; Angle 360deg -> 2*PI).
 
-  This is intentional. The IR golden's `payload=opaque
-  freecad_type=PartDesign::Revolution` line is the coverage
-  thermometer the README talks about: the day someone wires
-  Revolution into the dispatch, this line flips from `opaque ...`
-  to `revolve sketch_id=2 axis_o=... axis_d=... angle=...`, and
-  the diff between the old and new golden IS the proof of new
-  coverage.
-
-  The sketch is a single line off-axis -- a degenerate profile
-  but enough to satisfy the dispatcher; the Revolution payload
-  doesn't get parsed yet so its Angle / ReferenceAxis attributes
-  are ignored. Once Revolution becomes typed, swap the file for
-  a meaningful profile + axis ref and re-mint.
+  The sketch is a single line off-axis -- a degenerate profile,
+  but the IR snapshot only records the parsed parameters; the
+  geo-layer test is what would catch a real revolve failure. For
+  proper revolve coverage add a separate fixture with a closed
+  profile and an explicit ReferenceAxis link.
 -->
 <Document SchemaVersion="4">
   <Objects Count="3">

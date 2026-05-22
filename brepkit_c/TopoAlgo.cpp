@@ -24,6 +24,7 @@
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <Standard_Failure.hxx>
 #include <gp_Ax2.hxx>
 
 namespace
@@ -121,6 +122,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     else
     {
         for (auto& edge : edges) {
+            if (!edge) continue;
             if (edge->GetShape().ShapeType() == TopAbs_EDGE) {
                 fillet.Add(radius, TopoDS::Edge(edge->GetShape()));
             } else {
@@ -130,11 +132,32 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
     }
 
+    // Nothing to fillet (all refs failed to resolve, or input edges
+    // were null). Skip the op rather than calling fillet.Shape(),
+    // which throws StdFail_NotDone when NbContours()==0.
+    if (fillet.NbContours() == 0) {
+        return shape;
+    }
+
+    TopoDS_Shape result;
+    try {
+        fillet.Build();
+        if (!fillet.IsDone()) {
+            return shape;
+        }
+        result = fillet.Shape();
+    } catch (const Standard_Failure&) {
+        // OCCT throws when fillets self-intersect or radius is too
+        // large for the geometry. Leave the body unchanged so the
+        // rest of the model still replays.
+        return shape;
+    }
+
     brepgraph::TopoNaming::PidMap pid_map;
     if (tn) {
-        pid_map = tn->Update(fillet, fillet.Shape(), shape->GetShape(), op_id);
+        pid_map = tn->Update(fillet, result, shape->GetShape(), op_id);
     }
-    auto dst = std::make_shared<brepkit::TopoShape>(fillet.Shape());
+    auto dst = std::make_shared<brepkit::TopoShape>(result);
     commit_to_vt(tn, vt, shape, dst, pid_map, "fillet");
     return dst;
 }
@@ -154,6 +177,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
     else
     {
         for (auto& edge : edges) {
+            if (!edge) continue;
             if (edge->GetShape().ShapeType() == TopAbs_EDGE) {
                 chamfer.Add(dist, TopoDS::Edge(edge->GetShape()));
             } else {
@@ -163,11 +187,28 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         }
     }
 
+    // Symmetric to Fillet: empty result set means there's nothing
+    // to chamfer (all refs unresolved); skip cleanly.
+    if (chamfer.NbContours() == 0) {
+        return shape;
+    }
+
+    TopoDS_Shape result;
+    try {
+        chamfer.Build();
+        if (!chamfer.IsDone()) {
+            return shape;
+        }
+        result = chamfer.Shape();
+    } catch (const Standard_Failure&) {
+        return shape;
+    }
+
     brepgraph::TopoNaming::PidMap pid_map;
     if (tn) {
-        pid_map = tn->Update(chamfer, chamfer.Shape(), shape->GetShape(), op_id);
+        pid_map = tn->Update(chamfer, result, shape->GetShape(), op_id);
     }
-    auto dst = std::make_shared<brepkit::TopoShape>(chamfer.Shape());
+    auto dst = std::make_shared<brepkit::TopoShape>(result);
     commit_to_vt(tn, vt, shape, dst, pid_map, "chamfer");
     return dst;
 }
