@@ -33,7 +33,7 @@
 //   MultiTransform                               OK
 //   BossRevolve / CutRevolve                     OK
 //   Sweep (FreeCAD AdditivePipe / SubtractivePipe) OK
-//   Loft                                         TODO
+//   Loft  (FreeCAD AdditiveLoft / SubtractiveLoft) OK
 //
 // The Replay path now builds a CalcGraph: each feature becomes a
 // graph subtree of typed const + op nodes. Sketches enter the graph
@@ -792,6 +792,84 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 feature_tools[feat.id] = ti;
             }
 
+            // ---- Loft (FreeCAD PartDesign::AdditiveLoft /
+            //             SubtractiveLoft) ----
+            //
+            // Build one sketch_wire node per profile sketch (the reader
+            // packs Profile + Sections into profile_sketch_ids in order),
+            // feed them as variadic inputs to the `loft` op (is_solid=true
+            // because FreeCAD AdditiveLoft yields a solid body), then
+            // either fuse (Additive) or cut (Subtractive) the loft tool
+            // against the running body.
+            else if constexpr (std::is_same_v<T, FeatPayloadLoft>)
+            {
+                if (p.profile_sketch_ids.size() < 2)
+                {
+                    step_ok     = false;
+                    out.err_msg = "loft needs >= 2 profiles: " + feat.name;
+                    return;
+                }
+
+                std::vector<int> wire_nodes;
+                wire_nodes.reserve(p.profile_sketch_ids.size());
+                for (uint32_t sid : p.profile_sketch_ids)
+                {
+                    const SketchIR* sk = FindSketch(doc, sid);
+                    if (!sk)
+                    {
+                        step_ok     = false;
+                        out.err_msg = "missing profile sketch for loft: " + feat.name;
+                        return;
+                    }
+                    wire_nodes.push_back(AddSketchWireNode(*cg, *sk));
+                }
+
+                int is_solid_n = cg->AddConst(true, "is_solid");
+                int tool_n     = cg->AddOp("loft",
+                                            {is_solid_n},
+                                            wire_nodes, feat.name);
+
+                bool subtractive = false;
+                auto tit = feat.ext_strings.find("freecad_type");
+                if (tit != feat.ext_strings.end()
+                    && tit->second == "PartDesign::SubtractiveLoft")
+                {
+                    subtractive = true;
+                }
+
+                FeatureToolInfo ti;
+                ti.tool_node = tool_n;
+                ti.base_node = last_node;
+
+                if (!subtractive)
+                {
+                    if (last_node < 0)
+                    {
+                        node = tool_n;
+                        ti.op_kind = '0';
+                    }
+                    else
+                    {
+                        node = cg->AddOp("fuse", {last_node, tool_n},
+                                          {}, feat.name);
+                        ti.op_kind = 'f';
+                    }
+                }
+                else
+                {
+                    if (last_node < 0)
+                    {
+                        step_ok     = false;
+                        out.err_msg = "SubtractiveLoft without base shape: " + feat.name;
+                        return;
+                    }
+                    node = cg->AddOp("cut", {last_node, tool_n},
+                                      {}, feat.name);
+                    ti.op_kind = 'c';
+                }
+                feature_tools[feat.id] = ti;
+            }
+
             // ---- Fillet / Chamfer ----
             else if constexpr (std::is_same_v<T, FeatPayloadFillet> ||
                                std::is_same_v<T, FeatPayloadChamfer>)
@@ -801,6 +879,36 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     step_ok = false;
                     return;
                 }
+
+                // Refine the running body before the edge resolver
+                // looks at it. Upstream pattern features (Mirrored
+                // with N Originals -> N pairwise fuse / cut steps,
+                // MultiTransform, LinearPattern) accumulate seam
+                // edges along each pairwise boundary -- the body's
+                // volume / surface area / bbox stay perfect but
+                // single logical edges get split into co-linear
+                // sub-segments that share the same support curve.
+                // resolve_edge_ref scores by midpoint + tangent +
+                // length, and a sub-segment whose midpoint sits
+                // closest to FreeCAD's saved midpoint can outscore
+                // the longer parent edge. BRepFilletAPI then runs
+                // the blend along a sub-segment that doesn't
+                // smoothly extend into its neighbouring tangent
+                // face, the blend self-intersects, and the result
+                // comes out with negative volume and a multi-hundred-
+                // metre bbox (see Page_020_Exercise2D-12 Mirrored.
+                // Edge12, where the post-Mirror body had 68 / 159
+                // faces / edges where FreeCAD's had 42 / 113).
+                // UnifySameDomain -- the same upgrade FreeCAD's
+                // dressup features run when Refine=true, which is
+                // the default -- collapses those co-domain splits,
+                // so the resolver sees one logical edge per FreeCAD
+                // edge and the blend stays on the intended tangent
+                // stripe. Scoped to the dressup feature so other
+                // Mirror / Pattern fixtures keep the unrefined
+                // running body untouched.
+                int body_n = cg->AddOp("refine", {last_node}, {},
+                                        feat.name + ":refine");
 
                 // Build a resolve_(edge|face)_ref op per ref and feed
                 // the resulting sub-shape nodes as variadic edge inputs
@@ -821,7 +929,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                        ? "resolve_face_ref"
                                        : "resolve_edge_ref";
                     int rn = AddResolveRefNode(*cg, op,
-                                                last_node, p.edges[k],
+                                                body_n, p.edges[k],
                                                 opt.topo_tolerance,
                                                 feat.name + ":edge");
                     edge_nodes.push_back(rn);
@@ -832,13 +940,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 if constexpr (std::is_same_v<T, FeatPayloadFillet>)
                 {
                     int r = cg->AddConst(p.radius, "radius");
-                    node = cg->AddOp("fillet", {last_node, r},
+                    node = cg->AddOp("fillet", {body_n, r},
                                       edge_nodes, feat.name);
                 }
                 else
                 {
                     int d = cg->AddConst(p.distance1, "dist");
-                    node = cg->AddOp("chamfer", {last_node, d},
+                    node = cg->AddOp("chamfer", {body_n, d},
                                       edge_nodes, feat.name);
                 }
             }

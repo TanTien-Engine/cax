@@ -614,7 +614,7 @@ void w_TopoAlgo_thru_sections()
 
     auto naming = brepkit::GlobalConfig::Instance()->GetTopoNaming();
     auto vt = brepkit::GlobalConfig::Instance()->GetVersionTree();
-    auto shape = brepkit::TopoAlgo::ThruSections(wires, op_id, naming, vt);
+    auto shape = brepkit::TopoAlgo::ThruSections(wires, false, op_id, naming, vt);
     brepkit::return_topo_shape(shape);
 }
 

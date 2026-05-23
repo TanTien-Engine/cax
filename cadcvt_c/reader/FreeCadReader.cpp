@@ -2000,6 +2000,47 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             // is read back by the Replayer to pick fuse vs cut.
             feat.ext_strings["freecad_type"] = pending.type;
         }
+        else if (pending.type == "PartDesign::AdditiveLoft" ||
+                 pending.type == "PartDesign::SubtractiveLoft")
+        {
+            // FreeCAD Loft (PartDesign::AdditiveLoft / SubtractiveLoft).
+            // Properties of interest:
+            //   Profile  -> LinkSub(sketch)         anchor section
+            //   Sections -> LinkList(sketch, ...)   remaining sections
+            //   Closed                              loop back to first
+            //   Ruled                               straight-edge ruled surface
+            // Without AdditiveLoft support the first body op silently
+            // becomes Opaque and every downstream Pad / Pocket / Mirror
+            // / Fillet operates on a missing base, so the whole part
+            // ends up wrong (see Page_020_Exercise2D-12).
+            FeatPayloadLoft pl;
+            LinkRef profile = PropLink(props, "Profile");
+            if (!profile.object_name.empty())
+            {
+                auto sid = m_name_to_id.find(profile.object_name);
+                if (sid != m_name_to_id.end()) {
+                    pl.profile_sketch_ids.push_back(sid->second);
+                }
+            }
+            for (const auto& sec_name : PropLinkList(props, "Sections"))
+            {
+                auto sid = m_name_to_id.find(sec_name);
+                if (sid != m_name_to_id.end()) {
+                    pl.profile_sketch_ids.push_back(sid->second);
+                }
+            }
+            pl.closed = PropBool(props, "Closed", false);
+
+            // Ruled isn't representable in FeatPayloadLoft yet; preserve
+            // the intent so a future loft op can pick it up.
+            if (PropBool(props, "Ruled", false)) {
+                feat.ext_params["ruled"] = 1.0;
+            }
+
+            feat.type = FeatType::Loft;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
         else if (pending.type == "PartDesign::Fillet")
         {
             FeatPayloadFillet pl;
@@ -2391,7 +2432,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             // types were already filtered out by IsSkipType /
             // IsContainerType at the top of this loop, so anything
             // reaching here is a feature kind we just don't model
-            // yet (e.g. Loft, Revolution, Sweep, ...). In strict
+            // yet. In strict
             // mode this is an error; otherwise we preserve it as
             // Opaque so a later pass can recognise it.
             if (m_strict)

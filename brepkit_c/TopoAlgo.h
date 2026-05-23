@@ -78,7 +78,10 @@ public:
 	static std::shared_ptr<TopoShape> ThickSolid(const std::shared_ptr<TopoShape>& shape, const std::vector<std::shared_ptr<TopoShape>>& faces, float offset,
 		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+	// is_solid: true makes the result a closed solid (FreeCAD AdditiveLoft
+	// expects this), false leaves it as a shell.
 	static std::shared_ptr<TopoShape> ThruSections(const std::vector<std::shared_ptr<TopoShape>>& wires,
+		bool is_solid = false,
 		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 	static std::shared_ptr<TopoShape> OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid,

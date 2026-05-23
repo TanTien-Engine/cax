@@ -233,6 +233,17 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
                << " angle=" << Num(p.angle, adec)
                << " flip=" << (p.flip_direction ? 1 : 0);
         }
+        else if constexpr (std::is_same_v<T, cadapp::FeatPayloadLoft>) {
+            os << "loft profile_count=" << p.profile_sketch_ids.size()
+               << " closed=" << (p.closed ? 1 : 0);
+            for (size_t li = 0; li < p.profile_sketch_ids.size(); ++li) {
+                os << (li == 0 ? " profiles=[" : ",")
+                   << p.profile_sketch_ids[li];
+            }
+            if (!p.profile_sketch_ids.empty()) {
+                os << "]";
+            }
+        }
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadSweep>) {
             // Spine sketch id rides in ext_params (see reader notes);
             // surface it here so the golden line carries both the

@@ -28,14 +28,14 @@
 //   - PartDesign::Groove          -> FeatPayloadRevolve (CutRevolve)
 //   - PartDesign::AdditivePipe /
 //     SubtractivePipe             -> FeatPayloadSweep
+//   - PartDesign::AdditiveLoft /
+//     SubtractiveLoft             -> FeatPayloadLoft
 //   - PartDesign::Fillet          -> FeatPayloadFillet
 //   - PartDesign::Chamfer         -> FeatPayloadChamfer
 //   - PartDesign::Thickness       -> FeatPayloadShell
 //   - Part::Box / Cylinder / Sphere / Cone / Torus -> Prim*
 //
-// Out of scope in v1 (logged into DocumentIR via Opaque):
-//   - Loft
-//   - Mirrored / LinearPattern / PolarPattern
+// Out of scope (logged into DocumentIR via Opaque):
 //   - Body / Part container hierarchy (we process features in
 //     document order; assumes the file lists features in modeling
 //     order, which is the FreeCAD default)

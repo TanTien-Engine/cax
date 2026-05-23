@@ -248,6 +248,43 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		});
 
+	// loft: BRepOffsetAPI_ThruSections across >= 2 section wires.
+	// Profiles are variadic so the same op handles two-section and
+	// multi-section lofts without bumping op arity. The is_solid flag
+	// rides as a positional input because the FreeCAD AdditiveLoft
+	// path needs a solid, while a future shell-only caller can pass
+	// false and skip the cap.
+	//
+	// Post-step: ShapeUpgrade_UnifySameDomain (via TopoAlgo::UnifySameDomain).
+	// FreeCAD's PartDesign::AdditiveLoft defaults Refine=true and pipes
+	// the ThruSections result through the same upgrader. Without that
+	// pass our loft body keeps every per-section seam edge plus any
+	// degenerate edges OCCT introduces along the side surface; a later
+	// Fillet that lands on (or near) one of those degenerate / split
+	// edges builds a self-intersecting blend face and shows up as a
+	// big bad patch (see Page_020_Exercise2D-12: the trailing Fillet
+	// on Mirrored.Edge12 left a phantom blend until we refined the
+	// loft body here).
+	reg.Define("loft", {"is_solid"}, {"profiles"},
+		[](EvalCtx& ctx) -> Val {
+			bool is_solid = ctx.Bool(0);
+			auto profile_vals = ctx.VarShapes();
+			std::vector<std::shared_ptr<brepkit::TopoShape>> wires;
+			wires.reserve(profile_vals.size());
+			for (auto& pv : profile_vals) {
+				if (pv.shape) wires.push_back(pv.shape);
+			}
+			if (wires.size() < 2) return {};
+			auto shp = brepkit::TopoAlgo::ThruSections(
+				wires, is_solid, ctx.op_id, ctx.tn);
+			if (!shp) return {};
+			// Refine: same op_id so the downstream resolver still sees
+			// one naming layer per "loft" feature instead of two.
+			auto refined = brepkit::TopoAlgo::UnifySameDomain(
+				shp, ctx.op_id, ctx.tn);
+			return MakeShapeVal(refined ? refined : shp);
+		});
+
 	reg.Define("mirror", {"shape", "origin", "normal"}, {},
 		[](EvalCtx& ctx) -> Val {
 			auto sv = ctx.GetShape(0);
@@ -259,6 +296,24 @@ void RegisterBuiltinOps(OpRegistry& reg)
 				sm::vec3((float)n[0], (float)n[1], (float)n[2]),
 				ctx.op_id, ctx.tn);
 			return MakeShapeVal(shp);
+		});
+
+	// refine: ShapeUpgrade_UnifySameDomain on the input shape.
+	// Returns the input unchanged when the upgrader produces an empty
+	// result (e.g. shape has no merge-able adjacent faces). Used by
+	// the Mirror feature replay to collapse the per-Original fuse
+	// seams before a downstream Fillet picks edges -- see Page_020:
+	// pre-refine Mirror left 68 faces / 159 edges where FreeCAD had
+	// 42 / 113, and the Fillet's edge-ref resolver matched against
+	// one of those phantom seam edges, producing a self-intersecting
+	// blend with negative volume and a hundreds-of-metres bbox.
+	reg.Define("refine", {"shape"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto refined = brepkit::TopoAlgo::UnifySameDomain(
+				sv.shape, ctx.op_id, ctx.tn);
+			return MakeShapeVal(refined ? refined : sv.shape);
 		});
 
 	reg.Define("linear_pattern",

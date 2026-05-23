@@ -709,10 +709,11 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_ptr<TopoShape>>& wires,
+                                                  bool is_solid,
                                                   uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                                   const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    BRepOffsetAPI_ThruSections thru_sections(Standard_False);
+    BRepOffsetAPI_ThruSections thru_sections(is_solid ? Standard_True : Standard_False);
     for (auto& wire : wires) {
         thru_sections.AddWire(wire->ToWire());
     }
