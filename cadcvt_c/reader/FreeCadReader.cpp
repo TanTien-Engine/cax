@@ -1887,6 +1887,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     pl.axis_dir[0]    = ad[0];
                     pl.axis_dir[1]    = ad[1];
                     pl.axis_dir[2]    = ad[2];
+                    axis_resolved = true;
                 }
             }
             if (!axis.object_name.empty())
@@ -1896,18 +1897,27 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     : axis.object_name + "." + sub0;
             }
 
-            // Base offset (PropertyVector). Almost always (0,0,0) but
-            // FreeCAD will write a non-zero Base when the user types it
-            // by hand instead of picking a ReferenceAxis.
-            auto base_prop = FindProperty(props, "Base");
-            if (base_prop)
+            // Base offset (PropertyVector). Only consult Base when no
+            // ReferenceAxis was resolved -- FreeCAD's ProfileBased::
+            // updateAxis() writes the resolved axis origin BACK into the
+            // Base property whenever ReferenceAxis is set, so adding
+            // Base on top of a resolved ReferenceAxis would double-count
+            // the origin (see Page_078_Exercise3D-19's Groove: DatumLine001
+            // placement (0, 45.65, 0) mm + Base (0, 45.65, 0) mm = wrong
+            // axis at y=91 mm, which made the CutRevolve miss the body and
+            // leave a free-standing swept ring instead of a groove).
+            if (!axis_resolved)
             {
-                auto pv = base_prop.child("PropertyVector");
-                if (pv)
+                auto base_prop = FindProperty(props, "Base");
+                if (base_prop)
                 {
-                    pl.axis_origin[0] += AttrDouble(pv, "valueX", 0.0) * m_unit_scale;
-                    pl.axis_origin[1] += AttrDouble(pv, "valueY", 0.0) * m_unit_scale;
-                    pl.axis_origin[2] += AttrDouble(pv, "valueZ", 0.0) * m_unit_scale;
+                    auto pv = base_prop.child("PropertyVector");
+                    if (pv)
+                    {
+                        pl.axis_origin[0] += AttrDouble(pv, "valueX", 0.0) * m_unit_scale;
+                        pl.axis_origin[1] += AttrDouble(pv, "valueY", 0.0) * m_unit_scale;
+                        pl.axis_origin[2] += AttrDouble(pv, "valueZ", 0.0) * m_unit_scale;
+                    }
                 }
             }
 

@@ -38,4 +38,4 @@ feat 12 name=Groove type=CutRevolve suppressed=0 payload=revolve sketch_id=11 ax
 feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=0
 feat 16 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=16
-feat 17 name=Groove001 type=CutRevolve suppressed=0 payload=revolve sketch_id=16 axis_o=(-0.034,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=0
+feat 17 name=Groove001 type=CutRevolve suppressed=0 payload=revolve sketch_id=16 axis_o=(-0.017,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=0
