@@ -1,0 +1,22 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=17 cons=0
+  geo 1 type=Line constr=0 params=[-0.037,0.000,-0.042,0.000]
+  geo 2 type=Arc constr=0 params=[0.000,0.000,0.042,2.6180,3.1416]
+  geo 3 type=Arc constr=0 params=[-0.028,0.016,0.010,0.7081,2.6180]
+  geo 4 type=Arc constr=0 params=[0.000,0.040,0.027,3.8497,5.2360]
+  geo 5 type=Line constr=0 params=[0.014,0.017,0.052,0.039]
+  geo 6 type=Arc constr=0 params=[0.056,0.032,0.008,5.2360,8.3776]
+  geo 7 type=Line constr=0 params=[0.060,0.026,0.021,0.003]
+  geo 8 type=Arc constr=0 params=[0.023,0.000,0.004,2.0944,3.1416]
+  geo 9 type=Line constr=0 params=[0.019,0.000,0.005,0.000]
+  geo 10 type=Arc constr=0 params=[0.000,0.000,0.005,0.0000,3.1416]
+  geo 11 type=Line constr=0 params=[-0.005,0.000,-0.027,0.000]
+  geo 12 type=Arc constr=0 params=[0.000,0.000,0.027,2.6180,3.1416]
+  geo 13 type=Arc constr=0 params=[-0.028,0.016,0.005,5.7596,8.9012]
+  geo 14 type=Arc constr=0 params=[0.000,0.000,0.037,2.6180,3.1416]
+  geo 15 type=Line constr=1 params=[0.000,0.000,-0.036,0.021]
+  geo 16 type=Circle constr=0 params=[0.056,0.032,0.005]
+  geo 17 type=Line constr=1 params=[0.000,0.000,0.062,0.036]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+feat 11 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(0.000,1.000,0.000)
