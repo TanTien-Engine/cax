@@ -1744,11 +1744,55 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         // records lineage in one update rather than treating the
         // shelled faces as orphans. The merged chain_hist effectively
         // maps orig faces directly to final faces.
-        TopTools_ListOfShape join_args;
-        join_args.Append(unified_solid);
-        opencascade::handle<BRepTools_History> join_hist =
-            new BRepTools_History(join_args, thick_solid);
-        chain_hist->Merge(join_hist);
+        //
+        // BRepOffsetAPI_MakeThickSolid (OCCT 8.0rc) does not expose
+        // History(), so we have to build one via the template ctor
+        // that walks every sub-shape of the args and queries
+        // Modified/Generated/IsDeleted on the algo. On Page_037 the
+        // ByJoin path returns IsDone()==true but leaves dangling
+        // BRepOffset_MakeOffset::myAsDes entries, and one of those
+        // sub-shape queries AVs inside TKBRep. Wrap the ctor in the
+        // same SEH harness Chamfer/Fillet use so the AV demotes to a
+        // skipped Merge (shelled faces become naming orphans for
+        // this op) instead of tearing down the editor.
+        opencascade::handle<BRepTools_History> join_hist;
+        {
+            TopTools_ListOfShape join_args;
+            join_args.Append(unified_solid);
+            struct Ctx {
+                TopTools_ListOfShape* args;
+                BRepOffsetAPI_MakeThickSolid* algo;
+                opencascade::handle<BRepTools_History>* out;
+                bool ok;
+            };
+            Ctx ctx{&join_args, &thick_solid, &join_hist, false};
+            auto runner = +[](void* p) -> void {
+                auto* c = static_cast<Ctx*>(p);
+                try {
+                    *c->out = new BRepTools_History(*c->args, *c->algo);
+                    c->ok = true;
+                } catch (...) {
+                    c->ok = false;
+                }
+            };
+#ifdef _MSC_VER
+            int seh = seh_call_void(runner, &ctx);
+#else
+            runner(&ctx);
+            int seh = 0;
+#endif
+            if (seh < 0 || !ctx.ok) {
+                std::fprintf(stderr,
+                             "[TopoAlgo::ThickSolid] BRepTools_History "
+                             "construction faulted (seh=%d ok=%d); "
+                             "naming orphans this op\n",
+                             seh, (int)ctx.ok);
+                join_hist.Nullify();
+            }
+        }
+        if (!join_hist.IsNull()) {
+            chain_hist->Merge(join_hist);
+        }
 
         brepkit::TopoShape new_ts(thick_solid.Shape());
         pid_map = tn->Update(chain_hist, new_ts, *shape, op_id);
