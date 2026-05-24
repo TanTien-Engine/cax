@@ -707,7 +707,17 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
                                          uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                          const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    BRepAlgoAPI_Cut algo(s1->GetShape(), s2->GetShape());
+    // 1e-6 m fuzzy, mirrored from Fuse below. Without it OCCT silently
+    // returns the base shape unchanged whenever the tool touches an
+    // existing face plane-on (e.g. Page_031's sphere equator sitting
+    // on the Pad's bottom face) -- the boolean "looks like it didn't
+    // happen" because the unsubtracted base flows out as the result.
+    BRepAlgoAPI_Cut algo;
+    TopTools_ListOfShape args;  args.Append(s1->GetShape());
+    TopTools_ListOfShape tools; tools.Append(s2->GetShape());
+    algo.SetArguments(args);
+    algo.SetTools(tools);
+    algo.SetFuzzyValue(1e-6);
     algo.Build();
 
     if (!algo.IsDone()) {
@@ -768,8 +778,14 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
                                             uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                             const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    BRepAlgoAPI_Common algo(s1->GetShape(), s2->GetShape());
-    //algo.Build();
+    // Same fuzzy-tolerance reasoning as Cut / Fuse above.
+    BRepAlgoAPI_Common algo;
+    TopTools_ListOfShape args;  args.Append(s1->GetShape());
+    TopTools_ListOfShape tools; tools.Append(s2->GetShape());
+    algo.SetArguments(args);
+    algo.SetTools(tools);
+    algo.SetFuzzyValue(1e-6);
+    algo.Build();
 
     if (!algo.IsDone()) {
         algo.DumpErrors(std::cerr);
