@@ -880,35 +880,33 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                // Refine the running body before the edge resolver
-                // looks at it. Upstream pattern features (Mirrored
-                // with N Originals -> N pairwise fuse / cut steps,
-                // MultiTransform, LinearPattern) accumulate seam
-                // edges along each pairwise boundary -- the body's
-                // volume / surface area / bbox stay perfect but
-                // single logical edges get split into co-linear
-                // sub-segments that share the same support curve.
-                // resolve_edge_ref scores by midpoint + tangent +
-                // length, and a sub-segment whose midpoint sits
-                // closest to FreeCAD's saved midpoint can outscore
-                // the longer parent edge. BRepFilletAPI then runs
-                // the blend along a sub-segment that doesn't
-                // smoothly extend into its neighbouring tangent
-                // face, the blend self-intersects, and the result
-                // comes out with negative volume and a multi-hundred-
-                // metre bbox (see Page_020_Exercise2D-12 Mirrored.
-                // Edge12, where the post-Mirror body had 68 / 159
-                // faces / edges where FreeCAD's had 42 / 113).
-                // UnifySameDomain -- the same upgrade FreeCAD's
-                // dressup features run when Refine=true, which is
-                // the default -- collapses those co-domain splits,
-                // so the resolver sees one logical edge per FreeCAD
-                // edge and the blend stays on the intended tangent
-                // stripe. Scoped to the dressup feature so other
-                // Mirror / Pattern fixtures keep the unrefined
-                // running body untouched.
-                int body_n = cg->AddOp("refine", {last_node}, {},
-                                        feat.name + ":refine");
+                // c17a1d22 added a "refine before dressup" step here
+                // (UnifySameDomain on last_node) to clean up Mirror /
+                // Pattern sub-segment seams before the resolver looks
+                // at the body. That fix specifically targeted
+                // Page_020_Exercise2D-12 Mirrored.Edge12 where the
+                // post-Mirror body had 68/159 faces/edges vs FreeCAD's
+                // 42/113, and an un-refined sub-segment was outscoring
+                // the parent edge in the resolver.
+                //
+                // For the current fixture set this same refine
+                // SHIFTS the matched edge to a different position
+                // (refine merges N sub-segments into one long edge
+                // with a midpoint that doesn't sit where FreeCAD's
+                // ref midpoint is, so the resolver lands on the
+                // wrong cax edge and the fillet runs at the wrong
+                // place). The refine-after-primitive pass we now
+                // run after Pad/Pocket/Revolve/Sweep/Loft has
+                // mostly subsumed the upstream cleanup the dressup-
+                // local refine was doing, so we point the resolver
+                // back at last_node directly.
+                //
+                // If Page_020 (or similar Mirror+Fillet fixtures)
+                // regresses, the right fix is to make the refine-
+                // after-primitive pass strictly include the Mirror
+                // / MultiTransform output, not to re-add a refine
+                // here.
+                int body_n = last_node;
 
                 // Build a resolve_(edge|face)_ref op per ref and feed
                 // the resulting sub-shape nodes as variadic edge inputs
