@@ -1,0 +1,30 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=13 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,-0.006,0.011]
+  geo 2 type=Line constr=0 params=[-0.006,0.011,0.011,0.021]
+  geo 3 type=Line constr=0 params=[0.011,0.021,0.013,0.017]
+  geo 4 type=Line constr=0 params=[0.013,0.017,0.022,0.022]
+  geo 5 type=Line constr=0 params=[0.022,0.022,0.019,0.026]
+  geo 6 type=Line constr=0 params=[0.019,0.026,0.037,0.036]
+  geo 7 type=Line constr=0 params=[0.037,0.036,0.067,0.036]
+  geo 8 type=Line constr=0 params=[0.067,0.021,0.037,0.021]
+  geo 9 type=Line constr=0 params=[0.037,0.021,0.000,0.000]
+  geo 10 type=Line constr=1 params=[0.011,0.021,0.019,0.026]
+  geo 11 type=Line constr=1 params=[0.037,0.036,0.037,0.021]
+  geo 12 type=Line constr=0 params=[0.067,0.036,0.067,0.021]
+  geo 13 type=Point constr=0 params=[0.000,0.000]
+sketch 11 name=Sketch001 plane_origin=(-0.006,0.011,0.000) plane_normal=(-0.500,0.866,0.000) plane_xdir=(-0.866,-0.500,0.000) geos=2 cons=0
+  geo 14 type=Line constr=1 params=[-0.020,0.010,0.000,-0.010]
+  geo 15 type=Circle constr=0 params=[-0.010,0.000,0.005]
+sketch 13 name=Sketch002 plane_origin=(0.000,0.036,0.000) plane_normal=(0.000,1.000,0.000) plane_xdir=(-1.000,0.000,0.000) geos=4 cons=0
+  geo 16 type=Circle constr=0 params=[-0.087,0.000,0.025]
+  geo 17 type=Line constr=1 params=[-0.087,0.000,-0.037,0.000]
+  geo 18 type=Point constr=0 params=[0.000,0.000]
+  geo 19 type=Circle constr=0 params=[-0.087,0.000,0.013]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.000 end=4 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
+feat 14 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.025 end=0 flip=0
+feat 15 name=Box type=PrimBox suppressed=0 payload=box l=0.150 w=0.050 h=0.030

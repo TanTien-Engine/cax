@@ -1,0 +1,23 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=7 cons=0
+  geo 1 type=Line constr=0 params=[0.035,-0.049,0.057,0.019]
+  geo 2 type=Line constr=1 params=[0.057,0.019,0.000,0.060]
+  geo 3 type=Line constr=1 params=[0.000,0.060,-0.057,0.019]
+  geo 4 type=Line constr=1 params=[-0.057,0.019,-0.035,-0.049]
+  geo 5 type=Line constr=0 params=[-0.035,-0.049,0.035,-0.049]
+  geo 6 type=Circle constr=1 params=[0.000,0.000,0.060]
+  geo 7 type=Line constr=0 params=[-0.035,-0.049,0.057,0.019]
+sketch 14 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=7 cons=0
+  geo 8 type=Line constr=1 params=[0.035,-0.049,0.057,0.019]
+  geo 9 type=Line constr=1 params=[0.057,0.019,0.000,0.060]
+  geo 10 type=Line constr=1 params=[0.000,0.060,-0.057,0.019]
+  geo 11 type=Line constr=1 params=[-0.057,0.019,-0.035,-0.049]
+  geo 12 type=Line constr=1 params=[-0.035,-0.049,0.035,-0.049]
+  geo 13 type=Circle constr=0 params=[0.000,0.000,0.060]
+  geo 14 type=Line constr=1 params=[-0.035,-0.049,0.057,0.019]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.030 dist2=0.000 end=0 flip=0
+feat 12 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.044 h=0.140
+feat 14 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=14
+feat 15 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=1
+feat 13 name=Array type=Unknown suppressed=0 payload=opaque freecad_type=Part::FeaturePython

@@ -1,0 +1,31 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=0
+  geo 1 type=Arc constr=0 params=[0.225,0.000,0.225,3.1416,3.9270]
+  geo 2 type=Line constr=1 params=[0.000,0.000,0.225,0.000]
+  geo 3 type=Line constr=1 params=[0.225,0.000,0.066,-0.159]
+sketch 10 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 4 type=Circle constr=0 params=[0.000,0.000,0.044]
+  geo 5 type=Circle constr=0 params=[0.000,0.000,0.069]
+sketch 12 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 6 type=Circle constr=0 params=[0.000,0.000,0.113]
+  geo 7 type=Circle constr=0 params=[0.000,0.000,0.044]
+sketch 15 name=Sketch003 plane_origin=(0.066,-0.159,0.000) plane_normal=(0.707,-0.707,0.000) plane_xdir=(0.000,0.000,1.000) geos=2 cons=0
+  geo 8 type=Circle constr=0 params=[0.000,0.000,0.044]
+  geo 9 type=Circle constr=0 params=[0.000,0.000,0.113]
+sketch 17 name=Sketch004 plane_origin=(0.066,-0.159,0.000) plane_normal=(0.707,-0.707,0.000) plane_xdir=(0.000,0.000,1.000) geos=2 cons=0
+  geo 10 type=Circle constr=0 params=[0.000,0.000,0.044]
+  geo 11 type=Circle constr=0 params=[0.000,0.000,0.065]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
+feat 11 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=10 spine_sketch_id=9
+feat 12 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=12
+feat 13 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.037 dist2=0.000 end=0 flip=1
+feat 15 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=15
+feat 16 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.037 dist2=0.000 end=0 flip=0
+feat 17 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=17
+feat 18 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.047 dist2=0.000 end=0 flip=0
+feat 19 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.010 edges=1
+feat 20 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.015 edges=1
+feat 21 name=Fillet002 type=Fillet suppressed=0 payload=fillet radius=0.015 edges=1
+feat 22 name=Fillet003 type=Fillet suppressed=0 payload=fillet radius=0.010 edges=1
+feat 23 name=Box type=PrimBox suppressed=0 payload=box l=0.400 w=0.400 h=0.190
