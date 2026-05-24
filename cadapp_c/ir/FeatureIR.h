@@ -235,9 +235,13 @@ struct FeatPayloadMultiTransform
 struct FeatPayloadBoolean
 {
     // Fuse / Cut / Common. Operands are referenced by feature_id
-    // (other features in this DocumentIR producing solids).
-    uint32_t lhs_feature_id = 0xFFFFFFFF;
-    uint32_t rhs_feature_id = 0xFFFFFFFF;
+    // (other features in this DocumentIR producing solids). Order is
+    // significant: for Cut the first operand is the base (kept) and
+    // subsequent operands are tools subtracted from it; for Fuse /
+    // Common all operands are folded pairwise in order. FreeCAD's
+    // Part::Cut maps to exactly two operands; Part::MultiFuse and
+    // Part::MultiCommon can carry any number.
+    std::vector<uint32_t> operand_feature_ids;
 };
 
 struct FeatPayloadPrimBox

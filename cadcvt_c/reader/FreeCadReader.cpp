@@ -1533,7 +1533,25 @@ size_t StashFilletRefsByEdgeDiff(
 
         // Walk samples and pick out maximal runs of far samples of
         // length >= kMinRunLen. Each run is one consumed sub-section
-        // of the BASE edge.
+        // of the BASE edge. Only emit refs for runs that cover >=
+        // kRunFracMin of the edge: a near-full run is a real
+        // "consumed edge" candidate, a smaller run is almost always
+        // either an eaten neighbor (the fillet of an ADJACENT picked
+        // edge ate part of this one but we don't want to fillet THIS
+        // edge separately) or a refine-merged sub-section we'd need
+        // to pre-split the cax body to handle. The pre-split path
+        // (split_body_at_points + a follow-up fillet on a now-shorter
+        // sub-edge) destabilised ChFi3d_Builder::Compute on
+        // Page_027_Exercise2D-19's body, crashing inside
+        // TopOpeBRepBuild's old wire-edge build path while loading
+        // an emerging-from-split sub-edge's adaptor curve. Until
+        // that crash is root-caused we conservatively skip partial
+        // runs and let the caller fall back to the index-based path
+        // when the resulting emitted count drops to zero -- the old
+        // behaviour for the unfixable case, but at least the
+        // soft-dihedral fully-consumed cases (the original
+        // Page_027 mismatch) still get caught here.
+        constexpr double kRunFracMin = 0.70;
         int run_count = 0;
         int k = 0;
         while (k < kSampleCount)
@@ -1542,18 +1560,22 @@ size_t StashFilletRefsByEdgeDiff(
             int run_lo = k;
             while (k < kSampleCount && far_samples[k]) ++k;
             int run_hi = k - 1;
-            if (run_hi - run_lo + 1 < kMinRunLen) continue;
+            int run_len_samples = run_hi - run_lo + 1;
+            if (run_len_samples < kMinRunLen) continue;
+
+            double frac_lo = double(run_lo) / double(kSampleCount - 1);
+            double frac_hi = double(run_hi) / double(kSampleCount - 1);
+            double run_frac = frac_hi - frac_lo + 1.0 / double(kSampleCount - 1);
+            if (run_frac < kRunFracMin) {
+                std::fprintf(stderr,
+                    "[edge_diff]   skip partial-run base_idx=%d "
+                    "run=%d..%d/%d frac=%.2f (<%.2f)\n",
+                    i, run_lo, run_hi, kSampleCount - 1,
+                    run_frac, kRunFracMin);
+                continue;
+            }
             ++run_count;
 
-            // Param + 3D point at run boundaries (split hints) and
-            // run midpoint (ref anchor). Boundaries are the FIRST
-            // off-curve sample and the LAST off-curve sample; the
-            // actual transition lies somewhere between (lo-1)..lo
-            // and hi..(hi+1), but the run-end sample point is the
-            // safest in-merged-curve point we can pick that still
-            // sits inside the consumed stretch.
-            double frac_lo = double(run_lo)              / double(kSampleCount - 1);
-            double frac_hi = double(run_hi)              / double(kSampleCount - 1);
             double frac_md = 0.5 * (frac_lo + frac_hi);
             double t_md    = first + (last - first) * frac_md;
 
@@ -1573,11 +1595,8 @@ size_t StashFilletRefsByEdgeDiff(
             r.normal[0] = tan.X();
             r.normal[1] = tan.Y();
             r.normal[2] = tan.Z();
-            // Approximate run arc length: linear interpolation of the
-            // edge's full arc length by parameter fraction. Used only
-            // as a resolver tiebreaker so a coarse estimate is fine.
             double full_len = cadapp::EdgeArcLength(e);
-            r.measure       = full_len * (frac_hi - frac_lo) * unit_scale;
+            r.measure       = full_len * run_frac * unit_scale;
 
             std::string key = "edge_ref_" + std::to_string(pushed) + "_name";
             if (pushed < authored_sub_names.size()) {
@@ -1587,37 +1606,13 @@ size_t StashFilletRefsByEdgeDiff(
             }
             out_refs.push_back(r);
 
-            // Split hints: drop one vertex at each run boundary that
-            // isn't already the edge's own endpoint. cax's Replayer
-            // splits the running body's edges at these points before
-            // resolve_edge_ref runs, so a merged cax edge becomes
-            // multiple sub-edges and ChFi3d can fillet just the
-            // sub-stretch FreeCAD picked. Boundary samples adjacent
-            // to the edge's own endpoint (run_lo==0 or run_hi==N-1)
-            // need no split -- the endpoint vertex is already a
-            // natural break.
-            auto push_hint = [&](const gp_Pnt& p) {
-                std::array<double, 3> hp = {{
-                    p.X() * unit_scale,
-                    p.Y() * unit_scale,
-                    p.Z() * unit_scale
-                }};
-                // Dedup at 10 micron (in BRP units) so multiple refs
-                // on the same merged edge don't double-add.
-                for (const auto& q : out_split_hints) {
-                    double dx = hp[0] - q[0];
-                    double dy = hp[1] - q[1];
-                    double dz = hp[2] - q[2];
-                    if (dx * dx + dy * dy + dz * dz < 1e-10) return;
-                }
-                out_split_hints.push_back(hp);
-            };
-            if (run_lo > 0) {
-                push_hint(sample_pts[run_lo]);
-            }
-            if (run_hi < kSampleCount - 1) {
-                push_hint(sample_pts[run_hi]);
-            }
+            // Intentionally NO split hints. See kRunFracMin block
+            // above: partial-run splits crash ChFi3d on Page_027, so
+            // we only emit refs for runs that span (almost) the whole
+            // edge -- a regime where pre-splitting is unnecessary
+            // (the cax edge is already the right edge to fillet).
+            // `out_split_hints` is left untouched.
+            (void)out_split_hints;
 
             std::fprintf(stderr,
                 "[edge_diff]   #%zu base_idx=%d run=%d..%d/%d "
@@ -1626,7 +1621,7 @@ size_t StashFilletRefsByEdgeDiff(
                 pushed, i, run_lo, run_hi, kSampleCount - 1,
                 mid.X(), mid.Y(), mid.Z(),
                 tan.X(), tan.Y(), tan.Z(),
-                full_len * (frac_hi - frac_lo), full_len);
+                full_len * run_frac, full_len);
             ++pushed;
         }
         if (run_count == 0) ++kept;
@@ -2100,6 +2095,20 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         emission.push_back(p);
     };
 
+    // body_name -> feature_id of its tip feature (last child of the
+    // body, or the explicit "Tip" link). Built alongside the emission
+    // walk and consumed by Part::Cut / Fuse / Common operand
+    // resolution so a Part-workbench boolean against "Body" maps to
+    // the body's final feature node.
+    //
+    // body_name -> "first non-sketch group child"'s name. Used so the
+    // reader can mark that child as a body root (no implicit
+    // last_node fuse). For multi-body docs without this marker an
+    // Additive primitive in body N would fuse into body N-1's tip.
+    std::unordered_map<std::string, uint32_t>    body_tip_id;
+    std::unordered_map<std::string, std::string> body_first_solid;
+    std::unordered_map<std::string, std::string> name_to_body;
+
     for (const auto& pending : queue)
     {
         if (!IsContainerType(pending.type)) {
@@ -2110,12 +2119,50 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             continue;
         }
         auto props = it->second.child("Properties");
-        for (const auto& child_name : PropLinkList(props, "Group"))
+        auto group = PropLinkList(props, "Group");
+        for (const auto& child_name : group)
         {
             auto cit = by_name.find(child_name);
             if (cit != by_name.end()) {
                 push_if_unseen(cit->second);
+                name_to_body[child_name] = pending.name;
             }
+        }
+        // Pick the tip: prefer the explicit Tip link, else the last
+        // emittable child in Group (skip sketches / containers /
+        // datums). Pad / Pocket / primitives all count.
+        LinkRef tip_link = PropLink(props, "Tip");
+        std::string tip_name;
+        if (!tip_link.object_name.empty()) {
+            tip_name = tip_link.object_name;
+        } else {
+            for (auto rit = group.rbegin(); rit != group.rend(); ++rit) {
+                auto cit = by_name.find(*rit);
+                if (cit == by_name.end()) continue;
+                if (IsSkipType(cit->second->type)) continue;
+                if (IsContainerType(cit->second->type)) continue;
+                tip_name = *rit;
+                break;
+            }
+        }
+        if (!tip_name.empty()) {
+            auto nit = m_name_to_id.find(tip_name);
+            if (nit != m_name_to_id.end()) {
+                body_tip_id[pending.name] = nit->second;
+            }
+        }
+        // Find the first emittable child that yields a 3D body. A
+        // sketch alone never produces last_node, so the first feature
+        // to be marked "body root" should be the first non-sketch
+        // child (Pad, primitive, ...).
+        for (const auto& child_name : group) {
+            auto cit = by_name.find(child_name);
+            if (cit == by_name.end()) continue;
+            const std::string& t = cit->second->type;
+            if (IsSkipType(t) || IsContainerType(t)) continue;
+            if (t == "Sketcher::SketchObject") continue;
+            body_first_solid[pending.name] = child_name;
+            break;
         }
         // Mark the Body itself as seen so it doesn't get re-queued
         // at the tail; we never emit a feature for the container.
@@ -2145,6 +2192,23 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         FeatureIR feat;
         feat.id   = pending.feature_id;
         feat.name = pending.name;
+
+        // Body context: tag every body-owned feature with its body
+        // name, and mark the first 3D-producing child as a body root
+        // so the Replayer can start a fresh shape rather than fusing
+        // into the previous body's tip. Standalone Part::* objects
+        // outside any body carry no tag.
+        {
+            auto bit = name_to_body.find(pending.name);
+            if (bit != name_to_body.end())
+            {
+                feat.ext_strings["freecad_body"] = bit->second;
+                auto fit = body_first_solid.find(bit->second);
+                if (fit != body_first_solid.end() && fit->second == pending.name) {
+                    feat.ext_params["body_root"] = 1.0;
+                }
+            }
+        }
 
         if (pending.type == "Sketcher::SketchObject")
         {
@@ -3011,6 +3075,89 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.data = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
             StashOriginals(feat, PropLinkList(props, "Originals"), m_name_to_id);
+        }
+        else if (pending.type == "Part::Cut"  ||
+                 pending.type == "Part::Fuse" ||
+                 pending.type == "Part::Common")
+        {
+            // Legacy Part-workbench booleans: two operands carried
+            // as Base + Tool. Resolve each link to the feature id
+            // that produces its shape; if the link points at a
+            // PartDesign::Body container, redirect to that body's
+            // tip feature so the boolean lands on the body's final
+            // shape rather than a non-existent container node.
+            auto resolve = [&](const std::string& name) -> uint32_t
+            {
+                if (name.empty()) {
+                    return 0xFFFFFFFFu;
+                }
+                auto bit = body_tip_id.find(name);
+                if (bit != body_tip_id.end()) {
+                    return bit->second;
+                }
+                auto nit = m_name_to_id.find(name);
+                if (nit != m_name_to_id.end()) {
+                    return nit->second;
+                }
+                return 0xFFFFFFFFu;
+            };
+
+            FeatPayloadBoolean pl;
+            uint32_t base_id = resolve(PropLink(props, "Base").object_name);
+            uint32_t tool_id = resolve(PropLink(props, "Tool").object_name);
+            if (base_id != 0xFFFFFFFFu) {
+                pl.operand_feature_ids.push_back(base_id);
+            }
+            if (tool_id != 0xFFFFFFFFu) {
+                pl.operand_feature_ids.push_back(tool_id);
+            }
+
+            if (pending.type == "Part::Cut") {
+                feat.type = FeatType::Cut;
+            } else if (pending.type == "Part::Fuse") {
+                feat.type = FeatType::Fuse;
+            } else {
+                feat.type = FeatType::Common;
+            }
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "Part::MultiFuse" ||
+                 pending.type == "Part::MultiCommon")
+        {
+            // Multi-operand booleans: Shapes is an ordered LinkList.
+            // Operand resolution mirrors Part::Cut above (bodies
+            // redirect to their tips). The Replayer folds operands
+            // pairwise in list order.
+            auto resolve = [&](const std::string& name) -> uint32_t
+            {
+                if (name.empty()) {
+                    return 0xFFFFFFFFu;
+                }
+                auto bit = body_tip_id.find(name);
+                if (bit != body_tip_id.end()) {
+                    return bit->second;
+                }
+                auto nit = m_name_to_id.find(name);
+                if (nit != m_name_to_id.end()) {
+                    return nit->second;
+                }
+                return 0xFFFFFFFFu;
+            };
+
+            FeatPayloadBoolean pl;
+            for (const auto& name : PropLinkList(props, "Shapes")) {
+                uint32_t id = resolve(name);
+                if (id != 0xFFFFFFFFu) {
+                    pl.operand_feature_ids.push_back(id);
+                }
+            }
+
+            feat.type = (pending.type == "Part::MultiFuse")
+                      ? FeatType::Fuse
+                      : FeatType::Common;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
         }
         else
         {

@@ -339,6 +339,16 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
                 os << " freecad_type=" << it->second;
             }
         }
+        else if constexpr (std::is_same_v<T, cadapp::FeatPayloadBoolean>) {
+            os << "boolean operands=[";
+            for (size_t oi = 0; oi < p.operand_feature_ids.size(); ++oi) {
+                if (oi) {
+                    os << ",";
+                }
+                os << p.operand_feature_ids[oi];
+            }
+            os << "]";
+        }
         else {
             // Any payload type without a dedicated branch above. The
             // type name still appears on the feat line, so this only

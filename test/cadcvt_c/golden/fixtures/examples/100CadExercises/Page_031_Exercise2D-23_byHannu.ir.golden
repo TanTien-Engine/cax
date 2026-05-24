@@ -1,0 +1,21 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=13 cons=0
+  geo 1 type=Circle constr=0 params=[0.000,0.000,0.010]
+  geo 2 type=Circle constr=0 params=[-0.035,0.004,0.003]
+  geo 3 type=Circle constr=0 params=[0.025,-0.024,0.002]
+  geo 4 type=Circle constr=0 params=[-0.005,0.034,0.002]
+  geo 5 type=Circle constr=0 params=[0.025,0.014,0.004]
+  geo 6 type=Arc constr=0 params=[-0.035,0.004,0.009,2.2262,4.5881]
+  geo 7 type=Arc constr=0 params=[-0.005,0.034,0.003,0.1113,2.2262]
+  geo 8 type=Arc constr=0 params=[0.025,0.014,0.010,0.4528,2.0630]
+  geo 9 type=Arc constr=0 params=[0.025,-0.024,0.009,3.9692,5.7652]
+  geo 10 type=Arc constr=0 params=[-0.048,-0.104,0.100,0.8276,1.4465]
+  geo 11 type=Arc constr=0 params=[0.013,0.036,0.015,3.2529,5.2045]
+  geo 12 type=Arc constr=0 params=[-0.011,-0.004,0.050,5.7652,6.7360]
+  geo 13 type=Line constr=0 params=[-0.040,0.011,-0.007,0.037]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=0
+feat 11 name=Sphere type=PrimSphere suppressed=0 payload=sphere r=0.045
+feat 20 name=Cut type=Cut suppressed=0 payload=boolean operands=[10,11]
+feat 21 name=Sphere001 type=PrimSphere suppressed=0 payload=sphere r=0.050
+feat 22 name=Common type=Common suppressed=0 payload=boolean operands=[21,20]

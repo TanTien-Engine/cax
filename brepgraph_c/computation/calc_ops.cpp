@@ -93,6 +93,16 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		},
 		{false, false, true, false});  // is_boolean
 
+	reg.Define("common", {"shape1", "shape2"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto s1 = ctx.GetShape(0);
+			auto s2 = ctx.GetShape(1);
+			if (!s1.shape || !s2.shape) return {};
+			auto shp = brepkit::TopoAlgo::Common(s1.shape, s2.shape, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		},
+		{false, false, true, false});  // is_boolean
+
 	// Pre-split body edges at a set of point hints. Inserted into the
 	// graph before the Fillet / Chamfer dressup when the FreeCAD reader's
 	// face-pick handler detected base brep vertices that don't exist in

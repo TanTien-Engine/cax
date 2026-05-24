@@ -288,6 +288,10 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
                           bool&                step_ok,
                           FeatureToolInfo*     tool_info_out = nullptr)
 {
+    // Note: body_root=1 (first 3D feature of a new PartDesign::Body)
+    // is honored by the caller via the per-visit last_node shadow in
+    // Replay(), so by the time we land here last_node has already
+    // been forced to -1 for body roots.
     int cur = prim_node;
 
     bool   has_t   = feat.ext_params.count("placement_px") > 0;
@@ -425,6 +429,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // / mirror / MultiTransform handlers that carry an Originals list.
     std::map<uint32_t, FeatureToolInfo> feature_tools;
 
+    // feature_id -> calc-graph node id of the body shape produced by
+    // that feature. Booleans (FeatPayloadBoolean) use this to fold
+    // operand shapes together by id rather than relying on the
+    // running last_node, since a Part::Cut / MultiCommon can target
+    // earlier body tips that have already scrolled past last_node.
+    std::map<uint32_t, int> feature_nodes;
+
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
         auto& feat = doc.features[i];
@@ -439,6 +450,22 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
         int  node    = -1;
         bool step_ok = true;
+
+        // body_root=1 marks the first 3D-producing feature of a new
+        // PartDesign::Body. Shadow last_node inside the visit so the
+        // handler reads -1 (no implicit fuse with the previous body)
+        // while the outer loop still owns the persistent last_node
+        // reference. Handlers like Pad / Pocket / Revolve compose
+        // their own boolean against last_node without going through
+        // FinalizePrimitiveNode, so the override has to bracket the
+        // entire visit, not just the primitive path.
+        int prev_outer_last = last_node;
+        {
+            auto rit = feat.ext_params.find("body_root");
+            if (rit != feat.ext_params.end() && rit->second != 0.0) {
+                last_node = -1;
+            }
+        }
 
         std::visit([&](auto& p)
         {
@@ -1262,6 +1289,58 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
 
+            // ---- Boolean (Part::Cut / Fuse / Common / MultiFuse /
+            //              MultiCommon) ----
+            //
+            // The operand list was resolved at read time to feature
+            // ids that produce a shape; look each one up in
+            // feature_nodes and fold them pairwise in list order.
+            // For Cut the first operand is the kept base; for Fuse /
+            // Common the order only matters for graph layout. The
+            // boolean's result becomes the new last_node so a
+            // downstream Fillet / pattern can target it.
+            else if constexpr (std::is_same_v<T, FeatPayloadBoolean>)
+            {
+                if (p.operand_feature_ids.size() < 2)
+                {
+                    step_ok     = false;
+                    out.err_msg = "boolean " + feat.name +
+                                  " needs at least 2 operands, got " +
+                                  std::to_string(p.operand_feature_ids.size());
+                    return;
+                }
+
+                const char* op = "fuse";
+                if (feat.type == FeatType::Cut)    op = "cut";
+                if (feat.type == FeatType::Common) op = "common";
+
+                int cur = -1;
+                for (size_t oi = 0; oi < p.operand_feature_ids.size(); ++oi)
+                {
+                    auto nit = feature_nodes.find(p.operand_feature_ids[oi]);
+                    if (nit == feature_nodes.end())
+                    {
+                        step_ok = false;
+                        out.err_msg = "boolean " + feat.name +
+                                      " operand " + std::to_string(oi) +
+                                      " (feature id " +
+                                      std::to_string(p.operand_feature_ids[oi]) +
+                                      ") has no replayed shape";
+                        return;
+                    }
+                    if (cur < 0) {
+                        cur = nit->second;
+                    } else {
+                        std::string tag = feat.name;
+                        if (oi + 1 < p.operand_feature_ids.size()) {
+                            tag += ":fold" + std::to_string(oi);
+                        }
+                        cur = cg->AddOp(op, {cur, nit->second}, {}, tag);
+                    }
+                }
+                node = cur;
+            }
+
             // ---- Not implemented yet ----
             else
             {
@@ -1275,9 +1354,17 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             }
         }, feat.data);
 
+        // Restore the outer last_node when the body_root override
+        // didn't get superseded by a successful node assignment. If
+        // node>=0 the subsequent assignment will overwrite it; we
+        // restore unconditionally so a failed body-root step doesn't
+        // leak the temporary -1 into the next feature.
+        last_node = prev_outer_last;
+
         if (node >= 0)
         {
             last_node = node;
+            feature_nodes[feat.id] = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
             // Dump-bodies hook: when CAX_DUMP_BODIES is set in the

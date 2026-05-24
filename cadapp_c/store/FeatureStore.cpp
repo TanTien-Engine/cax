@@ -346,8 +346,7 @@ void Encode(const FeatPayloadCircularPattern& p, BlobWriter& w)
 
 void Encode(const FeatPayloadBoolean& p, BlobWriter& w)
 {
-    w.U32(p.lhs_feature_id);
-    w.U32(p.rhs_feature_id);
+    w.U32Vec(p.operand_feature_ids);
 }
 
 void Encode(const FeatPayloadPrimBox& p, BlobWriter& w)
@@ -570,8 +569,7 @@ void Decode(BlobReader& r, FeatPayloadCircularPattern& p)
 
 void Decode(BlobReader& r, FeatPayloadBoolean& p)
 {
-    p.lhs_feature_id = r.U32();
-    p.rhs_feature_id = r.U32();
+    p.operand_feature_ids = r.U32Vec();
 }
 
 void Decode(BlobReader& r, FeatPayloadPrimBox& p)
