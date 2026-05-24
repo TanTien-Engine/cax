@@ -29,6 +29,7 @@
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <TopExp.hxx>
 #include <TopTools_ListOfShape.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -45,9 +46,116 @@
 #include <Bnd_Box.hxx>
 #include <GProp_GProps.hxx>
 #include <BRep_Tool.hxx>
+#include <Precision.hxx>
+
+#ifdef _MSC_VER
+#  include <excpt.h>
+#endif
+
+// Wrap one OCCT Build() call in Win32 SEH so a ChFi3d access
+// violation (Page_045_Exercise2D-37_byHannu's chamfer hits one
+// in ChFi3d_IsInFront on vertex-corner stripes) becomes a "Build
+// failed" return instead of tearing down the editor.
+//
+// Why we need __try at all despite OSD::SetSignal: SetSignal
+// installs a _set_se_translator that converts SEH to a C++ throw,
+// but the translator only fires under MSVC /EHa. cax compiles
+// with MSVC defaults (/EHsc), so the C++ catch (...) sees nothing
+// and the raw AV reaches the unhandled-exception filter -> exit.
+//
+// Why this is split into an extern "C" thunk + a templated outer
+// shim: __try / __except cannot live in a function that requires
+// C++ object unwinding (MSVC C2712). Calling a possibly-throwing
+// C++ method (op->Build()) directly inside __try counts as
+// requiring unwinding under /EHsc. The fix is to host __try in
+// an extern "C" function (no C++ unwind expectation), pass the
+// op via a void* + function-pointer thunk, and absorb any C++
+// Standard_Failure inside the thunk so nothing C++-y escapes
+// the extern "C" frame.
+//
+// Some OCCT internal allocations leak on the SEH path because C++
+// unwind is bypassed -- accepted as the cost of staying alive.
+#ifdef _MSC_VER
+extern "C" {
+// `static` keeps this TU-local; `extern "C"` strips the C++
+// unwind expectation that would otherwise trigger C2712 when
+// __try sits next to a possibly-throwing call.
+static int seh_call_void(void (*fn)(void*), void* arg)
+{
+    __try {
+        fn(arg);
+        return 0;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+} // extern "C"
+#endif
 
 namespace
 {
+
+// Returns:
+//   1  -- Build() finished, IsDone() == true
+//   0  -- Build() finished but IsDone() == false (clean OCCT
+//         failure -- no exception, just refused to produce a shape).
+//  -1  -- Build() raised a Win32 SEH (AV, FP, stack overflow) that
+//         was caught by the __except in seh_call_void. This is the
+//         "raw" SEH path: OCCT's _set_se_translator either wasn't
+//         installed or didn't fire.
+//  -2  -- A C++ throw (Standard_Failure or similar) propagated out
+//         of Build() and was absorbed by the catch in the runner.
+//         In practice the most common source on /EHsc is OSD's
+//         _set_se_translator converting an SEH into a C++ throw --
+//         so r==-2 on this build means "underlying cause was a
+//         Win32 fault that OCCT translated for us." Distinguishing
+//         -2 from 0 matters for diagnostics: 0 is "OCCT politely
+//         refused", -2 is "we narrowly avoided a process death."
+template <class Op>
+int seh_safe_build(Op* op)
+{
+#ifdef _MSC_VER
+    struct Ctx { Op* op; int result; };
+    Ctx ctx{op, 0};
+    // Stateless lambda -> C-style function pointer. Absorbs any
+    // C++ throw locally so it cannot propagate into the extern
+    // "C" frame (where C++ exceptions are UB).
+    auto runner = +[](void* p) -> void {
+        auto* c = static_cast<Ctx*>(p);
+        try {
+            c->op->Build();
+            c->result = c->op->IsDone() ? 1 : 0;
+        } catch (...) {
+            c->result = -2;
+        }
+    };
+    if (seh_call_void(runner, &ctx) < 0) {
+        return -1;
+    }
+    return ctx.result;
+#else
+    try {
+        op->Build();
+        return op->IsDone() ? 1 : 0;
+    } catch (...) {
+        return -2;
+    }
+#endif
+}
+
+// Human-readable label for a seh_safe_build return code. Used in
+// log lines so "r=-2" doesn't require cross-referencing the table
+// above to decode.
+inline const char* seh_safe_build_label(int r)
+{
+    switch (r) {
+        case  1: return "ok";
+        case  0: return "IsDone=false";
+        case -1: return "SEH caught";
+        case -2: return "C++ throw caught";
+        default: return "unknown";
+    }
+}
 
 // Single-body op: commit as child of input shape's version node.
 // Stores the new version_id back into dst.
@@ -297,17 +405,20 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         for (const auto& e : leaf_edges) {
             out->Add(radius, e);
         }
+        int r = -1;
         try {
-            out->Build();
-            if (out->IsDone()) {
-                out_shape = out->Shape();
-                return true;
-            }
-        } catch (...) {
             // OCCT throws Standard_Failure subclasses on numeric
-            // pathologies, and SEH (converted by OSD::SetSignal)
-            // when ChFi3d_StripeEdgeInter dereferences something
-            // it shouldn't. Treat both as "this mode failed".
+            // pathologies (caught here); SEH access violations
+            // from ChFi3d (StripeEdgeInter etc.) are caught by
+            // seh_safe_build because /EHsc would let them escape
+            // catch (...) even with OSD::SetSignal installed.
+            r = seh_safe_build(out.get());
+        } catch (...) {
+            r = -1;
+        }
+        if (r == 1) {
+            out_shape = out->Shape();
+            return true;
         }
         return false;
     };
@@ -400,8 +511,13 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
             BRepFilletAPI_MakeFillet f(working);
             f.SetFilletShape(mode);
             f.Add(radius, e);
-            f.Build();
-            if (f.IsDone()) {
+            int r = -1;
+            try {
+                r = seh_safe_build(&f);
+            } catch (...) {
+                r = -1;
+            }
+            if (r == 1) {
                 out_result = UnwrapSingleSolid(f.Shape());
                 return true;
             }
@@ -634,49 +750,304 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
                                              const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                              const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    BRepFilletAPI_MakeChamfer chamfer(shape->GetShape());
+    // BRepFilletAPI_MakeChamfer shares ChFi3d_Builder with MakeFillet,
+    // and the same stripe / vertex-corner crashes that bit Fillet hit
+    // chamfer too. Page_045_Exercise2D-37_byHannu (Chamfer with 10
+    // edges, d=0.003) is the canonical repro -- ChFi3d_IsInFront
+    // dereferences bad state inside PerformTwoCornerbyInter when
+    // several chamfered edges meet at one vertex. Mirror Fillet's
+    // scaffolding: convert SEH to Standard_Failure, dedup leaf edges,
+    // try batch then per-edge fallback. See Fillet for the rationale
+    // on each step; this function is intentionally parallel to it.
+    OSD::SetSignal(Standard_True);
 
+    // Build-stamp probe: if the user sees this line in stderr, the
+    // editor.exe really did pick up the SEH-wrapped Chamfer. If the
+    // line is missing, the binary is stale (relink editor.vcxproj).
+    std::fprintf(stderr,
+        "[CHAMFER] op_id=%u entry, build=" __DATE__ " " __TIME__
+        ", dist=%.6f, edges=%zu (BREPKIT_CHAMFER_FORCE_SINGLE=%s)\n",
+        op_id, dist, edges.size(),
+        std::getenv("BREPKIT_CHAMFER_FORCE_SINGLE") ? std::getenv("BREPKIT_CHAMFER_FORCE_SINGLE") : "<unset>");
+
+    const char* force_single_env = std::getenv("BREPKIT_CHAMFER_FORCE_SINGLE");
+    bool        force_single     = force_single_env && force_single_env[0] != '0';
+
+    std::vector<TopoDS_Edge> leaf_edges;
     if (edges.empty())
     {
-        for (TopExp_Explorer ex(shape->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
-            chamfer.Add(dist, TopoDS::Edge(ex.Current()));
+        for (TopExp_Explorer ex(shape->GetShape(), TopAbs_EDGE); ex.More(); ex.Next()) {
+            leaf_edges.push_back(TopoDS::Edge(ex.Current()));
+        }
     }
     else
     {
-        for (auto& edge : edges) {
-            if (!edge) continue;
-            if (edge->GetShape().ShapeType() == TopAbs_EDGE) {
-                chamfer.Add(dist, TopoDS::Edge(edge->GetShape()));
+        leaf_edges = CollectLeafEdges(edges);
+    }
+
+    {
+        TopTools_IndexedMapOfShape seen;
+        std::vector<TopoDS_Edge>   uniq;
+        uniq.reserve(leaf_edges.size());
+        for (const auto& e : leaf_edges) {
+            if (seen.Add(e)) uniq.push_back(e);
+        }
+        if (uniq.size() != leaf_edges.size()) {
+            std::fprintf(stderr,
+                "[CHAMFER] op_id=%u dedup'd leaf_edges %zu -> %zu\n",
+                op_id, leaf_edges.size(), uniq.size());
+        }
+        leaf_edges = std::move(uniq);
+    }
+
+    if (leaf_edges.empty()) {
+        std::fprintf(stderr,
+            "[CHAMFER] op_id=%u SKIPPED -- no leaf edges to chamfer\n",
+            op_id);
+        return shape;
+    }
+
+    auto try_batch = [&](std::unique_ptr<BRepFilletAPI_MakeChamfer>& out,
+                         TopoDS_Shape&                                out_shape) -> bool
+    {
+        out.reset(new BRepFilletAPI_MakeChamfer(shape->GetShape()));
+        for (const auto& e : leaf_edges) {
+            out->Add(dist, e);
+        }
+        std::fprintf(stderr,
+            "[CHAMFER] op_id=%u about to seh_safe_build batch\n", op_id);
+        std::fflush(stderr);
+        int r = -1;
+        try {
+            // seh_safe_build handles the Win32 SEH path (ChFi3d
+            // access violations). C++ Standard_Failure throws
+            // (numeric pathologies, contour collisions) still
+            // unwind out and land in the catch (...) below.
+            r = seh_safe_build(out.get());
+        } catch (...) {
+            r = -1;
+        }
+        std::fprintf(stderr,
+            "[CHAMFER] op_id=%u batch seh_safe_build returned r=%d (%s)\n",
+            op_id, r, seh_safe_build_label(r));
+        if (r == 1) {
+            out_shape = out->Shape();
+            return true;
+        }
+        return false;
+    };
+
+    std::unique_ptr<BRepFilletAPI_MakeChamfer> batch_holder;
+    TopoDS_Shape result;
+    bool         batch_ok = false;
+    if (!force_single) {
+        batch_ok = try_batch(batch_holder, result);
+    }
+
+    if (batch_ok) {
+        brepgraph::TopoNaming::PidMap pid_map;
+        if (tn) {
+            pid_map = tn->Update(*batch_holder, result, shape->GetShape(), op_id);
+        }
+        auto dst = std::make_shared<brepkit::TopoShape>(result);
+        commit_to_vt(tn, vt, shape, dst, pid_map, "chamfer");
+        return dst;
+    }
+
+    // ---- Per-edge fallback ----
+    //
+    // Same trade-off as Fillet: chaining N MakeChamfer instances
+    // through TopoNaming correctly is non-trivial, so the fallback
+    // bypasses naming. Acceptable here because the user is verifying
+    // geometry, not ref stability across saves.
+    std::fprintf(stderr,
+        "[CHAMFER] op_id=%u batch failed, retrying %zu edges singly\n",
+        op_id, leaf_edges.size());
+
+    auto edge_geom_str = [](const TopoDS_Edge& e) -> std::string {
+        char buf[256];
+        if (BRep_Tool::Degenerated(e)) return "DEGENERATE";
+        try {
+            BRepAdaptor_Curve curve(e);
+            double f = curve.FirstParameter();
+            double l = curve.LastParameter();
+            gp_Pnt p_mid = curve.Value(0.5 * (f + l));
+            GProp_GProps props;
+            BRepGProp::LinearProperties(e, props);
+            std::snprintf(buf, sizeof(buf),
+                "mid=(%.4f,%.4f,%.4f) len=%.4f",
+                p_mid.X(), p_mid.Y(), p_mid.Z(), props.Mass());
+            return buf;
+        } catch (...) { return "UNREADABLE"; }
+    };
+
+    auto edge_geom = [](const TopoDS_Edge& e,
+                        gp_Pnt& mid, gp_Dir& tan, double& len) -> bool {
+        if (BRep_Tool::Degenerated(e)) return false;
+        try {
+            BRepAdaptor_Curve curve(e);
+            double f = curve.FirstParameter();
+            double l = curve.LastParameter();
+            double m = 0.5 * (f + l);
+            gp_Pnt p;  gp_Vec v;
+            curve.D1(m, p, v);
+            if (v.Magnitude() < 1e-12) return false;
+            mid = p; tan = gp_Dir(v);
+            GProp_GProps props;
+            BRepGProp::LinearProperties(e, props);
+            len = props.Mass();
+            return true;
+        } catch (...) { return false; }
+    };
+
+    // pt_tol uses chamfer distance as the position scale, the same
+    // way Fillet scales by radius. Only difference: chamfer dist is
+    // typically smaller than fillet radii, so the 1e-6 floor catches
+    // more cases here.
+    auto find_surviving_edge = [&](const TopoDS_Shape& body,
+                                   const gp_Pnt&       pt0,
+                                   const gp_Dir&       tan0,
+                                   double              len0,
+                                   TopoDS_Edge&        out_edge) -> bool {
+        double pt_tol = 0.1 * dist;
+        if (pt_tol < 1e-6) pt_tol = 1e-6;
+        const double tan_dot_min = 0.996;
+        const double len_rel_tol = 0.05;
+        double      best_d = pt_tol;
+        TopoDS_Edge best;
+        for (TopExp_Explorer ex(body, TopAbs_EDGE); ex.More(); ex.Next()) {
+            const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+            gp_Pnt mid; gp_Dir tan; double len;
+            if (!edge_geom(e, mid, tan, len)) continue;
+            double d = mid.Distance(pt0);
+            if (d >= best_d) continue;
+            if (std::abs(tan.Dot(tan0)) < tan_dot_min) continue;
+            double len_max = std::max(len0, 1e-6);
+            if (std::abs(len - len0) > len_rel_tol * len_max) continue;
+            best_d = d;
+            best   = e;
+        }
+        if (best.IsNull()) return false;
+        out_edge = best;
+        return true;
+    };
+
+    TopoDS_Shape running = shape->GetShape();
+
+    auto count_faces = [](const TopoDS_Shape& s) -> int {
+        int n = 0;
+        for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) ++n;
+        return n;
+    };
+    const int base_face_count = count_faces(running);
+
+    auto try_one = [&](TopoDS_Shape&      working,
+                       const TopoDS_Edge& e,
+                       TopoDS_Shape&      out_result) -> bool {
+        // MakeChamfer ctor + Add stay in the C++ try (can throw
+        // Standard_Failure on bad input geometry); the actual
+        // Build is routed through seh_safe_build so a ChFi3d
+        // access violation on this edge becomes a false return
+        // and the caller moves on to the next edge.
+        try {
+            BRepFilletAPI_MakeChamfer c(working);
+            c.Add(dist, e);
+            int r = -1;
+            try {
+                r = seh_safe_build(&c);
+            } catch (...) {
+                r = -1;
+            }
+            if (r == 1) {
+                out_result = c.Shape();
+                return true;
+            }
+        } catch (...) {
+            // fall through to false
+        }
+        return false;
+    };
+
+    int                 ok_count = 0;
+    std::vector<size_t> failed;
+    for (size_t i = 0; i < leaf_edges.size(); ++i) {
+        std::string  geom = edge_geom_str(leaf_edges[i]);
+        TopoDS_Shape res;
+        if (try_one(running, leaf_edges[i], res)) {
+            running = res;
+            ++ok_count;
+            std::fprintf(stderr, "[CHAMFER]   edge[%zu] ok %s\n",
+                         i, geom.c_str());
+        } else {
+            failed.push_back(i);
+            std::fprintf(stderr,
+                "[CHAMFER]   edge[%zu] failed first pass %s\n",
+                i, geom.c_str());
+        }
+    }
+
+    int retry_round        = 0;
+    int chain_consumed     = 0;
+    int chain_consumed_log = 0;
+    while (!failed.empty()) {
+        ++retry_round;
+        std::vector<size_t> still_failed;
+        int round_ok = 0;
+        for (size_t i : failed) {
+            gp_Pnt pt0; gp_Dir tan0; double len0;
+            if (!edge_geom(leaf_edges[i], pt0, tan0, len0)) {
+                still_failed.push_back(i);
+                continue;
+            }
+            TopoDS_Edge live;
+            if (!find_surviving_edge(running, pt0, tan0, len0, live)) {
+                ++chain_consumed;
+                if (chain_consumed_log < 8) {
+                    std::fprintf(stderr,
+                        "[CHAMFER]   edge[%zu] consumed by prior chain "
+                        "(no live match on running body)\n", i);
+                    ++chain_consumed_log;
+                }
+                continue;
+            }
+            std::string  geom = edge_geom_str(live);
+            TopoDS_Shape res;
+            if (try_one(running, live, res)) {
+                running = res;
+                ++ok_count;
+                ++round_ok;
+                std::fprintf(stderr,
+                    "[CHAMFER]   edge[%zu] ok (retry round %d, rematched) %s\n",
+                    i, retry_round, geom.c_str());
             } else {
-                for (TopExp_Explorer ex(edge->GetShape(), TopAbs_EDGE); ex.More(); ex.Next())
-                    chamfer.Add(dist, TopoDS::Edge(ex.Current()));
+                still_failed.push_back(i);
             }
         }
-    }
-
-    // Symmetric to Fillet: empty result set means there's nothing
-    // to chamfer (all refs unresolved); skip cleanly.
-    if (chamfer.NbContours() == 0) {
-        return shape;
-    }
-
-    TopoDS_Shape result;
-    try {
-        chamfer.Build();
-        if (!chamfer.IsDone()) {
-            return shape;
+        if (round_ok == 0) {
+            for (size_t i : still_failed) {
+                std::string geom = edge_geom_str(leaf_edges[i]);
+                std::fprintf(stderr,
+                    "[CHAMFER]   edge[%zu] FAILED after %d retries %s\n",
+                    i, retry_round, geom.c_str());
+            }
+            break;
         }
-        result = chamfer.Shape();
-    } catch (const Standard_Failure&) {
+        failed = std::move(still_failed);
+    }
+
+    const int new_surface_count = count_faces(running) - base_face_count;
+    std::fprintf(stderr,
+        "[CHAMFER] op_id=%u per-edge: %d Add() ok + %d chain-consumed, "
+        "%d new chamfer surfaces / %zu edges (%d retry rounds)\n",
+        op_id, ok_count, chain_consumed, new_surface_count,
+        leaf_edges.size(), retry_round);
+
+    if (ok_count == 0) {
         return shape;
     }
 
-    brepgraph::TopoNaming::PidMap pid_map;
-    if (tn) {
-        pid_map = tn->Update(chamfer, result, shape->GetShape(), op_id);
-    }
-    auto dst = std::make_shared<brepkit::TopoShape>(result);
-    commit_to_vt(tn, vt, shape, dst, pid_map, "chamfer");
+    auto dst = std::make_shared<brepkit::TopoShape>(running);
+    commit_to_vt(tn, vt, shape, dst, {}, "chamfer");
     return dst;
 }
 
@@ -1201,8 +1572,73 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         faces_to_rm.Append(face->GetShape());
     }
 
+    // Unconditional trace. The user reported "no logs" while the
+    // output brep was unchanged byte-for-byte after upstream fixes,
+    // so either the build didn't pick up the new code or stderr is
+    // being swallowed. Print at least one line every call so we can
+    // distinguish those two cases.
+    std::fprintf(stderr,
+                 "[TopoAlgo::ThickSolid] enter offset=%g faces_in=%d "
+                 "shape_null=%d\n",
+                 (double)offset, faces_to_rm.Extent(),
+                 shape->GetShape().IsNull() ? 1 : 0);
+
+    if (faces_to_rm.IsEmpty())
+    {
+        // MakeThickSolidByJoin with no closing faces silently
+        // degenerates into a plain offset of the entire solid, which
+        // looks like an intact shape rather than a shelled one. That
+        // is almost always a resolver miss upstream, not user intent,
+        // so bail loudly instead of returning a misleading solid.
+        std::fprintf(stderr,
+                     "[TopoAlgo::ThickSolid] no closing faces "
+                     "(upstream face resolution likely missed); "
+                     "offset=%g faces_in=%zu\n",
+                     (double)offset, faces.size());
+        return nullptr;
+    }
+
+    // OCCT's offset Tol is a linear value, so it has to scale with the
+    // input. The original hard-coded 1e-3 worked when callers passed
+    // millimetre-scale shapes (FreeCAD's default), but breaks once the
+    // upstream IR is in metres -- a 1 mm tolerance vs a ~1.4 mm wall
+    // makes BRepOffsetAPI_MakeThickSolid silently fail (IsDone==false),
+    // and the subsequent Shape() throws. Derive Tol from |offset| with
+    // an OCCT-confusion floor so we work in either unit system.
+    const double abs_offset = std::fabs((double)offset);
+    const double tol = std::max(Precision::Confusion(),
+                                abs_offset * 1.0e-3);
+
     BRepOffsetAPI_MakeThickSolid thick_solid;
-    thick_solid.MakeThickSolidByJoin(shape->GetShape(), faces_to_rm, offset, 1.e-3);
+    thick_solid.MakeThickSolidByJoin(shape->GetShape(), faces_to_rm,
+                                      offset, tol);
+
+    // Trace post-OCCT outcome: face count of the result tells us
+    // whether OCCT actually opened the closing faces (~2x in_faces
+    // + wall) vs degenerated into a plain offset solid (~in_faces).
+    {
+        TopTools_IndexedMapOfShape fm;
+        if (thick_solid.IsDone()) {
+            TopExp::MapShapes(thick_solid.Shape(), TopAbs_FACE, fm);
+        }
+        std::fprintf(stderr,
+                     "[TopoAlgo::ThickSolid] done=%d out_faces=%d "
+                     "tol=%g\n",
+                     thick_solid.IsDone() ? 1 : 0,
+                     fm.Extent(), tol);
+    }
+
+    if (!thick_solid.IsDone())
+    {
+        // OCCT couldn't perform the offset (degenerate faces, bad
+        // tolerance, non-manifold input, ...). Caller-friendly bail:
+        // return null instead of letting Shape() throw a NotDone
+        // exception from inside an editor session.
+        std::fprintf(stderr,
+                     "[TopoAlgo::ThickSolid] not done: offset=%g tol=%g "
+                     "faces=%zu\n", (double)offset, tol, faces.size());
+        return nullptr;
+    }
 
     brepgraph::TopoNaming::PidMap pid_map;
     if (tn) {
