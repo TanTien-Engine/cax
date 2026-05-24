@@ -40,7 +40,9 @@
 #include <Standard_Failure.hxx>
 #include <gp_Ax2.hxx>
 #include <BRepAdaptor_Curve.hxx>
+#include <BRepBndLib.hxx>
 #include <BRepGProp.hxx>
+#include <Bnd_Box.hxx>
 #include <GProp_GProps.hxx>
 #include <BRep_Tool.hxx>
 
@@ -146,6 +148,29 @@ TopoDS_Shape UnwrapSingleSolid(const TopoDS_Shape& s)
         return s;   // multiple solids -> keep as compound
     }
     return first;
+}
+
+int CountSolids(const TopoDS_Shape& s)
+{
+    if (s.IsNull()) return 0;
+    int n = 0;
+    for (TopExp_Explorer e(s, TopAbs_SOLID); e.More(); e.Next()) ++n;
+    return n;
+}
+
+// True if the loose bboxes of two shapes touch or overlap. Used to
+// guard the Fuse retry-with-larger-fuzzy fallback: only escalate
+// fuzzy when the operands are actually expected to merge (their
+// bboxes touch), never on disjoint inputs where a multi-solid
+// COMPOUND result is the correct answer.
+bool BboxesOverlap(const TopoDS_Shape& a, const TopoDS_Shape& b)
+{
+    if (a.IsNull() || b.IsNull()) return false;
+    Bnd_Box ba, bb;
+    BRepBndLib::Add(a, ba);
+    BRepBndLib::Add(b, bb);
+    if (ba.IsVoid() || bb.IsVoid()) return false;
+    return !ba.IsOut(bb);
 }
 
 // Collect the leaf TopoDS_Edges from a list that may contain plain
@@ -747,16 +772,49 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
     // (e.g. an extruded pad with an r=R cylindrical hole fused against
     // an annulus whose inner radius is also R) intersect correctly
     // rather than silently returning an empty COMPOUND.
-    BRepAlgoAPI_Fuse algo;
-    TopTools_ListOfShape args;  args.Append(s1->GetShape());
-    TopTools_ListOfShape tools; tools.Append(s2->GetShape());
-    algo.SetArguments(args);
-    algo.SetTools(tools);
-    algo.SetFuzzyValue(1e-6);
-    algo.Build();
+    auto run_fuse = [&](double fuzzy) {
+        auto a = std::make_unique<BRepAlgoAPI_Fuse>();
+        TopTools_ListOfShape args;  args.Append(s1->GetShape());
+        TopTools_ListOfShape tools; tools.Append(s2->GetShape());
+        a->SetArguments(args);
+        a->SetTools(tools);
+        a->SetFuzzyValue(fuzzy);
+        a->Build();
+        return a;
+    };
 
-    if (!algo.IsDone()) {
-        algo.DumpErrors(std::cerr);
+    auto algo = run_fuse(1e-6);
+    if (!algo->IsDone()) {
+        algo->DumpErrors(std::cerr);
+    }
+
+    // When the BOP returns a COMPOUND wrapping multiple SOLIDs but
+    // the operands' bboxes overlap (so a single merged SOLID is the
+    // expected answer), OCCT's surface-intersection step dropped
+    // below the default fuzzy and left them as disjoint pieces. Seen
+    // on Page_033 Revolution+Pad: Revolution has an annular hollow
+    // at x in [-29, -25] that the Pad cylinder fills, and OCCT left
+    // Revolution's inner cylindrical face as an internal boundary
+    // instead of removing it. Retry with progressively larger fuzzy
+    // until the solid count drops; keep whichever algo run produced
+    // the best (smallest) compound so its History stays valid for
+    // TopoNaming::Update below.
+    if (algo->IsDone() && !algo->Shape().IsNull() &&
+        algo->Shape().ShapeType() == TopAbs_COMPOUND &&
+        CountSolids(algo->Shape()) > 1 &&
+        BboxesOverlap(s1->GetShape(), s2->GetShape()))
+    {
+        int best_solids = CountSolids(algo->Shape());
+        for (double fuzzy : {1e-5, 1e-4, 1e-3}) {
+            auto retry = run_fuse(fuzzy);
+            if (!retry->IsDone() || retry->Shape().IsNull()) continue;
+            int retry_solids = CountSolids(retry->Shape());
+            if (retry_solids < best_solids) {
+                algo = std::move(retry);
+                best_solids = retry_solids;
+                if (best_solids <= 1) break;
+            }
+        }
     }
 
     brepdb::BRepWorld tool_world;
@@ -766,10 +824,10 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
     if (tn)
     {
         auto old_shp = ShapeBuilder::MakeCompound({ s1, s2 });
-        opencascade::handle<BRepTools_History> o_hist = algo.History();
-        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+        opencascade::handle<BRepTools_History> o_hist = algo->History();
+        pid_map = tn->Update(o_hist, algo->Shape(), old_shp->GetShape(), op_id);
     }
-    auto dst = std::make_shared<brepkit::TopoShape>(algo.Shape());
+    auto dst = std::make_shared<brepkit::TopoShape>(algo->Shape());
     merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "fuse");
     return dst;
 }
