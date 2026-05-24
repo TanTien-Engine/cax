@@ -1,0 +1,27 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=0
+  geo 1 type=Circle constr=0 params=[0.000,0.000,0.014]
+  geo 2 type=Circle constr=0 params=[0.000,0.000,0.011]
+  geo 3 type=Line constr=1 params=[-0.006,-0.010,0.006,0.010]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=6 cons=0
+  geo 4 type=Circle constr=1 params=[0.000,0.000,0.014]
+  geo 5 type=Circle constr=1 params=[0.000,0.000,0.011]
+  geo 6 type=Line constr=1 params=[-0.006,-0.010,0.006,0.010]
+  geo 7 type=Circle constr=1 params=[0.000,0.000,0.011]
+  geo 8 type=Circle constr=0 params=[-0.005,-0.009,0.002]
+  geo 9 type=Circle constr=1 params=[-0.005,-0.009,0.001]
+sketch 13 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=6 cons=0
+  geo 10 type=Circle constr=1 params=[0.000,0.000,0.014]
+  geo 11 type=Circle constr=1 params=[0.000,0.000,0.011]
+  geo 12 type=Line constr=1 params=[-0.006,-0.010,0.006,0.010]
+  geo 13 type=Circle constr=1 params=[0.000,0.000,0.011]
+  geo 14 type=Circle constr=1 params=[-0.005,-0.009,0.002]
+  geo 15 type=Circle constr=0 params=[-0.005,-0.009,0.001]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.007 dist2=0.000 end=0 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.007 dist2=0.000 end=0 flip=0
+feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
+feat 14 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+feat 15 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=5 total_angle=3.1416]
+feat 17 name=Ellipsoid type=PrimEllipsoid suppressed=0 payload=ellipsoid r1=0.009 r2=0.013 r3=0.000

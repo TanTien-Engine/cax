@@ -1,0 +1,58 @@
+doc source=freecad
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=0
+  geo 16 type=Line constr=1 params=[-0.204,0.078,0.000,0.078]
+  geo 17 type=Line constr=0 params=[0.000,0.078,0.000,0.040]
+  geo 18 type=Line constr=1 params=[-0.003,0.038,-0.239,0.038]
+  geo 19 type=Line constr=1 params=[-0.239,0.038,-0.204,0.078]
+  geo 20 type=Line constr=1 params=[-0.239,0.038,-0.201,0.000]
+  geo 21 type=Line constr=1 params=[-0.201,0.000,-0.010,0.000]
+  geo 22 type=Line constr=1 params=[-0.010,0.000,-0.001,0.036]
+  geo 23 type=Line constr=0 params=[0.003,0.038,0.038,0.038]
+  geo 24 type=Line constr=0 params=[0.038,0.038,0.038,0.078]
+  geo 25 type=Line constr=0 params=[0.038,0.078,0.000,0.078]
+  geo 26 type=Arc constr=1 params=[0.000,0.038,0.003,6.2832,10.7338]
+  geo 27 type=Line constr=1 params=[-0.222,0.058,0.038,0.058]
+  geo 28 type=Circle constr=1 params=[0.018,0.058,0.003]
+  geo 29 type=Circle constr=1 params=[-0.174,0.058,0.003]
+  geo 30 type=Arc constr=1 params=[0.000,0.038,0.003,1.5708,4.4506]
+  geo 31 type=Arc constr=0 params=[0.000,0.038,0.003,6.2832,7.8540]
+sketch 13 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=15 cons=0
+  geo 1 type=Line constr=0 params=[-0.204,0.078,0.000,0.078]
+  geo 2 type=Line constr=0 params=[0.000,0.078,0.000,0.040]
+  geo 3 type=Line constr=1 params=[-0.003,0.038,-0.239,0.038]
+  geo 4 type=Line constr=0 params=[-0.239,0.038,-0.204,0.078]
+  geo 5 type=Line constr=0 params=[-0.239,0.038,-0.201,0.000]
+  geo 6 type=Line constr=0 params=[-0.201,0.000,-0.010,0.000]
+  geo 7 type=Line constr=0 params=[-0.010,0.000,-0.001,0.036]
+  geo 8 type=Line constr=1 params=[0.003,0.038,0.038,0.038]
+  geo 9 type=Line constr=1 params=[0.038,0.038,0.038,0.078]
+  geo 10 type=Line constr=1 params=[0.038,0.078,0.000,0.078]
+  geo 11 type=Arc constr=1 params=[0.000,0.038,0.003,0.0000,4.4506]
+  geo 12 type=Line constr=1 params=[-0.222,0.058,0.038,0.058]
+  geo 13 type=Circle constr=1 params=[0.018,0.058,0.003]
+  geo 14 type=Circle constr=1 params=[-0.174,0.058,0.003]
+  geo 15 type=Arc constr=0 params=[0.000,0.038,0.003,1.5708,4.4506]
+sketch 14 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=15 cons=0
+  geo 32 type=Line constr=1 params=[-0.204,0.078,0.000,0.078]
+  geo 33 type=Line constr=1 params=[0.000,0.078,0.000,0.040]
+  geo 34 type=Line constr=1 params=[-0.003,0.038,-0.239,0.038]
+  geo 35 type=Line constr=1 params=[-0.239,0.038,-0.204,0.078]
+  geo 36 type=Line constr=1 params=[-0.239,0.038,-0.201,0.000]
+  geo 37 type=Line constr=1 params=[-0.201,0.000,-0.010,0.000]
+  geo 38 type=Line constr=1 params=[-0.010,0.000,-0.001,0.036]
+  geo 39 type=Line constr=1 params=[0.003,0.038,0.038,0.038]
+  geo 40 type=Line constr=1 params=[0.038,0.038,0.038,0.078]
+  geo 41 type=Line constr=1 params=[0.038,0.078,0.000,0.078]
+  geo 42 type=Arc constr=1 params=[0.000,0.038,0.003,0.0000,4.4506]
+  geo 43 type=Line constr=1 params=[-0.222,0.058,0.038,0.058]
+  geo 44 type=Circle constr=0 params=[0.018,0.058,0.003]
+  geo 45 type=Circle constr=0 params=[-0.174,0.058,0.003]
+  geo 46 type=Arc constr=1 params=[0.000,0.038,0.003,1.5708,4.4506]
+feat 13 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=13
+feat 9 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.100 dist2=0.000 end=0 flip=1
+feat 10 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.600 h=0.100
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.003 dist2=0.000 end=0 flip=1
+feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
+feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+feat 16 name=Thickness type=Unknown suppressed=0 payload=opaque freecad_type=Part::Thickness

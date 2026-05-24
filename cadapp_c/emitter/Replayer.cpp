@@ -445,9 +445,6 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             continue;
         }
 
-        //if (feat.name == "Fillet002")
-        //    break;
-
         int  node    = -1;
         bool step_ok = true;
 
