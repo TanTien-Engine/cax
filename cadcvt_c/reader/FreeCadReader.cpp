@@ -2718,6 +2718,48 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type = FeatType::Shell;
             feat.data = std::move(pl);
         }
+        else if (pending.type == "Part::Thickness")
+        {
+            // Legacy Part-workbench shell: the base shape and the
+            // faces-to-open both come from a single Faces
+            // PropertyLinkSub. Value carries a signed wall thickness
+            // (negative = outward) and is passed through to OCCT
+            // as-is to match FreeCAD's own sign convention.
+            //
+            // Unlike PartDesign::Thickness, the base is not implicit
+            // (no surrounding Body), so resolve the linked object
+            // to a feature id and stash it as base_feature_id; the
+            // Replayer's pre-visit override redirects last_node at
+            // that node before the Shell handler runs.
+            FeatPayloadShell pl;
+            pl.thickness     = PropDouble(props, "Value", 0.0) * m_unit_scale;
+            pl.shell_outward = false;
+
+            LinkRef faces = PropLink(props, "Faces");
+            StashRefNames(feat, faces.sub_names, faces.object_name,
+                          "face_ref", TopoRefIR::Kind::Face, pl.faces_to_open,
+                          m_zip, m_feat_brep_path, m_unit_scale);
+
+            uint32_t base_id = 0xFFFFFFFFu;
+            if (!faces.object_name.empty()) {
+                auto bit = body_tip_id.find(faces.object_name);
+                if (bit != body_tip_id.end()) {
+                    base_id = bit->second;
+                } else {
+                    auto nit = m_name_to_id.find(faces.object_name);
+                    if (nit != m_name_to_id.end()) {
+                        base_id = nit->second;
+                    }
+                }
+            }
+            if (base_id != 0xFFFFFFFFu) {
+                feat.ext_params["base_feature_id"] = (double)base_id;
+            }
+            feat.ext_strings["freecad_type"] = pending.type;
+
+            feat.type = FeatType::Shell;
+            feat.data = std::move(pl);
+        }
         else if (pending.type == "Part::Box")
         {
             FeatPayloadPrimBox pl;

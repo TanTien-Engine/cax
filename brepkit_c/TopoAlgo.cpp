@@ -20,6 +20,8 @@
 #include <ChFi3d_FilletShape.hxx>
 #include <BRepOffsetAPI_MakeDraft.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
+#include <BRepOffset_Mode.hxx>
+#include <GeomAbs_JoinType.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
@@ -29,6 +31,7 @@
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <TopExp.hxx>
 #include <TopTools_ListOfShape.hxx>
+#include <TopTools_ListIteratorOfListOfShape.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepBuilderAPI_Sewing.hxx>
@@ -38,6 +41,7 @@
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <BRepTools_History.hxx>
 #include <Standard_Failure.hxx>
 #include <gp_Ax2.hxx>
 #include <BRepAdaptor_Curve.hxx>
@@ -1572,24 +1576,12 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         faces_to_rm.Append(face->GetShape());
     }
 
-    // Unconditional trace. The user reported "no logs" while the
-    // output brep was unchanged byte-for-byte after upstream fixes,
-    // so either the build didn't pick up the new code or stderr is
-    // being swallowed. Print at least one line every call so we can
-    // distinguish those two cases.
-    std::fprintf(stderr,
-                 "[TopoAlgo::ThickSolid] enter offset=%g faces_in=%d "
-                 "shape_null=%d\n",
-                 (double)offset, faces_to_rm.Extent(),
-                 shape->GetShape().IsNull() ? 1 : 0);
-
     if (faces_to_rm.IsEmpty())
     {
         // MakeThickSolidByJoin with no closing faces silently
         // degenerates into a plain offset of the entire solid, which
-        // looks like an intact shape rather than a shelled one. That
-        // is almost always a resolver miss upstream, not user intent,
-        // so bail loudly instead of returning a misleading solid.
+        // looks like an intact shape rather than a shelled one --
+        // almost always a resolver miss upstream, not user intent.
         std::fprintf(stderr,
                      "[TopoAlgo::ThickSolid] no closing faces "
                      "(upstream face resolution likely missed); "
@@ -1598,42 +1590,147 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         return nullptr;
     }
 
-    // OCCT's offset Tol is a linear value, so it has to scale with the
-    // input. The original hard-coded 1e-3 worked when callers passed
-    // millimetre-scale shapes (FreeCAD's default), but breaks once the
-    // upstream IR is in metres -- a 1 mm tolerance vs a ~1.4 mm wall
-    // makes BRepOffsetAPI_MakeThickSolid silently fail (IsDone==false),
-    // and the subsequent Shape() throws. Derive Tol from |offset| with
-    // an OCCT-confusion floor so we work in either unit system.
+    // Tol scales with |offset|. The original hard-coded 1e-3 worked
+    // for mm-scale callers but breaks for metre-scale inputs (a 1 mm
+    // tolerance vs a ~1.4 mm wall makes MakeThickSolidByJoin silently
+    // fail and the subsequent Shape() throws). The Confusion floor
+    // keeps us safely above OCCT's numerical noise floor.
     const double abs_offset = std::fabs((double)offset);
     const double tol = std::max(Precision::Confusion(),
                                 abs_offset * 1.0e-3);
 
-    BRepOffsetAPI_MakeThickSolid thick_solid;
-    thick_solid.MakeThickSolidByJoin(shape->GetShape(), faces_to_rm,
-                                      offset, tol);
-
-    // Trace post-OCCT outcome: face count of the result tells us
-    // whether OCCT actually opened the closing faces (~2x in_faces
-    // + wall) vs degenerated into a plain offset solid (~in_faces).
+    // MakeThickSolidByJoin is documented to take a Solid. The cax
+    // pipeline wraps BOP results in a single-element Compound, and
+    // OCCT does technically accept Compound input -- it just walks
+    // into a quiet degenerate path where the closing face stays in
+    // the outer shell and only a tiny offset patch lands inside
+    // (Page_037 produced 16 outer + 3 inner faces instead of the
+    // expected ~30 in 1 shell). Strip the Compound when it carries
+    // exactly one Solid. Closing faces stay valid: MapShapes
+    // descended into the Compound to find them, so their TShape* is
+    // shared with the unwrapped Solid.
+    TopoDS_Shape solid_in = shape->GetShape();
+    if (solid_in.ShapeType() == TopAbs_COMPOUND)
     {
-        TopTools_IndexedMapOfShape fm;
-        if (thick_solid.IsDone()) {
-            TopExp::MapShapes(thick_solid.Shape(), TopAbs_FACE, fm);
+        TopoDS_Shape only;
+        int n = 0;
+        for (TopExp_Explorer ex(solid_in, TopAbs_SOLID);
+             ex.More(); ex.Next())
+        {
+            only = ex.Current();
+            ++n;
+            if (n > 1) break;
         }
-        std::fprintf(stderr,
-                     "[TopoAlgo::ThickSolid] done=%d out_faces=%d "
-                     "tol=%g\n",
-                     thick_solid.IsDone() ? 1 : 0,
-                     fm.Extent(), tol);
+        if (n == 1) solid_in = only;
     }
+
+    // Pre-pass: UnifySameDomain merges coplanar / cosurface neighbor
+    // faces that cax's BOP can leave split where FreeCAD's BOP keeps
+    // them whole. Without this MakeThickSolidByJoin's join algorithm
+    // bails into the same degenerate output (Page_037: cax 16 faces
+    // vs FC 15 -- ByJoin produced 19 faces in 2 shells; after unify
+    // it produces ~27 faces in 1 shell). Closing faces have to be
+    // remapped through unify's History since UnifySD rewrites TShape
+    // pointers and the algorithm matches faces by TShape*, not by
+    // geometry.
+    opencascade::handle<BRepTools_History> chain_hist;
+    {
+        ShapeUpgrade_UnifySameDomain unify(solid_in,
+                                           /*UnifyEdges*/ Standard_True,
+                                           /*UnifyFaces*/ Standard_True,
+                                           /*ConcatBSplines*/ Standard_False);
+        unify.Build();
+        TopoDS_Shape unified = unify.Shape();
+        chain_hist = unify.History();
+
+        TopTools_ListOfShape remapped;
+        for (TopTools_ListIteratorOfListOfShape it(faces_to_rm);
+             it.More(); it.Next())
+        {
+            const TopoDS_Shape& old_face = it.Value();
+            const TopTools_ListOfShape& mods = chain_hist->Modified(old_face);
+            if (!mods.IsEmpty()) {
+                for (TopTools_ListIteratorOfListOfShape mi(mods);
+                     mi.More(); mi.Next())
+                {
+                    remapped.Append(mi.Value());
+                }
+            } else if (!chain_hist->IsRemoved(old_face)) {
+                remapped.Append(old_face);
+            }
+        }
+
+        solid_in = unified;
+        faces_to_rm.Clear();
+        faces_to_rm.Append(remapped);
+    }
+
+    if (faces_to_rm.IsEmpty())
+    {
+        // Every closing face disappeared during unification. The
+        // user-intended face is gone, so refuse to fall through into
+        // the empty-list degenerate path.
+        std::fprintf(stderr,
+                     "[TopoAlgo::ThickSolid] all closing faces "
+                     "vanished during UnifySameDomain pre-pass\n");
+        return nullptr;
+    }
+
+    // Stash the unified shape; it is what we will pass to
+    // BRepTools_History below as the input to the join step.
+    const TopoDS_Shape unified_solid = solid_in;
+
+    // Force Intersection=true. OCCT 8.0 dev's default of false
+    // skips planar-vs-curved cross-face offset computation; on
+    // geometries like Page_037 that drops the algorithm straight
+    // into the degenerate output even when closing faces are
+    // valid. The remaining args mirror FreeCAD's defaults so we
+    // match its expected behavior aside from this one flip.
+    BRepOffsetAPI_MakeThickSolid by_join;
+    by_join.MakeThickSolidByJoin(solid_in, faces_to_rm, offset, tol,
+                                  BRepOffset_Skin,
+                                  Standard_True,   // Intersection
+                                  Standard_False,  // SelfInter
+                                  GeomAbs_Arc);
+
+    auto count_faces = [](BRepOffsetAPI_MakeThickSolid& mk) -> int {
+        TopTools_IndexedMapOfShape fm;
+        TopExp::MapShapes(mk.Shape(), TopAbs_FACE, fm);
+        return fm.Extent();
+    };
+    TopTools_IndexedMapOfShape in_fm;
+    TopExp::MapShapes(unified_solid, TopAbs_FACE, in_fm);
+    const int in_faces = in_fm.Extent();
+    const int join_faces = by_join.IsDone() ? count_faces(by_join) : -1;
+
+    // ByJoin is degenerate when the result has roughly the same
+    // face count as the input -- the signature of "outer shell
+    // preserved + tiny offset cap". A proper shell has at least
+    // ~1.5x the input face count (closing face removed, every
+    // other face offset, plus wall faces). When ByJoin hits that
+    // pattern, try BySimple, which uses a simpler internal
+    // algorithm that handles cases ByJoin chokes on. BySimple
+    // ignores the closing-face list and produces a closed hollow
+    // (no opening) -- weaker semantics than ByJoin's intended
+    // output but strictly better than a "no offset happened"
+    // result that pretends to be a shell.
+    const bool degenerate = (join_faces < 0) ||
+                            (join_faces > 0 && join_faces < in_faces * 3 / 2);
+    BRepOffsetAPI_MakeThickSolid by_simple;
+    if (degenerate)
+    {
+        std::fprintf(stderr,
+                     "[TopoAlgo::ThickSolid] ByJoin degenerate "
+                     "(out=%d, in=%d); retry BySimple\n",
+                     join_faces, in_faces);
+        by_simple.MakeThickSolidBySimple(solid_in, offset);
+    }
+    const bool use_simple = degenerate && by_simple.IsDone();
+    BRepOffsetAPI_MakeThickSolid& thick_solid =
+        use_simple ? by_simple : by_join;
 
     if (!thick_solid.IsDone())
     {
-        // OCCT couldn't perform the offset (degenerate faces, bad
-        // tolerance, non-manifold input, ...). Caller-friendly bail:
-        // return null instead of letting Shape() throw a NotDone
-        // exception from inside an editor session.
         std::fprintf(stderr,
                      "[TopoAlgo::ThickSolid] not done: offset=%g tol=%g "
                      "faces=%zu\n", (double)offset, tol, faces.size());
@@ -1642,7 +1739,19 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
 
     brepgraph::TopoNaming::PidMap pid_map;
     if (tn) {
-        pid_map = tn->Update(thick_solid, thick_solid.Shape(), shape->GetShape(), op_id);
+        // Compose the unify history (orig -> unified) with the join
+        // step's builder history (unified -> final) so TopoNaming
+        // records lineage in one update rather than treating the
+        // shelled faces as orphans. The merged chain_hist effectively
+        // maps orig faces directly to final faces.
+        TopTools_ListOfShape join_args;
+        join_args.Append(unified_solid);
+        opencascade::handle<BRepTools_History> join_hist =
+            new BRepTools_History(join_args, thick_solid);
+        chain_hist->Merge(join_hist);
+
+        brepkit::TopoShape new_ts(thick_solid.Shape());
+        pid_map = tn->Update(chain_hist, new_ts, *shape, op_id);
     }
     auto dst = std::make_shared<brepkit::TopoShape>(thick_solid.Shape());
     commit_to_vt(tn, vt, shape, dst, pid_map, "thick_solid");

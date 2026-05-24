@@ -361,6 +361,44 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
                 best_score = cands[0].score;
             }
 
+            // Point-in-face fallback. The primary score
+            // (centroid+normal+area) misses by tens of mm when cax's
+            // BOP splits what FreeCAD kept as one face into N
+            // sub-faces -- each sub-centroid sits far from the
+            // FreeCAD whole-face centroid even though the FreeCAD
+            // centroid still LIES on one of cax's sub-faces (seen on
+            // Page_037's Pocket.Face1: cax has 16 faces vs FreeCAD's
+            // 15, so the resolver missed by tens of mm and the Shell
+            // op silently got empty closing faces, degenerating into
+            // a 2-shell offset solid). So when the primary best is
+            // over tolerance, sweep the candidates in score order
+            // and accept the first one whose surface actually
+            // contains the ref point. Same point-on-surface check
+            // the extra-sample pass uses, just keyed off the ref's
+            // own centroid.
+            if (best_idx > 0 && best_score > tolerance && !cands.empty())
+            {
+                const double sample_tol  = 1e-3;
+                const size_t kMaxFallback = 16;
+                gp_Pnt        rp(ref.point[0], ref.point[1], ref.point[2]);
+                TopoDS_Vertex rv = BRepBuilderAPI_MakeVertex(rp);
+                for (size_t k = 0;
+                     k < cands.size() && k < kMaxFallback;
+                     ++k)
+                {
+                    const TopoDS_Face& f =
+                        TopoDS::Face(faceMap.FindKey(cands[k].idx));
+                    BRepExtrema_DistShapeShape ext(rv, f);
+                    if (ext.IsDone() && ext.NbSolution() > 0 &&
+                        ext.Value() <= sample_tol)
+                    {
+                        best_idx   = cands[k].idx;
+                        best_score = ext.Value();  // record real dist
+                        break;
+                    }
+                }
+            }
+
             r.topo_index = best_idx;
             r.match_dist = best_score;
             if (best_idx > 0 && best_score <= tolerance)

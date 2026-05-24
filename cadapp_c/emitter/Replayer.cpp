@@ -462,6 +462,24 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             if (rit != feat.ext_params.end() && rit->second != 0.0) {
                 last_node = -1;
             }
+            // base_feature_id=N redirects last_node at the calc
+            // graph node feature N produced. Used by standalone
+            // operators (Part::Thickness, Part::Fillet, ...) that
+            // sit outside any PartDesign::Body but reference a body
+            // feature's shape -- without this their handler would
+            // operate on whichever feature happened to come last in
+            // the queue order instead of the linked one.
+            auto bit = feat.ext_params.find("base_feature_id");
+            if (bit != feat.ext_params.end())
+            {
+                uint32_t bid = (uint32_t)bit->second;
+                if (bid != 0xFFFFFFFFu) {
+                    auto fit = feature_nodes.find(bid);
+                    if (fit != feature_nodes.end()) {
+                        last_node = fit->second;
+                    }
+                }
+            }
         }
 
         std::visit([&](auto& p)

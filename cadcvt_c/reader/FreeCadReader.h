@@ -33,6 +33,7 @@
 //   - PartDesign::Fillet          -> FeatPayloadFillet
 //   - PartDesign::Chamfer         -> FeatPayloadChamfer
 //   - PartDesign::Thickness       -> FeatPayloadShell
+//   - Part::Thickness             -> FeatPayloadShell
 //   - Part::Box / Cylinder / Sphere / Cone / Torus -> Prim*
 //
 // Out of scope (logged into DocumentIR via Opaque):
