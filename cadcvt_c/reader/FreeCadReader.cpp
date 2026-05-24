@@ -2380,9 +2380,11 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             //   ReferenceAxis  -> LinkSub(axis object + sub-name)
             //   Angle          -> degrees
             //   Reversed       -> flip sweep direction (negate angle)
-            //   Midplane       -> symmetric sweep (TODO: not yet honored
-            //                     by the revolve op; one-sided for now,
-            //                     stashed in ext_params for a future pass)
+            //   Midplane       -> symmetric sweep (Replayer pre-rotates
+            //                     the profile by -sign*angle/2 around
+            //                     the axis before the one-sided revolve,
+            //                     yielding -angle/2 .. +angle/2 sweep;
+            //                     gated via ext_params["midplane"]=1)
             //   Base           -> additional Vector offset added to the
             //                     resolved axis origin (rarely non-zero
             //                     in PartDesign; FreeCAD almost always

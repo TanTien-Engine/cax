@@ -721,8 +721,37 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 bool is_full = std::abs(p.angle - 2.0 * 3.14159265358979323846)
                                 < 1e-6;
                 int f_n = cg->AddConst(is_full, "is_full");
+
+                // Midplane: FreeCAD sweeps the profile symmetrically
+                // about the sketch plane (-angle/2 .. +angle/2). BRepPrim-
+                // API_MakeRevol only sweeps one-sided from the profile's
+                // current position, so pre-rotate the profile by
+                // -sign*angle/2 around the axis; the subsequent
+                // sign*angle sweep then lands the profile at +angle/2,
+                // matching the symmetric range. Reader stashes the
+                // flag in ext_params["midplane"]=1 because
+                // FeatPayloadRevolve doesn't carry a bool field yet.
+                // Don't update sketch_face_nodes -- the rotated face
+                // is local to this revolve, and another feature
+                // reusing the same sketch must see the unrotated
+                // original. Full 2pi revolves are already symmetric
+                // (sweep wraps onto itself), so the pre-rotation is
+                // skipped -- still geometrically correct, but it
+                // would waste a graph node.
+                bool midplane = ExtParam(feat, "midplane", 0.0) != 0.0;
+                int rev_face_n = face_n;
+                if (midplane && !is_full)
+                {
+                    int half_a_n = cg->AddConst(-sign * 0.5 * p.angle,
+                                                "midplane_pre_angle");
+                    rev_face_n = cg->AddOp(
+                        "rotate",
+                        {face_n, o_n, d_n, half_a_n},
+                        {}, feat.name + ":midplane_pre_rot");
+                }
+
                 int tool_n = cg->AddOp("revolve",
-                                        {face_n, o_n, d_n, a_n, f_n},
+                                        {rev_face_n, o_n, d_n, a_n, f_n},
                                         {}, feat.name);
 
                 FeatureToolInfo ti;
