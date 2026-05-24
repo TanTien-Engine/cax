@@ -4,6 +4,7 @@
 #include "cadapp_c/ir/SketchIR.h"
 #include "cadapp_c/ir/TopoRefIR.h"
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <string>
@@ -104,6 +105,20 @@ struct FeatPayloadFillet
 {
     double                 radius = 0.0;
     std::vector<TopoRefIR> edges;
+
+    // World-coord points (in IR units, metres for FreeCAD) used to
+    // pre-split the running body's edges before fillet runs. The
+    // reader fills these from base brep vertices on each picked
+    // face (face-pick handler) -- those vertices represent edge
+    // junctions FreeCAD kept that cax's BOP collapsed into a
+    // single merged closed/long edge. Without splitting, ChFi3d
+    // can fail on the merged edge because of curvature spikes at
+    // the former join points. See Page_015 Fillet002's 163 mm
+    // closed BSpline on Pad002.
+    //
+    // Empty for edge-typed picks (the picked edge is already
+    // unambiguous) and for FreeCAD files with no BOP merge.
+    std::vector<std::array<double, 3>> split_hints;
 };
 
 struct FeatPayloadChamfer
@@ -111,6 +126,9 @@ struct FeatPayloadChamfer
     double                 distance1 = 0.0;  // distance from edge to chamfer
     double                 distance2 = 0.0;  // 0 = symmetric (distance1 = distance2)
     std::vector<TopoRefIR> edges;
+
+    // Same role as FeatPayloadFillet::split_hints; see comment there.
+    std::vector<std::array<double, 3>> split_hints;
 };
 
 struct FeatPayloadShell

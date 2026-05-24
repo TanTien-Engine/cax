@@ -50,6 +50,22 @@ struct TopoRefIR
     //   Vertex : 0
     double measure = 0.0;
 
+    // Optional auxiliary sample points used by the resolver to
+    // disambiguate matches when (centroid + normal + area) collide
+    // -- typical for dressup Face picks on symmetric bodies, where
+    // multiple cax faces can share the primary scoring tuple but
+    // only one is geometrically the same face the user picked. The
+    // reader fills these with a few boundary edge midpoints (for
+    // Face refs) or leaves them zero (for Edge / Vertex refs). The
+    // resolver validates that each sample lies on the candidate
+    // face's surface within tolerance and rejects candidates that
+    // fail.
+    //
+    // Coordinates are in the same unit-scaled space as `point`
+    // (metres for FreeCAD-sourced refs).
+    uint8_t extra_sample_count = 0;            // 0..4
+    double  extra_samples[4][3] = {{0.0}};
+
     // Filled in by TopoRefResolver. Persisted alongside, so a second
     // replay can skip geometric matching:
     //   uid = 0 means unresolved or resolution failed

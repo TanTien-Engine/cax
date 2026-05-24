@@ -8,19 +8,23 @@
 #include "miniz.h"
 #include "pugixml.hpp"
 
+#include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopAbs.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
-#include <gp_Pnt.hxx>
 #include <gp_Dir.hxx>
+#include <gp_Pnt.hxx>
 
 #include <algorithm>
 #include <cctype>
@@ -28,6 +32,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -960,6 +965,79 @@ bool FillRefFromShape(TopoDS_Shape&        shape,
     return true;
 }
 
+// ------------------------------------------------------------
+// Edge set-diff for Fillet / Chamfer ref resolution.
+//
+// Why this exists: FreeCAD's `<Sub value="EdgeN"/>` strings on a
+// dressup feature index into the BASE feature's shape using the
+// `MapShapes` order that BASE had at the moment the user clicked
+// the edge. If BASE has Refine=true (the PartDesign default),
+// FreeCAD saves the post-refine shape (fewer edges), while the
+// authored "EdgeN" index points into the pre-refine shape. The
+// indices then dangle -- Page_026_Exercise2D-18's Fillet refs
+// Edge35..38 on a Mirrored body whose saved BRP has only 35
+// edges. FreeCAD itself re-resolves these on load by recomputing
+// the BASE feature: there's a brief window before refine where
+// the intermediate shape has the expected edge count and FreeCAD's
+// Fillet picks during that window. cax can't reliably reproduce
+// that window (our Mirror / MultiTransform path doesn't have the
+// same MapShapes-stable intermediate).
+//
+// What we can do robustly: both BASE and the dressup's own result
+// are saved as .brp files inside the .FCStd archive. Walk every
+// edge in BASE; for each, compute the closest distance from its
+// midpoint to OWN's edge geometry. Edges still present in OWN
+// (preserved verbatim, lightly trimmed, or split into co-curve
+// sub-edges) score near zero -- the midpoint sits ON a surviving
+// edge curve. Edges consumed by a fillet / chamfer blend score
+// >= dressup_size (the radius / chamfer distance), because the
+// blend boundary sits at exactly that offset perpendicular to the
+// original edge. A threshold of 0.5 * dressup_size cleanly
+// separates the two regimes for any non-degenerate dressup.
+//
+// The midpoints we emit are FreeCAD's authoritative geometry, so
+// the downstream cax resolver matches them tightly against the
+// refined Mirror body (Replayer must refine before fillet --
+// without refine cax's body has co-linear sub-segments whose
+// midpoints are offset from the refined midpoint by mm-scale,
+// and the resolver's 1mm tolerance misses).
+//
+// Falls back to the index-based StashRefNames path when either
+// brep is missing (raw .xml fixtures) or the diff finds zero
+// consumed edges (radius too small for the dressup to actually
+// modify topology).
+// ------------------------------------------------------------
+
+bool BuildEdgeCompound(const TopoDS_Shape& shape, TopoDS_Compound& out)
+{
+    BRep_Builder builder;
+    builder.MakeCompound(out);
+    TopTools_IndexedMapOfShape m;
+    TopExp::MapShapes(shape, TopAbs_EDGE, m);
+    bool any = false;
+    for (int i = 1; i <= m.Extent(); ++i)
+    {
+        const TopoDS_Edge& e = TopoDS::Edge(m.FindKey(i));
+        if (BRep_Tool::Degenerated(e)) continue;
+        builder.Add(out, e);
+        any = true;
+    }
+    return any;
+}
+
+// Distance from `p` to the nearest point on `shape`'s edges, in
+// BRP units. Returns a sentinel huge value when DistShapeShape
+// can't produce a solution.
+double DistPointToShape(const gp_Pnt& p, const TopoDS_Shape& shape)
+{
+    TopoDS_Vertex v = BRepBuilderAPI_MakeVertex(p);
+    BRepExtrema_DistShapeShape ext(v, shape);
+    if (!ext.IsDone() || ext.NbSolution() == 0) {
+        return std::numeric_limits<double>::infinity();
+    }
+    return ext.Value();
+}
+
 } // anonymous namespace
 
 
@@ -1338,6 +1416,300 @@ void StashRefNames(FeatureIR&                                          feat,
         std::string key = prefix + "_" + std::to_string(i) + "_name";
         feat.ext_strings[key] = object_name + "." + sub_names[i];
     }
+}
+
+// Geometric (set-diff) variant of StashRefNames for Fillet / Chamfer.
+// See the long block comment above BuildEdgeCompound() for the
+// rationale -- FreeCAD's `EdgeN` strings dangle once Refine
+// collapses the base shape, so we walk BASE's edges and find which
+// ones got consumed by the dressup blend, reading their midpoints
+// off FreeCAD's authoritative geometry.
+//
+// `dressup_size_mm` is the radius (Fillet) or distance (Chamfer)
+// in BRP units; it sets the consume / preserve threshold. Pass it
+// as the FreeCAD-property value BEFORE applying m_unit_scale.
+//
+// Returns the number of refs pushed. 0 means the caller should fall
+// back to the index-based StashRefNames (typically: no .FCStd archive,
+// missing brep, or no edges crossed the consume threshold -- usually
+// a degenerate radius that didn't change topology).
+size_t StashFilletRefsByEdgeDiff(
+    FeatureIR&                                          feat,
+    const std::string&                                  base_object,
+    const std::string&                                  own_object,
+    double                                              dressup_size_mm,
+    const std::vector<std::string>&                     authored_sub_names,
+    std::vector<TopoRefIR>&                             out_refs,
+    void*                                               archive,
+    const std::unordered_map<std::string, std::string>& feat_brep_path,
+    double                                              unit_scale)
+{
+    if (!archive) return 0;
+    if (dressup_size_mm <= 0.0) return 0;
+
+    auto base_it = feat_brep_path.find(base_object);
+    auto own_it  = feat_brep_path.find(own_object);
+    if (base_it == feat_brep_path.end()) return 0;
+    if (own_it  == feat_brep_path.end()) return 0;
+
+    TopoDS_Shape base_brep, own_brep;
+    if (!LoadAuthoredShape(archive, base_it->second, base_brep)) return 0;
+    if (!LoadAuthoredShape(archive, own_it->second,  own_brep))  return 0;
+
+    TopoDS_Compound own_edges;
+    if (!BuildEdgeCompound(own_brep, own_edges)) return 0;
+
+    // Half the dressup size cleanly separates the two regimes:
+    // preserved-but-trimmed edges keep their midpoint within
+    // microns of a surviving curve, picked edges end up ~radius
+    // away from any boundary of the blend face. Floored at 0.1 mm
+    // so a tiny chamfer / fillet still has a usable window above
+    // OCCT distance-solver noise.
+    double thresh = 0.5 * dressup_size_mm;
+    if (thresh < 0.1) thresh = 0.1;
+
+    TopTools_IndexedMapOfShape base_edge_map;
+    TopExp::MapShapes(base_brep, TopAbs_EDGE, base_edge_map);
+
+    size_t pushed = 0;
+    size_t kept   = 0;
+    size_t degen  = 0;
+    for (int i = 1; i <= base_edge_map.Extent(); ++i)
+    {
+        const TopoDS_Edge& e = TopoDS::Edge(base_edge_map.FindKey(i));
+        if (BRep_Tool::Degenerated(e)) { ++degen; continue; }
+
+        gp_Pnt mid;
+        gp_Dir tan;
+        if (!cadapp::EdgeMidpoint(e, mid, tan)) { ++degen; continue; }
+
+        double d = DistPointToShape(mid, own_edges);
+        if (d < thresh) { ++kept; continue; }
+
+        TopoRefIR r;
+        r.kind = TopoRefIR::Kind::Edge;
+        r.point[0]  = mid.X() * unit_scale;
+        r.point[1]  = mid.Y() * unit_scale;
+        r.point[2]  = mid.Z() * unit_scale;
+        r.normal[0] = tan.X();
+        r.normal[1] = tan.Y();
+        r.normal[2] = tan.Z();
+        r.measure   = cadapp::EdgeArcLength(e) * unit_scale;
+
+        std::string key = "edge_ref_" + std::to_string(pushed) + "_name";
+        // Tie the new ref to one of the authored sub-names when
+        // available -- handy for diagnostics. We can't know which
+        // authored EdgeN this geometric ref originally was (the
+        // whole point of this path is that the indices are stale),
+        // so just append them in input order; the resolver doesn't
+        // care.
+        if (pushed < authored_sub_names.size()) {
+            feat.ext_strings[key] = base_object + "." + authored_sub_names[pushed];
+        } else {
+            feat.ext_strings[key] = base_object + ".<diff>";
+        }
+        out_refs.push_back(r);
+        ++pushed;
+    }
+
+    // Diagnostic left in: edge-diff is the only way Fillet / Chamfer
+    // works on FCStd files with stale Refine'd base shapes, and a
+    // misconfigured threshold silently picks the wrong number of
+    // edges. Compare `pushed` against the dressup's `<LinkSub
+    // count="N">` from the FreeCAD XML; in chained-fillet cases
+    // pushed may exceed N (each tangent-chained original edge is
+    // still consumed, so we emit one ref per chain link, and OCCT's
+    // MakeFillet auto-chains them back on the cax side).
+    std::fprintf(stderr,
+        "[edge_diff] dressup=%s base=%s thresh_mm=%.3f base_edges=%d "
+        "kept=%zu degen=%zu emitted=%zu (authored=%zu)\n",
+        own_object.c_str(), base_object.c_str(), thresh,
+        base_edge_map.Extent(),
+        kept, degen, pushed,
+        authored_sub_names.size());
+
+    return pushed;
+}
+
+// Face-pick variant of edge-diff for Fillet / Chamfer.
+//
+// A FreeCAD face pick on a dressup means "fillet all the eligible
+// edges of this face". FreeCAD's MakeFillet decides eligibility at
+// the time of authoring (a smooth tangent-continuous boundary edge,
+// for example, is silently skipped because it has no dihedral angle
+// to round). We can't reproduce that decision from the FreeCAD
+// metadata alone -- it lives only in BRepFilletAPI's runtime state.
+//
+// Workaround: enumerate every edge of each picked face IN BASE, then
+// check which ones DISAPPEARED in OWN. The ones still present are
+// exactly the edges FreeCAD's fillet left alone (smooth boundaries,
+// already-blended edges, etc). The ones gone are the edges we need
+// to feed to cax's MakeFillet -- and cax will then succeed because
+// these are precisely the edges that geometrically support a fillet
+// in this body.
+//
+// Why we can't just keep blindly exploding face refs into all edges
+// (what `TopoAlgo::Fillet`'s `CollectLeafEdges` does today): on
+// Page_015 Fillet002 the picked Face1 / Face3 / Face5 / Face35 each
+// include a closed BSpline boundary edge that FreeCAD skipped but
+// cax's per-edge fallback tried to fillet, causing it to throw or
+// return IsDone=false, leaving 3 / 10 edges unfilleted and the
+// resulting body topologically different from FreeCAD's.
+//
+// Returns 0 to signal the caller to fall back to StashRefNames when
+// the .brep archive is missing or face indices are out of range.
+size_t StashFilletRefsFromFacePicks(
+    FeatureIR&                                          feat,
+    const std::string&                                  base_object,
+    const std::string&                                  own_object,
+    const std::vector<std::string>&                     authored_sub_names,
+    std::vector<TopoRefIR>&                             out_refs,
+    std::vector<std::array<double, 3>>&                 out_split_hints,
+    void*                                               archive,
+    const std::unordered_map<std::string, std::string>& feat_brep_path,
+    double                                              unit_scale)
+{
+    if (!archive) return 0;
+
+    auto base_it = feat_brep_path.find(base_object);
+    if (base_it == feat_brep_path.end()) return 0;
+
+    TopoDS_Shape base_brep;
+    if (!LoadAuthoredShape(archive, base_it->second, base_brep)) return 0;
+
+    TopTools_IndexedMapOfShape face_map;
+    TopExp::MapShapes(base_brep, TopAbs_FACE, face_map);
+
+    size_t pushed      = 0;
+    size_t skipped_idx = 0;
+    for (size_t s = 0; s < authored_sub_names.size(); ++s)
+    {
+        int face_idx = ParseTrailingInt(authored_sub_names[s]);
+        if (face_idx <= 0 || face_idx > face_map.Extent()) {
+            ++skipped_idx;
+            continue;
+        }
+        const TopoDS_Face& face = TopoDS::Face(face_map.FindKey(face_idx));
+
+        // Primary ref attributes: UV-center + normal + area. These
+        // are the existing TopoRefResolver scoring inputs and let
+        // existing fixtures keep working.
+        gp_Pnt center;
+        gp_Dir normal;
+        if (!cadapp::FaceCenter(face, center, normal)) {
+            ++skipped_idx;
+            continue;
+        }
+        double area = cadapp::FaceArea(face);
+
+        TopoRefIR r;
+        r.kind = TopoRefIR::Kind::Face;
+        r.point[0]  = center.X() * unit_scale;
+        r.point[1]  = center.Y() * unit_scale;
+        r.point[2]  = center.Z() * unit_scale;
+        r.normal[0] = normal.X();
+        r.normal[1] = normal.Y();
+        r.normal[2] = normal.Z();
+        r.measure   = area * unit_scale * unit_scale;
+
+        // Sample points: midpoints of up to 4 LONGEST boundary
+        // edges. These are physical points on the face's boundary
+        // -- the resolver requires each to lie on the candidate
+        // cax face's surface, so two faces with identical centroid
+        // + normal + area but different boundaries get
+        // disambiguated. Dangling FaceN indices that pick a wrong
+        // face (different physical extent) also get caught here
+        // because the boundary samples won't all land on the
+        // dangling face.
+        std::vector<std::pair<double, gp_Pnt>> edge_mids;
+        for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next())
+        {
+            const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+            if (BRep_Tool::Degenerated(e)) continue;
+
+            gp_Pnt mid;
+            gp_Dir tan;
+            if (!cadapp::EdgeMidpoint(e, mid, tan)) continue;
+            double len = cadapp::EdgeArcLength(e);
+            if (len <= 0.0) continue;
+            edge_mids.emplace_back(len, mid);
+        }
+        std::sort(edge_mids.begin(), edge_mids.end(),
+                  [](const auto& a, const auto& b) {
+                      return a.first > b.first;
+                  });
+
+        r.extra_sample_count = 0;
+        const size_t max_samples = sizeof(r.extra_samples)
+                                 / sizeof(r.extra_samples[0]);
+        for (size_t k = 0;
+             k < edge_mids.size() && k < max_samples;
+             ++k)
+        {
+            r.extra_samples[k][0] = edge_mids[k].second.X() * unit_scale;
+            r.extra_samples[k][1] = edge_mids[k].second.Y() * unit_scale;
+            r.extra_samples[k][2] = edge_mids[k].second.Z() * unit_scale;
+            ++r.extra_sample_count;
+        }
+
+        std::string key = "face_ref_" + std::to_string(pushed) + "_name";
+        feat.ext_strings[key] = base_object + "." + authored_sub_names[s];
+        out_refs.push_back(r);
+        ++pushed;
+    }
+
+    // Collect split hints: every vertex on every picked face in the
+    // base brep. cax's BOP can merge two FreeCAD edges that met at a
+    // vertex V into one closed/long BSpline (Page_015 Pad002 outer
+    // boundary 75 mm + 85 mm -> one 163 mm closed BSpline). The
+    // merged BSpline carries a curvature spike at the former V
+    // position that ChFi3d can't sweep a fillet around. Feeding V's
+    // world coords to the downstream pre-split pass lets it cut the
+    // merged edge back into two pieces ChFi3d can handle.
+    //
+    // Dedup at sub-mm so a vertex shared by two picked faces only
+    // appears once.
+    auto already_hinted = [&](const std::array<double, 3>& p) {
+        for (const auto& q : out_split_hints) {
+            double dx = p[0] - q[0];
+            double dy = p[1] - q[1];
+            double dz = p[2] - q[2];
+            if (std::sqrt(dx * dx + dy * dy + dz * dz) < 1e-5) return true;
+        }
+        return false;
+    };
+
+    size_t hint_count = 0;
+    for (size_t s = 0; s < authored_sub_names.size(); ++s)
+    {
+        int face_idx = ParseTrailingInt(authored_sub_names[s]);
+        if (face_idx <= 0 || face_idx > face_map.Extent()) continue;
+        const TopoDS_Face& face = TopoDS::Face(face_map.FindKey(face_idx));
+
+        TopTools_IndexedMapOfShape vert_map;
+        TopExp::MapShapes(face, TopAbs_VERTEX, vert_map);
+        for (int i = 1; i <= vert_map.Extent(); ++i)
+        {
+            const TopoDS_Vertex& v = TopoDS::Vertex(vert_map.FindKey(i));
+            gp_Pnt p = BRep_Tool::Pnt(v);
+            std::array<double, 3> hp = {{
+                p.X() * unit_scale,
+                p.Y() * unit_scale,
+                p.Z() * unit_scale
+            }};
+            if (already_hinted(hp)) continue;
+            out_split_hints.push_back(hp);
+            ++hint_count;
+        }
+    }
+
+    std::fprintf(stderr,
+        "[face_picks] dressup=%s base=%s authored_faces=%zu "
+        "skipped_idx=%zu emitted=%zu split_hints=%zu\n",
+        own_object.c_str(), base_object.c_str(),
+        authored_sub_names.size(), skipped_idx, pushed, hint_count);
+
+    return pushed;
 }
 
 // Record an "Originals" link list (the features a Transformed
@@ -2044,12 +2416,45 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         else if (pending.type == "PartDesign::Fillet")
         {
             FeatPayloadFillet pl;
-            pl.radius = PropDouble(props, "Radius", 0.0) * m_unit_scale;
+            double radius_mm = PropDouble(props, "Radius", 0.0);
+            pl.radius = radius_mm * m_unit_scale;
 
             LinkRef base = PropLink(props, "Base");
-            StashRefNames(feat, base.sub_names, base.object_name,
-                          "edge_ref", TopoRefIR::Kind::Edge, pl.edges,
-                          m_zip, m_feat_brep_path, m_unit_scale);
+
+            // Detect face-typed picks ("FaceN") vs edge-typed picks
+            // ("EdgeN"). Face picks need a different diff strategy
+            // because the picked face still exists in OWN (just
+            // trimmed) -- enumerate edges of each picked face and
+            // emit only the ones consumed by FreeCAD's MakeFillet.
+            bool has_face = false;
+            for (const auto& sn : base.sub_names) {
+                if (sn.size() >= 4 &&
+                    (sn[0] == 'F' || sn[0] == 'f') &&
+                    (sn[1] == 'a' || sn[1] == 'A') &&
+                    (sn[2] == 'c' || sn[2] == 'C') &&
+                    (sn[3] == 'e' || sn[3] == 'E')) {
+                    has_face = true; break;
+                }
+            }
+
+            size_t diff_n = 0;
+            if (has_face) {
+                diff_n = StashFilletRefsFromFacePicks(
+                    feat, base.object_name, pending.name,
+                    base.sub_names, pl.edges, pl.split_hints,
+                    m_zip, m_feat_brep_path, m_unit_scale);
+            } else {
+                diff_n = StashFilletRefsByEdgeDiff(
+                    feat, base.object_name, pending.name, radius_mm,
+                    base.sub_names, pl.edges,
+                    m_zip, m_feat_brep_path, m_unit_scale);
+            }
+            if (diff_n == 0)
+            {
+                StashRefNames(feat, base.sub_names, base.object_name,
+                              "edge_ref", TopoRefIR::Kind::Edge, pl.edges,
+                              m_zip, m_feat_brep_path, m_unit_scale);
+            }
 
             feat.type = FeatType::Fillet;
             feat.data = std::move(pl);
@@ -2057,8 +2462,10 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         else if (pending.type == "PartDesign::Chamfer")
         {
             FeatPayloadChamfer pl;
-            pl.distance1 = PropDouble(props, "Size",  0.0) * m_unit_scale;
-            pl.distance2 = PropDouble(props, "Size2", 0.0) * m_unit_scale;
+            double size1_mm = PropDouble(props, "Size",  0.0);
+            double size2_mm = PropDouble(props, "Size2", 0.0);
+            pl.distance1 = size1_mm * m_unit_scale;
+            pl.distance2 = size2_mm * m_unit_scale;
             // ChamferType: 0 = equal, 1 = two distances,
             //              2 = distance + angle. Distance + angle
             // is not yet representable in FeatPayloadChamfer;
@@ -2070,9 +2477,40 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             }
 
             LinkRef base = PropLink(props, "Base");
-            StashRefNames(feat, base.sub_names, base.object_name,
-                          "edge_ref", TopoRefIR::Kind::Edge, pl.edges,
-                          m_zip, m_feat_brep_path, m_unit_scale);
+
+            // Same face/edge dispatch as Fillet -- chamfer face
+            // picks have the same semantics ("chamfer all eligible
+            // edges of this face") and the same exploded-too-much
+            // failure mode if we blindly fan out.
+            bool has_face = false;
+            for (const auto& sn : base.sub_names) {
+                if (sn.size() >= 4 &&
+                    (sn[0] == 'F' || sn[0] == 'f') &&
+                    (sn[1] == 'a' || sn[1] == 'A') &&
+                    (sn[2] == 'c' || sn[2] == 'C') &&
+                    (sn[3] == 'e' || sn[3] == 'E')) {
+                    has_face = true; break;
+                }
+            }
+
+            size_t diff_n = 0;
+            if (has_face) {
+                diff_n = StashFilletRefsFromFacePicks(
+                    feat, base.object_name, pending.name,
+                    base.sub_names, pl.edges, pl.split_hints,
+                    m_zip, m_feat_brep_path, m_unit_scale);
+            } else {
+                diff_n = StashFilletRefsByEdgeDiff(
+                    feat, base.object_name, pending.name, size1_mm,
+                    base.sub_names, pl.edges,
+                    m_zip, m_feat_brep_path, m_unit_scale);
+            }
+            if (diff_n == 0)
+            {
+                StashRefNames(feat, base.sub_names, base.object_name,
+                              "edge_ref", TopoRefIR::Kind::Edge, pl.edges,
+                              m_zip, m_feat_brep_path, m_unit_scale);
+            }
 
             feat.type = FeatType::Chamfer;
             feat.data = std::move(pl);
