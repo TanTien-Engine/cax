@@ -9,17 +9,24 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 
 // OCCT
 #include <OSD.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
+#include <ChFi3d_FilletShape.hxx>
 #include <BRepOffsetAPI_MakeDraft.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
+#include <BOPAlgo_Splitter.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
+#include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
+#include <TopExp.hxx>
+#include <TopTools_ListOfShape.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -30,6 +37,10 @@
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <Standard_Failure.hxx>
 #include <gp_Ax2.hxx>
+#include <BRepAdaptor_Curve.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
+#include <BRep_Tool.hxx>
 
 namespace
 {
@@ -195,34 +206,104 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     {
         leaf_edges = CollectLeafEdges(edges);
     }
+
+    // Dedup by (TShape + Location). When two TopoRefIR refs resolve
+    // to the same cax edge (typical when cax merges what FreeCAD
+    // kept as two adjacent edges -- the merged cax edge is the
+    // nearest match for both refs), feeding both copies to
+    // BRepFilletAPI::Add at best wastes work and at worst confuses
+    // ChFi3d into a stripe-collision throw. Page_015 Fillet002 saw
+    // 12 refs reduce to ~10 unique leaf edges this way.
+    {
+        TopTools_IndexedMapOfShape seen;
+        std::vector<TopoDS_Edge>   uniq;
+        uniq.reserve(leaf_edges.size());
+        for (const auto& e : leaf_edges) {
+            if (seen.Add(e)) {
+                uniq.push_back(e);
+            }
+        }
+        if (uniq.size() != leaf_edges.size()) {
+            std::fprintf(stderr,
+                "[FILLET] op_id=%u dedup'd leaf_edges %zu -> %zu\n",
+                op_id, leaf_edges.size(), uniq.size());
+        }
+        leaf_edges = std::move(uniq);
+    }
+
     if (leaf_edges.empty()) {
         // All refs failed to resolve, or no real edges. Skip the
         // op rather than calling fillet.Shape(), which would throw
-        // StdFail_NotDone when NbContours()==0.
+        // StdFail_NotDone when NbContours()==0. A SKIPPED here is
+        // worth the breadcrumb -- silently filleting nothing reads
+        // as "fillet did nothing" downstream and you spend an hour
+        // looking in the wrong place.
+        std::fprintf(stderr,
+            "[FILLET] op_id=%u SKIPPED -- no leaf edges to fillet\n",
+            op_id);
         return shape;
     }
 
-    // ---- Batch attempt: add all edges in one MakeFillet call ----
-    BRepFilletAPI_MakeFillet batch(shape->GetShape());
-    bool         batch_ok = false;
-    TopoDS_Shape result;
-    if (!force_single)
+    // ---- Batch attempts: QuasiAngular first, then Rational ----
+    //
+    // Try each fillet-shape mode as a single MakeFillet call so we
+    // keep the chain-fillet topology (corner blends auto-merge
+    // when edges share endpoints, etc).
+    //
+    // QuasiAngular emits ANALYTICAL blend surfaces (gp_Torus for
+    // arc edges, gp_Cylinder for line edges) where it can; Rational
+    // always emits a BSpline approximation. Visually the analytical
+    // form mesh-tessellates uniformly along U/V, giving a smooth
+    // toroidal ring; the BSpline approximation tessellates unevenly
+    // and shows up as "carved triangular patches" in the viewer
+    // when Pad001's circular profile gets filleted. FreeCAD's
+    // PartDesign::Fillet defaults to QuasiAngular for the same
+    // reason, so we mirror that preference. Rational stays as the
+    // robustness fallback: it succeeds on closed BSplines and high-
+    // curvature edges where QuasiAngular's analytical branch refuses.
+    auto try_batch = [&](ChFi3d_FilletShape       mode,
+                         std::unique_ptr<BRepFilletAPI_MakeFillet>& out,
+                         TopoDS_Shape&            out_shape) -> bool
     {
+        out.reset(new BRepFilletAPI_MakeFillet(shape->GetShape()));
+        out->SetFilletShape(mode);
         for (const auto& e : leaf_edges) {
-            batch.Add(radius, e);
+            out->Add(radius, e);
         }
         try {
-            batch.Build();
-            if (batch.IsDone()) {
-                result   = batch.Shape();
-                batch_ok = true;
+            out->Build();
+            if (out->IsDone()) {
+                out_shape = out->Shape();
+                return true;
             }
         } catch (...) {
             // OCCT throws Standard_Failure subclasses on numeric
             // pathologies, and SEH (converted by OSD::SetSignal)
             // when ChFi3d_StripeEdgeInter dereferences something
-            // it shouldn't. Either way: bail to the per-edge path.
-            batch_ok = false;
+            // it shouldn't. Treat both as "this mode failed".
+        }
+        return false;
+    };
+
+    std::unique_ptr<BRepFilletAPI_MakeFillet> batch_holder;
+    TopoDS_Shape  result;
+    bool          batch_ok = false;
+    if (!force_single)
+    {
+        // Rational first: produces a BSpline-approximation blend
+        // surface that tessellates uniformly in the viewer. The
+        // alternative QuasiAngular emits analytical Torus / Cylinder
+        // patches which the picker chained more finely on
+        // Page_015's tangent-discontinuous contour, showing up as
+        // carved triangular sub-faces in the viewer. QuasiAngular
+        // stays as the fallback because it succeeds on closed
+        // BSplines and high-curvature edges that Rational refuses.
+        if (!try_batch(ChFi3d_Rational, batch_holder, result)) {
+            if (try_batch(ChFi3d_QuasiAngular, batch_holder, result)) {
+                batch_ok = true;
+            }
+        } else {
+            batch_ok = true;
         }
     }
 
@@ -231,7 +312,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         result = UnwrapSingleSolid(result);
         brepgraph::TopoNaming::PidMap pid_map;
         if (tn) {
-            pid_map = tn->Update(batch, result, shape->GetShape(), op_id);
+            pid_map = tn->Update(*batch_holder, result, shape->GetShape(), op_id);
         }
         auto dst = std::make_shared<brepkit::TopoShape>(result);
         commit_to_vt(tn, vt, shape, dst, pid_map, "fillet");
@@ -255,28 +336,154 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         "[FILLET] op_id=%u batch failed, retrying %zu edges singly\n",
         op_id, leaf_edges.size());
 
-    TopoDS_Shape running = shape->GetShape();
-    int          ok_count = 0;
-    for (size_t i = 0; i < leaf_edges.size(); ++i)
+    auto edge_geom_str = [](const TopoDS_Edge& e) -> std::string {
+        char buf[256];
+        if (BRep_Tool::Degenerated(e)) { return "DEGENERATE"; }
+        try {
+            BRepAdaptor_Curve curve(e);
+            double f = curve.FirstParameter();
+            double l = curve.LastParameter();
+            gp_Pnt p_start = curve.Value(f);
+            gp_Pnt p_mid   = curve.Value(0.5 * (f + l));
+            gp_Pnt p_end   = curve.Value(l);
+            GProp_GProps props;
+            BRepGProp::LinearProperties(e, props);
+            std::snprintf(buf, sizeof(buf),
+                "mid=(%.4f,%.4f,%.4f) start=(%.4f,%.4f,%.4f) "
+                "end=(%.4f,%.4f,%.4f) len=%.4f",
+                p_mid.X(), p_mid.Y(), p_mid.Z(),
+                p_start.X(), p_start.Y(), p_start.Z(),
+                p_end.X(), p_end.Y(), p_end.Z(),
+                props.Mass());
+            return buf;
+        } catch (...) {
+            return "UNREADABLE";
+        }
+    };
+
+    // Try one edge with one fillet-shape mode. Returns true on a
+    // clean Build()+IsDone(), false if it throws OR IsDone=false.
+    // On success the caller advances `running` to the new shape.
+    auto try_one = [&](TopoDS_Shape&        working,
+                       const TopoDS_Edge&   e,
+                       ChFi3d_FilletShape   mode,
+                       TopoDS_Shape&        out_result) -> bool
     {
         try {
-            BRepFilletAPI_MakeFillet f(running);
-            f.Add(radius, leaf_edges[i]);
+            BRepFilletAPI_MakeFillet f(working);
+            f.SetFilletShape(mode);
+            f.Add(radius, e);
             f.Build();
             if (f.IsDone()) {
-                running = UnwrapSingleSolid(f.Shape());
-                ++ok_count;
-                std::fprintf(stderr, "[FILLET]   edge[%zu] ok\n", i);
-            } else {
-                std::fprintf(stderr, "[FILLET]   edge[%zu] IsDone=false\n", i);
+                out_result = UnwrapSingleSolid(f.Shape());
+                return true;
             }
         } catch (...) {
-            std::fprintf(stderr, "[FILLET]   edge[%zu] threw\n", i);
+            // fall through to false
+        }
+        return false;
+    };
+
+    TopoDS_Shape running = shape->GetShape();
+
+    // Try each edge in order. Track failures so we can re-try them
+    // later: per-edge mode is order-dependent (each fillet mutates
+    // `running`, changing the topology that downstream edges see),
+    // and an edge that ChFi3d rejects on the unmodified body can
+    // sometimes succeed after a neighbouring fillet has tidied up
+    // the local stripe geometry. We saw this on Page_015 Fillet002
+    // edge[0] (163mm closed BSpline at z=+0.02) failing both modes
+    // while edge[5] (the same geometry mirrored to z=-0.02)
+    // succeeded with Rational a few iterations later.
+    auto try_both_modes = [&](const TopoDS_Edge& e,
+                              TopoDS_Shape&      out_result,
+                              const char*&       out_mode) -> bool
+    {
+        // Rational first to match the batch-mode preference --
+        // gives one BSpline blend per chained tangent group; switch
+        // to QuasiAngular only when Rational refuses (closed BSpline
+        // edges, high-curvature pathologies).
+        if (try_one(running, e, ChFi3d_Rational, out_result)) {
+            out_mode = "Rational";
+            return true;
+        }
+        if (try_one(running, e, ChFi3d_QuasiAngular, out_result)) {
+            out_mode = "QuasiAngular";
+            return true;
+        }
+        return false;
+    };
+
+    int          ok_count = 0;
+    std::vector<size_t> failed;
+    for (size_t i = 0; i < leaf_edges.size(); ++i)
+    {
+        std::string geom = edge_geom_str(leaf_edges[i]);
+
+        TopoDS_Shape result;
+        const char*  mode = nullptr;
+        if (try_both_modes(leaf_edges[i], result, mode))
+        {
+            running = result;
+            ++ok_count;
+            std::fprintf(stderr, "[FILLET]   edge[%zu] ok (%s) %s\n",
+                         i, mode, geom.c_str());
+        }
+        else
+        {
+            failed.push_back(i);
+            std::fprintf(stderr,
+                "[FILLET]   edge[%zu] failed first pass %s\n",
+                i, geom.c_str());
         }
     }
+
+    // Retry pass: iterate the failed list against the now-modified
+    // running shape. Repeat until a pass makes zero progress, which
+    // means OCCT really can't fillet those edges in any order.
+    int retry_round = 0;
+    while (!failed.empty())
+    {
+        ++retry_round;
+        std::vector<size_t> still_failed;
+        int                 round_ok = 0;
+        for (size_t i : failed)
+        {
+            std::string geom = edge_geom_str(leaf_edges[i]);
+            TopoDS_Shape result;
+            const char*  mode = nullptr;
+            if (try_both_modes(leaf_edges[i], result, mode))
+            {
+                running = result;
+                ++ok_count;
+                ++round_ok;
+                std::fprintf(stderr,
+                    "[FILLET]   edge[%zu] ok (%s, retry round %d) %s\n",
+                    i, mode, retry_round, geom.c_str());
+            }
+            else
+            {
+                still_failed.push_back(i);
+            }
+        }
+        if (round_ok == 0)
+        {
+            // No progress this round -- log final failures and stop.
+            for (size_t i : still_failed)
+            {
+                std::string geom = edge_geom_str(leaf_edges[i]);
+                std::fprintf(stderr,
+                    "[FILLET]   edge[%zu] FAILED both modes after %d retries %s\n",
+                    i, retry_round, geom.c_str());
+            }
+            break;
+        }
+        failed = std::move(still_failed);
+    }
+
     std::fprintf(stderr,
-        "[FILLET] op_id=%u per-edge retry: %d/%zu applied\n",
-        op_id, ok_count, leaf_edges.size());
+        "[FILLET] op_id=%u per-edge retry: %d/%zu applied (%d retry rounds)\n",
+        op_id, ok_count, leaf_edges.size(), retry_round);
 
     if (ok_count == 0) {
         return shape;
@@ -554,6 +761,120 @@ std::shared_ptr<TopoShape> TopoAlgo::UnifySameDomain(const std::shared_ptr<TopoS
     }
     auto dst = std::make_shared<brepkit::TopoShape>(algo.Shape());
     commit_to_vt(tn, vt, shape, dst, pid_map, "unify_same_domain");
+    return dst;
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::SplitBodyAtPoints(
+    const std::shared_ptr<TopoShape>&             shape,
+    const std::vector<sm::vec3>&                  points,
+    uint32_t                                      op_id,
+    const std::shared_ptr<brepgraph::TopoNaming>& tn,
+    const std::shared_ptr<brepdb::VersionTree>&   vt)
+{
+    if (!shape || shape->GetShape().IsNull()) return shape;
+    if (points.empty())                       return shape;
+
+    // Filter hint points to those that actually lie on an edge of
+    // the body and are NOT already at a vertex. Use a sub-mm
+    // tolerance (BOP fuzzy is typically below this; FreeCAD-saved
+    // BReps land within microns of cax-computed midpoints when
+    // edges line up). Off-body points and already-vertex points
+    // are silently dropped -- adding them as tools to
+    // BOPAlgo_Splitter is either a no-op or an error.
+    const double on_edge_tol  = 1e-4;     // 0.1 mm in metres
+    const double at_vertex_tol = 1e-5;    // 10 microns
+
+    TopTools_IndexedMapOfShape vert_map;
+    TopExp::MapShapes(shape->GetShape(), TopAbs_VERTEX, vert_map);
+
+    TopTools_IndexedMapOfShape edge_map;
+    TopExp::MapShapes(shape->GetShape(), TopAbs_EDGE, edge_map);
+
+    std::vector<TopoDS_Vertex> tools;
+    tools.reserve(points.size());
+    for (const auto& p : points)
+    {
+        gp_Pnt pt(p.x, p.y, p.z);
+
+        // Skip if coincident with an existing vertex.
+        bool at_existing_vertex = false;
+        for (int i = 1; i <= vert_map.Extent(); ++i)
+        {
+            const TopoDS_Vertex& v =
+                TopoDS::Vertex(vert_map.FindKey(i));
+            gp_Pnt q = BRep_Tool::Pnt(v);
+            if (pt.Distance(q) < at_vertex_tol) {
+                at_existing_vertex = true;
+                break;
+            }
+        }
+        if (at_existing_vertex) continue;
+
+        // Find the nearest edge; if it's within on_edge_tol, accept
+        // the point as a valid split site.
+        TopoDS_Vertex tool_v = BRepBuilderAPI_MakeVertex(pt);
+        bool on_some_edge = false;
+        for (int i = 1; i <= edge_map.Extent(); ++i)
+        {
+            const TopoDS_Edge& e = TopoDS::Edge(edge_map.FindKey(i));
+            BRepExtrema_DistShapeShape ext(tool_v, e);
+            if (ext.IsDone() && ext.NbSolution() > 0 &&
+                ext.Value() < on_edge_tol)
+            {
+                on_some_edge = true;
+                break;
+            }
+        }
+        if (!on_some_edge) continue;
+
+        tools.push_back(tool_v);
+    }
+
+    if (tools.empty()) {
+        std::fprintf(stderr,
+            "[SPLIT_BODY] op_id=%u no usable hints (all off-body "
+            "or at existing vertices); body unchanged\n", op_id);
+        return shape;
+    }
+
+    BOPAlgo_Splitter splitter;
+    TopTools_ListOfShape args;
+    args.Append(shape->GetShape());
+    splitter.SetArguments(args);
+
+    TopTools_ListOfShape tools_list;
+    for (const auto& tv : tools) {
+        tools_list.Append(tv);
+    }
+    splitter.SetTools(tools_list);
+
+    try {
+        splitter.Perform();
+    } catch (...) {
+        std::fprintf(stderr,
+            "[SPLIT_BODY] op_id=%u splitter threw; body unchanged\n",
+            op_id);
+        return shape;
+    }
+    if (splitter.HasErrors()) {
+        std::fprintf(stderr,
+            "[SPLIT_BODY] op_id=%u splitter reported errors; body "
+            "unchanged\n", op_id);
+        return shape;
+    }
+
+    TopoDS_Shape result = splitter.Shape();
+    std::fprintf(stderr,
+        "[SPLIT_BODY] op_id=%u applied %zu split point(s)\n",
+        op_id, tools.size());
+
+    brepgraph::TopoNaming::PidMap pid_map;
+    if (tn) {
+        opencascade::handle<BRepTools_History> hist = splitter.History();
+        pid_map = tn->Update(hist, result, shape->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<brepkit::TopoShape>(result);
+    commit_to_vt(tn, vt, shape, dst, pid_map, "split_body_at_points");
     return dst;
 }
 

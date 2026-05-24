@@ -7,8 +7,11 @@
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 
+#include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepTools.hxx>
 #include <TopoDS_Shape.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <gp_Pnt.hxx>
 
 #include <cmath>
 #include <cstdio>
@@ -431,6 +434,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             continue;
         }
 
+        //if (feat.name == "Fillet002")
+        //    break;
+
         int  node    = -1;
         bool step_ok = true;
 
@@ -621,6 +627,18 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                       {}, feat.name);
                     ti.op_kind = 'c';
                 }
+                // Mirror FreeCAD's PartDesign::Pad / Pocket default
+                // Refine=true: append UnifySameDomain so coplanar side
+                // faces from a multi-segment sketch contour collapse
+                // and downstream Fillet runs on a single smooth strip
+                // rather than N narrow strips that fracture the blend.
+                // tool_n stays unrefined so a downstream PolarPattern
+                // / Mirror with Originals=[this feat] still multiplies
+                // a clean prism, not a refined body.
+                if (opt.refine_after_primitive && node >= 0) {
+                    node = cg->AddOp("refine", {node}, {},
+                                      feat.name + ":refine");
+                }
                 feature_tools[feat.id] = ti;
             }
 
@@ -699,6 +717,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     node = cg->AddOp("cut", {last_node, tool_n},
                                       {}, feat.name);
                     ti.op_kind = 'c';
+                }
+                // See Extrude branch above for rationale.
+                if (opt.refine_after_primitive && node >= 0) {
+                    node = cg->AddOp("refine", {node}, {},
+                                      feat.name + ":refine");
                 }
                 feature_tools[feat.id] = ti;
             }
@@ -789,6 +812,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                       {}, feat.name);
                     ti.op_kind = 'c';
                 }
+                // See Extrude branch above for rationale.
+                if (opt.refine_after_primitive && node >= 0) {
+                    node = cg->AddOp("refine", {node}, {},
+                                      feat.name + ":refine");
+                }
                 feature_tools[feat.id] = ti;
             }
 
@@ -867,6 +895,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                       {}, feat.name);
                     ti.op_kind = 'c';
                 }
+                // See Extrude branch above for rationale.
+                if (opt.refine_after_primitive && node >= 0) {
+                    node = cg->AddOp("refine", {node}, {},
+                                      feat.name + ":refine");
+                }
                 feature_tools[feat.id] = ti;
             }
 
@@ -879,34 +912,34 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     step_ok = false;
                     return;
                 }
-
-                // c17a1d22 added a "refine before dressup" step here
-                // (UnifySameDomain on last_node) to clean up Mirror /
-                // Pattern sub-segment seams before the resolver looks
-                // at the body. That fix specifically targeted
-                // Page_020_Exercise2D-12 Mirrored.Edge12 where the
-                // post-Mirror body had 68/159 faces/edges vs FreeCAD's
-                // 42/113, and an un-refined sub-segment was outscoring
-                // the parent edge in the resolver.
-                //
-                // For the current fixture set this same refine
-                // SHIFTS the matched edge to a different position
-                // (refine merges N sub-segments into one long edge
-                // with a midpoint that doesn't sit where FreeCAD's
-                // ref midpoint is, so the resolver lands on the
-                // wrong cax edge and the fillet runs at the wrong
-                // place). The refine-after-primitive pass we now
-                // run after Pad/Pocket/Revolve/Sweep/Loft has
-                // mostly subsumed the upstream cleanup the dressup-
-                // local refine was doing, so we point the resolver
-                // back at last_node directly.
-                //
-                // If Page_020 (or similar Mirror+Fillet fixtures)
-                // regresses, the right fix is to make the refine-
-                // after-primitive pass strictly include the Mirror
-                // / MultiTransform output, not to re-add a refine
-                // here.
+                // The body the resolver / ChFi3d looks at. Starts as
+                // last_node (no pre-dressup refine; that pass was
+                // tried via c17a1d22 and silently shifted resolver
+                // matches to the wrong cax edge, so it's reverted)
+                // and gets re-bound to a split_body_at_points node
+                // below when the reader supplied split hints.
                 int body_n = last_node;
+
+                // (Page_015 Pad002 75mm+85mm -> 163mm closed BSpline).
+                // Splitting before resolve means the downstream
+                // resolve_edge_ref finds the post-split sub-edges,
+                // and ChFi3d gets edges it can actually fillet.
+                if (!p.split_hints.empty())
+                {
+                    std::vector<int> vert_nodes;
+                    vert_nodes.reserve(p.split_hints.size());
+                    for (const auto& h : p.split_hints)
+                    {
+                        TopoDS_Vertex tv = BRepBuilderAPI_MakeVertex(
+                            gp_Pnt(h[0], h[1], h[2]));
+                        auto ts = std::make_shared<brepkit::TopoShape>(tv);
+                        int vn = cg->AddConst(ts, "split_hint");
+                        vert_nodes.push_back(vn);
+                    }
+                    body_n = cg->AddOp("split_body_at_points",
+                                        {body_n}, vert_nodes,
+                                        feat.name + ":split_body");
+                }
 
                 // Build a resolve_(edge|face)_ref op per ref and feed
                 // the resulting sub-shape nodes as variadic edge inputs
@@ -919,6 +952,35 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 // the resolver searches the face map, and TopoAlgo
                 // explodes the resolved face into its edges via
                 // TopExp_Explorer at apply time.
+                // Dressup picks are inherently fuzzy: the ref midpoint
+                // comes from FreeCAD's saved geometry (PartShape*.brp),
+                // but cax replays the upstream feature chain with its
+                // own Mirror / Pattern / BOP implementations, and the
+                // resulting body's edges can sit mm away from FreeCAD's
+                // in the same logical place (different BOP fuzzy
+                // tolerance, different seam handling). We saw cax's
+                // Mirror+refine body land an edge 8.9 mm away from
+                // FreeCAD's Edge36 midpoint on Page_026_Exercise2D-18,
+                // far beyond the default 1 mm topo_tolerance.
+                //
+                // Widen the resolver tolerance for dressup picks to
+                // scale with the dressup size: a user picking an edge
+                // for a 1.5 mm fillet is fundamentally OK with the
+                // match landing within a few mm because the resulting
+                // blend covers that neighbourhood anyway. 5x the
+                // dressup size is the empirical sweet spot -- tight
+                // enough that two distinct picked edges don't compete
+                // for the same match on symmetric models, loose enough
+                // to absorb the implementation drift.
+                double dressup_size = 0.0;
+                if constexpr (std::is_same_v<T, FeatPayloadFillet>) {
+                    dressup_size = p.radius;
+                } else {
+                    dressup_size = p.distance1;
+                }
+                double dressup_tol = std::max(opt.topo_tolerance,
+                                              5.0 * dressup_size);
+
                 std::vector<int> edge_nodes;
                 edge_nodes.reserve(p.edges.size());
                 for (size_t k = 0; k < p.edges.size(); ++k)
@@ -928,7 +990,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                        : "resolve_edge_ref";
                     int rn = AddResolveRefNode(*cg, op,
                                                 body_n, p.edges[k],
-                                                opt.topo_tolerance,
+                                                dressup_tol,
                                                 feat.name + ":edge");
                     edge_nodes.push_back(rn);
                     if (opt.write_back_resolved)
@@ -1094,73 +1156,100 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // the mirror image. LinearPattern / CircularPattern ops
             // already include the original in their result.
             //
-            // When Originals = [X] is set the chain starts from X's
-            // tool (not last_node) and the final result is combined
-            // with X's base via X's op_kind. This matches FreeCAD's
-            // "replace Originals' effect with the multiplied effect".
+            // When Originals = [F1..Fn] is set every original
+            // contributes its own chained pattern -- previously only
+            // origs[0] was honored, which silently dropped the rest
+            // (see Page_023 where Originals = [Pad..Pad003, Pocket]
+            // collapsed to "just Pad patterned" and the stacked pad
+            // layers + pocket holes disappeared). Each Fi.tool is
+            // already at position 0 in last_node, so re-applying the
+            // full pattern (which includes position 0) is idempotent
+            // for fuse / cut and only the new positions land on body.
             else if constexpr (std::is_same_v<T, FeatPayloadMultiTransform>)
             {
-                auto origs = ResolveOriginals(feat, feature_tools);
-                int  cur   = -1;
-                if (!origs.empty()) {
-                    cur = origs[0].tool_node;
-                } else if (last_node >= 0) {
-                    cur = last_node;
-                } else {
-                    step_ok = false;
-                    return;
-                }
-
-                for (size_t si = 0; si < p.steps.size(); ++si)
+                auto apply_chain = [&](int input_node, const std::string& tag) -> int
                 {
-                    const auto& s = p.steps[si];
-                    std::string step_name = feat.name + ":step" + std::to_string(si);
-                    if (s.kind == MultiTransformStep::Kind::Mirror)
+                    int cur = input_node;
+                    for (size_t si = 0; si < p.steps.size(); ++si)
                     {
-                        brepgraph::Vec3 origin = {s.plane_origin[0],
-                                                 s.plane_origin[1],
-                                                 s.plane_origin[2]};
-                        brepgraph::Vec3 normal = {s.plane_normal[0],
-                                                 s.plane_normal[1],
-                                                 s.plane_normal[2]};
-                        cur = AddMirrorWithOriginal(*cg, cur, origin, normal,
-                                                    step_name);
+                        const auto& s = p.steps[si];
+                        std::string step_name = tag + ":step" + std::to_string(si);
+                        if (s.kind == MultiTransformStep::Kind::Mirror)
+                        {
+                            brepgraph::Vec3 origin = {s.plane_origin[0],
+                                                     s.plane_origin[1],
+                                                     s.plane_origin[2]};
+                            brepgraph::Vec3 normal = {s.plane_normal[0],
+                                                     s.plane_normal[1],
+                                                     s.plane_normal[2]};
+                            cur = AddMirrorWithOriginal(*cg, cur, origin, normal,
+                                                        step_name);
+                        }
+                        else if (s.kind == MultiTransformStep::Kind::LinearPattern)
+                        {
+                            brepgraph::Vec3 dir1 = {s.dir1[0], s.dir1[1], s.dir1[2]};
+                            brepgraph::Vec3 dir2 = {s.dir2[0], s.dir2[1], s.dir2[2]};
+                            int d1 = cg->AddConst(dir1, "dir1");
+                            int c1 = cg->AddConst((int)s.count1, "count1");
+                            int sp1= cg->AddConst(s.spacing1,    "spacing1");
+                            int d2 = cg->AddConst(dir2, "dir2");
+                            int c2 = cg->AddConst((int)s.count2, "count2");
+                            int sp2= cg->AddConst(s.spacing2,    "spacing2");
+                            cur = cg->AddOp("linear_pattern",
+                                             {cur, d1, c1, sp1, d2, c2, sp2},
+                                             {}, step_name);
+                        }
+                        else  // CircularPattern
+                        {
+                            brepgraph::Vec3 origin = {s.axis_origin[0],
+                                                     s.axis_origin[1],
+                                                     s.axis_origin[2]};
+                            brepgraph::Vec3 axis   = {s.axis_dir[0],
+                                                     s.axis_dir[1],
+                                                     s.axis_dir[2]};
+                            int o = cg->AddConst(origin, "axis_origin");
+                            int a = cg->AddConst(axis,   "axis_dir");
+                            int c = cg->AddConst((int)s.count,    "count");
+                            int t = cg->AddConst(s.total_angle,   "total_angle");
+                            cur = cg->AddOp("circular_pattern",
+                                             {cur, o, a, c, t},
+                                             {}, step_name);
+                        }
                     }
-                    else if (s.kind == MultiTransformStep::Kind::LinearPattern)
-                    {
-                        brepgraph::Vec3 dir1 = {s.dir1[0], s.dir1[1], s.dir1[2]};
-                        brepgraph::Vec3 dir2 = {s.dir2[0], s.dir2[1], s.dir2[2]};
-                        int d1 = cg->AddConst(dir1, "dir1");
-                        int c1 = cg->AddConst((int)s.count1, "count1");
-                        int sp1= cg->AddConst(s.spacing1,    "spacing1");
-                        int d2 = cg->AddConst(dir2, "dir2");
-                        int c2 = cg->AddConst((int)s.count2, "count2");
-                        int sp2= cg->AddConst(s.spacing2,    "spacing2");
-                        cur = cg->AddOp("linear_pattern",
-                                         {cur, d1, c1, sp1, d2, c2, sp2},
-                                         {}, step_name);
-                    }
-                    else  // CircularPattern
-                    {
-                        brepgraph::Vec3 origin = {s.axis_origin[0],
-                                                 s.axis_origin[1],
-                                                 s.axis_origin[2]};
-                        brepgraph::Vec3 axis   = {s.axis_dir[0],
-                                                 s.axis_dir[1],
-                                                 s.axis_dir[2]};
-                        int o = cg->AddConst(origin, "axis_origin");
-                        int a = cg->AddConst(axis,   "axis_dir");
-                        int c = cg->AddConst((int)s.count,    "count");
-                        int t = cg->AddConst(s.total_angle,   "total_angle");
-                        cur = cg->AddOp("circular_pattern",
-                                         {cur, o, a, c, t},
-                                         {}, step_name);
-                    }
-                }
+                    return cur;
+                };
 
-                node = origs.empty()
-                        ? cur
-                        : CombinePatternedTool(*cg, origs[0], cur, feat.name);
+                auto origs = ResolveOriginals(feat, feature_tools);
+
+                if (origs.empty())
+                {
+                    if (last_node < 0)
+                    {
+                        step_ok = false;
+                        return;
+                    }
+                    node = apply_chain(last_node, feat.name);
+                }
+                else
+                {
+                    if (last_node < 0)
+                    {
+                        step_ok = false;
+                        return;
+                    }
+                    int body = last_node;
+                    for (size_t fi = 0; fi < origs.size(); ++fi)
+                    {
+                        std::string tag = feat.name + ":orig"
+                                        + std::to_string(fi);
+                        int pat = apply_chain(origs[fi].tool_node, tag);
+                        const char* op_name =
+                            (origs[fi].op_kind == 'c') ? "cut" : "fuse";
+                        body = cg->AddOp(op_name, {body, pat}, {},
+                                          tag + ":combine");
+                    }
+                    node = body;
+                }
             }
 
             // ---- Not implemented yet ----
@@ -1189,8 +1278,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // tool (tools/brp_diff/) to localise where cax replay
             // diverges from FreeCAD's authored geometry. Off by
             // default so production loads don't litter CWD.
-            if (const char* dump = std::getenv("CAX_DUMP_BODIES");
-                dump && dump[0] != '\0' && dump[0] != '0')
+            //if (const char* dump = std::getenv("CAX_DUMP_BODIES");
+            //    dump && dump[0] != '\0' && dump[0] != '0')
             {
                 auto val = cg->Eval(node);
                 if (auto* sv = std::get_if<brepgraph::ShapeVal>(&val);

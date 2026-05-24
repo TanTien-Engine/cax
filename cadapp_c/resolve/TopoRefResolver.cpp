@@ -4,6 +4,11 @@
 #include "brepgraph_c/history/TopoNaming.h"
 #include "brepgraph_c/history/HistGraph.h"
 
+#include <BRepAdaptor_Curve.hxx>
+#include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
+#include <BRep_Tool.hxx>
+#include <Extrema_ExtPC.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Edge.hxx>
@@ -11,12 +16,13 @@
 #include <TopoDS_Vertex.hxx>
 #include <TopExp.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
-#include <BRep_Tool.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Dir.hxx>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 
 namespace cadapp
 {
@@ -63,6 +69,43 @@ double MatchScore(const double  a_pt[3],
     double dot       = an[0] * b_n.X() + an[1] * b_n.Y() + an[2] * b_n.Z();
     double norm_diff = 1.0 - std::fabs(dot);  // 0 colinear, 1 perpendicular
     return pos + normal_weight * norm_diff;
+}
+
+// Closest distance from `p` to the curve underlying `edge`, clamped
+// to the edge's parameter range. Returns +inf for degenerate edges
+// or when Extrema fails. Used as the primary edge-match score so a
+// ref midpoint that physically LIES ON a longer / merged cax edge
+// scores tightly even when its parameter-midpoint sits mm away.
+double PointToEdgeDistance(const gp_Pnt& p, const TopoDS_Edge& edge)
+{
+    if (BRep_Tool::Degenerated(edge)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    BRepAdaptor_Curve curve(edge);
+    double f = curve.FirstParameter();
+    double l = curve.LastParameter();
+    Extrema_ExtPC extrema(p, curve, f, l);
+    if (!extrema.IsDone()) {
+        return std::numeric_limits<double>::infinity();
+    }
+    double best = std::numeric_limits<double>::infinity();
+    int n = extrema.NbExt();
+    for (int i = 1; i <= n; ++i) {
+        double d2 = extrema.SquareDistance(i);
+        if (d2 < best) best = d2;
+    }
+    // Also test the two endpoints -- Extrema can miss when the
+    // minimum lies AT the parameter boundary (extremum is on the
+    // open side of f/l so the solver flags it as out-of-range and
+    // skips). That matters for endpoint-snapped picks like fillet
+    // chains where the ref midpoint lands right at a chain elbow.
+    double d_f = p.SquareDistance(curve.Value(f));
+    double d_l = p.SquareDistance(curve.Value(l));
+    if (d_f < best) best = d_f;
+    if (d_l < best) best = d_l;
+    return (best == std::numeric_limits<double>::infinity())
+        ? best
+        : std::sqrt(best);
 }
 
 uint32_t LookupUid(brepgraph::TopoNaming* naming,
@@ -130,6 +173,7 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
         {
         case TopoRefIR::Kind::Edge:
         {
+            gp_Pnt ref_pt(ref.point[0], ref.point[1], ref.point[2]);
             for (int i = 1; i <= edgeMap.Extent(); ++i)
             {
                 const TopoDS_Edge& e = TopoDS::Edge(edgeMap.FindKey(i));
@@ -139,14 +183,40 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
                     continue;
                 }
 
-                double s = MatchScore(ref.point, ref.normal, mid, tan);
+                // Primary score: point-to-CURVE distance, not point-
+                // to-midpoint. When cax merges what FreeCAD kept as
+                // two adjacent edges into one longer edge, the
+                // merged edge's parameter midpoint shifts by half
+                // the neighbour's length (we saw a 9 mm shift on a
+                // 20 mm edge in Page_026's Mirror+refine result),
+                // far beyond any reasonable picking tolerance. But
+                // FreeCAD's ref midpoint still LIES on the merged
+                // curve, so a curve-distance metric stays sub-mm.
+                double s = PointToEdgeDistance(ref_pt, e);
+
+                // Tangent disambiguator: when two physically distinct
+                // edges happen to share a midpoint (e.g., crossed
+                // wires), prefer the one whose tangent agrees with
+                // the ref. Weight kept tiny so it only breaks ties
+                // among same-distance hits.
+                if (ref.normal[0] != 0.0 || ref.normal[1] != 0.0 ||
+                    ref.normal[2] != 0.0)
+                {
+                    double dot = ref.normal[0] * tan.X()
+                               + ref.normal[1] * tan.Y()
+                               + ref.normal[2] * tan.Z();
+                    double n2  = ref.normal[0] * ref.normal[0]
+                               + ref.normal[1] * ref.normal[1]
+                               + ref.normal[2] * ref.normal[2];
+                    if (n2 > 1e-15) dot /= std::sqrt(n2);
+                    s += 0.01 * (1.0 - std::fabs(dot));
+                }
 
                 // Tie-breaker: prefer edges with similar arc length.
-                // Weight stays well below any reasonable position
-                // tolerance so a length mismatch alone cannot reject
-                // a face whose midpoint + tangent already match (the
-                // common case when FreeCAD and cax disagree on how
-                // many co-linear edges to merge after a BOP).
+                // Weight stays well below picking tolerance so a
+                // length mismatch alone cannot reject a sub-mm match
+                // (the common case when FreeCAD and cax disagree on
+                // how many co-linear edges to merge after a BOP).
                 if (ref.measure > 0.0)
                 {
                     double len       = EdgeArcLength(e);
@@ -176,6 +246,17 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
 
         case TopoRefIR::Kind::Face:
         {
+            // Pass 1: rank ALL candidates by the primary score
+            // (centroid + normal + area). For dressup face picks
+            // the rank-1 candidate is usually the right face, but
+            // on symmetric / co-planar bodies several cax faces
+            // can share centroid+normal+area exactly -- a Pad with
+            // 4 corner pads, a mirrored body, etc. In those cases
+            // pass 2 (sample validation) is what picks the right
+            // one.
+            struct Cand { int idx; double score; };
+            std::vector<Cand> cands;
+            cands.reserve(faceMap.Extent());
             for (int i = 1; i <= faceMap.Extent(); ++i)
             {
                 const TopoDS_Face& f = TopoDS::Face(faceMap.FindKey(i));
@@ -202,15 +283,89 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
                     s += 0.0005 * meas_diff;
                 }
 
-                if (s < r.match_dist)
+                cands.push_back({i, s});
+            }
+
+            std::sort(cands.begin(), cands.end(),
+                      [](const Cand& a, const Cand& b) {
+                          return a.score < b.score;
+                      });
+
+            // Pass 2: sample validation. If the ref carries extra
+            // sample points (face picks from the FreeCAD reader's
+            // face-pick handler attach 3-4 boundary midpoints),
+            // walk the candidates in score order and pick the
+            // first one whose face contains ALL samples within
+            // sample_tol. The samples are physical points on the
+            // authored face's boundary -- a cax face that doesn't
+            // extend to them isn't the right one even if its
+            // centroid lines up.
+            //
+            // Without samples the legacy behavior is preserved:
+            // pick the rank-1 candidate.
+            int    best_idx   = 0;
+            double best_score = std::numeric_limits<double>::max();
+
+            if (ref.extra_sample_count > 0 && !cands.empty())
+            {
+                // Cap how many we BRepExtrema-probe; samples are
+                // only a tie-breaker among near-tied primary scores.
+                const size_t kMaxValidate = 8;
+                // Sample-on-surface tolerance: comparable to BOP
+                // fuzziness on FreeCAD-saved BReps. Looser than the
+                // primary `tolerance` (which gates pos+normal+area
+                // score, a different scale).
+                const double sample_tol = 1e-3;
+
+                for (size_t k = 0;
+                     k < cands.size() && k < kMaxValidate;
+                     ++k)
                 {
-                    r.match_dist = s;
-                    r.topo_index = i;
+                    const TopoDS_Face& f =
+                        TopoDS::Face(faceMap.FindKey(cands[k].idx));
+                    bool all_on = true;
+                    for (int j = 0; j < ref.extra_sample_count; ++j)
+                    {
+                        gp_Pnt sp(ref.extra_samples[j][0],
+                                   ref.extra_samples[j][1],
+                                   ref.extra_samples[j][2]);
+                        TopoDS_Vertex sv = BRepBuilderAPI_MakeVertex(sp);
+                        BRepExtrema_DistShapeShape ext(sv, f);
+                        if (!ext.IsDone() ||
+                            ext.NbSolution() == 0 ||
+                            ext.Value() > sample_tol)
+                        {
+                            all_on = false;
+                            break;
+                        }
+                    }
+                    if (all_on) {
+                        best_idx   = cands[k].idx;
+                        best_score = cands[k].score;
+                        break;
+                    }
+                }
+                // Fallback: no candidate passed sample validation
+                // (e.g., cax body diverged enough that samples
+                // don't land). Use the top-scored candidate so we
+                // don't regress fixtures that previously resolved
+                // without samples.
+                if (best_idx == 0) {
+                    best_idx   = cands[0].idx;
+                    best_score = cands[0].score;
                 }
             }
-            if (r.topo_index > 0 && r.match_dist <= tolerance)
+            else if (!cands.empty())
             {
-                const TopoDS_Shape& sub = faceMap.FindKey(r.topo_index);
+                best_idx   = cands[0].idx;
+                best_score = cands[0].score;
+            }
+
+            r.topo_index = best_idx;
+            r.match_dist = best_score;
+            if (best_idx > 0 && best_score <= tolerance)
+            {
+                const TopoDS_Shape& sub = faceMap.FindKey(best_idx);
                 r.uid = LookupUid(naming, ref.kind, sub);
             }
             else

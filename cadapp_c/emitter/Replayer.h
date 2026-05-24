@@ -65,6 +65,19 @@ struct ReplayOptions
     // Whether construction geometry participates in profile / wire
     // building (default false matches project convention).
     bool profile_uses_construction = false;
+
+    // Whether to append a UnifySameDomain "refine" op after each
+    // primitive-producing feature (Pad / Pocket = Extrude, Revolve,
+    // Loft, Sweep). FreeCAD's PartDesign::Pad does this by default
+    // via `refineShapeIfActive`.
+    //
+    // Default OFF: enabling this on Page_015 introduced a visible
+    // "broken face" regression vs the pre-1b9aec5e baseline, while
+    // the matching fix (body_n = last_node above the resolver) is
+    // independent and still in effect. If you want FreeCAD-style
+    // topology cleanup at the cost of that regression, opt-in
+    // per-call.
+    bool refine_after_primitive = false;
 };
 
 struct ReplayResult

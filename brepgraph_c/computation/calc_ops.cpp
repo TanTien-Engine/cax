@@ -11,6 +11,13 @@
 
 #include <graph/Node.h>
 
+#include <BRep_Tool.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Shape.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <TopAbs.hxx>
+#include <gp_Pnt.hxx>
+
 namespace brepgraph
 {
 
@@ -85,6 +92,33 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		},
 		{false, false, true, false});  // is_boolean
+
+	// Pre-split body edges at a set of point hints. Inserted into the
+	// graph before the Fillet / Chamfer dressup when the FreeCAD reader's
+	// face-pick handler detected base brep vertices that don't exist in
+	// the cax body (BOP merged adjacent edges). Splitting those edges
+	// back into segments lets ChFi3d handle fillets that would otherwise
+	// fail on the merged curve. See TopoAlgo::SplitBodyAtPoints.
+	reg.Define("split_body_at_points", {"shape"}, {"hints"},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto hint_vals = ctx.VarShapes();
+			std::vector<sm::vec3> pts;
+			pts.reserve(hint_vals.size());
+			for (auto& hv : hint_vals) {
+				if (!hv.shape) continue;
+				const TopoDS_Shape& s = hv.shape->GetShape();
+				if (s.ShapeType() != TopAbs_VERTEX) continue;
+				gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(s));
+				pts.push_back(sm::vec3(
+					(float)p.X(), (float)p.Y(), (float)p.Z()));
+			}
+			if (pts.empty()) return MakeShapeVal(sv.shape);
+			auto shp = brepkit::TopoAlgo::SplitBodyAtPoints(
+				sv.shape, pts, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
 
 	reg.Define("fillet", {"shape", "radius"}, {"edges"},
 		[](EvalCtx& ctx) -> Val {
@@ -299,14 +333,15 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		});
 
 	// refine: ShapeUpgrade_UnifySameDomain on the input shape.
-	// Returns the input unchanged when the upgrader produces an empty
-	// result (e.g. shape has no merge-able adjacent faces). Used by
-	// the Mirror feature replay to collapse the per-Original fuse
-	// seams before a downstream Fillet picks edges -- see Page_020:
-	// pre-refine Mirror left 68 faces / 159 edges where FreeCAD had
-	// 42 / 113, and the Fillet's edge-ref resolver matched against
-	// one of those phantom seam edges, producing a self-intersecting
-	// blend with negative volume and a hundreds-of-metres bbox.
+	// Returns the input unchanged when the upgrader produces an
+	// empty result (e.g. shape has no merge-able adjacent faces).
+	// Used by the Mirror feature replay to collapse the per-
+	// Original fuse seams before a downstream Fillet picks edges
+	// -- see Page_020: pre-refine Mirror left 68 faces / 159 edges
+	// where FreeCAD had 42 / 113, and the Fillet's edge-ref
+	// resolver matched against one of those phantom seam edges,
+	// producing a self-intersecting blend with negative volume
+	// and a hundreds-of-metres bbox.
 	reg.Define("refine", {"shape"}, {},
 		[](EvalCtx& ctx) -> Val {
 			auto sv = ctx.GetShape(0);

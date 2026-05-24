@@ -11,6 +11,8 @@
 #include <TopAbs.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 
+#include <cstdio>
+
 namespace cadapp
 {
 
@@ -38,12 +40,32 @@ ShapeVal ResolveOne(EvalCtx& ctx, TopAbs_ShapeEnum kind)
 		sv.shape->GetShape(), one, ctx.tn.get(), tolerance);
 
 	if (resolved.empty() || resolved[0].topo_index <= 0) {
+		// Diagnostic: failed resolution is silent by default and
+		// debugging "Fillet did nothing" is painful without it.
+		// Print the ref centroid + the closest match distance the
+		// resolver actually computed so the caller can see whether
+		// it was just over tolerance or completely off.
+		double dist = resolved.empty()
+			? -1.0
+			: resolved[0].match_dist;
+		std::fprintf(stderr,
+			"[resolve_%s] MISS ref_pt=(%.4f,%.4f,%.4f) "
+			"best_dist=%.4f tol=%.4f\n",
+			(kind == TopAbs_FACE) ? "face" : "edge",
+			ref->point[0], ref->point[1], ref->point[2],
+			dist, tolerance);
 		return {};
 	}
 
 	TopTools_IndexedMapOfShape m;
 	TopExp::MapShapes(sv.shape->GetShape(), kind, m);
 	if (resolved[0].topo_index > m.Extent()) {
+		std::fprintf(stderr,
+			"[resolve_%s] INDEX_OOR ref_pt=(%.4f,%.4f,%.4f) "
+			"idx=%d map_extent=%d\n",
+			(kind == TopAbs_FACE) ? "face" : "edge",
+			ref->point[0], ref->point[1], ref->point[2],
+			resolved[0].topo_index, m.Extent());
 		return {};
 	}
 

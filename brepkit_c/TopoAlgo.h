@@ -53,6 +53,23 @@ public:
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 
+	// Splits the body's edges at any point in `points` that lies on
+	// the interior of an existing edge curve. Vertices at points
+	// that don't intersect any edge interior are silently ignored
+	// (they may coincide with existing vertices or lie off the body
+	// entirely). Used to pre-split BOP-merged edges before a
+	// dressup, when the source CAD kept them as separate segments.
+	// See Page_015 Fillet002: cax merges 75 mm + 85 mm outer edges
+	// of Pad002 Face5 into a 163 mm closed BSpline that ChFi3d
+	// can't fillet; this op restores the two separate edges so
+	// fillet runs cleanly.
+	static std::shared_ptr<TopoShape> SplitBodyAtPoints(
+		const std::shared_ptr<TopoShape>&            shape,
+		const std::vector<sm::vec3>&                 points,
+		uint32_t                                     op_id = 0,
+		const std::shared_ptr<brepgraph::TopoNaming>& tn   = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>&   vt   = nullptr);
+
 	static std::shared_ptr<TopoShape> Translate(const std::shared_ptr<TopoShape>& shape, double x, double y, double z,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
