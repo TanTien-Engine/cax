@@ -7,6 +7,8 @@
 #include "brepdb_c/WorldSender.h"
 #include "brepdb_c/VersionTree.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -386,6 +388,78 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
 
     TopoDS_Shape running = shape->GetShape();
 
+    auto count_faces = [](const TopoDS_Shape& s) -> int {
+        int n = 0;
+        for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) ++n;
+        return n;
+    };
+    const int base_face_count = count_faces(running);
+
+    // Midpoint + tangent + length of an edge. Returns false for
+    // degenerate / unreadable edges. Used both for the failure-list
+    // log line and to rematch a leaf edge against the post-fillet
+    // running body in the retry pass.
+    auto edge_geom = [](const TopoDS_Edge& e,
+                        gp_Pnt& mid, gp_Dir& tan, double& len) -> bool {
+        if (BRep_Tool::Degenerated(e)) return false;
+        try {
+            BRepAdaptor_Curve curve(e);
+            double f = curve.FirstParameter();
+            double l = curve.LastParameter();
+            double m = 0.5 * (f + l);
+            gp_Pnt p;  gp_Vec v;
+            curve.D1(m, p, v);
+            if (v.Magnitude() < 1e-12) return false;
+            mid = p;
+            tan = gp_Dir(v);
+            GProp_GProps props;
+            BRepGProp::LinearProperties(e, props);
+            len = props.Mass();
+            return true;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    // On a possibly-mutated body, find the edge whose midpoint sits
+    // within ~0.1*radius of pt0 AND whose unit tangent is parallel
+    // (or anti-parallel) to tan0 AND whose length matches len0
+    // within 5%. If the original leaf edge wasn't pulled into a
+    // previous chain fillet it is still there at the same place; if
+    // it was, no close match exists (the fillet's tangent boundary
+    // is offset by ~radius and so falls outside the position tol).
+    // This lets the retry pass distinguish "already done as part of
+    // a chain" from "genuinely needs another try with the now-
+    // modified topology".
+    auto find_surviving_edge = [&](const TopoDS_Shape& body,
+                                   const gp_Pnt&        pt0,
+                                   const gp_Dir&        tan0,
+                                   double               len0,
+                                   TopoDS_Edge&         out_edge) -> bool {
+        double pt_tol = 0.1 * radius;
+        if (pt_tol < 1e-6) pt_tol = 1e-6;
+        const double tan_dot_min = 0.996; // ~5 degrees
+        const double len_rel_tol = 0.05;
+
+        double      best_d = pt_tol;
+        TopoDS_Edge best;
+        for (TopExp_Explorer ex(body, TopAbs_EDGE); ex.More(); ex.Next()) {
+            const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+            gp_Pnt mid; gp_Dir tan; double len;
+            if (!edge_geom(e, mid, tan, len)) continue;
+            double d = mid.Distance(pt0);
+            if (d >= best_d) continue;
+            if (std::abs(tan.Dot(tan0)) < tan_dot_min) continue;
+            double len_max = std::max(len0, 1e-6);
+            if (std::abs(len - len0) > len_rel_tol * len_max) continue;
+            best_d = d;
+            best   = e;
+        }
+        if (best.IsNull()) return false;
+        out_edge = best;
+        return true;
+    };
+
     // Try each edge in order. Track failures so we can re-try them
     // later: per-edge mode is order-dependent (each fillet mutates
     // `running`, changing the topology that downstream edges see),
@@ -438,27 +512,53 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
     }
 
-    // Retry pass: iterate the failed list against the now-modified
-    // running shape. Repeat until a pass makes zero progress, which
-    // means OCCT really can't fillet those edges in any order.
-    int retry_round = 0;
+    // Retry pass: most "failed first pass" edges are actually fine
+    // -- BRepFilletAPI::Add auto-chains tangent neighbours into the
+    // same contour, so one successful Add typically consumes several
+    // leaf edges. Subsequent Add calls with those swallowed edges
+    // fail not because ChFi3d can't fillet them but because they no
+    // longer exist on the running body. Re-resolve each failed leaf
+    // against the now-modified body by (mid, tangent, length); if
+    // the original edge survived we retry on the live one (which
+    // can finally succeed now that surrounding topology has settled),
+    // and if it didn't we record it as chain-consumed and move on.
+    int retry_round         = 0;
+    int chain_consumed      = 0;
+    int chain_consumed_log  = 0;
     while (!failed.empty())
     {
         ++retry_round;
         std::vector<size_t> still_failed;
-        int                 round_ok = 0;
+        int round_ok = 0;
         for (size_t i : failed)
         {
-            std::string geom = edge_geom_str(leaf_edges[i]);
+            gp_Pnt pt0; gp_Dir tan0; double len0;
+            if (!edge_geom(leaf_edges[i], pt0, tan0, len0)) {
+                still_failed.push_back(i);
+                continue;
+            }
+            TopoDS_Edge live;
+            if (!find_surviving_edge(running, pt0, tan0, len0, live)) {
+                ++chain_consumed;
+                if (chain_consumed_log < 8) {
+                    std::fprintf(stderr,
+                        "[FILLET]   edge[%zu] consumed by prior chain "
+                        "(no live match on running body)\n", i);
+                    ++chain_consumed_log;
+                }
+                continue;
+            }
+
+            std::string geom = edge_geom_str(live);
             TopoDS_Shape result;
             const char*  mode = nullptr;
-            if (try_both_modes(leaf_edges[i], result, mode))
+            if (try_both_modes(live, result, mode))
             {
                 running = result;
                 ++ok_count;
                 ++round_ok;
                 std::fprintf(stderr,
-                    "[FILLET]   edge[%zu] ok (%s, retry round %d) %s\n",
+                    "[FILLET]   edge[%zu] ok (%s, retry round %d, rematched) %s\n",
                     i, mode, retry_round, geom.c_str());
             }
             else
@@ -468,7 +568,10 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
         if (round_ok == 0)
         {
-            // No progress this round -- log final failures and stop.
+            // No fillet actually ran this round. The next round
+            // would see the same body and decide the same way --
+            // log truly-stuck edges and stop. Chain-consumed ones
+            // are not failures and were already removed.
             for (size_t i : still_failed)
             {
                 std::string geom = edge_geom_str(leaf_edges[i]);
@@ -481,9 +584,16 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         failed = std::move(still_failed);
     }
 
+    // Report what ChFi3d actually produced on the body, not just how
+    // many Add() calls returned true. Each successful Add can chain
+    // several tangent edges into one contour, so "Add ok" undercounts
+    // coverage; the new-surface delta is the honest measure.
+    const int new_surface_count = count_faces(running) - base_face_count;
     std::fprintf(stderr,
-        "[FILLET] op_id=%u per-edge retry: %d/%zu applied (%d retry rounds)\n",
-        op_id, ok_count, leaf_edges.size(), retry_round);
+        "[FILLET] op_id=%u per-edge: %d Add() ok + %d chain-consumed, "
+        "%d new fillet surfaces / %zu edges (%d retry rounds)\n",
+        op_id, ok_count, chain_consumed, new_surface_count,
+        leaf_edges.size(), retry_round);
 
     if (ok_count == 0) {
         return shape;
