@@ -514,6 +514,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
                 feature_tools[feat.id] = ti;
             }
+            else if constexpr (std::is_same_v<T, FeatPayloadPrimEllipsoid>)
+            {
+                int r1 = cg->AddConst(p.radius1, "radius1");
+                int r2 = cg->AddConst(p.radius2, "radius2");
+                int r3 = cg->AddConst(p.radius3, "radius3");
+                int prim = cg->AddOp("ellipsoid", {r1, r2, r3}, {}, feat.name);
+                FeatureToolInfo ti;
+                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                feature_tools[feat.id] = ti;
+            }
 
             // ---- Extrude (Boss / Cut) ----
             else if constexpr (std::is_same_v<T, FeatPayloadExtrude>)
@@ -1278,8 +1288,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // tool (tools/brp_diff/) to localise where cax replay
             // diverges from FreeCAD's authored geometry. Off by
             // default so production loads don't litter CWD.
-            //if (const char* dump = std::getenv("CAX_DUMP_BODIES");
-            //    dump && dump[0] != '\0' && dump[0] != '0')
+            if (const char* dump = std::getenv("CAX_DUMP_BODIES");
+                dump && dump[0] != '\0' && dump[0] != '0')
             {
                 auto val = cg->Eval(node);
                 if (auto* sv = std::get_if<brepgraph::ShapeVal>(&val);

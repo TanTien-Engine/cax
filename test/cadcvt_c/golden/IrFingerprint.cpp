@@ -141,6 +141,7 @@ const char* FeatTypeName(cadapp::FeatType t)
     case cadapp::FeatType::PrimCone:        return "PrimCone";
     case cadapp::FeatType::PrimSphere:      return "PrimSphere";
     case cadapp::FeatType::PrimTorus:       return "PrimTorus";
+    case cadapp::FeatType::PrimEllipsoid:   return "PrimEllipsoid";
     case cadapp::FeatType::HoleWizard:      return "HoleWizard";
     default:                                return "Unknown";
     }
@@ -325,6 +326,11 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadPrimTorus>) {
             os << "torus R=" << Num(p.major_radius, dec)
                << " r=" << Num(p.minor_radius, dec);
+        }
+        else if constexpr (std::is_same_v<T, cadapp::FeatPayloadPrimEllipsoid>) {
+            os << "ellipsoid r1=" << Num(p.radius1, dec)
+               << " r2=" << Num(p.radius2, dec)
+               << " r3=" << Num(p.radius3, dec);
         }
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadOpaque>) {
             os << "opaque";

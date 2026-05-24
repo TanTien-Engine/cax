@@ -18,6 +18,9 @@
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepPrimAPI_MakeTorus.hxx>
+#include <BRepBuilderAPI_GTransform.hxx>
+#include <gp_GTrsf.hxx>
+#include <Precision.hxx>
 #include <TopExp.hxx>
 // fixme
 #include <Geom_CylindricalSurface.hxx>
@@ -253,6 +256,45 @@ std::shared_ptr<TopoShape> PrimMaker::Torus(double r1, double r2, double angle, 
         }
     } catch (Standard_Failure& e) {
         LOGI("Build torus fail: %s", e.GetMessageString());
+    }
+
+    return shape;
+}
+
+std::shared_ptr<TopoShape> PrimMaker::Ellipsoid(double r1, double r2, double r3, uint32_t op_id,
+                                                const std::shared_ptr<brepgraph::TopoNaming>& tn,
+                                                const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    std::shared_ptr<TopoShape> shape = nullptr;
+    try {
+        // Mirror FreeCAD's Part::Ellipsoid::execute(): sphere of
+        // radius=r2 along world Z, then non-uniform GTransform that
+        // scales Z by r1/r2 (or r3/r2 when r3 >= Confusion).
+        gp_Pnt origin(0.0, 0.0, 0.0);
+        gp_Dir z_dir (0.0, 0.0, 1.0);
+        gp_Ax2 ax2(origin, z_dir);
+        BRepPrimAPI_MakeSphere mk_sphere(ax2, r2);
+        Standard_Real scale = (r3 >= Precision::Confusion()) ? (r3 / r2) : (r1 / r2);
+        gp_GTrsf mat;
+        mat.SetValue(3, 3, scale);
+        BRepBuilderAPI_GTransform mk_gtrsf(mk_sphere.Shape(), mat);
+
+        brepgraph::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = ShapeBuilder::MakeCompound({});
+            pid_map = tn->Update(mk_gtrsf, mk_gtrsf.Shape(), old_shp->GetShape(), op_id);
+        }
+        shape = std::make_shared<brepkit::TopoShape>(mk_gtrsf.Shape());
+        if (tn && vt)
+        {
+            brepdb::WorldSender sender(tn);
+            brepdb::BRepWorld world;
+            sender.Serialize(shape->GetShape(), world);
+            shape->SetVersionId(vt->AddRoot(world, "ellipsoid"));
+        }
+    } catch (Standard_Failure& e) {
+        LOGI("Build ellipsoid fail: %s", e.GetMessageString());
     }
 
     return shape;

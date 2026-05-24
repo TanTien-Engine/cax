@@ -135,6 +135,7 @@ enum class FeatType : uint8_t
     PrimCone         = 82,
     PrimSphere       = 83,
     PrimTorus        = 84,
+    PrimEllipsoid    = 85,
 
     // hole wizard
     HoleWizard       = 90,

@@ -381,6 +381,13 @@ void Encode(const FeatPayloadPrimTorus& p, BlobWriter& w)
     w.F64(p.minor_radius);
 }
 
+void Encode(const FeatPayloadPrimEllipsoid& p, BlobWriter& w)
+{
+    w.F64(p.radius1);
+    w.F64(p.radius2);
+    w.F64(p.radius3);
+}
+
 void Encode(const FeatPayloadHoleWizard& p, BlobWriter& w)
 {
     w.U32(p.sketch_id);
@@ -596,6 +603,13 @@ void Decode(BlobReader& r, FeatPayloadPrimTorus& p)
 {
     p.major_radius = r.F64();
     p.minor_radius = r.F64();
+}
+
+void Decode(BlobReader& r, FeatPayloadPrimEllipsoid& p)
+{
+    p.radius1 = r.F64();
+    p.radius2 = r.F64();
+    p.radius3 = r.F64();
 }
 
 void Decode(BlobReader& r, FeatPayloadHoleWizard& p)
@@ -946,6 +960,13 @@ bool FeatureStore::ExportToIR(uint32_t entry_idx, FeatureIR& out) const
     case 23:
     {
         FeatPayloadMultiTransform p;
+        Decode(r, p);
+        out.data = std::move(p);
+        break;
+    }
+    case 24:
+    {
+        FeatPayloadPrimEllipsoid p;
         Decode(r, p);
         out.data = std::move(p);
         break;

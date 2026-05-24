@@ -8,6 +8,7 @@
 #include "miniz.h"
 #include "pugixml.hpp"
 
+#include <BRepAdaptor_Curve.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepTools.hxx>
@@ -985,15 +986,28 @@ bool FillRefFromShape(TopoDS_Shape&        shape,
 //
 // What we can do robustly: both BASE and the dressup's own result
 // are saved as .brp files inside the .FCStd archive. Walk every
-// edge in BASE; for each, compute the closest distance from its
-// midpoint to OWN's edge geometry. Edges still present in OWN
-// (preserved verbatim, lightly trimmed, or split into co-curve
-// sub-edges) score near zero -- the midpoint sits ON a surviving
-// edge curve. Edges consumed by a fillet / chamfer blend score
-// >= dressup_size (the radius / chamfer distance), because the
-// blend boundary sits at exactly that offset perpendicular to the
-// original edge. A threshold of 0.5 * dressup_size cleanly
-// separates the two regimes for any non-degenerate dressup.
+// edge in BASE; for each, sample several points along its curve
+// and check whether ANY of them lands on an OWN edge (within a
+// tight ~0.1 mm tolerance). An edge surviving in OWN -- verbatim,
+// lightly trimmed, or split into co-curve sub-edges -- has at
+// least one sample sitting microns from a surviving curve, so it
+// gets classified as preserved. An edge consumed by a fillet /
+// chamfer blend has the blend surface in front of every sample,
+// so every sample sits at least r/tan(theta/2) >= ~0.3 mm away
+// (worst-case theta=178 deg at r=16 mm) -- comfortably above the
+// geometric noise floor for FreeCAD-authored breps.
+//
+// The earlier midpoint-only test with a 0.5*radius threshold
+// failed on Page_027_Exercise2D-19's 16 mm fillet over revolved
+// edges: the consumed edges' dihedrals were obtuse enough that
+// the blend boundary sat ~7-8 mm from the original midpoint,
+// just inside the 8 mm threshold, so all 95 base edges were kept
+// and the diff emitted zero refs -- the caller then fell back to
+// the stale EdgeN/EdgeM indices and Mirrored001's Refine'd shape
+// pointed those indices at the wrong edges, producing a visibly
+// wrong fillet. The per-edge multi-sample test does not depend
+// on the dressup radius at all and works for any dihedral that
+// MakeFillet would actually touch.
 //
 // The midpoints we emit are FreeCAD's authoritative geometry, so
 // the downstream cax resolver matches them tightly against the
@@ -1440,6 +1454,7 @@ size_t StashFilletRefsByEdgeDiff(
     double                                              dressup_size_mm,
     const std::vector<std::string>&                     authored_sub_names,
     std::vector<TopoRefIR>&                             out_refs,
+    std::vector<std::array<double, 3>>&                 out_split_hints,
     void*                                               archive,
     const std::unordered_map<std::string, std::string>& feat_brep_path,
     double                                              unit_scale)
@@ -1459,14 +1474,28 @@ size_t StashFilletRefsByEdgeDiff(
     TopoDS_Compound own_edges;
     if (!BuildEdgeCompound(own_brep, own_edges)) return 0;
 
-    // Half the dressup size cleanly separates the two regimes:
-    // preserved-but-trimmed edges keep their midpoint within
-    // microns of a surviving curve, picked edges end up ~radius
-    // away from any boundary of the blend face. Floored at 0.1 mm
-    // so a tiny chamfer / fillet still has a usable window above
-    // OCCT distance-solver noise.
-    double thresh = 0.5 * dressup_size_mm;
-    if (thresh < 0.1) thresh = 0.1;
+    // Per-sample "is this point on a surviving OWN edge" tolerance.
+    // FreeCAD-authored breps preserve verbatim/trimmed sub-curves
+    // bit-exactly, so a surviving point sits microns from OWN; even
+    // the most obtuse fillet-able dihedral (theta ~178 deg at
+    // r=16 mm) still displaces its samples ~0.28 mm, an order of
+    // magnitude above this floor.
+    //
+    // Sample density: 21 samples (param fractions 0, 1/20, 2/20,
+    // ... 20/20) is dense enough to resolve sub-section consumption
+    // on a merged BASE edge -- when Refine collapsed N FreeCAD
+    // edges into one long curve, only one sub-stretch may be
+    // filleted while the rest survives, and a too-coarse sample
+    // would either declare the whole merged edge preserved
+    // (missing the picked sub-section) or, with the "any sample
+    // far" rule, declare it fully consumed (over-filleting). The
+    // run-detection logic below finds contiguous "far" sample
+    // runs and emits one ref per run with split hints at the
+    // run's curve endpoints so Replayer can split the merged cax
+    // edge into the same sub-pieces FreeCAD's ChFi3d saw.
+    constexpr int    kSampleCount = 21;
+    constexpr double kSampleTolMm = 0.1;
+    constexpr int    kMinRunLen   = 2; // ignore single-sample bumps
 
     TopTools_IndexedMapOfShape base_edge_map;
     TopExp::MapShapes(base_brep, TopAbs_EDGE, base_edge_map);
@@ -1479,53 +1508,147 @@ size_t StashFilletRefsByEdgeDiff(
         const TopoDS_Edge& e = TopoDS::Edge(base_edge_map.FindKey(i));
         if (BRep_Tool::Degenerated(e)) { ++degen; continue; }
 
-        gp_Pnt mid;
-        gp_Dir tan;
-        if (!cadapp::EdgeMidpoint(e, mid, tan)) { ++degen; continue; }
+        BRepAdaptor_Curve curve(e);
+        double first = curve.FirstParameter();
+        double last  = curve.LastParameter();
+        if (!(last > first)) { ++degen; continue; }
 
-        double d = DistPointToShape(mid, own_edges);
-        if (d < thresh) { ++kept; continue; }
-
-        TopoRefIR r;
-        r.kind = TopoRefIR::Kind::Edge;
-        r.point[0]  = mid.X() * unit_scale;
-        r.point[1]  = mid.Y() * unit_scale;
-        r.point[2]  = mid.Z() * unit_scale;
-        r.normal[0] = tan.X();
-        r.normal[1] = tan.Y();
-        r.normal[2] = tan.Z();
-        r.measure   = cadapp::EdgeArcLength(e) * unit_scale;
-
-        std::string key = "edge_ref_" + std::to_string(pushed) + "_name";
-        // Tie the new ref to one of the authored sub-names when
-        // available -- handy for diagnostics. We can't know which
-        // authored EdgeN this geometric ref originally was (the
-        // whole point of this path is that the indices are stale),
-        // so just append them in input order; the resolver doesn't
-        // care.
-        if (pushed < authored_sub_names.size()) {
-            feat.ext_strings[key] = base_object + "." + authored_sub_names[pushed];
-        } else {
-            feat.ext_strings[key] = base_object + ".<diff>";
+        // Classify every sample as on-curve (near OWN) or off-curve
+        // (far). Includes the two endpoints -- the endpoint vertices
+        // belong to OWN by definition (they bound surviving neighbor
+        // edges) and reliably anchor "preserved" classifications.
+        std::array<bool, kSampleCount> far_samples{};
+        std::array<gp_Pnt, kSampleCount> sample_pts;
+        int far_total = 0;
+        for (int k = 0; k < kSampleCount; ++k)
+        {
+            double frac = double(k) / double(kSampleCount - 1);
+            double t    = first + (last - first) * frac;
+            sample_pts[k] = curve.Value(t);
+            bool far = DistPointToShape(sample_pts[k], own_edges) >= kSampleTolMm;
+            far_samples[k] = far;
+            if (far) ++far_total;
         }
-        out_refs.push_back(r);
-        ++pushed;
+        if (far_total == 0) { ++kept; continue; }
+
+        // Walk samples and pick out maximal runs of far samples of
+        // length >= kMinRunLen. Each run is one consumed sub-section
+        // of the BASE edge.
+        int run_count = 0;
+        int k = 0;
+        while (k < kSampleCount)
+        {
+            if (!far_samples[k]) { ++k; continue; }
+            int run_lo = k;
+            while (k < kSampleCount && far_samples[k]) ++k;
+            int run_hi = k - 1;
+            if (run_hi - run_lo + 1 < kMinRunLen) continue;
+            ++run_count;
+
+            // Param + 3D point at run boundaries (split hints) and
+            // run midpoint (ref anchor). Boundaries are the FIRST
+            // off-curve sample and the LAST off-curve sample; the
+            // actual transition lies somewhere between (lo-1)..lo
+            // and hi..(hi+1), but the run-end sample point is the
+            // safest in-merged-curve point we can pick that still
+            // sits inside the consumed stretch.
+            double frac_lo = double(run_lo)              / double(kSampleCount - 1);
+            double frac_hi = double(run_hi)              / double(kSampleCount - 1);
+            double frac_md = 0.5 * (frac_lo + frac_hi);
+            double t_md    = first + (last - first) * frac_md;
+
+            gp_Pnt mid;
+            gp_Vec dv;
+            curve.D1(t_md, mid, dv);
+            gp_Dir tan(1.0, 0.0, 0.0);
+            if (dv.Magnitude() > 1e-12) {
+                tan = gp_Dir(dv);
+            }
+
+            TopoRefIR r;
+            r.kind = TopoRefIR::Kind::Edge;
+            r.point[0]  = mid.X() * unit_scale;
+            r.point[1]  = mid.Y() * unit_scale;
+            r.point[2]  = mid.Z() * unit_scale;
+            r.normal[0] = tan.X();
+            r.normal[1] = tan.Y();
+            r.normal[2] = tan.Z();
+            // Approximate run arc length: linear interpolation of the
+            // edge's full arc length by parameter fraction. Used only
+            // as a resolver tiebreaker so a coarse estimate is fine.
+            double full_len = cadapp::EdgeArcLength(e);
+            r.measure       = full_len * (frac_hi - frac_lo) * unit_scale;
+
+            std::string key = "edge_ref_" + std::to_string(pushed) + "_name";
+            if (pushed < authored_sub_names.size()) {
+                feat.ext_strings[key] = base_object + "." + authored_sub_names[pushed];
+            } else {
+                feat.ext_strings[key] = base_object + ".<diff>";
+            }
+            out_refs.push_back(r);
+
+            // Split hints: drop one vertex at each run boundary that
+            // isn't already the edge's own endpoint. cax's Replayer
+            // splits the running body's edges at these points before
+            // resolve_edge_ref runs, so a merged cax edge becomes
+            // multiple sub-edges and ChFi3d can fillet just the
+            // sub-stretch FreeCAD picked. Boundary samples adjacent
+            // to the edge's own endpoint (run_lo==0 or run_hi==N-1)
+            // need no split -- the endpoint vertex is already a
+            // natural break.
+            auto push_hint = [&](const gp_Pnt& p) {
+                std::array<double, 3> hp = {{
+                    p.X() * unit_scale,
+                    p.Y() * unit_scale,
+                    p.Z() * unit_scale
+                }};
+                // Dedup at 10 micron (in BRP units) so multiple refs
+                // on the same merged edge don't double-add.
+                for (const auto& q : out_split_hints) {
+                    double dx = hp[0] - q[0];
+                    double dy = hp[1] - q[1];
+                    double dz = hp[2] - q[2];
+                    if (dx * dx + dy * dy + dz * dz < 1e-10) return;
+                }
+                out_split_hints.push_back(hp);
+            };
+            if (run_lo > 0) {
+                push_hint(sample_pts[run_lo]);
+            }
+            if (run_hi < kSampleCount - 1) {
+                push_hint(sample_pts[run_hi]);
+            }
+
+            std::fprintf(stderr,
+                "[edge_diff]   #%zu base_idx=%d run=%d..%d/%d "
+                "mid=(%.3f,%.3f,%.3f) tan=(%.3f,%.3f,%.3f) "
+                "run_len_mm=%.3f edge_len_mm=%.3f\n",
+                pushed, i, run_lo, run_hi, kSampleCount - 1,
+                mid.X(), mid.Y(), mid.Z(),
+                tan.X(), tan.Y(), tan.Z(),
+                full_len * (frac_hi - frac_lo), full_len);
+            ++pushed;
+        }
+        if (run_count == 0) ++kept;
     }
 
     // Diagnostic left in: edge-diff is the only way Fillet / Chamfer
-    // works on FCStd files with stale Refine'd base shapes, and a
-    // misconfigured threshold silently picks the wrong number of
-    // edges. Compare `pushed` against the dressup's `<LinkSub
+    // works on FCStd files with stale Refine'd base shapes, so when
+    // emitted goes wrong (zero, or far from authored count) the
+    // resulting body silently regresses to the dangling-index
+    // fallback. Compare `emitted` against the dressup's `<LinkSub
     // count="N">` from the FreeCAD XML; in chained-fillet cases
-    // pushed may exceed N (each tangent-chained original edge is
+    // emitted may exceed N (each tangent-chained original edge is
     // still consumed, so we emit one ref per chain link, and OCCT's
-    // MakeFillet auto-chains them back on the cax side).
+    // MakeFillet auto-chains them back on the cax side). `splits`
+    // is the number of pre-fillet split_body_at_points anchors the
+    // Replayer will drop on cax's running body before resolve.
     std::fprintf(stderr,
-        "[edge_diff] dressup=%s base=%s thresh_mm=%.3f base_edges=%d "
-        "kept=%zu degen=%zu emitted=%zu (authored=%zu)\n",
-        own_object.c_str(), base_object.c_str(), thresh,
+        "[edge_diff] dressup=%s base=%s r_mm=%.3f base_edges=%d "
+        "kept=%zu degen=%zu emitted=%zu splits=%zu (authored=%zu)\n",
+        own_object.c_str(), base_object.c_str(), dressup_size_mm,
         base_edge_map.Extent(),
-        kept, degen, pushed,
+        kept, degen, pushed, out_split_hints.size(),
         authored_sub_names.size());
 
     return pushed;
@@ -2446,7 +2569,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             } else {
                 diff_n = StashFilletRefsByEdgeDiff(
                     feat, base.object_name, pending.name, radius_mm,
-                    base.sub_names, pl.edges,
+                    base.sub_names, pl.edges, pl.split_hints,
                     m_zip, m_feat_brep_path, m_unit_scale);
             }
             if (diff_n == 0)
@@ -2502,7 +2625,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             } else {
                 diff_n = StashFilletRefsByEdgeDiff(
                     feat, base.object_name, pending.name, size1_mm,
-                    base.sub_names, pl.edges,
+                    base.sub_names, pl.edges, pl.split_hints,
                     m_zip, m_feat_brep_path, m_unit_scale);
             }
             if (diff_n == 0)
@@ -2570,6 +2693,19 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type       = FeatType::PrimTorus;
             feat.data       = std::move(pl);
         }
+        else if (pending.type == "Part::Ellipsoid")
+        {
+            // FreeCAD's Part::Ellipsoid carries three semi-axis
+            // radii; the maker mirrors FreeCAD's own rule (sphere of
+            // radius=Radius2, scaled on Z by Radius1/Radius2 or
+            // Radius3/Radius2 when Radius3>0).
+            FeatPayloadPrimEllipsoid pl;
+            pl.radius1 = PropDouble(props, "Radius1", 2.0) * m_unit_scale;
+            pl.radius2 = PropDouble(props, "Radius2", 4.0) * m_unit_scale;
+            pl.radius3 = PropDouble(props, "Radius3", 0.0) * m_unit_scale;
+            feat.type  = FeatType::PrimEllipsoid;
+            feat.data  = std::move(pl);
+        }
         else if (pending.type == "PartDesign::AdditiveBox" ||
                  pending.type == "PartDesign::SubtractiveBox")
         {
@@ -2629,6 +2765,18 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.minor_radius = PropDouble(props, "Radius2", 0.25) * m_unit_scale;
             feat.type       = FeatType::PrimTorus;
             feat.data       = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+            StashPlacement(feat, props, m_unit_scale);
+        }
+        else if (pending.type == "PartDesign::AdditiveEllipsoid" ||
+                 pending.type == "PartDesign::SubtractiveEllipsoid")
+        {
+            FeatPayloadPrimEllipsoid pl;
+            pl.radius1 = PropDouble(props, "Radius1", 2.0) * m_unit_scale;
+            pl.radius2 = PropDouble(props, "Radius2", 4.0) * m_unit_scale;
+            pl.radius3 = PropDouble(props, "Radius3", 0.0) * m_unit_scale;
+            feat.type  = FeatType::PrimEllipsoid;
+            feat.data  = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
             StashPlacement(feat, props, m_unit_scale);
         }

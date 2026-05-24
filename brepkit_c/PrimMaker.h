@@ -32,6 +32,13 @@ public:
 	static std::shared_ptr<TopoShape> Torus(double r1, double r2, double angle, uint32_t op_id = 0,
 		const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr, const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 
+	// FreeCAD-style ellipsoid (Part::Ellipsoid). Builds a unit-axis
+	// sphere of radius=r2 and scales the Z semi-axis by r1/r2 (or by
+	// r3/r2 when r3 >= Precision::Confusion). r1/r2 must be positive;
+	// r3 == 0 selects the r1-driven Z scale.
+	static std::shared_ptr<TopoShape> Ellipsoid(double r1, double r2, double r3, uint32_t op_id = 0,
+		const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr, const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+
 	// todo
 	static std::shared_ptr<TopoShape> Threading(double thickness, double height, uint32_t op_id = 0,
 		const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr, const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);

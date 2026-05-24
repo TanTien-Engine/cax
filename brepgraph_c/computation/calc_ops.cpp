@@ -226,6 +226,15 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shape);
 		});
 
+	reg.Define("ellipsoid", {"radius1", "radius2", "radius3"}, {},
+		[](EvalCtx& ctx) -> Val {
+			double r1 = ctx.Num(0);
+			double r2 = ctx.Num(1);
+			double r3 = ctx.Num(2);
+			auto shape = brepkit::PrimMaker::Ellipsoid(r1, r2, r3, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shape);
+		});
+
 	reg.Define("prism", {"face", "direction"}, {},
 		[](EvalCtx& ctx) -> Val {
 			auto sv = ctx.GetShape(0);

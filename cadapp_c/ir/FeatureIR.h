@@ -271,6 +271,18 @@ struct FeatPayloadPrimTorus
     double minor_radius = 0.25;
 };
 
+// FreeCAD's Part::Ellipsoid stores three semi-axis radii. Following
+// FreeCAD's own execute(): the X/Y semi-axes equal radius2, and the
+// Z semi-axis equals radius3 when radius3 >= Confusion, otherwise
+// radius1. radius1/radius2/radius3 are kept as-is here so the
+// downstream maker can apply the same rule.
+struct FeatPayloadPrimEllipsoid
+{
+    double radius1 = 2.0;
+    double radius2 = 4.0;
+    double radius3 = 0.0;
+};
+
 struct FeatPayloadHoleWizard
 {
     // SW-specific extras are kept inside ext_strings in the parent
@@ -331,7 +343,8 @@ using FeaturePayload = std::variant<
     FeatPayloadHoleWizard,       // 20
     FeatPayloadRib,              // 21
     FeatPayloadOpaque,           // 22
-    FeatPayloadMultiTransform    // 23
+    FeatPayloadMultiTransform,   // 23
+    FeatPayloadPrimEllipsoid     // 24
 >;
 
 
