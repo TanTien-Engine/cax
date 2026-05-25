@@ -551,17 +551,31 @@ bool ReadTransformedStep(
         out.count2  = 1;
         out.spacing2 = 0.0;
 
+        // Direction has the same three flavours as PolarPattern.Axis:
+        // <LinkSub value="Sketch" count="1"><Sub value="H_Axis"/>...>
+        // for sketch axes, and the bare-origin form
+        // <LinkSub value="Y_Axis" count="1"><Sub value=""/>...> where
+        // the axis token sits in value= and Sub is empty. PropLink keeps
+        // the empty Sub, so sub_names=[""] -- check the contents, not
+        // just the vector size, otherwise we feed "" into LookupRefAxisDir
+        // and silently fall back to the (1,0,0) default.
         LinkRef dir = PropLink(props, "Direction");
-        if (!dir.sub_names.empty())
+        std::string sub0 = dir.sub_names.empty() ? std::string()
+                                                  : dir.sub_names[0];
+        double d[3];
+        if (!sub0.empty()
+            && LookupRefAxisDir(dir.object_name, sub0, data_by_name, d))
         {
-            double d[3];
-            if (LookupRefAxisDir(dir.object_name, dir.sub_names[0],
-                                 data_by_name, d))
-            {
-                out.dir1[0] = d[0];
-                out.dir1[1] = d[1];
-                out.dir1[2] = d[2];
-            }
+            out.dir1[0] = d[0];
+            out.dir1[1] = d[1];
+            out.dir1[2] = d[2];
+        }
+        else if (!dir.object_name.empty()
+                 && LookupOriginAxisDir(dir.object_name, d))
+        {
+            out.dir1[0] = d[0];
+            out.dir1[1] = d[1];
+            out.dir1[2] = d[2];
         }
 
         int    count  = PropInt   (props, "Occurrences", 2);
@@ -2956,30 +2970,36 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.count2  = 1;       // FreeCAD's LinearPattern is 1D.
             pl.spacing2 = 0.0;
 
+            // Direction mirrors PolarPattern.Axis: a LinkSub whose
+            // <Sub value="..."/> may name a sketch axis (H_Axis /
+            // V_Axis / Normal) OR be empty when the bare token sits
+            // in value= ("X_Axis" / "Y_Axis" / "Z_Axis"). PropLink
+            // keeps the empty Sub, so sub_names=[""] is non-empty;
+            // we must check sub0's contents, not the vector size,
+            // before handing off to LookupRefAxisDir.
             LinkRef dir = PropLink(props, "Direction");
-            if (!dir.sub_names.empty())
+            std::string sub0 = dir.sub_names.empty() ? std::string()
+                                                      : dir.sub_names[0];
+            double d[3];
+            if (!sub0.empty()
+                && LookupRefAxisDir(dir.object_name, sub0, data_by_name, d))
             {
-                double d[3];
-                if (LookupRefAxisDir(dir.object_name, dir.sub_names[0],
-                                     data_by_name, d))
-                {
-                    pl.dir1[0] = d[0];
-                    pl.dir1[1] = d[1];
-                    pl.dir1[2] = d[2];
-                }
-                feat.ext_strings["pattern_dir_ref"] =
-                    dir.object_name + "." + dir.sub_names[0];
+                pl.dir1[0] = d[0];
+                pl.dir1[1] = d[1];
+                pl.dir1[2] = d[2];
             }
-            else if (!dir.object_name.empty())
+            else if (!dir.object_name.empty()
+                     && LookupOriginAxisDir(dir.object_name, d))
             {
-                double d[3];
-                if (LookupOriginAxisDir(dir.object_name, d))
-                {
-                    pl.dir1[0] = d[0];
-                    pl.dir1[1] = d[1];
-                    pl.dir1[2] = d[2];
-                }
-                feat.ext_strings["pattern_dir_ref"] = dir.object_name;
+                pl.dir1[0] = d[0];
+                pl.dir1[1] = d[1];
+                pl.dir1[2] = d[2];
+            }
+            if (!dir.object_name.empty())
+            {
+                feat.ext_strings["pattern_dir_ref"] = sub0.empty()
+                    ? dir.object_name
+                    : dir.object_name + "." + sub0;
             }
 
             int    count  = PropInt   (props, "Occurrences", 2);
