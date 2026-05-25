@@ -7,8 +7,10 @@
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 
+#include <BRep_Builder.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepTools.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <gp_Pnt.hxx>
@@ -18,8 +20,10 @@
 #include <cstdlib>
 #include <map>
 #include <sstream>
+#include <string>
 #include <type_traits>
 #include <variant>
+#include <vector>
 
 // ============================================================
 // Replayer.cpp
@@ -435,6 +439,19 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // running last_node, since a Part::Cut / MultiCommon can target
     // earlier body tips that have already scrolled past last_node.
     std::map<uint32_t, int> feature_nodes;
+
+    // PartDesign::Body name -> calc-graph node of that body's running
+    // tip (last 3D feature that landed in that body). Populated by
+    // every feature that carries a freecad_body ext_string and
+    // produced a node. body_tip_order preserves first-seen order so
+    // the post-loop emitter walks bodies in document declaration
+    // order. Without this map a multi-body document only emits the
+    // final body -- the running last_node gets reset at each
+    // body_root and the prior bodies' tips are dropped (Page_042 has
+    // 5 PartDesign::Body containers; pre-fix output was just the
+    // fifth body's Pad005 - Pocket result).
+    std::map<std::string, int> body_tip_nodes;
+    std::vector<std::string>   body_tip_order;
 
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
@@ -1411,6 +1428,20 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             feature_nodes[feat.id] = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
+            // Record this feature's node as its PartDesign::Body's
+            // running tip so the post-loop emitter can compound all
+            // bodies. body_tip_order keeps declaration order.
+            {
+                auto bit = feat.ext_strings.find("freecad_body");
+                if (bit != feat.ext_strings.end() && !bit->second.empty())
+                {
+                    if (body_tip_nodes.find(bit->second) == body_tip_nodes.end()) {
+                        body_tip_order.push_back(bit->second);
+                    }
+                    body_tip_nodes[bit->second] = node;
+                }
+            }
+
             // Dump-bodies hook: when CAX_DUMP_BODIES is set in the
             // environment, write each feature's running body to a
             // .brp file in the current working directory. Filename
@@ -1447,7 +1478,41 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         }
     }
 
-    if (last_node >= 0)
+    // Pick the emission node(s). For a document with a single
+    // PartDesign::Body (or none -- pure standalone Part::* objects),
+    // last_node is already the right output. For multi-body docs each
+    // body tip evaluates independently and lands in a TopoDS_Compound
+    // so the caller sees every body, not just the last one.
+    if (body_tip_order.size() > 1)
+    {
+        BRep_Builder    bb;
+        TopoDS_Compound comp;
+        bb.MakeCompound(comp);
+        int           added = 0;
+        TopoDS_Shape  solo;  // single non-null body shape, used when
+                             // every other body evaluated to empty.
+        for (const auto& body_name : body_tip_order)
+        {
+            auto it = body_tip_nodes.find(body_name);
+            if (it == body_tip_nodes.end()) continue;
+            auto val = cg->Eval(it->second);
+            auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
+            if (!sv || !sv->shape) continue;
+            const TopoDS_Shape& s = sv->shape->GetShape();
+            if (s.IsNull()) continue;
+            bb.Add(comp, s);
+            if (added == 0) solo = s;
+            ++added;
+        }
+        if (added > 1) {
+            out.shape = std::make_shared<brepkit::TopoShape>(comp);
+        } else if (added == 1) {
+            out.shape = std::make_shared<brepkit::TopoShape>(solo);
+        } else if (out.err_msg.empty()) {
+            out.err_msg = "shape evaluation produced no result";
+        }
+    }
+    else if (last_node >= 0)
     {
         auto val = cg->Eval(last_node);
         auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
