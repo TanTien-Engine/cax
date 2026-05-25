@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -440,18 +441,26 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // earlier body tips that have already scrolled past last_node.
     std::map<uint32_t, int> feature_nodes;
 
-    // PartDesign::Body name -> calc-graph node of that body's running
-    // tip (last 3D feature that landed in that body). Populated by
-    // every feature that carries a freecad_body ext_string and
-    // produced a node. body_tip_order preserves first-seen order so
-    // the post-loop emitter walks bodies in document declaration
-    // order. Without this map a multi-body document only emits the
-    // final body -- the running last_node gets reset at each
-    // body_root and the prior bodies' tips are dropped (Page_042 has
-    // 5 PartDesign::Body containers; pre-fix output was just the
-    // fifth body's Pad005 - Pocket result).
-    std::map<std::string, int> body_tip_nodes;
-    std::vector<std::string>   body_tip_order;
+    // Output candidates collected in document declaration order. Each
+    // entry pins the feat_id and calc-graph node of one potential
+    // top-level result -- a PartDesign::Body tip (collapsed to a single
+    // candidate per body via body_candidate_idx) or a standalone
+    // Part::* feature. consumed_feat_ids tracks every operand_feature_id
+    // referenced by a downstream boolean (Part::Cut / Fuse / Common /
+    // MultiFuse / MultiCommon); candidates whose feat_id appears in that
+    // set are dropped at emission time so a Common(Sphere001, Cut) that
+    // already absorbs the two Body tips doesn't have them re-emitted as
+    // free-standing solids alongside it. Without this filter Page_031
+    // (Body+Body001 feeding a downstream Cut+Common) regressed from
+    // 1 solid to 2 solids when multi-body compounding was first added.
+    struct OutputCandidate
+    {
+        uint32_t feat_id;
+        int      node;
+    };
+    std::vector<OutputCandidate>      output_candidates;
+    std::map<std::string, size_t>     body_candidate_idx;
+    std::set<uint32_t>                consumed_feat_ids;
 
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
@@ -1428,17 +1437,56 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             feature_nodes[feat.id] = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
-            // Record this feature's node as its PartDesign::Body's
-            // running tip so the post-loop emitter can compound all
-            // bodies. body_tip_order keeps declaration order.
+            // Record this feature as a potential top-level output.
+            // Body-owned features collapse to a single candidate per
+            // body (the running tip overwrites earlier members);
+            // standalone Part::* features each get their own candidate
+            // and are filtered out at emission if a downstream boolean
+            // consumed them as an operand.
             {
                 auto bit = feat.ext_strings.find("freecad_body");
-                if (bit != feat.ext_strings.end() && !bit->second.empty())
+                std::string body_name = (bit != feat.ext_strings.end())
+                                            ? bit->second : std::string{};
+                if (!body_name.empty())
                 {
-                    if (body_tip_nodes.find(bit->second) == body_tip_nodes.end()) {
-                        body_tip_order.push_back(bit->second);
+                    auto cit = body_candidate_idx.find(body_name);
+                    if (cit == body_candidate_idx.end()) {
+                        body_candidate_idx[body_name] = output_candidates.size();
+                        output_candidates.push_back({feat.id, node});
+                    } else {
+                        output_candidates[cit->second] = {feat.id, node};
                     }
-                    body_tip_nodes[bit->second] = node;
+                }
+                else {
+                    output_candidates.push_back({feat.id, node});
+                }
+            }
+
+            // Operand / base-link consumption: any feat whose shape
+            // gets folded into this one is marked so the emitter
+            // doesn't re-emit it alongside this feature.
+            //   * FeatPayloadBoolean operands (Part::Cut / Fuse /
+            //     Common / MultiFuse / MultiCommon).
+            //   * base_feature_id ext_param, set by the reader for
+            //     standalone Part::Thickness / Part::Fillet /
+            //     Part::Chamfer that target a body's tip from
+            //     outside the body. Without this the Body candidate
+            //     keeps appearing next to the Thickness result
+            //     (Page_037 went 1 solid -> 2 solids that way).
+            if (auto* bp = std::get_if<FeatPayloadBoolean>(&feat.data))
+            {
+                for (uint32_t opid : bp->operand_feature_ids) {
+                    consumed_feat_ids.insert(opid);
+                }
+            }
+            {
+                auto bfit = feat.ext_params.find("base_feature_id");
+                if (bfit != feat.ext_params.end())
+                {
+                    uint32_t bid = (uint32_t)bfit->second;
+                    if (bid != 0xFFFFFFFFu) {
+                        consumed_feat_ids.insert(bid);
+                    }
                 }
             }
 
@@ -1478,53 +1526,69 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         }
     }
 
-    // Pick the emission node(s). For a document with a single
-    // PartDesign::Body (or none -- pure standalone Part::* objects),
-    // last_node is already the right output. For multi-body docs each
-    // body tip evaluates independently and lands in a TopoDS_Compound
-    // so the caller sees every body, not just the last one.
-    if (body_tip_order.size() > 1)
+    // Pick the emission node(s). Walk output_candidates in declaration
+    // order, drop anything a downstream boolean consumed as an operand,
+    // and emit the survivors. 0 -> fall back to last_node (covers docs
+    // that produced no candidates, e.g. nothing but sketches);
+    // 1 -> emit that node directly; >1 -> wrap in a TopoDS_Compound so
+    // a multi-body doc like Page_042 (5 PartDesign::Body containers,
+    // no downstream booleans) lands every body in out.shape instead
+    // of just the last one. Filtering by consumed_feat_ids keeps a
+    // doc like Page_031 -- two Body tips fed into a Part::Cut, whose
+    // result is then fed into a Part::Common -- from emitting the
+    // already-absorbed bodies alongside the Common result.
+    std::vector<int> live_nodes;
+    live_nodes.reserve(output_candidates.size());
+    for (const auto& c : output_candidates) {
+        if (consumed_feat_ids.count(c.feat_id) == 0) {
+            live_nodes.push_back(c.node);
+        }
+    }
+
+    if (live_nodes.size() > 1)
     {
         BRep_Builder    bb;
         TopoDS_Compound comp;
         bb.MakeCompound(comp);
-        int           added = 0;
-        TopoDS_Shape  solo;  // single non-null body shape, used when
-                             // every other body evaluated to empty.
-        for (const auto& body_name : body_tip_order)
+        int                                 added = 0;
+        std::shared_ptr<brepkit::TopoShape> solo_ts;
+        for (int n : live_nodes)
         {
-            auto it = body_tip_nodes.find(body_name);
-            if (it == body_tip_nodes.end()) continue;
-            auto val = cg->Eval(it->second);
+            auto val = cg->Eval(n);
             auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
             if (!sv || !sv->shape) continue;
             const TopoDS_Shape& s = sv->shape->GetShape();
             if (s.IsNull()) continue;
             bb.Add(comp, s);
-            if (added == 0) solo = s;
+            if (added == 0) solo_ts = sv->shape;
             ++added;
         }
         if (added > 1) {
             out.shape = std::make_shared<brepkit::TopoShape>(comp);
         } else if (added == 1) {
-            out.shape = std::make_shared<brepkit::TopoShape>(solo);
+            out.shape = solo_ts;
         } else if (out.err_msg.empty()) {
             out.err_msg = "shape evaluation produced no result";
         }
     }
-    else if (last_node >= 0)
+    else
     {
-        auto val = cg->Eval(last_node);
-        auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
-        if (sv && sv->shape) {
-            out.shape = sv->shape;
-        } else if (out.err_msg.empty()) {
-            // The graph was assembled OK but evaluation collapsed to
-            // an empty Val somewhere downstream -- typically a
-            // sketch_face whose wire didn't close, or a boolean whose
-            // operand was already empty. Pin the failure here so the
-            // caller doesn't get a silent nullptr shape with ok=true.
-            out.err_msg = "shape evaluation produced no result";
+        int emit_node = !live_nodes.empty() ? live_nodes.front() : last_node;
+        if (emit_node >= 0)
+        {
+            auto val = cg->Eval(emit_node);
+            auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
+            if (sv && sv->shape) {
+                out.shape = sv->shape;
+            } else if (out.err_msg.empty()) {
+                // The graph was assembled OK but evaluation collapsed
+                // to an empty Val somewhere downstream -- typically a
+                // sketch_face whose wire didn't close, or a boolean
+                // whose operand was already empty. Pin the failure
+                // here so the caller doesn't get a silent nullptr
+                // shape with ok=true.
+                out.err_msg = "shape evaluation produced no result";
+            }
         }
     }
 

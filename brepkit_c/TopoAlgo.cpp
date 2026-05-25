@@ -427,6 +427,30 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         return false;
     };
 
+    // ChFi3d sometimes "succeeds" on fragmented bodies (lots of small
+    // co-planar / co-tangent neighbour faces, typical of a Mirror or
+    // Pattern fuse seam) by building a self-intersecting blend BSpline
+    // with control points orders of magnitude outside the input bbox.
+    // Build() returns Done, the result is even a valid SOLID by
+    // sub-shape count, but its bbox / volume are nonsense (Page_020:
+    // input bbox ~0.13 m, batch fillet bbox ~8800 m, volume sign
+    // flipped from +6e-4 m^3 to -0.38 m^3 because the corrupted blend
+    // surface inverts the shell orientation). Per-edge mode dodges
+    // this because it builds only one stripe at a time and ChFi3d's
+    // cross-stripe interaction is what overflows -- so any batch
+    // result whose bbox blew up vs the input gets rejected here and
+    // re-tried per-edge.
+    auto bbox_extent = [](const TopoDS_Shape& s) -> double {
+        Bnd_Box b;
+        BRepBndLib::Add(s, b);
+        if (b.IsVoid()) return 0.0;
+        double xmin, ymin, zmin, xmax, ymax, zmax;
+        b.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+        double dx = xmax - xmin, dy = ymax - ymin, dz = zmax - zmin;
+        return std::max({dx, dy, dz});
+    };
+    const double input_extent = bbox_extent(shape->GetShape());
+
     std::unique_ptr<BRepFilletAPI_MakeFillet> batch_holder;
     TopoDS_Shape  result;
     bool          batch_ok = false;
@@ -449,11 +473,164 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         }
     }
 
+    // Sanity check the batch result: a fillet of radius r can grow
+    // the input bbox by at most ~r per axis (the new toroidal blend
+    // stays within r of the original edge). A result whose max extent
+    // jumped 10x past (input + 2r) is ChFi3d's self-intersecting
+    // blend pathology -- Build() returned Done and the SOLID has
+    // sane sub-shape counts, but the new blend BSpline has control
+    // points hundreds of metres outside the body. Caused by Mirror /
+    // Pattern fuse seams that leave dozens of co-tangent neighbour
+    // faces; ChFi3d's stripe builder overshoots when it tries to
+    // chain across them. Page_020: input ~0.13 m, batch fillet bbox
+    // ~8800 m, volume sign-flipped from +6e-4 to -0.38 m^3. 10x
+    // leaves plenty of headroom for the legitimate end-cap growth
+    // chained fillets occasionally add.
+    const double max_legit_extent = (input_extent + 2.0 * radius) * 10.0;
+    auto batch_result_sane = [&](const TopoDS_Shape& s) -> bool {
+        if (input_extent <= 0.0) return true;
+        return bbox_extent(s) <= max_legit_extent;
+    };
+
     if (batch_ok)
     {
         result = UnwrapSingleSolid(result);
+        if (!batch_result_sane(result))
+        {
+            std::fprintf(stderr,
+                "[FILLET] op_id=%u batch built corrupt blend "
+                "(input extent=%.4f m, result extent=%.4f m); "
+                "retrying on unified-domain input\n",
+                op_id, input_extent, bbox_extent(result));
+            batch_ok = false;
+        }
+    }
+
+    // Recovery attempt: refine the input with UnifySameDomain (merges
+    // co-planar / co-tangent neighbour faces left over from Mirror /
+    // Pattern fuse seams) and re-run batch fillet against the cleaner
+    // body. Leaf edges get re-mapped by midpoint + tangent + length so
+    // they land on the post-merge equivalents. Per-edge mode is NOT a
+    // fallback here because it also calls ChFi3d on the same
+    // fragmented body and reproduces the same corruption (Page_020
+    // per-edge attempt also produced bbox ~1000 m). Only refining the
+    // input rescues these.
+    TopoDS_Shape  refined_input;
+    std::unique_ptr<BRepFilletAPI_MakeFillet> refined_holder;
+    bool          refined_ok = false;
+    if (!batch_ok && !force_single)
+    {
+        ShapeUpgrade_UnifySameDomain unify(shape->GetShape(),
+                                            Standard_True,  // unify edges
+                                            Standard_True,  // unify faces
+                                            Standard_False); // no concat bsplines
+        try { unify.Build(); }
+        catch (...) {}
+        refined_input = unify.Shape();
+        if (!refined_input.IsNull() && refined_input.NbChildren() != 0)
+        {
+            // Re-map each leaf edge to its surviving counterpart on
+            // the refined body via (midpoint, tangent, length). An
+            // edge that UnifySameDomain merged away (a phantom seam --
+            // the original cause of the corruption) is silently
+            // dropped; what survives is the edge ChFi3d should have
+            // been filleting all along.
+            std::vector<TopoDS_Edge> refined_edges;
+            refined_edges.reserve(leaf_edges.size());
+            for (const auto& e : leaf_edges)
+            {
+                if (BRep_Tool::Degenerated(e)) continue;
+                gp_Pnt mid0; gp_Dir tan0; double len0 = 0.0;
+                try {
+                    BRepAdaptor_Curve curve(e);
+                    double f = curve.FirstParameter();
+                    double l = curve.LastParameter();
+                    double m = 0.5 * (f + l);
+                    gp_Pnt p; gp_Vec v;
+                    curve.D1(m, p, v);
+                    if (v.Magnitude() < 1e-12) continue;
+                    mid0 = p;
+                    tan0 = gp_Dir(v);
+                    GProp_GProps props;
+                    BRepGProp::LinearProperties(e, props);
+                    len0 = props.Mass();
+                } catch (...) { continue; }
+
+                double      pt_tol = std::max(0.1 * radius, 1e-6);
+                double      best_d = pt_tol;
+                TopoDS_Edge best;
+                for (TopExp_Explorer ex(refined_input, TopAbs_EDGE);
+                     ex.More(); ex.Next())
+                {
+                    const TopoDS_Edge& re = TopoDS::Edge(ex.Current());
+                    if (BRep_Tool::Degenerated(re)) continue;
+                    try {
+                        BRepAdaptor_Curve rc(re);
+                        double rf = rc.FirstParameter();
+                        double rl = rc.LastParameter();
+                        double rm = 0.5 * (rf + rl);
+                        gp_Pnt rp; gp_Vec rv;
+                        rc.D1(rm, rp, rv);
+                        if (rv.Magnitude() < 1e-12) continue;
+                        double d = rp.Distance(mid0);
+                        if (d >= best_d) continue;
+                        if (std::abs(gp_Dir(rv).Dot(tan0)) < 0.996) continue;
+                        GProp_GProps rprops;
+                        BRepGProp::LinearProperties(re, rprops);
+                        if (std::abs(rprops.Mass() - len0) >
+                            0.05 * std::max(len0, 1e-6)) continue;
+                        best_d = d;
+                        best   = re;
+                    } catch (...) { continue; }
+                }
+                if (!best.IsNull()) {
+                    refined_edges.push_back(best);
+                }
+            }
+
+            std::fprintf(stderr,
+                "[FILLET] op_id=%u refined-input remap: "
+                "%zu/%zu edges survived\n",
+                op_id, refined_edges.size(), leaf_edges.size());
+
+            auto try_refined = [&](ChFi3d_FilletShape mode) -> bool {
+                refined_holder.reset(new BRepFilletAPI_MakeFillet(refined_input));
+                refined_holder->SetFilletShape(mode);
+                for (const auto& e : refined_edges) {
+                    refined_holder->Add(radius, e);
+                }
+                int r = -1;
+                try { r = seh_safe_build(refined_holder.get()); }
+                catch (...) { r = -1; }
+                if (r != 1) return false;
+                TopoDS_Shape rr = UnwrapSingleSolid(refined_holder->Shape());
+                if (!batch_result_sane(rr)) return false;
+                result = rr;
+                return true;
+            };
+
+            if (!refined_edges.empty())
+            {
+                if (try_refined(ChFi3d_Rational) ||
+                    try_refined(ChFi3d_QuasiAngular))
+                {
+                    refined_ok = true;
+                    std::fprintf(stderr,
+                        "[FILLET] op_id=%u refined-input batch OK "
+                        "(extent=%.4f m)\n", op_id, bbox_extent(result));
+                }
+            }
+        }
+    }
+
+    if (batch_ok || refined_ok)
+    {
         brepgraph::TopoNaming::PidMap pid_map;
-        if (tn) {
+        // History bookkeeping is skipped on the refined-input path:
+        // chaining UnifySameDomain + MakeFillet histories together
+        // needs more plumbing than the rescue is worth right now,
+        // and the caller cares about geometry here, not ref stability.
+        if (tn && batch_ok) {
             pid_map = tn->Update(*batch_holder, result, shape->GetShape(), op_id);
         }
         auto dst = std::make_shared<brepkit::TopoShape>(result);
