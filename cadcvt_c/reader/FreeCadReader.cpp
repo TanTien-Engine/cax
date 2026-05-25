@@ -2971,12 +2971,23 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
         else if (pending.type == "Part::Box")
         {
+            // Legacy Part-workbench primitive. Unlike PartDesign::
+            // AdditiveBox the resulting Box stands alone (no implicit
+            // body fuse), but it still carries a Placement that must
+            // be applied so subsequent booleans see it in the right
+            // pose. Symptom of missing the Placement: Page_058's
+            // Cut = Pocket - Box came out with twice the expected z
+            // extent because the Box stayed corner-at-origin instead
+            // of being shifted by Placement.Position to (-175,-175,0).
+            // StashPlacement is a no-op for identity placements, so
+            // it's safe to call unconditionally.
             FeatPayloadPrimBox pl;
             pl.length = PropDouble(props, "Length", 1.0) * m_unit_scale;
             pl.width  = PropDouble(props, "Width",  1.0) * m_unit_scale;
             pl.height = PropDouble(props, "Height", 1.0) * m_unit_scale;
             feat.type = FeatType::PrimBox;
             feat.data = std::move(pl);
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "Part::Cylinder")
         {
@@ -2985,6 +2996,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.height = PropDouble(props, "Height", 1.0) * m_unit_scale;
             feat.type = FeatType::PrimCylinder;
             feat.data = std::move(pl);
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "Part::Sphere")
         {
@@ -2992,6 +3004,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.radius = PropDouble(props, "Radius", 0.5) * m_unit_scale;
             feat.type = FeatType::PrimSphere;
             feat.data = std::move(pl);
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "Part::Cone")
         {
@@ -3001,6 +3014,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.height  = PropDouble(props, "Height",  1.0) * m_unit_scale;
             feat.type  = FeatType::PrimCone;
             feat.data  = std::move(pl);
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "Part::Torus")
         {
@@ -3009,6 +3023,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.minor_radius = PropDouble(props, "Radius2", 0.25) * m_unit_scale;
             feat.type       = FeatType::PrimTorus;
             feat.data       = std::move(pl);
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "Part::Ellipsoid")
         {
@@ -3022,6 +3037,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.radius3 = PropDouble(props, "Radius3", 0.0) * m_unit_scale;
             feat.type  = FeatType::PrimEllipsoid;
             feat.data  = std::move(pl);
+            StashPlacement(feat, props, m_unit_scale);
         }
         else if (pending.type == "PartDesign::AdditiveBox" ||
                  pending.type == "PartDesign::SubtractiveBox")
