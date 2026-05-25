@@ -655,6 +655,9 @@ static brepkit::ExtrudeEndType ParseEndType(const char* s)
     if (std::strcmp(s, "mid_plane") == 0) {
         return brepkit::ExtrudeEndType::MidPlane;
     }
+    if (std::strcmp(s, "up_to_first") == 0) {
+        return brepkit::ExtrudeEndType::UpToFirst;
+    }
     return brepkit::ExtrudeEndType::Blind;
 }
 

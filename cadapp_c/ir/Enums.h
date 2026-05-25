@@ -150,6 +150,7 @@ enum class ExtrudeEndType : uint8_t
     UpToVertex        = 3,
     MidPlane          = 4,
     OffsetFromSurface = 5,
+    UpToFirst         = 6,  // stop at first face hit (FreeCAD Type=2)
 };
 
 } // namespace cadapp

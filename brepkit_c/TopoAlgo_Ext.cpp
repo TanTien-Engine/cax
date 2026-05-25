@@ -42,6 +42,8 @@
 #include <TopExp.hxx>
 #include <BRepBndLib.hxx>
 #include <Bnd_Box.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Ax1.hxx>
@@ -232,9 +234,11 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
             return TopoDS_Shape();
         }
 
-        // For ThroughAll, compute a large enough distance from bounding box
+        // For ThroughAll / UpToFirst, compute a large enough distance
+        // from bounding box so the prism unambiguously exits the body.
         double effective_dist = dist;
-        if (end == ExtrudeEndType::ThroughAll) {
+        if (end == ExtrudeEndType::ThroughAll ||
+            end == ExtrudeEndType::UpToFirst) {
             Bnd_Box box;
             BRepBndLib::Add(shape->GetShape(), box);
             if (ref) {
@@ -281,6 +285,78 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
             }
         }
 
+        // For UpToFirst, the prism is the cut tool but only the FIRST
+        // chunk of material it intersects should be removed. Walk
+        // BRepAlgoAPI_Common(ref, prism) to get every carved chunk
+        // (each is a connected SOLID inside the body), then keep only
+        // the SOLID whose centroid is closest to the sketch face's
+        // centroid -- that's the "first" piece the sweep encounters.
+        //
+        // Without this step, UpToFirst behaves like ThroughAll: a
+        // horizontal cylinder through Page_051's pad ate the slot
+        // wall AND the outer wall (4.98e-6 vs FreeCAD's 1.77e-6 m^3).
+        // FreeCAD PartDesign UpToFirst stops at the slot wall's far
+        // exit; that's what selecting the closest chunk reproduces.
+        if (end == ExtrudeEndType::UpToFirst && ref)
+        {
+            BRepAlgoAPI_Common common;
+            TopTools_ListOfShape ca; ca.Append(ref->GetShape());
+            TopTools_ListOfShape cb; cb.Append(result);
+            common.SetArguments(ca);
+            common.SetTools(cb);
+            common.SetFuzzyValue(1e-6);
+            try { common.Build(); } catch (...) {}
+            if (common.IsDone() && !common.Shape().IsNull())
+            {
+                // Collect each carved SOLID.
+                std::vector<TopoDS_Shape> chunks;
+                for (TopExp_Explorer ex(common.Shape(), TopAbs_SOLID);
+                     ex.More(); ex.Next())
+                {
+                    chunks.push_back(ex.Current());
+                }
+                if (!chunks.empty())
+                {
+                    // Sketch face centroid -- the anchor we measure
+                    // "first" from.
+                    GProp_GProps sk_props;
+                    BRepGProp::SurfaceProperties(shape->GetShape(), sk_props);
+                    gp_Pnt sk_c = sk_props.CentreOfMass();
+
+                    // Pick chunk minimizing the SIGNED projection of
+                    // (chunk_centroid - sketch_centroid) onto the sweep
+                    // direction. Signed projection so a chunk behind
+                    // the sketch plane (the sweep starts at the sketch
+                    // and goes forward) ranks higher than one ahead.
+                    // The smallest positive projection wins.
+                    gp_Vec dir_v(sign * dir_x, sign * dir_y, sign * dir_z);
+                    int    best_i  = -1;
+                    double best_d  = 0.0;
+                    for (size_t i = 0; i < chunks.size(); ++i)
+                    {
+                        GProp_GProps cp;
+                        BRepGProp::VolumeProperties(chunks[i], cp);
+                        if (cp.Mass() <= 0) continue;
+                        gp_Pnt cc = cp.CentreOfMass();
+                        gp_Vec off(sk_c, cc);
+                        double proj = off.Dot(dir_v);
+                        // Tie-break with a small bias toward larger
+                        // volume so a hairline sliver right at the
+                        // sketch plane doesn't out-rank the real
+                        // first chunk.
+                        if (proj < 1e-9) continue;
+                        if (best_i < 0 || proj < best_d) {
+                            best_i = (int)i;
+                            best_d = proj;
+                        }
+                    }
+                    if (best_i >= 0) {
+                        result = chunks[best_i];
+                    }
+                }
+            }
+        }
+
         return result;
     };
 
@@ -323,10 +399,13 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
     case ExtrudeEndType::UpToSurface:
     case ExtrudeEndType::UpToVertex:
     case ExtrudeEndType::OffsetFromSurface:
+    case ExtrudeEndType::UpToFirst:
     {
         s1 = build_one(dist1, end1, false);
         // Optional second direction
-        if (dist2 > 1e-15 || end2 == ExtrudeEndType::ThroughAll) {
+        if (dist2 > 1e-15 ||
+            end2 == ExtrudeEndType::ThroughAll ||
+            end2 == ExtrudeEndType::UpToFirst) {
             s2 = build_one(dist2, end2, true);
         }
         break;

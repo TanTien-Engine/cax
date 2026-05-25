@@ -27,6 +27,11 @@ enum class ExtrudeEndType : uint8_t
     UpToVertex        = 3, // Up to a reference vertex
     MidPlane          = 4, // Symmetric, half on each side
     OffsetFromSurface = 5, // Offset from a reference surface
+    // UpToFirst: stop at the FIRST face of `ref` encountered along
+    // the prism direction. Implemented by building a ThroughAll-size
+    // prism, intersecting with ref, picking the connected piece
+    // nearest the sketch plane. FreeCAD PartDesign Pocket/Pad Type=2.
+    UpToFirst         = 6,
 };
 
 class TopoAlgo_Ext
