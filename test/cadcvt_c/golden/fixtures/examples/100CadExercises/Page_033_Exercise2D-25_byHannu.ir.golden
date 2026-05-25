@@ -142,4 +142,4 @@ feat 16 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=15 d
 feat 17 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=17
 feat 18 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
 feat 19 name=LinearPattern type=LinearPattern suppressed=0 payload=linpat dir1=(1.000,0.000,0.000) count1=14 spacing1=0.006 count2=1 spacing2=0.000
-feat 20 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=52
+feat 20 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=26
