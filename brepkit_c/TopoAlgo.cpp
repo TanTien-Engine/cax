@@ -744,24 +744,27 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     };
 
     // On a possibly-mutated body, find the edge whose midpoint sits
-    // within ~0.1*radius of pt0 AND whose unit tangent is parallel
-    // (or anti-parallel) to tan0 AND whose length matches len0
-    // within 5%. If the original leaf edge wasn't pulled into a
-    // previous chain fillet it is still there at the same place; if
-    // it was, no close match exists (the fillet's tangent boundary
-    // is offset by ~radius and so falls outside the position tol).
-    // This lets the retry pass distinguish "already done as part of
-    // a chain" from "genuinely needs another try with the now-
-    // modified topology".
+    // close to pt0, whose unit tangent is parallel (or anti-parallel)
+    // to tan0, and whose length fits the "could have shrunk from len0"
+    // envelope. A neighbour fillet chamfering one endpoint shrinks
+    // this edge by `radius`; chamfering both endpoints shrinks it by
+    // 2*radius. The midpoint shifts by radius/2 when only ONE end
+    // shrinks (asymmetric); the old 0.1*radius position budget was
+    // tighter than that and silently mislabeled any surviving-but-
+    // shortened neighbour as "consumed by prior chain", leaving sharp
+    // edges where the user asked for fillets. Allow midpoint drift up
+    // to `radius` and length shrinkage up to 2*radius. Forbid growth
+    // -- a real surviving edge can only get shorter than its original.
     auto find_surviving_edge = [&](const TopoDS_Shape& body,
                                    const gp_Pnt&        pt0,
                                    const gp_Dir&        tan0,
                                    double               len0,
                                    TopoDS_Edge&         out_edge) -> bool {
-        double pt_tol = 0.1 * radius;
-        if (pt_tol < 1e-6) pt_tol = 1e-6;
+        double pt_tol = std::max(radius, 1e-6);
         const double tan_dot_min = 0.996; // ~5 degrees
-        const double len_rel_tol = 0.05;
+        const double len_slack   = std::max(1e-3 * radius, 1e-9);
+        const double len_min     = len0 - 2.0 * radius - len_slack;
+        const double len_max_v   = len0 + len_slack;
 
         double      best_d = pt_tol;
         TopoDS_Edge best;
@@ -769,11 +772,10 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
             const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
             gp_Pnt mid; gp_Dir tan; double len;
             if (!edge_geom(e, mid, tan, len)) continue;
+            if (len < len_min || len > len_max_v) continue;
+            if (std::abs(tan.Dot(tan0)) < tan_dot_min) continue;
             double d = mid.Distance(pt0);
             if (d >= best_d) continue;
-            if (std::abs(tan.Dot(tan0)) < tan_dot_min) continue;
-            double len_max = std::max(len0, 1e-6);
-            if (std::abs(len - len0) > len_rel_tol * len_max) continue;
             best_d = d;
             best   = e;
         }
@@ -1081,30 +1083,43 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         } catch (...) { return false; }
     };
 
-    // pt_tol uses chamfer distance as the position scale, the same
-    // way Fillet scales by radius. Only difference: chamfer dist is
-    // typically smaller than fillet radii, so the 1e-6 floor catches
-    // more cases here.
+    // Match against the running body's edges. The thresholds account
+    // for the geometric distortion that prior per-edge chamfers apply
+    // to neighbour edges sharing a vertex:
+    //   - length: a neighbour chamfered at ONE end shrinks by `dist`;
+    //     chamfered at BOTH ends shrinks by 2*dist. Allow up to 2*dist
+    //     of shrinkage (with a small numerical slack) and forbid
+    //     growth -- a real surviving edge can only get shorter.
+    //   - midpoint: when only ONE end shrinks (asymmetric), the
+    //     midpoint shifts by dist/2 along the edge; the old 0.1*dist
+    //     budget was 5x too tight, killing every asymmetrically-eaten
+    //     neighbour. Use `dist` (covers up to 2*dist shrinkage on one
+    //     side).
+    //   - tangent: 0.996 (~5 deg) unchanged; a real edge can't change
+    //     direction.
+    // The old `len_rel_tol = 0.05` (5%) threshold turned every 60-70 mm
+    // edge with neighbour chamfers on both ends into "chain-consumed"
+    // (Page_045 lost 23/40 vertical posts because 2*3 mm / 60 mm = 10%).
     auto find_surviving_edge = [&](const TopoDS_Shape& body,
                                    const gp_Pnt&       pt0,
                                    const gp_Dir&       tan0,
                                    double              len0,
                                    TopoDS_Edge&        out_edge) -> bool {
-        double pt_tol = 0.1 * dist;
-        if (pt_tol < 1e-6) pt_tol = 1e-6;
+        double pt_tol = std::max(dist, 1e-6);
         const double tan_dot_min = 0.996;
-        const double len_rel_tol = 0.05;
+        const double len_slack   = std::max(1e-3 * dist, 1e-9);
+        const double len_min     = len0 - 2.0 * dist - len_slack;
+        const double len_max     = len0 + len_slack;
         double      best_d = pt_tol;
         TopoDS_Edge best;
         for (TopExp_Explorer ex(body, TopAbs_EDGE); ex.More(); ex.Next()) {
             const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
             gp_Pnt mid; gp_Dir tan; double len;
             if (!edge_geom(e, mid, tan, len)) continue;
+            if (len < len_min || len > len_max) continue;
+            if (std::abs(tan.Dot(tan0)) < tan_dot_min) continue;
             double d = mid.Distance(pt0);
             if (d >= best_d) continue;
-            if (std::abs(tan.Dot(tan0)) < tan_dot_min) continue;
-            double len_max = std::max(len0, 1e-6);
-            if (std::abs(len - len0) > len_rel_tol * len_max) continue;
             best_d = d;
             best   = e;
         }
@@ -1914,6 +1929,60 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         return nullptr;
     }
 
+    // BRepOffsetAPI_MakeThickSolid (OCCT 8.0rc) does not expose
+    // History(), so we have to build one via the template ctor
+    // that walks every sub-shape of the args and queries
+    // Modified/Generated/IsDeleted on the algo. On Page_037 the
+    // ByJoin path returns IsDone()==true but leaves dangling
+    // BRepOffset_MakeOffset::myAsDes entries, and one of those
+    // sub-shape queries AVs inside TKBRep. Wrap the ctor in the
+    // same SEH harness Chamfer/Fillet use.
+    //
+    // When the AV fires, the algorithm's internal state is wedged:
+    // an earlier attempt that just nullified the history and kept
+    // thick_solid.Shape() shipped a degenerate result downstream
+    // (empty / partially-built compound), which broke the document
+    // a few frames later when the editor tried to dispatch ves hooks
+    // on a half-formed scene node. So if SEH catches the ctor, treat
+    // the whole op as failed and return nullptr -- the caller (the
+    // "shell" calc op in calc_ops.cpp) already handles a null shape
+    // the same way it handles any other op failure.
+    opencascade::handle<BRepTools_History> join_hist;
+    {
+        TopTools_ListOfShape join_args;
+        join_args.Append(unified_solid);
+        struct Ctx {
+            TopTools_ListOfShape* args;
+            BRepOffsetAPI_MakeThickSolid* algo;
+            opencascade::handle<BRepTools_History>* out;
+            bool ok;
+        };
+        Ctx ctx{&join_args, &thick_solid, &join_hist, false};
+        auto runner = +[](void* p) -> void {
+            auto* c = static_cast<Ctx*>(p);
+            try {
+                *c->out = new BRepTools_History(*c->args, *c->algo);
+                c->ok = true;
+            } catch (...) {
+                c->ok = false;
+            }
+        };
+#ifdef _MSC_VER
+        int seh = seh_call_void(runner, &ctx);
+#else
+        runner(&ctx);
+        int seh = 0;
+#endif
+        if (seh < 0 || !ctx.ok) {
+            std::fprintf(stderr,
+                         "[TopoAlgo::ThickSolid] BRepTools_History "
+                         "construction faulted (seh=%d ok=%d); "
+                         "treating op as failed\n",
+                         seh, (int)ctx.ok);
+            return nullptr;
+        }
+    }
+
     brepgraph::TopoNaming::PidMap pid_map;
     if (tn) {
         // Compose the unify history (orig -> unified) with the join
@@ -1921,55 +1990,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         // records lineage in one update rather than treating the
         // shelled faces as orphans. The merged chain_hist effectively
         // maps orig faces directly to final faces.
-        //
-        // BRepOffsetAPI_MakeThickSolid (OCCT 8.0rc) does not expose
-        // History(), so we have to build one via the template ctor
-        // that walks every sub-shape of the args and queries
-        // Modified/Generated/IsDeleted on the algo. On Page_037 the
-        // ByJoin path returns IsDone()==true but leaves dangling
-        // BRepOffset_MakeOffset::myAsDes entries, and one of those
-        // sub-shape queries AVs inside TKBRep. Wrap the ctor in the
-        // same SEH harness Chamfer/Fillet use so the AV demotes to a
-        // skipped Merge (shelled faces become naming orphans for
-        // this op) instead of tearing down the editor.
-        opencascade::handle<BRepTools_History> join_hist;
-        {
-            TopTools_ListOfShape join_args;
-            join_args.Append(unified_solid);
-            struct Ctx {
-                TopTools_ListOfShape* args;
-                BRepOffsetAPI_MakeThickSolid* algo;
-                opencascade::handle<BRepTools_History>* out;
-                bool ok;
-            };
-            Ctx ctx{&join_args, &thick_solid, &join_hist, false};
-            auto runner = +[](void* p) -> void {
-                auto* c = static_cast<Ctx*>(p);
-                try {
-                    *c->out = new BRepTools_History(*c->args, *c->algo);
-                    c->ok = true;
-                } catch (...) {
-                    c->ok = false;
-                }
-            };
-#ifdef _MSC_VER
-            int seh = seh_call_void(runner, &ctx);
-#else
-            runner(&ctx);
-            int seh = 0;
-#endif
-            if (seh < 0 || !ctx.ok) {
-                std::fprintf(stderr,
-                             "[TopoAlgo::ThickSolid] BRepTools_History "
-                             "construction faulted (seh=%d ok=%d); "
-                             "naming orphans this op\n",
-                             seh, (int)ctx.ok);
-                join_hist.Nullify();
-            }
-        }
-        if (!join_hist.IsNull()) {
-            chain_hist->Merge(join_hist);
-        }
+        chain_hist->Merge(join_hist);
 
         brepkit::TopoShape new_ts(thick_solid.Shape());
         pid_map = tn->Update(chain_hist, new_ts, *shape, op_id);
