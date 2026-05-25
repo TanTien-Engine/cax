@@ -285,6 +285,60 @@ bool BboxesOverlap(const TopoDS_Shape& a, const TopoDS_Shape& b)
     return !ba.IsOut(bb);
 }
 
+// Refine the raw output of a BOP (Cut / Fuse / Common):
+//
+//   1. ShapeUpgrade_UnifySameDomain merges coplanar / cosurface face
+//      fragments that the BOP leaves behind. A circular hole through
+//      a flat face exits the BOP as "annulus + outer remainder" two
+//      faces; FreeCAD's PartDesign default Refine=true folds them
+//      back into one face-with-hole. Without this cax produces +1/+1
+//      faces per Cut against a flat target (Page_051 Pocket alone
+//      adds +1 face; Pocket001 cylindrical-through-Z adds +4).
+//
+//   2. UnwrapSingleSolid peels the COMPOUND wrapper OCCT routinely
+//      leaves on a Cut / Fuse / Common result that is geometrically a
+//      single SOLID. Downstream BOPs / dressup prefer a SOLID arg;
+//      a stray COMPOUND wrap also makes the FreeCAD-vs-cax brp_diff
+//      report a spurious ShapeType mismatch.
+//
+//   3. The unify step's BRepTools_History is merged into `out_hist`
+//      so TopoNaming::Update sees the composed lineage (orig args
+//      -> bop output -> unified output) in one call. Callers that
+//      don't track history pass a null `out_hist` and only see the
+//      shape effect.
+//
+// Linear tolerance is set to 1e-6 m, matching the BOP fuzzy used
+// across Cut / Fuse / Common, so the merge catches fragments that
+// the BOP itself considers coincident. Angular stays at the OCCT
+// default to avoid collapsing near-parallel-but-distinct planes.
+TopoDS_Shape RefineBopResult(const TopoDS_Shape& raw,
+                             opencascade::handle<BRepTools_History>& out_hist)
+{
+    if (raw.IsNull()) {
+        return raw;
+    }
+    TopoDS_Shape result = raw;
+    try {
+        ShapeUpgrade_UnifySameDomain unify(raw,
+                                            /*UnifyEdges=*/Standard_True,
+                                            /*UnifyFaces=*/Standard_True,
+                                            /*ConcatBSplines=*/Standard_False);
+        unify.SetLinearTolerance(1e-6);
+        unify.Build();
+        TopoDS_Shape unified = unify.Shape();
+        if (!unified.IsNull()) {
+            result = unified;
+            if (!out_hist.IsNull()) {
+                out_hist->Merge(unify.History());
+            }
+        }
+    } catch (...) {
+        // Leave result as the unrefined BOP output -- still valid,
+        // just keeps the extra fragments / COMPOUND wrap.
+    }
+    return UnwrapSingleSolid(result);
+}
+
 // Collect the leaf TopoDS_Edges from a list that may contain plain
 // TopoDS_Edge sub-shapes or compounds. Used by both fillet entry
 // paths so the retry-one-at-a-time fallback sees the same units
@@ -1316,6 +1370,13 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
         algo.DumpErrors(std::cerr);
     }
 
+    // Refine: unify coplanar BOP fragments + unwrap a single-SOLID
+    // COMPOUND wrapper. Mirrors FreeCAD PartDesign Pocket default
+    // Refine=true. See RefineBopResult above for rationale.
+    opencascade::handle<BRepTools_History> hist;
+    if (tn) hist = algo.History();
+    TopoDS_Shape refined = RefineBopResult(algo.Shape(), hist);
+
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
@@ -1323,10 +1384,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     if (tn)
     {
         auto old_shp = ShapeBuilder::MakeCompound({ s1, s2 });
-        opencascade::handle<BRepTools_History> o_hist = algo.History();
-        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+        pid_map = tn->Update(hist, refined, old_shp->GetShape(), op_id);
     }
-    auto dst = std::make_shared<brepkit::TopoShape>(algo.Shape());
+    auto dst = std::make_shared<brepkit::TopoShape>(refined);
     merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "cut");
     return dst;
 }
@@ -1384,6 +1444,13 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         }
     }
 
+    // Refine: unify coplanar BOP fragments + unwrap a single-SOLID
+    // COMPOUND wrapper. Mirrors FreeCAD PartDesign Pad default
+    // Refine=true.
+    opencascade::handle<BRepTools_History> hist;
+    if (tn) hist = algo->History();
+    TopoDS_Shape refined = RefineBopResult(algo->Shape(), hist);
+
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
@@ -1391,10 +1458,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
     if (tn)
     {
         auto old_shp = ShapeBuilder::MakeCompound({ s1, s2 });
-        opencascade::handle<BRepTools_History> o_hist = algo->History();
-        pid_map = tn->Update(o_hist, algo->Shape(), old_shp->GetShape(), op_id);
+        pid_map = tn->Update(hist, refined, old_shp->GetShape(), op_id);
     }
-    auto dst = std::make_shared<brepkit::TopoShape>(algo->Shape());
+    auto dst = std::make_shared<brepkit::TopoShape>(refined);
     merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "fuse");
     return dst;
 }
@@ -1416,6 +1482,11 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
         algo.DumpErrors(std::cerr);
     }
 
+    // Refine: same rationale as Cut / Fuse.
+    opencascade::handle<BRepTools_History> hist;
+    if (tn) hist = algo.History();
+    TopoDS_Shape refined = RefineBopResult(algo.Shape(), hist);
+
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
@@ -1423,10 +1494,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
     if (tn)
     {
         auto old_shp = ShapeBuilder::MakeCompound({ s1, s2 });
-        opencascade::handle<BRepTools_History> o_hist = algo.History();
-        pid_map = tn->Update(o_hist, algo.Shape(), old_shp->GetShape(), op_id);
+        pid_map = tn->Update(hist, refined, old_shp->GetShape(), op_id);
     }
-    auto dst = std::make_shared<brepkit::TopoShape>(algo.Shape());
+    auto dst = std::make_shared<brepkit::TopoShape>(refined);
     merge_to_vt(tn, vt, s1, s2, dst, std::move(tool_world), pid_map, "common");
     return dst;
 }
