@@ -1533,25 +1533,27 @@ size_t StashFilletRefsByEdgeDiff(
 
         // Walk samples and pick out maximal runs of far samples of
         // length >= kMinRunLen. Each run is one consumed sub-section
-        // of the BASE edge. Only emit refs for runs that cover >=
-        // kRunFracMin of the edge: a near-full run is a real
-        // "consumed edge" candidate, a smaller run is almost always
-        // either an eaten neighbor (the fillet of an ADJACENT picked
-        // edge ate part of this one but we don't want to fillet THIS
-        // edge separately) or a refine-merged sub-section we'd need
-        // to pre-split the cax body to handle. The pre-split path
-        // (split_body_at_points + a follow-up fillet on a now-shorter
+        // of the BASE edge. Only emit refs for runs that extend to
+        // BOTH ends of the edge (preserved tail of <= kEndTailMax
+        // samples on each side). A one-sided run is the "neighbor
+        // ate me" pattern: an ADJACENT picked edge's fillet swept
+        // across the shared corner and consumed only the tip of this
+        // edge; the rest survives. Emitting a separate ref for such
+        // an edge double-counts -- the picked neighbor's MakeFillet
+        // will sweep the corner anyway via auto-chain, and the extra
+        // ref turns into a stray fillet on a perpendicular face.
+        // Page_044's r=4 mm radius on a stair-step outline with
+        // 4 mm-long step risers between picked treads produced 8
+        // such phantom refs (34 emitted vs 26 authored) before this
+        // tightening. Symmetrically, this also rejects refine-merged
+        // partial-runs in the middle of a long edge: the pre-split
+        // path (split_body_at_points + a follow-up fillet on a
         // sub-edge) destabilised ChFi3d_Builder::Compute on
-        // Page_027_Exercise2D-19's body, crashing inside
-        // TopOpeBRepBuild's old wire-edge build path while loading
-        // an emerging-from-split sub-edge's adaptor curve. Until
-        // that crash is root-caused we conservatively skip partial
-        // runs and let the caller fall back to the index-based path
-        // when the resulting emitted count drops to zero -- the old
-        // behaviour for the unfixable case, but at least the
-        // soft-dihedral fully-consumed cases (the original
-        // Page_027 mismatch) still get caught here.
-        constexpr double kRunFracMin = 0.70;
+        // Page_027_Exercise2D-19's body and crashed inside
+        // TopOpeBRepBuild while loading the emerging sub-edge's
+        // adaptor curve; the both-ends test inherits that
+        // crash-mitigation while also cleaning up the neighbor case.
+        constexpr int kEndTailMax = 2;
         int run_count = 0;
         int k = 0;
         while (k < kSampleCount)
@@ -1563,17 +1565,19 @@ size_t StashFilletRefsByEdgeDiff(
             int run_len_samples = run_hi - run_lo + 1;
             if (run_len_samples < kMinRunLen) continue;
 
+            if (run_lo > kEndTailMax ||
+                run_hi < kSampleCount - 1 - kEndTailMax) {
+                std::fprintf(stderr,
+                    "[edge_diff]   skip one-sided base_idx=%d "
+                    "run=%d..%d/%d (tail_lo=%d tail_hi=%d max=%d)\n",
+                    i, run_lo, run_hi, kSampleCount - 1,
+                    run_lo, (kSampleCount - 1) - run_hi, kEndTailMax);
+                continue;
+            }
+
             double frac_lo = double(run_lo) / double(kSampleCount - 1);
             double frac_hi = double(run_hi) / double(kSampleCount - 1);
             double run_frac = frac_hi - frac_lo + 1.0 / double(kSampleCount - 1);
-            if (run_frac < kRunFracMin) {
-                std::fprintf(stderr,
-                    "[edge_diff]   skip partial-run base_idx=%d "
-                    "run=%d..%d/%d frac=%.2f (<%.2f)\n",
-                    i, run_lo, run_hi, kSampleCount - 1,
-                    run_frac, kRunFracMin);
-                continue;
-            }
             ++run_count;
 
             double frac_md = 0.5 * (frac_lo + frac_hi);
@@ -1606,9 +1610,9 @@ size_t StashFilletRefsByEdgeDiff(
             }
             out_refs.push_back(r);
 
-            // Intentionally NO split hints. See kRunFracMin block
+            // Intentionally NO split hints. See kEndTailMax block
             // above: partial-run splits crash ChFi3d on Page_027, so
-            // we only emit refs for runs that span (almost) the whole
+            // we only emit refs for runs that span both ends of the
             // edge -- a regime where pre-splitting is unnecessary
             // (the cax edge is already the right edge to fillet).
             // `out_split_hints` is left untouched.
