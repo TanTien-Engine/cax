@@ -1514,7 +1514,22 @@ size_t StashFilletRefsByEdgeDiff(
     TopTools_IndexedMapOfShape base_edge_map;
     TopExp::MapShapes(base_brep, TopAbs_EDGE, base_edge_map);
 
-    size_t pushed = 0;
+    // One candidate per consumed sub-run of a BASE edge. We collect
+    // first, post-filter (shadow rule below), then emit, so the
+    // shadow pass has access to every candidate's endpoints at once
+    // instead of guessing on the fly.
+    struct DiffCandidate
+    {
+        int    base_idx;
+        int    run_lo, run_hi;
+        double full_len;
+        double run_frac;
+        gp_Pnt mid;
+        gp_Dir tan;
+        gp_Pnt ep_a, ep_b;
+    };
+    std::vector<DiffCandidate> candidates;
+
     size_t kept   = 0;
     size_t degen  = 0;
     for (int i = 1; i <= base_edge_map.Extent(); ++i)
@@ -1547,16 +1562,16 @@ size_t StashFilletRefsByEdgeDiff(
 
         // Walk samples and pick out maximal runs of far samples of
         // length >= kMinRunLen. Each run is one consumed sub-section
-        // of the BASE edge. Only emit refs for runs that extend to
-        // BOTH ends of the edge (preserved tail of <= kEndTailMax
-        // samples on each side). A one-sided run is the "neighbor
-        // ate me" pattern: an ADJACENT picked edge's fillet swept
-        // across the shared corner and consumed only the tip of this
-        // edge; the rest survives. Emitting a separate ref for such
-        // an edge double-counts -- the picked neighbor's MakeFillet
-        // will sweep the corner anyway via auto-chain, and the extra
-        // ref turns into a stray fillet on a perpendicular face.
-        // Page_044's r=4 mm radius on a stair-step outline with
+        // of the BASE edge. Only collect candidates for runs that
+        // extend to BOTH ends of the edge (preserved tail of <=
+        // kEndTailMax samples on each side). A one-sided run is the
+        // "neighbor ate me" pattern: an ADJACENT picked edge's fillet
+        // swept across the shared corner and consumed only the tip of
+        // this edge; the rest survives. Emitting a separate ref for
+        // such an edge double-counts -- the picked neighbor's
+        // MakeFillet will sweep the corner anyway via auto-chain, and
+        // the extra ref turns into a stray fillet on a perpendicular
+        // face. Page_044's r=4 mm radius on a stair-step outline with
         // 4 mm-long step risers between picked treads produced 8
         // such phantom refs (34 emitted vs 26 authored) before this
         // tightening. Symmetrically, this also rejects refine-merged
@@ -1597,52 +1612,139 @@ size_t StashFilletRefsByEdgeDiff(
             double frac_md = 0.5 * (frac_lo + frac_hi);
             double t_md    = first + (last - first) * frac_md;
 
-            gp_Pnt mid;
+            DiffCandidate c;
+            c.base_idx = i;
+            c.run_lo   = run_lo;
+            c.run_hi   = run_hi;
+            c.full_len = cadapp::EdgeArcLength(e);
+            c.run_frac = run_frac;
+
             gp_Vec dv;
-            curve.D1(t_md, mid, dv);
-            gp_Dir tan(1.0, 0.0, 0.0);
+            curve.D1(t_md, c.mid, dv);
+            c.tan = gp_Dir(1.0, 0.0, 0.0);
             if (dv.Magnitude() > 1e-12) {
-                tan = gp_Dir(dv);
+                c.tan = gp_Dir(dv);
             }
 
-            TopoRefIR r;
-            r.kind = TopoRefIR::Kind::Edge;
-            r.point[0]  = mid.X() * unit_scale;
-            r.point[1]  = mid.Y() * unit_scale;
-            r.point[2]  = mid.Z() * unit_scale;
-            r.normal[0] = tan.X();
-            r.normal[1] = tan.Y();
-            r.normal[2] = tan.Z();
-            double full_len = cadapp::EdgeArcLength(e);
-            r.measure       = full_len * run_frac * unit_scale;
+            TopoDS_Vertex va, vb;
+            TopExp::Vertices(e, va, vb);
+            c.ep_a = BRep_Tool::Pnt(va);
+            c.ep_b = BRep_Tool::Pnt(vb);
 
-            std::string key = "edge_ref_" + std::to_string(pushed) + "_name";
-            if (pushed < authored_sub_names.size()) {
-                feat.ext_strings[key] = base_object + "." + authored_sub_names[pushed];
-            } else {
-                feat.ext_strings[key] = base_object + ".<diff>";
-            }
-            out_refs.push_back(r);
-
-            // Intentionally NO split hints. See kEndTailMax block
-            // above: partial-run splits crash ChFi3d on Page_027, so
-            // we only emit refs for runs that span both ends of the
-            // edge -- a regime where pre-splitting is unnecessary
-            // (the cax edge is already the right edge to fillet).
-            // `out_split_hints` is left untouched.
-            (void)out_split_hints;
-
-            std::fprintf(stderr,
-                "[edge_diff]   #%zu base_idx=%d run=%d..%d/%d "
-                "mid=(%.3f,%.3f,%.3f) tan=(%.3f,%.3f,%.3f) "
-                "run_len_mm=%.3f edge_len_mm=%.3f\n",
-                pushed, i, run_lo, run_hi, kSampleCount - 1,
-                mid.X(), mid.Y(), mid.Z(),
-                tan.X(), tan.Y(), tan.Z(),
-                full_len * run_frac, full_len);
-            ++pushed;
+            candidates.push_back(c);
         }
         if (run_count == 0) ++kept;
+    }
+
+    // Shadow filter: drop short candidates that share an endpoint
+    // with a much longer candidate. A chamfer / fillet of size d
+    // entirely consumes any neighbour edge whose length <= d if
+    // that neighbour terminates at the dressed-up edge's endpoint
+    // -- the blend's apex sweeps a d-radius cap into the adjacent
+    // face which crosses the whole short edge. The both-ends run
+    // test above can't see this because the consumption really
+    // does reach both endpoints of the short edge.
+    //
+    // Page_048_Exercise2D-40_byHannu's Chamfer d=5 mm picks two
+    // 50 mm vertical posts (Edge33, Edge46) on a MultiTransform-
+    // patterned body. Each post's endpoints share with three 5 mm
+    // fuse-seam stubs (front/back/top horizontals introduced when
+    // the polar-patterned bump fuses into the parent). All six
+    // stubs sit entirely within the chamfer's sweep envelope, so
+    // the both-ends test classifies them as consumed and the
+    // resolver later picks up six perpendicular cax edges to
+    // chamfer too -- 8 chamfers instead of 2.
+    //
+    // The shadow rule keeps Page_044's stair-step picks intact:
+    // those are also short (3-7 mm at r=4 mm) but none shares an
+    // endpoint with another pick (treads sit between unpicked
+    // risers), so SHADOW_FACTOR=2.0 below never fires there.
+    {
+        const double kShortLenMax  = 1.5 * dressup_size_mm;
+        const double kShadowFactor = 2.0;
+        const double kEndpointTol  = 0.05; // mm; FreeCAD brep vertices
+                                           // are bit-exact, so the
+                                           // tolerance is just slack
+                                           // for numerical noise.
+        auto endpoints_share = [&](const gp_Pnt& p, const gp_Pnt& q) {
+            return std::fabs(p.X() - q.X()) < kEndpointTol &&
+                   std::fabs(p.Y() - q.Y()) < kEndpointTol &&
+                   std::fabs(p.Z() - q.Z()) < kEndpointTol;
+        };
+        std::vector<DiffCandidate> filtered;
+        filtered.reserve(candidates.size());
+        for (const auto& c : candidates)
+        {
+            if (c.full_len >= kShortLenMax) {
+                filtered.push_back(c);
+                continue;
+            }
+            bool shadowed = false;
+            for (const auto& c2 : candidates)
+            {
+                if (&c2 == &c) continue;
+                if (c2.full_len < kShortLenMax) continue;
+                if (c2.full_len < kShadowFactor * c.full_len) continue;
+                if (endpoints_share(c.ep_a, c2.ep_a) ||
+                    endpoints_share(c.ep_a, c2.ep_b) ||
+                    endpoints_share(c.ep_b, c2.ep_a) ||
+                    endpoints_share(c.ep_b, c2.ep_b))
+                {
+                    shadowed = true;
+                    break;
+                }
+            }
+            if (!shadowed) {
+                filtered.push_back(c);
+            } else {
+                std::fprintf(stderr,
+                    "[edge_diff]   skip shadowed base_idx=%d "
+                    "edge_len_mm=%.3f (<= 1.5*d=%.3f and shares "
+                    "endpoint with a >= 2x longer candidate)\n",
+                    c.base_idx, c.full_len, kShortLenMax);
+            }
+        }
+        candidates.swap(filtered);
+    }
+
+    size_t pushed = 0;
+    for (const auto& c : candidates)
+    {
+        TopoRefIR r;
+        r.kind = TopoRefIR::Kind::Edge;
+        r.point[0]  = c.mid.X() * unit_scale;
+        r.point[1]  = c.mid.Y() * unit_scale;
+        r.point[2]  = c.mid.Z() * unit_scale;
+        r.normal[0] = c.tan.X();
+        r.normal[1] = c.tan.Y();
+        r.normal[2] = c.tan.Z();
+        r.measure   = c.full_len * c.run_frac * unit_scale;
+
+        std::string key = "edge_ref_" + std::to_string(pushed) + "_name";
+        if (pushed < authored_sub_names.size()) {
+            feat.ext_strings[key] = base_object + "." + authored_sub_names[pushed];
+        } else {
+            feat.ext_strings[key] = base_object + ".<diff>";
+        }
+        out_refs.push_back(r);
+
+        // Intentionally NO split hints. See kEndTailMax block
+        // above: partial-run splits crash ChFi3d on Page_027, so
+        // we only emit refs for runs that span both ends of the
+        // edge -- a regime where pre-splitting is unnecessary
+        // (the cax edge is already the right edge to fillet).
+        // `out_split_hints` is left untouched.
+        (void)out_split_hints;
+
+        std::fprintf(stderr,
+            "[edge_diff]   #%zu base_idx=%d run=%d..%d/%d "
+            "mid=(%.3f,%.3f,%.3f) tan=(%.3f,%.3f,%.3f) "
+            "run_len_mm=%.3f edge_len_mm=%.3f\n",
+            pushed, c.base_idx, c.run_lo, c.run_hi, kSampleCount - 1,
+            c.mid.X(), c.mid.Y(), c.mid.Z(),
+            c.tan.X(), c.tan.Y(), c.tan.Z(),
+            c.full_len * c.run_frac, c.full_len);
+        ++pushed;
     }
 
     // Diagnostic left in: edge-diff is the only way Fillet / Chamfer
