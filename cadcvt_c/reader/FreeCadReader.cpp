@@ -239,6 +239,79 @@ std::vector<std::string> PropLinkList(const pugi::xml_node& props_node,
     return out;
 }
 
+// App::PropertyVector / PropertyVectorDistance: three doubles stored
+// on a <PropertyVector valueX=".." valueY=".." valueZ=".."/> child.
+// Returns false (with out untouched) when the property or child node
+// is missing, so callers can keep a sensible default.
+bool PropVec3(const pugi::xml_node& props_node,
+              const char*           prop_name,
+              double                out[3])
+{
+    auto p = FindProperty(props_node, prop_name);
+    if (!p) {
+        return false;
+    }
+    auto v = p.child("PropertyVector");
+    if (!v) {
+        return false;
+    }
+    out[0] = AttrDouble(v, "valueX", 0.0);
+    out[1] = AttrDouble(v, "valueY", 0.0);
+    out[2] = AttrDouble(v, "valueZ", 0.0);
+    return true;
+}
+
+// App::PropertyPythonObject: returns the Proxy's Python class name
+// (e.g. "_Array", "_PolarArray") so Part::FeaturePython objects can
+// be dispatched by their scripted proxy rather than the generic C++
+// type tag. Empty string when the property or attribute is absent.
+std::string PropPyClass(const pugi::xml_node& props_node,
+                        const char*           prop_name)
+{
+    auto p = FindProperty(props_node, prop_name);
+    if (!p) {
+        return {};
+    }
+    auto py = p.child("Python");
+    if (!py) {
+        return {};
+    }
+    return py.attribute("class").value();
+}
+
+// App::PropertyEnumeration with a CustomEnumList: returns the enum
+// label at the stored integer index, or an empty string when the
+// property, list, or index is missing / out of range. Falls back
+// to ascii-only labels.
+std::string PropEnumLabel(const pugi::xml_node& props_node,
+                          const char*           prop_name)
+{
+    auto p = FindProperty(props_node, prop_name);
+    if (!p) {
+        return {};
+    }
+    auto iv = p.child("Integer");
+    if (!iv) {
+        return {};
+    }
+    int idx = iv.attribute("value").as_int(-1);
+    if (idx < 0) {
+        return {};
+    }
+    auto list = p.child("CustomEnumList");
+    if (!list) {
+        return {};
+    }
+    int i = 0;
+    for (auto e = list.child("Enum"); e; e = e.next_sibling("Enum"), ++i)
+    {
+        if (i == idx) {
+            return e.attribute("value").value();
+        }
+    }
+    return {};
+}
+
 // Map a body-origin sub-name (e.g. "X_Axis", "Y_Axis", "Z_Axis")
 // to a unit direction. Returns false when the name is not a
 // recognised origin axis -- callers can then fall back to a
@@ -1311,11 +1384,11 @@ namespace
 
 // FreeCAD Pad TypeEnums: {Length, UpToLast, UpToFirst, UpToFace, TwoLengths, UpToShape}.
 // UpToLast for an additive feature is the additive analog of ThroughAll.
-// UpToFirst / UpToShape need a target face; we fall back to ThroughAll
-// until we can resolve those targets.
+// UpToShape needs a target shape we don't resolve yet, so it still
+// falls back to ThroughAll.
 //   0 = Length      (Blind)
 //   1 = UpToLast    (ThroughAll)
-//   2 = UpToFirst   (no target -> ThroughAll fallback)
+//   2 = UpToFirst   (UpToFirst -- stop at the FIRST face hit)
 //   3 = UpToFace    (UpToSurface)
 //   4 = TwoLengths  (Blind on both sides; deprecated upstream)
 //   5 = UpToShape   (no target -> ThroughAll fallback)
@@ -1332,13 +1405,24 @@ namespace
 // with 2.5mm caps on each side, and the holes never punched through.
 // Now ThroughAll wins; the caller mirrors the second side via
 // end_type2 so the engine builds both halves.
+//
+// History note on Type=2 (UpToFirst): the previous map collapsed it
+// onto ThroughAll because no UpToFirst implementation existed in
+// the engine. That over-cut every UpToFirst Pocket: a horizontal
+// cylinder through a wall went all the way out the far side and
+// kept eating any second wall it crossed (Page_051 Pocket added
+// +1 face, ~3.2 mm^3 volume vs FreeCAD because the cylinder ate
+// both the slot wall and the outer wall instead of stopping at
+// the slot wall's exit). UpToFirst is now wired through to
+// TopoAlgo_Ext::ExtrudeEx, which picks the connected piece of
+// (body intersect prism) closest to the sketch plane.
 ExtrudeEndType MapPadEndType(int t, bool midplane)
 {
     switch (t)
     {
     case 0:  return midplane ? ExtrudeEndType::MidPlane : ExtrudeEndType::Blind;
     case 1:  return ExtrudeEndType::ThroughAll;
-    case 2:  return ExtrudeEndType::ThroughAll;
+    case 2:  return ExtrudeEndType::UpToFirst;
     case 3:  return ExtrudeEndType::UpToSurface;
     case 4:  return midplane ? ExtrudeEndType::MidPlane : ExtrudeEndType::Blind;  // TwoLengths: handled via distance2
     case 5:  return ExtrudeEndType::ThroughAll;
@@ -3333,6 +3417,102 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                       : FeatType::Common;
             feat.data = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "Part::FeaturePython")
+        {
+            // Part::FeaturePython is a shape-bearing C++ object whose
+            // behaviour is delegated to a Python class stored in the
+            // Proxy property. The C++ type tag alone tells us nothing;
+            // we must dispatch on Proxy.class to recover the real
+            // feature kind. Draft workbench's array tools are the
+            // common case:
+            //   _Array        - legacy combined array, ArrayType enum
+            //                   selects "ortho" or "polar"
+            //   _PolarArray   - modern split-out polar array
+            //   _CircularArray- concentric rings around an axis
+            //   _OrthoArray   - modern split-out rectangular array
+            //   _PathArray / _PathLinkArray / _PointArray - other
+            //                   layout flavours (not modelled yet)
+            std::string py_class = PropPyClass(props, "Proxy");
+
+            // Resolve a polar-array proxy to FeatType::CircularPattern.
+            // The legacy _Array class doubles as ortho/polar so we
+            // also peek at ArrayType; modern _PolarArray /
+            // _CircularArray are always polar.
+            bool is_polar = (py_class == "_PolarArray")
+                         || (py_class == "_CircularArray")
+                         || (py_class == "_Array"
+                             && PropEnumLabel(props, "ArrayType") == "polar");
+
+            if (is_polar)
+            {
+                FeatPayloadCircularPattern pl;
+                // Defaults match PartDesign::PolarPattern: Z axis
+                // through world origin, full revolution split into N.
+                pl.axis_origin[0] = 0.0;
+                pl.axis_origin[1] = 0.0;
+                pl.axis_origin[2] = 0.0;
+                pl.axis_dir[0]    = 0.0;
+                pl.axis_dir[1]    = 0.0;
+                pl.axis_dir[2]    = 1.0;
+
+                // Axis is a free PropertyVector (NOT a LinkSub to an
+                // origin axis like PartDesign::PolarPattern). Center
+                // carries a length so it scales with m_unit_scale,
+                // Axis is a pure direction and does not.
+                double ax[3];
+                if (PropVec3(props, "Axis", ax))
+                {
+                    pl.axis_dir[0] = ax[0];
+                    pl.axis_dir[1] = ax[1];
+                    pl.axis_dir[2] = ax[2];
+                }
+                double ctr[3];
+                if (PropVec3(props, "Center", ctr))
+                {
+                    pl.axis_origin[0] = ctr[0] * m_unit_scale;
+                    pl.axis_origin[1] = ctr[1] * m_unit_scale;
+                    pl.axis_origin[2] = ctr[2] * m_unit_scale;
+                }
+
+                int    count   = PropInt   (props, "NumberPolar", 2);
+                double angDeg  = PropDouble(props, "Angle",     360.0);
+                pl.count       = (count >= 1) ? count : 2;
+                pl.total_angle = angDeg * 3.14159265358979323846 / 180.0;
+
+                // Draft arrays don't use the PartDesign Originals
+                // mechanism -- the target is a single PropertyLink
+                // named Base. We stash it for traceability; the
+                // Replayer's CircularPattern handler falls back to
+                // last_node when no Originals are present, which
+                // works as long as Base is the immediately preceding
+                // feature in emission order (the common case for
+                // Draft arrays, which are usually applied to a body
+                // tip).
+                LinkRef base = PropLink(props, "Base");
+                if (!base.object_name.empty()) {
+                    feat.ext_strings["draft_array_base"] = base.object_name;
+                }
+
+                feat.type = FeatType::CircularPattern;
+                feat.data = std::move(pl);
+                feat.ext_strings["freecad_type"] = pending.type;
+                feat.ext_strings["freecad_proxy_class"] = py_class;
+            }
+            else
+            {
+                // Ortho / path / point arrays and any other scripted
+                // Part::FeaturePython fall through to Opaque so a
+                // later pass can recognise them; preserve the proxy
+                // class so the diagnosis is obvious.
+                FeatPayloadOpaque pl;
+                pl.strings["freecad_type"]        = pending.type;
+                if (!py_class.empty()) {
+                    pl.strings["freecad_proxy_class"] = py_class;
+                }
+                feat.type = FeatType::Unknown;
+                feat.data = std::move(pl);
+            }
         }
         else
         {

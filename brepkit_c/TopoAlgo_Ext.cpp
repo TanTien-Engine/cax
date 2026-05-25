@@ -65,10 +65,23 @@ namespace
 //   1. Use the new BOP API (SetArguments / SetTools) -- the legacy
 //      two-arg constructor sometimes returns an empty COMPOUND when
 //      operands have coincident sub-faces.
-//   2. SetFuzzyValue(1e-6) + SetGlue(BOPAlgo_GlueShift) so coincident
+//   2. SetFuzzyValue(1e-6) and an optional SetGlue hint so coincident
 //      faces between adjacent pattern instances are treated as glued
 //      rather than re-intersected (which fails silently and leaves
-//      an unfused COMPOUND result).
+//      an unfused COMPOUND result). The glue mode is a hint to BOP
+//      about HOW the operands are related:
+//        - BOPAlgo_GlueShift : copies are pure translations of each
+//          other (LinearPattern). Skips intersection checks between
+//          arguments and gives the fast path.
+//        - BOPAlgo_GlueOff   : no relationship assumed; do full
+//          intersection. REQUIRED for CircularPattern -- rotated
+//          copies are NOT translation-equivalent, and BOP under
+//          GlueShift on rotated args silently returns an EMPTY shape
+//          on the first fuse step (passes IsDone(), passes
+//          !Shape().IsNull(), but has zero faces / zero volume).
+//          The next iteration then fuses void+rot2 = rot2 alone, so
+//          only the last instance survives -- looks like "the copies
+//          overlap" but is actually "the fuse silently dropped them".
 //   3. After all pairwise fuses, run ShapeUpgrade_UnifySameDomain to
 //      merge coplanar adjacent faces into one (FreeCAD's pattern
 //      output is already unified; cax used to leave the raw
@@ -79,7 +92,8 @@ namespace
 //
 // Returns the (possibly empty) input shape unchanged when there's
 // only one instance.
-TopoDS_Shape FuseInstancesAndUnify(const std::vector<TopoDS_Shape>& instances)
+TopoDS_Shape FuseInstancesAndUnify(const std::vector<TopoDS_Shape>& instances,
+                                   BOPAlgo_GlueEnum                 glue = BOPAlgo_GlueShift)
 {
     if (instances.empty()) {
         return TopoDS_Shape();
@@ -94,10 +108,21 @@ TopoDS_Shape FuseInstancesAndUnify(const std::vector<TopoDS_Shape>& instances)
         algo.SetArguments(args);
         algo.SetTools(tools);
         algo.SetFuzzyValue(1e-6);
-        algo.SetGlue(BOPAlgo_GlueShift);
+        algo.SetGlue(glue);
         algo.Build();
 
-        if (algo.IsDone() && !algo.Shape().IsNull()) {
+        // A successful BOP can still produce a degenerate empty shape
+        // when the glue hint is wrong (see header comment). Treat a
+        // zero-face result as failure so we fall back to a plain
+        // glue-off fuse rather than poisoning the running result.
+        bool ok = algo.IsDone() && !algo.Shape().IsNull();
+        if (ok) {
+            TopExp_Explorer ex(algo.Shape(), TopAbs_FACE);
+            if (!ex.More()) {
+                ok = false;
+            }
+        }
+        if (ok) {
             result = algo.Shape();
             continue;
         }
@@ -550,7 +575,12 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::CircularPattern(
         instances.push_back(xform.Shape());
     }
 
-    TopoDS_Shape result = FuseInstancesAndUnify(instances);
+    // Rotated copies are NOT pure translations of each other, so the
+    // default BOPAlgo_GlueShift hint silently returns an empty shape
+    // on the first pairwise fuse (see FuseInstancesAndUnify header).
+    // Disable the glue hint so BOP does full intersection on every
+    // pair -- correct geometry trumps the glue fast path here.
+    TopoDS_Shape result = FuseInstancesAndUnify(instances, BOPAlgo_GlueOff);
     return std::make_shared<TopoShape>(result);
 }
 
