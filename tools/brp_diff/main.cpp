@@ -288,11 +288,24 @@ ParseFeatToBrep(const std::string& doc_xml, std::string* err)
         if (err) *err = "missing <Document>";
         return result;
     }
+    // PartDesign features carry TWO Part::PropertyPartShape entries:
+    //   AddSubShape -- the standalone tool (pre-fuse prism / primitive)
+    //   Shape       -- the running body after fuse/cut with the
+    //                  previous feature; this is what cax's running-
+    //                  body dumps (cax_<id>_<name>.brp) correspond to.
+    // FreeCAD writes AddSubShape FIRST in XML order, so a naive
+    // first-match loop pairs every Pocket/Box-family dump against
+    // the bare tool and reports spurious fragmentation. Always
+    // prefer the "Shape" property, falling back to any other
+    // PropertyPartShape only if "Shape" is absent (e.g. sketches
+    // store their wire under a different name).
     auto od = root.child("ObjectData");
     for (auto obj = od.child("Object"); obj; obj = obj.next_sibling("Object"))
     {
         std::string name = obj.attribute("name").value();
         auto props = obj.child("Properties");
+        std::string shape_file;
+        std::string fallback_file;
         for (auto prop = props.child("Property"); prop; prop = prop.next_sibling("Property"))
         {
             if (std::string(prop.attribute("type").value()) != "Part::PropertyPartShape")
@@ -300,9 +313,17 @@ ParseFeatToBrep(const std::string& doc_xml, std::string* err)
             auto part = prop.child("Part");
             if (!part) continue;
             std::string file = part.attribute("file").value();
-            if (!file.empty()) result[name] = file;
-            break;
+            if (file.empty()) continue;
+            if (std::string(prop.attribute("name").value()) == "Shape") {
+                shape_file = std::move(file);
+                break;
+            }
+            if (fallback_file.empty()) {
+                fallback_file = std::move(file);
+            }
         }
+        const std::string& chosen = shape_file.empty() ? fallback_file : shape_file;
+        if (!chosen.empty()) result[name] = chosen;
     }
     return result;
 }
