@@ -2610,24 +2610,29 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
             LinkRef base = PropLink(props, "Base");
 
-            // Detect face-typed picks ("FaceN") vs edge-typed picks
-            // ("EdgeN"). Face picks need a different diff strategy
-            // because the picked face still exists in OWN (just
-            // trimmed) -- enumerate edges of each picked face and
-            // emit only the ones consumed by FreeCAD's MakeFillet.
-            bool has_face = false;
+            // Pick dispatch: only route to face_picks when EVERY sub-name
+            // is "FaceN". A single "EdgeN" in the list means the user
+            // mixed edge and face picks (Page_043's Fillet: 5 edges +
+            // 1 face); face_picks parses every name's trailing integer
+            // as a face index, so "Edge80" silently turns into face #80
+            // and either lands on an unrelated face or is rejected as
+            // out-of-range, dropping most of the picks. Edge-diff walks
+            // BASE's edges geometrically and captures both directly-
+            // picked edges and the edges consumed by face picks, so it
+            // is the correct fallback for mixed sets.
+            bool all_face = !base.sub_names.empty();
             for (const auto& sn : base.sub_names) {
-                if (sn.size() >= 4 &&
-                    (sn[0] == 'F' || sn[0] == 'f') &&
-                    (sn[1] == 'a' || sn[1] == 'A') &&
-                    (sn[2] == 'c' || sn[2] == 'C') &&
-                    (sn[3] == 'e' || sn[3] == 'E')) {
-                    has_face = true; break;
+                if (!(sn.size() >= 4 &&
+                      (sn[0] == 'F' || sn[0] == 'f') &&
+                      (sn[1] == 'a' || sn[1] == 'A') &&
+                      (sn[2] == 'c' || sn[2] == 'C') &&
+                      (sn[3] == 'e' || sn[3] == 'E'))) {
+                    all_face = false; break;
                 }
             }
 
             size_t diff_n = 0;
-            if (has_face) {
+            if (all_face) {
                 diff_n = StashFilletRefsFromFacePicks(
                     feat, base.object_name, pending.name,
                     base.sub_names, pl.edges, pl.split_hints,
@@ -2667,23 +2672,23 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
             LinkRef base = PropLink(props, "Base");
 
-            // Same face/edge dispatch as Fillet -- chamfer face
-            // picks have the same semantics ("chamfer all eligible
-            // edges of this face") and the same exploded-too-much
-            // failure mode if we blindly fan out.
-            bool has_face = false;
+            // Same all-face dispatch as Fillet -- a mixed Edge+Face
+            // pick set (Page_045's Chamfer: 20 edges + 2 faces) must
+            // not go through face_picks, which would mis-parse every
+            // "EdgeN" as face #N.
+            bool all_face = !base.sub_names.empty();
             for (const auto& sn : base.sub_names) {
-                if (sn.size() >= 4 &&
-                    (sn[0] == 'F' || sn[0] == 'f') &&
-                    (sn[1] == 'a' || sn[1] == 'A') &&
-                    (sn[2] == 'c' || sn[2] == 'C') &&
-                    (sn[3] == 'e' || sn[3] == 'E')) {
-                    has_face = true; break;
+                if (!(sn.size() >= 4 &&
+                      (sn[0] == 'F' || sn[0] == 'f') &&
+                      (sn[1] == 'a' || sn[1] == 'A') &&
+                      (sn[2] == 'c' || sn[2] == 'C') &&
+                      (sn[3] == 'e' || sn[3] == 'E'))) {
+                    all_face = false; break;
                 }
             }
 
             size_t diff_n = 0;
-            if (has_face) {
+            if (all_face) {
                 diff_n = StashFilletRefsFromFacePicks(
                     feat, base.object_name, pending.name,
                     base.sub_names, pl.edges, pl.split_hints,
