@@ -21,6 +21,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <vector>
 
@@ -379,12 +381,15 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
             if (best_idx > 0 && best_score > tolerance && !cands.empty())
             {
                 const double sample_tol  = 1e-3;
-                const size_t kMaxFallback = 16;
                 gp_Pnt        rp(ref.point[0], ref.point[1], ref.point[2]);
                 TopoDS_Vertex rv = BRepBuilderAPI_MakeVertex(rp);
-                for (size_t k = 0;
-                     k < cands.size() && k < kMaxFallback;
-                     ++k)
+                // Sweep all candidates, not just the top N. After
+                // RefineBopResult (c2a6cd9) UnifySameDomain may merge
+                // BOP fragments into a face whose centroid sits well
+                // off the FreeCAD-side ref point, pushing the correct
+                // face past any low N. BRepExtrema is a small cost
+                // per face vs the cost of a silent MISS upstream.
+                for (size_t k = 0; k < cands.size(); ++k)
                 {
                     const TopoDS_Face& f =
                         TopoDS::Face(faceMap.FindKey(cands[k].idx));
@@ -399,6 +404,24 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
                 }
             }
 
+            // A "tier-2 fingerprint" fallback was tried here
+            // (accept a candidate if normal + area + nearby-on-
+            // surface all match within softer tolerances). It
+            // resolved Page_037 in the sense that the resolver no
+            // longer MISSed, but the resolved face then fed straight
+            // into BRepOffsetAPI_MakeThickSolid::MakeThickSolidByJoin
+            // whose internal myAsDes is dangling on that geometry
+            // (OCCT 8.0rc bug), AVing inside BRepTools_History. The
+            // SEH wrapper around the ctor catches it and the op
+            // fails cleanly, but each SEH catch leaks OCCT
+            // allocations (C++ unwind is bypassed) -- enough of a
+            // hit on Page_037 to corrupt ves runtime constants and
+            // crash the script VM downstream. Net effect of tier-2
+            // for Page_037 was "same NULL output but with a noisy
+            // debugger break and a downstream VM corruption risk."
+            // Reverted; documented here so we don't reattempt
+            // without first fixing the OCCT side.
+
             r.topo_index = best_idx;
             r.match_dist = best_score;
             if (best_idx > 0 && best_score <= tolerance)
@@ -408,6 +431,47 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
             }
             else
             {
+                // Resolution failed. Optionally dump top candidates
+                // + their geometric distance to ref_pt -- helps
+                // localize whether the right face is missing from
+                // cands entirely (filtered out earlier by FaceCenter
+                // etc.) or present but with primary score too far
+                // off for the strict point-in-face tier. Set
+                // CAX_RESOLVE_DUMP=1 to enable.
+                static const bool kDump =
+                    std::getenv("CAX_RESOLVE_DUMP") != nullptr;
+                if (kDump)
+                {
+                    std::fprintf(stderr,
+                        "[resolve_face] DUMP ref_pt=(%.4f,%.4f,%.4f) "
+                        "ref_n=(%.3f,%.3f,%.3f) ref_area=%.6f "
+                        "ncands=%zu faceMap=%d\n",
+                        ref.point[0], ref.point[1], ref.point[2],
+                        ref.normal[0], ref.normal[1], ref.normal[2],
+                        ref.measure, cands.size(), faceMap.Extent());
+                    gp_Pnt rp(ref.point[0], ref.point[1], ref.point[2]);
+                    TopoDS_Vertex rv = BRepBuilderAPI_MakeVertex(rp);
+                    size_t k_max = std::min<size_t>(cands.size(), 12);
+                    for (size_t k = 0; k < k_max; ++k)
+                    {
+                        const TopoDS_Face& f =
+                            TopoDS::Face(faceMap.FindKey(cands[k].idx));
+                        gp_Pnt c; gp_Dir n;
+                        FaceCenter(f, c, n);
+                        double area = FaceArea(f);
+                        BRepExtrema_DistShapeShape ext(rv, f);
+                        double ext_d = (ext.IsDone() && ext.NbSolution() > 0)
+                            ? ext.Value() : -1.0;
+                        std::fprintf(stderr,
+                            "  cand[%zu] idx=%d score=%.4f "
+                            "c=(%.4f,%.4f,%.4f) n=(%.3f,%.3f,%.3f) "
+                            "area=%.6f ext=%.4f\n",
+                            k, cands[k].idx, cands[k].score,
+                            c.X(), c.Y(), c.Z(),
+                            n.X(), n.Y(), n.Z(),
+                            area, ext_d);
+                    }
+                }
                 r.topo_index = 0;
             }
             break;
