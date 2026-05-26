@@ -201,6 +201,122 @@ std::vector<FeatureToolInfo> ResolveOriginals(
     return out;
 }
 
+// Compute the base body node this feature visit should consume.
+// Folds the four "what's my base?" sources scattered across Replay()
+// into one place, in order of increasing authority:
+//
+//   running_last_node           -- default chain (legacy, used when
+//                                  the IR carries no explicit link)
+//   ext_params["body_root"]=1   -> -1 (force fresh body; first
+//                                  3D feature of a new PartDesign::Body)
+//   ext_params["base_feature_id"]=N
+//                               -> feature_nodes[N] (cross-body
+//                                  redirect; standalone Part::Thickness
+//                                  / Fillet that reference a body tip
+//                                  from outside any body)
+//   ext_params["input_feature_id"]=N
+//                               -> feature_nodes[N] (explicit body
+//                                  chain predecessor, emitted by the
+//                                  Reader for every non-root body-owned
+//                                  feature; pins the chain in the IR
+//                                  rather than re-deriving it at replay
+//                                  time from emission order)
+//
+// Later sources override earlier ones, so an explicit link always
+// wins over the running cursor or the body_root sentinel. By
+// construction body_root and input_feature_id are mutually exclusive
+// (body_root fires only on the first 3D feature of a body, before
+// the Reader has any prev for that body to record), and base_feature_id
+// only appears on standalone features outside any body (which don't
+// get an input_feature_id). The fall-through order is therefore
+// stable regardless of which legacy channels the Reader fills.
+int ResolveBaseNode(const FeatureIR&                feat,
+                    int                             running_last_node,
+                    const std::map<uint32_t, int>&  feature_nodes)
+{
+    int base = running_last_node;
+
+    auto rit = feat.ext_params.find("body_root");
+    if (rit != feat.ext_params.end() && rit->second != 0.0) {
+        base = -1;
+    }
+
+    auto bit = feat.ext_params.find("base_feature_id");
+    if (bit != feat.ext_params.end())
+    {
+        uint32_t bid = (uint32_t)bit->second;
+        if (bid != 0xFFFFFFFFu) {
+            auto fit = feature_nodes.find(bid);
+            if (fit != feature_nodes.end()) {
+                base = fit->second;
+            }
+        }
+    }
+
+    auto iit = feat.ext_params.find("input_feature_id");
+    if (iit != feat.ext_params.end())
+    {
+        uint32_t iid = (uint32_t)iit->second;
+        if (iid != 0xFFFFFFFFu) {
+            auto fit = feature_nodes.find(iid);
+            if (fit != feature_nodes.end()) {
+                base = fit->second;
+            }
+        }
+    }
+    return base;
+}
+
+// Pattern / Mirror / MultiTransform target resolution. Folds two
+// link sources into one struct:
+//
+//   originals  -- PartDesign Originals list
+//                 (ext_params "originals_count" / "originals_id_<i>").
+//                 One entry per original feature with (tool, base,
+//                 op_kind) ready for "multiply the tool, recombine
+//                 with the base".
+//
+//   body_target -- Draft Array's Base link
+//                  (ext_strings "draft_array_base", a single FreeCAD
+//                  object name resolved through feature_id_by_name +
+//                  feature_nodes). -1 when absent. Only meaningful
+//                  when originals is empty -- a PartDesign pattern
+//                  with Originals never carries draft_array_base.
+//
+// Both empty -> caller falls back to last_node.
+struct PatternInputs
+{
+    std::vector<FeatureToolInfo> originals;
+    int                          body_target = -1;
+};
+
+PatternInputs ResolvePatternInputs(
+    const FeatureIR&                                 feat,
+    const std::map<uint32_t, FeatureToolInfo>&       feature_tools,
+    const std::map<uint32_t, int>&                   feature_nodes,
+    const std::map<std::string, uint32_t>&           feature_id_by_name)
+{
+    PatternInputs out;
+    out.originals = ResolveOriginals(feat, feature_tools);
+    if (!out.originals.empty()) {
+        return out;
+    }
+
+    auto bit = feat.ext_strings.find("draft_array_base");
+    if (bit != feat.ext_strings.end() && !bit->second.empty())
+    {
+        auto nit = feature_id_by_name.find(bit->second);
+        if (nit != feature_id_by_name.end())
+        {
+            auto fit = feature_nodes.find(nit->second);
+            if (fit != feature_nodes.end()) {
+                out.body_target = fit->second;
+            }
+        }
+    }
+    return out;
+}
+
 // Combine a patterned "tool" node with the original feature's base
 // shape according to the original's op_kind. For 'f' (additive) we
 // fuse; for 'c' (subtractive) we cut; for '0' (first feature in a
@@ -484,39 +600,17 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         int  node    = -1;
         bool step_ok = true;
 
-        // body_root=1 marks the first 3D-producing feature of a new
-        // PartDesign::Body. Shadow last_node inside the visit so the
-        // handler reads -1 (no implicit fuse with the previous body)
-        // while the outer loop still owns the persistent last_node
-        // reference. Handlers like Pad / Pocket / Revolve compose
-        // their own boolean against last_node without going through
+        // Shadow last_node for the duration of this visit so the
+        // handler sees the per-feature base resolved from body_root /
+        // base_feature_id (see ResolveBaseNode for the precedence
+        // rules). Handlers like Pad / Pocket / Revolve compose their
+        // own boolean against last_node without going through
         // FinalizePrimitiveNode, so the override has to bracket the
-        // entire visit, not just the primitive path.
+        // entire visit. The outer loop's persistent last_node is
+        // restored after the visit -- a body-root override never
+        // leaks into the next feature.
         int prev_outer_last = last_node;
-        {
-            auto rit = feat.ext_params.find("body_root");
-            if (rit != feat.ext_params.end() && rit->second != 0.0) {
-                last_node = -1;
-            }
-            // base_feature_id=N redirects last_node at the calc
-            // graph node feature N produced. Used by standalone
-            // operators (Part::Thickness, Part::Fillet, ...) that
-            // sit outside any PartDesign::Body but reference a body
-            // feature's shape -- without this their handler would
-            // operate on whichever feature happened to come last in
-            // the queue order instead of the linked one.
-            auto bit = feat.ext_params.find("base_feature_id");
-            if (bit != feat.ext_params.end())
-            {
-                uint32_t bid = (uint32_t)bit->second;
-                if (bid != 0xFFFFFFFFu) {
-                    auto fit = feature_nodes.find(bid);
-                    if (fit != feature_nodes.end()) {
-                        last_node = fit->second;
-                    }
-                }
-            }
-        }
+        last_node = ResolveBaseNode(feat, last_node, feature_nodes);
 
         std::visit([&](auto& p)
         {
@@ -1178,10 +1272,12 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                          p.plane_normal[1],
                                          p.plane_normal[2]};
 
-                auto origs = ResolveOriginals(feat, feature_tools);
-                if (!origs.empty() && last_node >= 0)
+                auto pi = ResolvePatternInputs(feat, feature_tools,
+                                               feature_nodes,
+                                               feature_id_by_name);
+                if (!pi.originals.empty() && last_node >= 0)
                 {
-                    node = AddMirroredOriginals(*cg, last_node, origs,
+                    node = AddMirroredOriginals(*cg, last_node, pi.originals,
                                                 origin, normal, feat.name);
                 }
                 else if (last_node >= 0)
@@ -1211,10 +1307,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int c2 = cg->AddConst((int)p.count2, "count2");
                 int s2 = cg->AddConst(p.spacing2, "spacing2");
 
-                auto origs = ResolveOriginals(feat, feature_tools);
+                // Reader does not emit draft_array_base for LinearPattern
+                // (Draft only emits polar Arrays), so body_target is
+                // always -1 here -- but we still flow through the
+                // helper for shape consistency with CircularPattern.
+                auto pi = ResolvePatternInputs(feat, feature_tools,
+                                               feature_nodes,
+                                               feature_id_by_name);
                 int target = -1;
-                if (!origs.empty()) {
-                    target = origs[0].tool_node;
+                if (!pi.originals.empty()) {
+                    target = pi.originals[0].tool_node;
                 } else if (last_node >= 0) {
                     target = last_node;
                 } else {
@@ -1224,9 +1326,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int pat = cg->AddOp("linear_pattern",
                                      {target, d1, c1, s1, d2, c2, s2},
                                      {}, feat.name);
-                node = origs.empty()
+                node = pi.originals.empty()
                         ? pat
-                        : CombinePatternedTool(*cg, origs[0], pat, feat.name);
+                        : CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
             }
 
             // ---- CircularPattern ----
@@ -1256,29 +1358,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int c = cg->AddConst((int)p.count, "count");
                 int t = cg->AddConst(p.total_angle, "total_angle");
 
-                auto origs = ResolveOriginals(feat, feature_tools);
+                auto pi = ResolvePatternInputs(feat, feature_tools,
+                                               feature_nodes,
+                                               feature_id_by_name);
                 int target = -1;
-                if (!origs.empty()) {
-                    target = origs[0].tool_node;
-                }
-                else
-                {
-                    // Draft polar Array: resolve Base name -> body shape.
-                    auto bit = feat.ext_strings.find("draft_array_base");
-                    if (bit != feat.ext_strings.end() && !bit->second.empty())
-                    {
-                        auto nit = feature_id_by_name.find(bit->second);
-                        if (nit != feature_id_by_name.end())
-                        {
-                            auto fit = feature_nodes.find(nit->second);
-                            if (fit != feature_nodes.end()) {
-                                target = fit->second;
-                            }
-                        }
-                    }
-                    if (target < 0) {
-                        target = last_node;
-                    }
+                if (!pi.originals.empty()) {
+                    target = pi.originals[0].tool_node;
+                } else if (pi.body_target >= 0) {
+                    target = pi.body_target;
+                } else if (last_node >= 0) {
+                    target = last_node;
                 }
                 if (target < 0) {
                     step_ok = false;
@@ -1287,9 +1376,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int pat = cg->AddOp("circular_pattern",
                                      {target, o, a, c, t},
                                      {}, feat.name);
-                node = origs.empty()
+                node = pi.originals.empty()
                         ? pat
-                        : CombinePatternedTool(*cg, origs[0], pat, feat.name);
+                        : CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
             }
 
             // ---- MultiTransform ----
@@ -1367,9 +1456,15 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return cur;
                 };
 
-                auto origs = ResolveOriginals(feat, feature_tools);
+                // Reader does not emit draft_array_base for
+                // MultiTransform (only Draft polar Arrays carry it),
+                // so pi.body_target is always -1 here. Flow through
+                // the helper anyway for shape consistency.
+                auto pi = ResolvePatternInputs(feat, feature_tools,
+                                               feature_nodes,
+                                               feature_id_by_name);
 
-                if (origs.empty())
+                if (pi.originals.empty())
                 {
                     if (last_node < 0)
                     {
@@ -1386,13 +1481,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         return;
                     }
                     int body = last_node;
-                    for (size_t fi = 0; fi < origs.size(); ++fi)
+                    for (size_t fi = 0; fi < pi.originals.size(); ++fi)
                     {
                         std::string tag = feat.name + ":orig"
                                         + std::to_string(fi);
-                        int pat = apply_chain(origs[fi].tool_node, tag);
+                        int pat = apply_chain(pi.originals[fi].tool_node, tag);
                         const char* op_name =
-                            (origs[fi].op_kind == 'c') ? "cut" : "fuse";
+                            (pi.originals[fi].op_kind == 'c') ? "cut" : "fuse";
                         body = cg->AddOp(op_name, {body, pat}, {},
                                           tag + ":combine");
                     }

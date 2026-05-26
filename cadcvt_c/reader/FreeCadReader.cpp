@@ -2317,6 +2317,17 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     std::unordered_map<std::string, std::string> body_first_solid;
     std::unordered_map<std::string, std::string> name_to_body;
 
+    // body_name -> id of the last 3D-producing feature emitted into
+    // that body so far. Updated inside the per-feature emission loop
+    // (right before push_back) and read at the top of the next
+    // iteration so each body-owned feature can carry an explicit
+    // input_feature_id ext_param naming its predecessor in the body
+    // chain. P2 in the multi-last_node refactor: the Replayer's
+    // ResolveBaseNode reads this in preference to the body_root /
+    // base_feature_id legacy channels, so the body chain comes from
+    // the IR rather than the Replayer's running last_node cursor.
+    std::unordered_map<std::string, uint32_t>    body_prev_id;
+
     for (const auto& pending : queue)
     {
         if (!IsContainerType(pending.type)) {
@@ -2414,6 +2425,19 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 auto fit = body_first_solid.find(bit->second);
                 if (fit != body_first_solid.end() && fit->second == pending.name) {
                     feat.ext_params["body_root"] = 1.0;
+                }
+                // Explicit predecessor in the body's modeling chain.
+                // Mutually exclusive with body_root by construction
+                // (body_root fires on the first 3D feature, at which
+                // point body_prev_id has no entry yet for this body).
+                // Replayer's ResolveBaseNode prefers this over the
+                // running last_node cursor so the body chain is
+                // pinned in the IR, not re-derived from emission
+                // order at replay time.
+                auto pit = body_prev_id.find(bit->second);
+                if (pit != body_prev_id.end()) {
+                    feat.ext_params["input_feature_id"] =
+                        (double)pit->second;
                 }
             }
         }
@@ -3595,6 +3619,20 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                             std::make_shared<brepkit::TopoShape>(authored);
                     }
                 }
+            }
+        }
+
+        // Update the running body tip so the next feature in the
+        // same body records its prev correctly via input_feature_id.
+        // Sketches don't produce a 3D body, so they can't anchor a
+        // chain step -- skipping them lines up with the Replayer's
+        // feature_nodes map, which is also only populated for
+        // 3D-producing features (sketches set node=-1).
+        if (feat.type != FeatType::Sketch)
+        {
+            auto nb_it = name_to_body.find(feat.name);
+            if (nb_it != name_to_body.end()) {
+                body_prev_id[nb_it->second] = feat.id;
             }
         }
 
