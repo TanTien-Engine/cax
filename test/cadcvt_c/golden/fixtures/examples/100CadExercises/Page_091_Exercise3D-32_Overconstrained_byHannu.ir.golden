@@ -28,9 +28,14 @@ sketch 14 name=Sketch002 plane_origin=(0.014,0.000,0.000) plane_normal=(1.000,0.
   geo 24 type=Line constr=0 params=[-0.010,-0.020,-0.010,0.020]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=1
+  inputs=[0]
 feat 11 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.060
+  inputs=[10]
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.002 dist2=0.000 end=0 flip=1
+  inputs=[11]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=0
+  inputs=[13]
 feat 16 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=2 total_angle=6.2832]
+  inputs=[15]

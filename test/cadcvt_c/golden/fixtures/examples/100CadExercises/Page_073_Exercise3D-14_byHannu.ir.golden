@@ -117,18 +117,28 @@ sketch 24 name=Sketch006 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 109 type=Line constr=1 params=[0.158,0.037,0.165,0.030]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.060 dist2=0.000 end=4 flip=0
+  inputs=[0]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.060 dist2=0.000 end=4 flip=0
+  inputs=[10]
 feat 13 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.030 h=0.045
+  inputs=[12]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[13]
 feat 17 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=17
 feat 18 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[15]
 feat 16 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.015 h=0.045
+  inputs=[18]
 feat 19 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=19
 feat 20 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=19 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[16]
 feat 21 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=21
 feat 22 name=Pocket003 type=CutExtrude suppressed=0 payload=extrude sketch_id=21 dir=(0.000,0.000,1.000) dist=0.009 dist2=0.000 end=0 flip=1
+  inputs=[20]
 feat 23 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
+  inputs=[22]
 feat 24 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=24
 feat 25 name=Pocket004 type=CutExtrude suppressed=0 payload=extrude sketch_id=24 dir=(0.000,0.000,1.000) dist=0.018 dist2=0.000 end=4 flip=1
+  inputs=[23]

@@ -62,15 +62,22 @@ sketch 53 name=Sketch006 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 54 type=Circle constr=1 params=[0.000,-0.031,0.011]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=4 flip=0
+  inputs=[0]
 feat 19 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=19
 feat 20 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=19 dir=(0.000,0.000,1.000) dist=0.002 dist2=0.000 end=0 flip=0
+  inputs=[0]
 feat 29 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=29
 feat 30 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=29 dir=(0.000,0.000,1.000) dist=0.001 dist2=0.000 end=0 flip=1
+  inputs=[0]
 feat 31 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=31
 feat 32 name=Pad003 type=BossExtrude suppressed=0 payload=extrude sketch_id=31 dir=(0.000,0.000,1.000) dist=0.003 dist2=0.000 end=0 flip=0
+  inputs=[30]
 feat 41 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=41
 feat 42 name=Pad004 type=BossExtrude suppressed=0 payload=extrude sketch_id=41 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=0
+  inputs=[0]
 feat 51 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=51
 feat 52 name=Pad005 type=BossExtrude suppressed=0 payload=extrude sketch_id=51 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=0
+  inputs=[0]
 feat 53 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=53
 feat 54 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=53 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+  inputs=[52]

@@ -38,19 +38,28 @@ sketch 31 name=Sketch007 plane_origin=(0.040,0.000,0.000) plane_normal=(1.000,0.
   geo 14 type=Line constr=1 params=[-0.018,-0.018,0.000,0.000]
 feat 10 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=10 dir=(0.000,0.000,1.000) dist=0.160 dist2=0.000 end=0 flip=1
+  inputs=[0]
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[11]
 feat 31 name=Sketch007 type=Sketch suppressed=0 payload=sketch sketch_id=31
 feat 32 name=Pocket004 type=CutExtrude suppressed=0 payload=extrude sketch_id=31 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[13]
 feat 22 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=22
 feat 23 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=22 dir=(0.000,0.000,1.000) dist=0.126 dist2=0.000 end=4 flip=0
+  inputs=[0]
 feat 24 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=24
 feat 25 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=24 dir=(0.000,0.000,1.000) dist=0.201 dist2=0.000 end=0 flip=0
+  inputs=[23]
 feat 26 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=26
 feat 27 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=26 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[25]
 feat 28 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=28
 feat 29 name=Pocket003 type=CutExtrude suppressed=0 payload=extrude sketch_id=28 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[27]
 feat 30 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.025 edges=4
+  inputs=[29]
 feat 41 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.015 h=0.220
+  inputs=[0]
 feat 42 name=Fusion type=Fuse suppressed=0 payload=boolean operands=[30,32]
 feat 43 name=Cut type=Cut suppressed=0 payload=boolean operands=[42,41]

@@ -25,6 +25,7 @@ sketch 12 name=Sketch001 plane_origin=(0.000,0.005,0.000) plane_normal=(-1.000,0
   geo 22 type=Point constr=1 params=[0.000,0.000]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=0
+  inputs=[0]
 feat 11 name=Helix type=Unknown suppressed=0 payload=opaque freecad_type=Part::Helix
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Sweep type=Unknown suppressed=0 payload=opaque freecad_type=Part::Sweep

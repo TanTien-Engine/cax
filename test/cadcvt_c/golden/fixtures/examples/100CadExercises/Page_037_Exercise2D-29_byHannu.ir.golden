@@ -50,9 +50,14 @@ sketch 14 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 46 type=Arc constr=1 params=[0.000,0.038,0.003,1.5708,4.4506]
 feat 13 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 9 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.100 dist2=0.000 end=0 flip=1
+  inputs=[0]
 feat 10 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.600 h=0.100
+  inputs=[9]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.003 dist2=0.000 end=0 flip=1
+  inputs=[10]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[12]
 feat 16 name=Thickness type=Shell suppressed=0 payload=shell thickness=-0.001 open_faces=1
+  inputs=[15]

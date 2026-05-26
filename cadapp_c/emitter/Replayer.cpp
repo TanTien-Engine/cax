@@ -179,8 +179,8 @@ struct FeatureToolInfo
 // Read FeatureIR's ext_params for "originals_id_<i>" entries and
 // return the resolved tool/base records that the pattern op should
 // operate on. Returns empty when Originals is empty or unresolved,
-// which signals the caller to fall back to "apply pattern to
-// last_node".
+// which signals the caller to fall back to "apply pattern to the
+// base body" (base_node from ResolveBaseNode).
 std::vector<FeatureToolInfo> ResolveOriginals(
     const FeatureIR&                                 feat,
     const std::map<uint32_t, FeatureToolInfo>&       feature_tools)
@@ -205,10 +205,10 @@ std::vector<FeatureToolInfo> ResolveOriginals(
 // Reads the typed IR field FeatureIR::input_feature_ids:
 //
 //   {}      -- no input declared. Standalone feature (Part::Box,
-//              Part::Sphere outside any Body) or a sketch. These
-//              don't consume a base, so the handler ignores the
-//              returned value and the running_last_node default
-//              keeps the caller's cursor unchanged.
+//              Part::Sphere outside any Body) or a sketch. The
+//              handler must not depend on a base in this case;
+//              ResolveBaseNode returns -1 and a base-consuming
+//              handler errors out cleanly.
 //   {0}     -- explicit "no predecessor" (body root). Returns -1
 //              so the body's first 3D feature never fuses with the
 //              previous body's tip.
@@ -219,12 +219,16 @@ std::vector<FeatureToolInfo> ResolveOriginals(
 // migration (pattern tools, Boolean operands). Today only the
 // first element is consulted; the contract is that body-chain
 // predecessor lives at index 0 when present.
+//
+// As of P3.2 there is no running last_node cursor: every feature
+// that consumes a base must declare it explicitly in the IR, and
+// the Replayer's per-iteration base_node is derived purely from
+// this helper.
 int ResolveBaseNode(const FeatureIR&                feat,
-                    int                             running_last_node,
                     const std::map<uint32_t, int>&  feature_nodes)
 {
     if (feat.input_feature_ids.empty()) {
-        return running_last_node;
+        return -1;
     }
     uint32_t iid = feat.input_feature_ids.front();
     if (iid == 0u || iid == 0xFFFFFFFFu) {
@@ -250,7 +254,8 @@ int ResolveBaseNode(const FeatureIR&                feat,
 //                  a PartDesign pattern with Originals never carries
 //                  a Draft-style single-target link.
 //
-// Both empty -> caller falls back to last_node.
+// Both empty -> caller falls back to its base_node (the body
+// chain pred resolved from input_feature_ids).
 struct PatternInputs
 {
     std::vector<FeatureToolInfo> originals;
@@ -353,15 +358,14 @@ int AddMirroredOriginals(brepgraph::CalcGraph&              cg,
 //      around the body origin, then translate). This positions
 //      PartDesign primitives inside their parent body so the
 //      subsequent boolean lands in the right spot.
-//   2. Fuse with the running body shape for PartDesign::Additive*,
-//      or cut from it for PartDesign::Subtractive*. Plain Part::*
-//      primitives (no freecad_type tag) keep the legacy "replace
-//      last_node" behavior since they are independent objects in
-//      FreeCAD.
+//   2. Fuse with the base body shape for PartDesign::Additive*, or
+//      cut from it for PartDesign::Subtractive*. Plain Part::*
+//      primitives (no freecad_type tag) stand alone -- they don't
+//      consume base_node, which is -1 for them anyway.
 //
 // Returns the final node id (possibly the same as `prim_node`) and
 // whether the caller should treat the step as ok. step_ok becomes
-// false only when a subtractive op has no running body to cut from.
+// false only when a subtractive op has no base shape to cut from.
 //
 // tool_info_out captures the placed primitive node (the "tool") and
 // the base / op_kind it combined with. A later PolarPattern with
@@ -370,16 +374,15 @@ int AddMirroredOriginals(brepgraph::CalcGraph&              cg,
 int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
                           const FeatureIR&     feat,
                           int                  prim_node,
-                          int                  last_node,
+                          int                  base_node,
                           ReplayResult&        out,
                           bool&                step_ok,
                           FeatureToolInfo*     tool_info_out = nullptr)
 {
-    // Note: when the Reader emits input_feature_ids={0} for the
-    // first 3D feature of a new PartDesign::Body, ResolveBaseNode
-    // resolves last_node to -1 before this handler runs, so a
-    // primitive at the root of a body never fuses with the
-    // previous body's tip.
+    // Note: base_node has already been resolved by ResolveBaseNode
+    // from the IR's input_feature_ids field. {0} (body root) and
+    // missing inputs both yield -1, so a primitive at the root of
+    // a body never fuses with the previous body's tip.
     int cur = prim_node;
 
     bool   has_t   = feat.ext_params.count("placement_px") > 0;
@@ -411,7 +414,7 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
     // so a downstream pattern can re-use the tool.
     if (tool_info_out) {
         tool_info_out->tool_node = cur;
-        tool_info_out->base_node = last_node;
+        tool_info_out->base_node = base_node;
         tool_info_out->op_kind   = '0';
     }
 
@@ -425,22 +428,22 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
 
     if (is_sub)
     {
-        if (last_node < 0)
+        if (base_node < 0)
         {
             step_ok     = false;
             out.err_msg = "Subtractive primitive without base shape: " + feat.name;
             return cur;
         }
         if (tool_info_out) tool_info_out->op_kind = 'c';
-        return cg.AddOp("cut", {last_node, cur}, {}, feat.name);
+        return cg.AddOp("cut", {base_node, cur}, {}, feat.name);
     }
     if (is_add)
     {
-        if (last_node < 0) {
+        if (base_node < 0) {
             return cur;
         }
         if (tool_info_out) tool_info_out->op_kind = 'f';
-        return cg.AddOp("fuse", {last_node, cur}, {}, feat.name);
+        return cg.AddOp("fuse", {base_node, cur}, {}, feat.name);
     }
     return cur;
 }
@@ -497,8 +500,6 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     RegisterResolveOps(cg->GetRegistry());
     cg->SetTopoNaming(m_impl->naming);
 
-    int last_node = -1;
-
     // sketch_id -> face op node. Populated when a FeatPayloadSketch
     // feature is visited; consumed by later Extrude / Revolve / etc.
     // features that reference the same sketch. Building the face
@@ -518,10 +519,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     std::map<uint32_t, FeatureToolInfo> feature_tools;
 
     // feature_id -> calc-graph node id of the body shape produced by
-    // that feature. Booleans (FeatPayloadBoolean) use this to fold
-    // operand shapes together by id rather than relying on the
-    // running last_node, since a Part::Cut / MultiCommon can target
-    // earlier body tips that have already scrolled past last_node.
+    // that feature. This is the central DAG store the Replayer reads
+    // from: every feature looks up its inputs through this map
+    // (FeatureIR::input_feature_ids[i] -> feature_nodes[id]), and
+    // Booleans / standalone operators fold their operand shapes by
+    // id rather than by emission order. Replaces the running
+    // last_node cursor that earlier revisions used as an implicit
+    // body chain pointer (P3.2 of the multi-last_node refactor).
     std::map<uint32_t, int> feature_nodes;
 
     // Output candidates collected in document declaration order. Each
@@ -557,17 +561,15 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         int  node    = -1;
         bool step_ok = true;
 
-        // Shadow last_node for the duration of this visit so the
-        // handler sees the per-feature base resolved from the IR's
-        // typed input_feature_ids (see ResolveBaseNode). Handlers
-        // like Pad / Pocket / Revolve compose their own boolean
-        // against last_node without going through
-        // FinalizePrimitiveNode, so the override has to bracket the
-        // entire visit. The outer loop's persistent last_node is
-        // restored after the visit, so a per-feature override never
-        // leaks into the next feature.
-        int prev_outer_last = last_node;
-        last_node = ResolveBaseNode(feat, last_node, feature_nodes);
+        // base_node is the body shape this feature consumes, resolved
+        // from FeatureIR::input_feature_ids via ResolveBaseNode. -1
+        // means "no base" (sketch, body root, standalone primitive).
+        // It's a local-per-iteration value -- there's no running
+        // cursor that survives across features. Every handler that
+        // needs a base reads base_node; handlers that don't (Sketch,
+        // Boolean reading typed operand_feature_ids, Pattern reading
+        // Originals tools) ignore it.
+        int base_node = ResolveBaseNode(feat, feature_nodes);
 
         std::visit([&](auto& p)
         {
@@ -581,7 +583,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 // Revolve, ...) read from there so a sketch shared by
                 // several features lands as a single subtree in the
                 // calc graph. The feature itself doesn't contribute a
-                // 3D body, so node stays -1 and last_node is unchanged.
+                // 3D body, so node stays -1 and feature_nodes is not
+                // updated -- sketches are not addressable as bases.
                 const SketchIR* sk = FindSketch(doc, p.sketch_id);
                 if (sk) {
                     sketch_face_nodes[p.sketch_id] = AddSketchFaceNode(*cg, *sk);
@@ -604,7 +607,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int h = cg->AddConst(p.height, "height");
                 int prim = cg->AddOp("box", {l, w, h}, {}, feat.name);
                 FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
                 feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCylinder>)
@@ -613,7 +616,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int h = cg->AddConst(p.height, "height");
                 int prim = cg->AddOp("cylinder", {r, h}, {}, feat.name);
                 FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
                 feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimCone>)
@@ -623,7 +626,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int h  = cg->AddConst(p.height,  "height");
                 int prim = cg->AddOp("cone", {r1, r2, h}, {}, feat.name);
                 FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
                 feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimSphere>)
@@ -631,7 +634,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int r = cg->AddConst(p.radius, "radius");
                 int prim = cg->AddOp("sphere", {r}, {}, feat.name);
                 FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
                 feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimTorus>)
@@ -640,7 +643,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int r2 = cg->AddConst(p.minor_radius, "minor_radius");
                 int prim = cg->AddOp("torus", {r1, r2}, {}, feat.name);
                 FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
                 feature_tools[feat.id] = ti;
             }
             else if constexpr (std::is_same_v<T, FeatPayloadPrimEllipsoid>)
@@ -650,7 +653,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int r3 = cg->AddConst(p.radius3, "radius3");
                 int prim = cg->AddOp("ellipsoid", {r1, r2, r3}, {}, feat.name);
                 FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, last_node, out, step_ok, &ti);
+                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
                 feature_tools[feat.id] = ti;
             }
 
@@ -716,8 +719,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     int d2_n  = cg->AddConst(p.distance2, "dist2");
                     int e1_n  = cg->AddConst((int)p.end_type,  "end1");
                     int e2_n  = cg->AddConst((int)p.end_type2, "end2");
-                    int ref_n = last_node >= 0
-                        ? last_node
+                    int ref_n = base_node >= 0
+                        ? base_node
                         : cg->AddConst(std::shared_ptr<brepkit::TopoShape>{}, "null_ref");
                     tool_n = cg->AddOp("extrude_ex",
                         {face_n, dir_n, d1_n, d2_n, e1_n, e2_n, ref_n},
@@ -738,31 +741,31 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 // prism instead of the whole body.
                 FeatureToolInfo ti;
                 ti.tool_node = tool_n;
-                ti.base_node = last_node;
+                ti.base_node = base_node;
 
                 if (feat.type == FeatType::BossExtrude)
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         node = tool_n;
                         ti.op_kind = '0';
                     }
                     else
                     {
-                        node = cg->AddOp("fuse", {last_node, tool_n},
+                        node = cg->AddOp("fuse", {base_node, tool_n},
                                           {}, feat.name);
                         ti.op_kind = 'f';
                     }
                 }
                 else
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         step_ok     = false;
                         out.err_msg = "CutExtrude without base shape: " + feat.name;
                         return;
                     }
-                    node = cg->AddOp("cut", {last_node, tool_n},
+                    node = cg->AddOp("cut", {base_node, tool_n},
                                       {}, feat.name);
                     ti.op_kind = 'c';
                 }
@@ -858,31 +861,31 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 FeatureToolInfo ti;
                 ti.tool_node = tool_n;
-                ti.base_node = last_node;
+                ti.base_node = base_node;
 
                 if (feat.type == FeatType::BossRevolve)
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         node = tool_n;
                         ti.op_kind = '0';
                     }
                     else
                     {
-                        node = cg->AddOp("fuse", {last_node, tool_n},
+                        node = cg->AddOp("fuse", {base_node, tool_n},
                                           {}, feat.name);
                         ti.op_kind = 'f';
                     }
                 }
                 else
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         step_ok     = false;
                         out.err_msg = "CutRevolve without base shape: " + feat.name;
                         return;
                     }
-                    node = cg->AddOp("cut", {last_node, tool_n},
+                    node = cg->AddOp("cut", {base_node, tool_n},
                                       {}, feat.name);
                     ti.op_kind = 'c';
                 }
@@ -952,31 +955,31 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 FeatureToolInfo ti;
                 ti.tool_node = tool_n;
-                ti.base_node = last_node;
+                ti.base_node = base_node;
 
                 if (!subtractive)
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         node = tool_n;
                         ti.op_kind = '0';
                     }
                     else
                     {
-                        node = cg->AddOp("fuse", {last_node, tool_n},
+                        node = cg->AddOp("fuse", {base_node, tool_n},
                                           {}, feat.name);
                         ti.op_kind = 'f';
                     }
                 }
                 else
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         step_ok     = false;
                         out.err_msg = "SubtractivePipe without base shape: " + feat.name;
                         return;
                     }
-                    node = cg->AddOp("cut", {last_node, tool_n},
+                    node = cg->AddOp("cut", {base_node, tool_n},
                                       {}, feat.name);
                     ti.op_kind = 'c';
                 }
@@ -1035,31 +1038,31 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 FeatureToolInfo ti;
                 ti.tool_node = tool_n;
-                ti.base_node = last_node;
+                ti.base_node = base_node;
 
                 if (!subtractive)
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         node = tool_n;
                         ti.op_kind = '0';
                     }
                     else
                     {
-                        node = cg->AddOp("fuse", {last_node, tool_n},
+                        node = cg->AddOp("fuse", {base_node, tool_n},
                                           {}, feat.name);
                         ti.op_kind = 'f';
                     }
                 }
                 else
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         step_ok     = false;
                         out.err_msg = "SubtractiveLoft without base shape: " + feat.name;
                         return;
                     }
-                    node = cg->AddOp("cut", {last_node, tool_n},
+                    node = cg->AddOp("cut", {base_node, tool_n},
                                       {}, feat.name);
                     ti.op_kind = 'c';
                 }
@@ -1075,18 +1078,18 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             else if constexpr (std::is_same_v<T, FeatPayloadFillet> ||
                                std::is_same_v<T, FeatPayloadChamfer>)
             {
-                if (last_node < 0)
+                if (base_node < 0)
                 {
                     step_ok = false;
                     return;
                 }
                 // The body the resolver / ChFi3d looks at. Starts as
-                // last_node (no pre-dressup refine; that pass was
+                // base_node (no pre-dressup refine; that pass was
                 // tried via c17a1d22 and silently shifted resolver
                 // matches to the wrong cax edge, so it's reverted)
                 // and gets re-bound to a split_body_at_points node
                 // below when the reader supplied split hints.
-                int body_n = last_node;
+                int body_n = base_node;
 
                 // (Page_015 Pad002 75mm+85mm -> 163mm closed BSpline).
                 // Splitting before resolve means the downstream
@@ -1182,7 +1185,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // ---- Shell ----
             else if constexpr (std::is_same_v<T, FeatPayloadShell>)
             {
-                if (last_node < 0)
+                if (base_node < 0)
                 {
                     step_ok = false;
                     return;
@@ -1193,7 +1196,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 for (size_t k = 0; k < p.faces_to_open.size(); ++k)
                 {
                     int rn = AddResolveRefNode(*cg, "resolve_face_ref",
-                                                last_node, p.faces_to_open[k],
+                                                base_node, p.faces_to_open[k],
                                                 opt.topo_tolerance,
                                                 feat.name + ":face");
                     face_nodes.push_back(rn);
@@ -1202,7 +1205,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
 
                 int t = cg->AddConst(p.thickness, "thickness");
-                node = cg->AddOp("shell", {last_node, t},
+                node = cg->AddOp("shell", {base_node, t},
                                   face_nodes, feat.name);
             }
 
@@ -1213,13 +1216,14 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // always add the original back ourselves.
             //
             // Originals = [F1..Fn]: each Fi's tool effect already
-            // lives in last_node (it was applied when Fi was replayed).
-            // We add mirror(Fi.tool) for every Fi using Fi.op_kind so
-            // every original contributes its mirror -- previously only
-            // origs[0] was honored, which silently dropped pads/pockets
-            // when users mirrored multiple features together.
+            // lives in base_node (it was applied when Fi was replayed
+            // and committed to feature_nodes). We add mirror(Fi.tool)
+            // for every Fi using Fi.op_kind so every original
+            // contributes its mirror -- previously only origs[0] was
+            // honored, which silently dropped pads/pockets when users
+            // mirrored multiple features together.
             //
-            // Originals empty: mirror the whole running body and fuse.
+            // Originals empty: mirror the whole base body and fuse.
             else if constexpr (std::is_same_v<T, FeatPayloadMirror>)
             {
                 brepgraph::Vec3 origin = {p.plane_origin[0],
@@ -1231,14 +1235,14 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 auto pi = ResolvePatternInputs(feat, feature_tools,
                                                feature_nodes);
-                if (!pi.originals.empty() && last_node >= 0)
+                if (!pi.originals.empty() && base_node >= 0)
                 {
-                    node = AddMirroredOriginals(*cg, last_node, pi.originals,
+                    node = AddMirroredOriginals(*cg, base_node, pi.originals,
                                                 origin, normal, feat.name);
                 }
-                else if (last_node >= 0)
+                else if (base_node >= 0)
                 {
-                    node = AddMirrorWithOriginal(*cg, last_node, origin, normal,
+                    node = AddMirrorWithOriginal(*cg, base_node, origin, normal,
                                                   feat.name);
                 }
                 else
@@ -1273,8 +1277,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int target = -1;
                 if (!pi.originals.empty()) {
                     target = pi.originals[0].tool_node;
-                } else if (last_node >= 0) {
-                    target = last_node;
+                } else if (base_node >= 0) {
+                    target = base_node;
                 } else {
                     step_ok = false;
                     return;
@@ -1296,11 +1300,14 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             //      PartDesign::PolarPattern path.
             //   2. Draft polar Array's Base link, pre-resolved by the
             //      Reader to ext_params "pattern_target_feature_id".
-            //      Pattern that feature's body shape directly. Draft
-            //      Arrays don't carry the body-internal Originals list
-            //      and are usually emitted after later bodies, so
-            //      last_node fallback would target the wrong feature.
-            //   3. last_node -- legacy / no link info.
+            //      Pattern that feature's body shape directly. The
+            //      pre-resolution in the Reader means this doesn't
+            //      depend on emission order -- a Draft Array sitting
+            //      after later bodies still patterns the linked
+            //      target rather than whatever the running tip
+            //      happens to be.
+            //   3. base_node -- body chain pred for body-owned
+            //      Patterns; -1 / errors out for everyone else.
             else if constexpr (std::is_same_v<T, FeatPayloadCircularPattern>)
             {
                 brepgraph::Vec3 origin = {p.axis_origin[0],
@@ -1321,8 +1328,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     target = pi.originals[0].tool_node;
                 } else if (pi.body_target >= 0) {
                     target = pi.body_target;
-                } else if (last_node >= 0) {
-                    target = last_node;
+                } else if (base_node >= 0) {
+                    target = base_node;
                 }
                 if (target < 0) {
                     step_ok = false;
@@ -1354,7 +1361,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // (see Page_023 where Originals = [Pad..Pad003, Pocket]
             // collapsed to "just Pad patterned" and the stacked pad
             // layers + pocket holes disappeared). Each Fi.tool is
-            // already at position 0 in last_node, so re-applying the
+            // already at position 0 within base_node (it was applied
+            // when Fi was replayed), so re-applying the
             // full pattern (which includes position 0) is idempotent
             // for fuse / cut and only the new positions land on body.
             else if constexpr (std::is_same_v<T, FeatPayloadMultiTransform>)
@@ -1420,21 +1428,21 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 if (pi.originals.empty())
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         step_ok = false;
                         return;
                     }
-                    node = apply_chain(last_node, feat.name);
+                    node = apply_chain(base_node, feat.name);
                 }
                 else
                 {
-                    if (last_node < 0)
+                    if (base_node < 0)
                     {
                         step_ok = false;
                         return;
                     }
-                    int body = last_node;
+                    int body = base_node;
                     for (size_t fi = 0; fi < pi.originals.size(); ++fi)
                     {
                         std::string tag = feat.name + ":orig"
@@ -1457,8 +1465,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // feature_nodes and fold them pairwise in list order.
             // For Cut the first operand is the kept base; for Fuse /
             // Common the order only matters for graph layout. The
-            // boolean's result becomes the new last_node so a
-            // downstream Fillet / pattern can target it.
+            // boolean's result is committed to feature_nodes under
+            // this feature's id, so a downstream Fillet / pattern
+            // that names this id as its input_feature_ids[0] picks
+            // it up via ResolveBaseNode.
             else if constexpr (std::is_same_v<T, FeatPayloadBoolean>)
             {
                 if (p.operand_feature_ids.size() < 2)
@@ -1514,14 +1524,6 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             }
         }, feat.data);
 
-        // Restore the outer last_node when the per-visit override
-        // didn't get superseded by a successful node assignment. If
-        // node>=0 the subsequent assignment will overwrite it; we
-        // restore unconditionally so a failed step doesn't leak the
-        // temporary override (e.g. a body root's -1) into the next
-        // feature's visit.
-        last_node = prev_outer_last;
-
         if (node >= 0)
         {
             // Hard-failure substitution: if cax's replay of this
@@ -1570,16 +1572,15 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
 
-            last_node = node;
             feature_nodes[feat.id] = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
             // Record this feature as a potential top-level output.
             // Body-owned features collapse to a single candidate per
-            // body (the running tip overwrites earlier members);
-            // standalone Part::* features each get their own candidate
-            // and are filtered out at emission if a downstream boolean
-            // consumed them as an operand.
+            // body (the latest tip overwrites earlier members in
+            // emission order); standalone Part::* features each get
+            // their own candidate and are filtered out at emission
+            // if a downstream boolean consumed them as an operand.
             {
                 auto bit = feat.ext_strings.find("freecad_body");
                 std::string body_name = (bit != feat.ext_strings.end())
@@ -1654,8 +1655,12 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             out.op_ids.push_back(0);
         }
 
-        if (!step_ok && last_node < 0)
+        if (!step_ok && feature_nodes.empty())
         {
+            // Fail-fast only when no feature has produced a shape yet.
+            // After at least one success, a later failure leaves the
+            // partial result in feature_nodes / output_candidates so
+            // the doc still emits whatever did succeed.
             out.ok    = false;
             out.shape = nullptr;
             return false;
@@ -1664,9 +1669,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
     // Pick the emission node(s). Walk output_candidates in declaration
     // order, drop anything a downstream boolean consumed as an operand,
-    // and emit the survivors. 0 -> fall back to last_node (covers docs
-    // that produced no candidates, e.g. nothing but sketches);
-    // 1 -> emit that node directly; >1 -> wrap in a TopoDS_Compound so
+    // and emit the survivors. 0 -> no live candidates (every feature
+    // either failed or was absorbed); 1 -> emit that node directly;
+    // >1 -> wrap in a TopoDS_Compound so
     // a multi-body doc like Page_042 (5 PartDesign::Body containers,
     // no downstream booleans) lands every body in out.shape instead
     // of just the last one. Filtering by consumed_feat_ids keeps a
@@ -1709,7 +1714,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     }
     else
     {
-        int emit_node = !live_nodes.empty() ? live_nodes.front() : last_node;
+        int emit_node = !live_nodes.empty() ? live_nodes.front() : -1;
         if (emit_node >= 0)
         {
             auto val = cg->Eval(emit_node);

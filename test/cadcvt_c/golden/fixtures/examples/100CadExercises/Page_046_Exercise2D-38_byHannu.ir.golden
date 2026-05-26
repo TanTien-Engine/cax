@@ -33,16 +33,25 @@ sketch 23 name=Sketch006 plane_origin=(-0.053,0.000,0.000) plane_normal=(-1.000,
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=10 spine_sketch_id=9
+  inputs=[0]
 feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.023 dist2=0.000 end=0 flip=0
+  inputs=[11]
 feat 16 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.011 dist2=0.000 end=0 flip=1
+  inputs=[14]
 feat 18 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.003 edges=1
+  inputs=[17]
 feat 20 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.053 dist2=0.000 end=0 flip=0
+  inputs=[18]
 feat 22 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=22
 feat 24 name=Pad003 type=BossExtrude suppressed=0 payload=extrude sketch_id=22 dir=(0.000,0.000,1.000) dist=0.008 dist2=0.000 end=0 flip=1
+  inputs=[21]
 feat 23 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=23
 feat 25 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=23 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=6 flip=1
+  inputs=[24]
 feat 27 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(-0.053,0.035,0.000) axis_d=(-1.000,0.000,0.000) count=4 total_angle=6.2832
+  inputs=[25]
 feat 28 name=Box type=PrimBox suppressed=0 payload=box l=0.200 w=0.200 h=0.100
+  inputs=[27]

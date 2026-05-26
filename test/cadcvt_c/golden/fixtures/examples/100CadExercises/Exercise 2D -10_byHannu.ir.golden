@@ -33,9 +33,13 @@ sketch 16 name=Sketch003 plane_origin=(-0.017,0.000,0.000) plane_normal=(0.000,0
   geo 28 type=Line constr=0 params=[0.000,-0.007,0.000,0.000]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.000 end=0 flip=1
+  inputs=[0]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Groove type=CutRevolve suppressed=0 payload=revolve sketch_id=11 axis_o=(0.000,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=0
+  inputs=[10]
 feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=0
+  inputs=[12]
 feat 16 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Groove001 type=CutRevolve suppressed=0 payload=revolve sketch_id=16 axis_o=(-0.017,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=0
+  inputs=[14]

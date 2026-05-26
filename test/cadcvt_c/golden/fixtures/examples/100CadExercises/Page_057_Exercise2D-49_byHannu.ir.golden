@@ -90,10 +90,15 @@ sketch 15 name=Sketch003 plane_origin=(0.069,0.000,0.000) plane_normal=(1.000,0.
   geo 85 type=Circle constr=0 params=[0.070,0.000,0.010]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.040 dist2=0.000 end=4 flip=0
+  inputs=[0]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.020 end=0 flip=0
+  inputs=[10]
 feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[12]
 feat 15 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=15
 feat 16 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[14]
 feat 17 name=Box type=PrimBox suppressed=0 payload=box l=0.200 w=0.300 h=0.021
+  inputs=[16]

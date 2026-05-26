@@ -36,9 +36,13 @@ sketch 16 name=Sketch004 plane_origin=(0.000,-0.050,0.008) plane_normal=(0.000,-
   geo 31 type=Circle constr=0 params=[0.000,-0.040,0.005]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.035 dist2=0.000 end=4 flip=0
+  inputs=[0]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.015 dist2=0.000 end=4 flip=0
+  inputs=[10]
 feat 13 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=4 flip=0
+  inputs=[12]
 feat 16 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[14]

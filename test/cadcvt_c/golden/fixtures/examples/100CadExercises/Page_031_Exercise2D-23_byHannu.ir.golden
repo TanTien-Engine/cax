@@ -15,7 +15,9 @@ sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   geo 13 type=Line constr=0 params=[-0.040,0.011,-0.007,0.037]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=0
+  inputs=[0]
 feat 11 name=Sphere type=PrimSphere suppressed=0 payload=sphere r=0.045
+  inputs=[0]
 feat 20 name=Cut type=Cut suppressed=0 payload=boolean operands=[10,11]
 feat 21 name=Sphere001 type=PrimSphere suppressed=0 payload=sphere r=0.050
 feat 22 name=Common type=Common suppressed=0 payload=boolean operands=[21,20]

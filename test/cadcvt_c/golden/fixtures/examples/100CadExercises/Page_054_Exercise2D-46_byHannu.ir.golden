@@ -91,12 +91,19 @@ sketch 19 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 86 type=Line constr=1 params=[0.075,0.000,0.075,-0.060]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+  inputs=[0]
 feat 11 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:mirror plane_n=(1.000,0.000,0.000)] [1:mirror plane_n=(0.000,1.000,0.000)]
+  inputs=[10]
 feat 14 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[11]
 feat 16 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.020 edges=2
+  inputs=[15]
 feat 17 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=17
 feat 18 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=4 flip=0
+  inputs=[16]
 feat 19 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=19
 feat 20 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=19 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+  inputs=[18]
 feat 21 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.020 edges=4
+  inputs=[20]

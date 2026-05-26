@@ -185,13 +185,21 @@ feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 12 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 20 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.150 h=0.005
+  inputs=[0]
 feat 11 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=10 dir=(0.000,0.000,1.000) dist=0.003 dist2=0.000 end=0 flip=0
+  inputs=[20]
 feat 13 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.002 dist2=0.000 end=0 flip=1
+  inputs=[11]
 feat 14 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.003 dist2=0.000 end=0 flip=0
+  inputs=[13]
 feat 16 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Pad003 type=BossExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=0
+  inputs=[15]
 feat 22 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=22
 feat 23 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=22 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+  inputs=[17]
 feat 18 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=4 total_angle=6.2832]
+  inputs=[23]
 feat 21 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.151 h=0.005
+  inputs=[18]

@@ -15,8 +15,13 @@ sketch 14 name=Sketch001 plane_origin=(0.000,0.000,0.005) plane_normal=(0.000,0.
   geo 12 type=Circle constr=0 params=[0.000,0.000,0.045]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=0
+  inputs=[0]
 feat 11 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:mirror plane_n=(1.000,0.000,0.000)] [1:mirror plane_n=(0.000,1.000,0.000)]
+  inputs=[10]
 feat 14 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.006 dist2=0.000 end=0 flip=0
+  inputs=[11]
 feat 16 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.020
+  inputs=[15]
 feat 17 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) count=6 total_angle=6.2832
+  inputs=[16]
