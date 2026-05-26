@@ -69,6 +69,18 @@ using namespace cadapp;
 namespace
 {
 
+// Push (id, role) into a FeatureIR's parallel input vectors as a
+// single op so the lock-step invariant is always preserved at
+// callsites. P3.3 introduced input_roles; using this helper means
+// no future migration code can drift the two vectors apart.
+inline void PushInput(cadapp::FeatureIR& feat,
+                      uint32_t          id,
+                      cadapp::InputRole role)
+{
+    feat.input_feature_ids.push_back(id);
+    feat.input_roles.push_back(role);
+}
+
 bool EndsWithICase(const std::string& s, const char* suffix)
 {
     size_t sl = s.size();
@@ -2439,11 +2451,12 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     bool is_root = (fit != body_first_solid.end()
                                     && fit->second == pending.name);
                     if (is_root) {
-                        feat.input_feature_ids.push_back(0u);
+                        PushInput(feat, 0u, cadapp::InputRole::Base);
                     } else {
                         auto pit = body_prev_id.find(bit->second);
                         if (pit != body_prev_id.end()) {
-                            feat.input_feature_ids.push_back(pit->second);
+                            PushInput(feat, pit->second,
+                                      cadapp::InputRole::Base);
                         }
                     }
                 }
@@ -2998,7 +3011,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 }
             }
             if (base_id != 0xFFFFFFFFu) {
-                feat.input_feature_ids.push_back(base_id);
+                PushInput(feat, base_id, cadapp::InputRole::Base);
             }
             feat.ext_strings["freecad_type"] = pending.type;
 

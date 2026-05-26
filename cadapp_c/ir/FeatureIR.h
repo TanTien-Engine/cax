@@ -368,25 +368,35 @@ struct FeatureIR
     FeatType       type       = FeatType::Unknown;
     bool           suppressed = false;
 
-    // Explicit upstream features this one consumes. Promoted from
-    // ext_params["input_feature_id"] in P3.1 of the multi-last_node
-    // refactor. Today the vector holds at most one element (body
-    // chain predecessor); the plural form is the destination of the
-    // DAG IR migration, where Pattern/Mirror/MultiTransform tools
-    // and Boolean operands will land here too once roles
-    // (input_roles) disambiguate them.
+    // Explicit upstream features this one consumes, paired with
+    // input_roles to disambiguate "what does this input mean".
+    // Together these form the DAG edges the Replayer walks. P3.1
+    // introduced input_feature_ids; P3.3 added the parallel
+    // input_roles so multiple inputs of different semantics can
+    // coexist (body chain pred + Boolean operands + Pattern tools
+    // + sketch supports etc.).
     //
-    // Convention:
-    //   {}    -- no input declared. Standalone primitive (Part::Box
-    //            outside any Body), sketches, or a feature the Reader
-    //            hasn't promoted yet. Replayer's ResolveBaseNode
-    //            falls back to the running last_node cursor for these.
-    //   {0}   -- explicit "no predecessor" (first 3D feature of a
-    //            fresh PartDesign::Body). 0 is unambiguous as a
-    //            sentinel because real feature ids start at 1.
-    //   {N}   -- predecessor is feature N. Replayer routes
-    //            feature_nodes[N] in as the base body shape.
-    std::vector<uint32_t> input_feature_ids;
+    // Invariant: input_roles.size() == input_feature_ids.size().
+    // The Reader is responsible for keeping the two in lock-step;
+    // see PushInput() in FreeCadReader for the helper that does so.
+    //
+    // Per-id conventions (all roles):
+    //   id == 0           -- explicit "no upstream" sentinel
+    //                        (Role::Base on body roots; not used
+    //                        for other roles in practice).
+    //                        Real feature ids start at 1, so 0 is
+    //                        unambiguous.
+    //   id == 0xFFFFFFFF  -- unresolved link (Reader couldn't
+    //                        match the FreeCAD object name).
+    //                        Replayer treats this as -1.
+    //   id >= 1           -- ordinary upstream feature.
+    //
+    // Today only Role::Base is in use; Roles Operand / Tool /
+    // PatternTarget / Reference migrate in P3.3.B-E. Until those
+    // land, the corresponding ext_params / payload fields still
+    // carry the data and the typed channel is empty for them.
+    std::vector<uint32_t>  input_feature_ids;
+    std::vector<InputRole> input_roles;
 
     // Typed payload; default-constructs to Opaque so a fresh
     // FeatureIR is always queryable.

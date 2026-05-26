@@ -31,14 +31,17 @@
 //   FeatureEntry::feature_id <-> VersionTree node_id once committed.
 //
 // Versioning:
-//   FEAT_VERSION = 2. The variant tag (payload_tag) is the index
+//   FEAT_VERSION = 3. The variant tag (payload_tag) is the index
 //   into FeaturePayload, so appending to that variant is fine but
 //   reordering is not. Bump FEAT_VERSION on layout break.
 //
 //   V2 (P3.1 multi-last_node refactor) added input_feature_ids as
 //   a typed [u32 count][u32...] section right after ext_strings in
-//   each feature payload. V1 is not loaded (no in-tree fixtures
-//   persisted V1; clean break is cheaper than a compat path).
+//   each feature payload.
+//   V3 (P3.3.A) added the parallel input_roles section as
+//   [u32 count][u8...] immediately after input_feature_ids. V1
+//   and V2 are not loaded (no in-tree fixtures persist them;
+//   clean break is cheaper than a compat path).
 // ============================================================
 
 namespace cadapp
@@ -76,7 +79,7 @@ struct FeatureEntry
 #pragma pack(pop)
 
 static constexpr uint32_t FEAT_MAGIC   = 0x54414546;   // 'F','E','A','T' little-endian
-static constexpr uint32_t FEAT_VERSION = 2;
+static constexpr uint32_t FEAT_VERSION = 3;
 
 
 // ============================================================

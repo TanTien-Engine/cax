@@ -39,9 +39,9 @@ sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.
   geo 36 type=Line constr=0 params=[0.000,-0.070,0.000,-0.089]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.139 dist2=0.000 end=4 flip=0
-  inputs=[0]
+  inputs=[0:base]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[10]
+  inputs=[10:base]
 feat 13 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(0.000,0.000,-1.000)
-  inputs=[12]
+  inputs=[12:base]

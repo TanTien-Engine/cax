@@ -12,4 +12,4 @@ sketch 2 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   con 6 type=DistanceY a=2:0 b=4294967295:0 value=0.010 driving=1
 feat 2 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=2
 feat 3 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=2 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=1
-  inputs=[0]
+  inputs=[0:base]

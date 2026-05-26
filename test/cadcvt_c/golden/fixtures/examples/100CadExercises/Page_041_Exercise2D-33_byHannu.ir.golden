@@ -27,11 +27,11 @@ sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1
   geo 24 type=Circle constr=0 params=[-0.032,0.000,0.006]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=0
-  inputs=[0]
+  inputs=[0:base]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[10]
+  inputs=[10:base]
 feat 13 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(0.000,-1.000,0.000) count=6 total_angle=6.2832
-  inputs=[12]
+  inputs=[12:base]
 feat 14 name=Box type=PrimBox suppressed=0 payload=box l=0.100 w=0.100 h=0.050
-  inputs=[13]
+  inputs=[13:base]

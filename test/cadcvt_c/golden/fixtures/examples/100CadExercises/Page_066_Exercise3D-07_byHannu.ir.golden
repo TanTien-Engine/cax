@@ -110,17 +110,17 @@ sketch 17 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 106 type=Line constr=0 params=[0.001,0.037,0.027,0.037]
   geo 107 type=Line constr=1 params=[-0.001,0.037,0.001,0.037]
 feat 10 name=Box001 type=PrimBox suppressed=0 payload=box l=0.100 w=0.100 h=0.003
-  inputs=[0]
+  inputs=[0:base]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[10]
+  inputs=[10:base]
 feat 13 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:linpat dir1=(1.000,0.000,0.000) count1=7 spacing1=0.014] [1:linpat dir1=(0.000,1.000,0.000) count1=7 spacing1=0.014]
-  inputs=[12]
+  inputs=[12:base]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 16 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[13]
+  inputs=[13:base]
 feat 17 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=17
 feat 18 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=0
-  inputs=[16]
+  inputs=[16:base]
 feat 19 name=Box type=PrimBox suppressed=0 payload=box l=0.100 w=0.100 h=0.100
-  inputs=[18]
+  inputs=[18:base]

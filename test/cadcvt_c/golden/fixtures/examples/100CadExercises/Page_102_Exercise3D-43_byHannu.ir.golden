@@ -58,12 +58,12 @@ sketch 13 name=Sketch002 plane_origin=(0.000,0.000,0.025) plane_normal=(0.000,0.
   geo 54 type=Arc constr=0 params=[0.000,0.000,0.050,5.8113,6.7550]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
-  inputs=[0]
+  inputs=[0:base]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.015 dist2=0.000 end=0 flip=0
-  inputs=[10]
+  inputs=[10:base]
 feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.015 dist2=0.000 end=0 flip=0
-  inputs=[12]
+  inputs=[12:base]
 feat 16 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[14]
+  inputs=[14:base]

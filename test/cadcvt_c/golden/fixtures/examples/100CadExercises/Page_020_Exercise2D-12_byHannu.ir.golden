@@ -296,23 +296,23 @@ sketch 20 name=Sketch006 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=AdditiveLoft type=Loft suppressed=0 payload=loft profile_count=2 closed=0 profiles=[9,10]
-  inputs=[0]
+  inputs=[0:base]
 feat 12 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.090 dist2=0.000 end=0 flip=0
-  inputs=[11]
+  inputs=[11:base]
 feat 14 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.090 dist2=0.000 end=0 flip=0
-  inputs=[13]
+  inputs=[13:base]
 feat 16 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.000 end=0 flip=0
-  inputs=[15]
+  inputs=[15:base]
 feat 18 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=18
 feat 19 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=18 dir=(0.000,0.000,1.000) dist=0.090 dist2=0.000 end=0 flip=0
-  inputs=[17]
+  inputs=[17:base]
 feat 20 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.090 dist2=0.000 end=1 flip=0
-  inputs=[19]
+  inputs=[19:base]
 feat 22 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[21]
+  inputs=[21:base]
 feat 23 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.010 edges=1
-  inputs=[22]
+  inputs=[22:base]

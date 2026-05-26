@@ -388,18 +388,35 @@ std::string FingerprintDocument(const cadapp::DocumentIR& doc, const Fingerprint
         EmitPayload(os, feat, opt);
         os << "\n";
 
-        // Typed body-chain pred / future inputs (P3.1+). Emitted
-        // outside the dump_ext gate because this is a first-class
-        // field of FeatureIR, not an ext bag entry; absence of any
-        // input is rendered as an empty list so the fingerprint
-        // tracks the difference between "no inputs declared" and
-        // "explicit fresh body" ({0}).
+        // Typed inputs (P3.1+) with their roles (P3.3+). Emitted
+        // outside the dump_ext gate because these are first-class
+        // FeatureIR fields, not ext bag entries; absence of inputs
+        // renders as no line so the fingerprint tracks the
+        // difference between "no inputs declared" and "explicit
+        // fresh body" ({0:base}). Each entry is formatted as
+        // "<id>:<role-tag>" so a stale-role bug shows up as a
+        // golden diff.
         if (!feat.input_feature_ids.empty())
         {
             os << "  inputs=[";
-            for (size_t i = 0; i < feat.input_feature_ids.size(); ++i) {
+            for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+            {
                 if (i) os << ',';
                 os << feat.input_feature_ids[i];
+
+                cadapp::InputRole role = (i < feat.input_roles.size())
+                                            ? feat.input_roles[i]
+                                            : cadapp::InputRole::Base;
+                const char* tag = "base";
+                switch (role)
+                {
+                case cadapp::InputRole::Base:          tag = "base";    break;
+                case cadapp::InputRole::Operand:       tag = "operand"; break;
+                case cadapp::InputRole::Tool:          tag = "tool";    break;
+                case cadapp::InputRole::PatternTarget: tag = "target";  break;
+                case cadapp::InputRole::Reference:     tag = "ref";     break;
+                }
+                os << ':' << tag;
             }
             os << "]\n";
         }

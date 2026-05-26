@@ -195,22 +195,22 @@ sketch 22 name=Sketch004 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 189 type=Line constr=0 params=[0.030,0.015,0.060,0.015]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) angle=1.5708 flip=1
-  inputs=[0]
+  inputs=[0:base]
 feat 12 name=Box type=PrimBox suppressed=0 payload=box l=0.025 w=0.100 h=0.190
-  inputs=[10]
+  inputs=[10:base]
 feat 13 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[12]
+  inputs=[12:base]
 feat 15 name=LinearPattern type=LinearPattern suppressed=0 payload=linpat dir1=(1.000,0.000,0.000) count1=9 spacing1=0.007 count2=1 spacing2=0.000
-  inputs=[14]
+  inputs=[14:base]
 feat 17 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.008 h=0.100
-  inputs=[15]
+  inputs=[15:base]
 feat 16 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 18 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=1
-  inputs=[17]
+  inputs=[17:base]
 feat 19 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=19
 feat 21 name=Groove type=CutRevolve suppressed=0 payload=revolve sketch_id=19 axis_o=(0.000,0.031,-0.025) axis_d=(1.000,0.000,0.000) angle=6.2832 flip=1
-  inputs=[18]
+  inputs=[18:base]
 feat 22 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=22
 feat 23 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=22 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=1
-  inputs=[21]
+  inputs=[21:base]

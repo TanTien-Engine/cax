@@ -202,40 +202,49 @@ std::vector<FeatureToolInfo> ResolveOriginals(
 }
 
 // Compute the base body node this feature visit should consume.
-// Reads the typed IR field FeatureIR::input_feature_ids:
+// Walks the typed (FeatureIR::input_feature_ids, input_roles)
+// parallel vectors and picks the first entry with Role::Base:
 //
-//   {}      -- no input declared. Standalone feature (Part::Box,
-//              Part::Sphere outside any Body) or a sketch. The
-//              handler must not depend on a base in this case;
-//              ResolveBaseNode returns -1 and a base-consuming
-//              handler errors out cleanly.
-//   {0}     -- explicit "no predecessor" (body root). Returns -1
-//              so the body's first 3D feature never fuses with the
-//              previous body's tip.
-//   {N>=1}  -- predecessor is feature N. Returns
-//              feature_nodes[N], or -1 if upstream failed.
+//   no Base entry         -- standalone primitive, sketch, or a
+//                            feature whose role inputs are all
+//                            non-base (Boolean with only Operand
+//                            roles). Returns -1; a base-consuming
+//                            handler errors out cleanly.
+//   Base id == 0          -- explicit "no predecessor" (body
+//                            root). Returns -1 so the body's
+//                            first 3D feature never fuses with
+//                            the previous body's tip.
+//   Base id == 0xFFFFFFFF -- unresolved link. Returns -1.
+//   Base id >= 1          -- predecessor is that feature; returns
+//                            feature_nodes[id], or -1 if upstream
+//                            failed.
 //
-// Multi-element vectors are reserved for the upcoming P3.3 roles
-// migration (pattern tools, Boolean operands). Today only the
-// first element is consulted; the contract is that body-chain
-// predecessor lives at index 0 when present.
-//
-// As of P3.2 there is no running last_node cursor: every feature
-// that consumes a base must declare it explicitly in the IR, and
-// the Replayer's per-iteration base_node is derived purely from
-// this helper.
+// Since P3.2 there is no running last_node cursor: every feature
+// that consumes a base must declare it explicitly in the IR.
 int ResolveBaseNode(const FeatureIR&                feat,
                     const std::map<uint32_t, int>&  feature_nodes)
 {
-    if (feat.input_feature_ids.empty()) {
-        return -1;
+    const size_t n = feat.input_feature_ids.size();
+    for (size_t i = 0; i < n; ++i)
+    {
+        // Defensive: input_roles is enforced parallel by the Reader
+        // (PushInput) but a malformed store could leave it shorter.
+        // Missing role defaults to Base (FeatureStore::DecodeExt
+        // pads the same way), so the loop still picks up the entry.
+        InputRole role = (i < feat.input_roles.size())
+                            ? feat.input_roles[i]
+                            : InputRole::Base;
+        if (role != InputRole::Base) {
+            continue;
+        }
+        uint32_t iid = feat.input_feature_ids[i];
+        if (iid == 0u || iid == 0xFFFFFFFFu) {
+            return -1;
+        }
+        auto fit = feature_nodes.find(iid);
+        return fit != feature_nodes.end() ? fit->second : -1;
     }
-    uint32_t iid = feat.input_feature_ids.front();
-    if (iid == 0u || iid == 0xFFFFFFFFu) {
-        return -1;
-    }
-    auto fit = feature_nodes.find(iid);
-    return fit != feature_nodes.end() ? fit->second : -1;
+    return -1;
 }
 
 // Pattern / Mirror / MultiTransform target resolution. Folds two
@@ -1604,24 +1613,39 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // folded into this one is marked so the emitter doesn't
             // re-emit it alongside this feature.
             //   * FeatPayloadBoolean operands (Part::Cut / Fuse /
-            //     Common / MultiFuse / MultiCommon).
-            //   * FeatureIR::input_feature_ids, the typed body-chain
-            //     pred field. Marking the input as consumed is what
-            //     stops the Body candidate from appearing next to a
-            //     standalone Thickness that absorbed it (Page_037
-            //     went 1 solid -> 2 solids before this gate was
-            //     added). Body-internal cases are no-ops in practice:
-            //     the body candidate is keyed on the latest tip's
-            //     feat_id, which differs from the prev's id, so the
-            //     insert here doesn't filter anything.
+            //     Common / MultiFuse / MultiCommon). Migrates into
+            //     input_feature_ids w/ Role::Operand in P3.3.B; the
+            //     payload field stays for now.
+            //   * FeatureIR::input_feature_ids entries with a
+            //     consuming role (Base / Operand / Tool /
+            //     PatternTarget). Marking the input as consumed is
+            //     what stops the Body candidate from appearing next
+            //     to a standalone Thickness that absorbed it
+            //     (Page_037 went 1 solid -> 2 solids before this
+            //     gate was added). Body-internal cases are no-ops
+            //     in practice: the body candidate is keyed on the
+            //     latest tip's feat_id, which differs from the
+            //     prev's id, so the insert here doesn't filter
+            //     anything.
+            //
+            // Reference-role entries (sketch supports, datum
+            // parents) are inputs in the DAG sense but do NOT
+            // consume the referenced shape, so they're skipped.
             if (auto* bp = std::get_if<FeatPayloadBoolean>(&feat.data))
             {
                 for (uint32_t opid : bp->operand_feature_ids) {
                     consumed_feat_ids.insert(opid);
                 }
             }
-            for (uint32_t iid : feat.input_feature_ids)
+            for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
             {
+                InputRole role = (i < feat.input_roles.size())
+                                    ? feat.input_roles[i]
+                                    : InputRole::Base;
+                if (role == InputRole::Reference) {
+                    continue;
+                }
+                uint32_t iid = feat.input_feature_ids[i];
                 if (iid != 0u && iid != 0xFFFFFFFFu) {
                     consumed_feat_ids.insert(iid);
                 }

@@ -82,22 +82,22 @@ sketch 15 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 78 type=Point constr=1 params=[0.000,0.000]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
-  inputs=[0]
+  inputs=[0:base]
 feat 11 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(0.000,1.000,0.000)
-  inputs=[10]
+  inputs=[10:base]
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[11]
+  inputs=[11:base]
 feat 14 name=LinearPattern type=LinearPattern suppressed=0 payload=linpat dir1=(0.000,-1.000,0.000) count1=3 spacing1=0.030 count2=1 spacing2=0.000
-  inputs=[13]
+  inputs=[13:base]
 feat 15 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=15
 feat 16 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[14]
+  inputs=[14:base]
 feat 17 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:linpat dir1=(1.000,0.000,0.000) count1=5 spacing1=0.030] [1:linpat dir1=(0.000,-1.000,0.000) count1=5 spacing1=0.030]
-  inputs=[16]
+  inputs=[16:base]
 feat 20 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.010 edges=18
-  inputs=[17]
+  inputs=[17:base]
 feat 21 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.020 edges=2
-  inputs=[20]
+  inputs=[20:base]
 feat 22 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=4
-  inputs=[21]
+  inputs=[21:base]

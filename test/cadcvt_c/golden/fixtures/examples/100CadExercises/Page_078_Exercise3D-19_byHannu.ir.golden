@@ -195,22 +195,22 @@ sketch 19 name=Sketch004 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 189 type=Line constr=0 params=[0.030,0.030,0.060,0.030]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) angle=6.2832 flip=1
-  inputs=[0]
+  inputs=[0:base]
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 20 name=Groove001 type=CutRevolve suppressed=0 payload=revolve sketch_id=12 axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) angle=6.2832 flip=1
-  inputs=[10]
+  inputs=[10:base]
 feat 13 name=LinearPattern type=LinearPattern suppressed=0 payload=linpat dir1=(1.000,0.000,0.000) count1=9 spacing1=0.007 count2=1 spacing2=0.000
-  inputs=[20]
+  inputs=[20:base]
 feat 15 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.008 h=0.100
-  inputs=[13]
+  inputs=[13:base]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 16 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 21 name=Revolution001 type=BossRevolve suppressed=0 payload=revolve sketch_id=14 axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) angle=6.2832 flip=0
-  inputs=[15]
+  inputs=[15:base]
 feat 18 name=Groove type=CutRevolve suppressed=0 payload=revolve sketch_id=16 axis_o=(0.000,0.046,0.000) axis_d=(-1.000,0.000,0.000) angle=6.2832 flip=1
-  inputs=[21]
+  inputs=[21:base]
 feat 22 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) count=6 total_angle=6.2832
-  inputs=[18]
+  inputs=[18:base]
 feat 19 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=19
 feat 23 name=Revolution002 type=BossRevolve suppressed=0 payload=revolve sketch_id=19 axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) angle=6.2832 flip=0
-  inputs=[22]
+  inputs=[22:base]

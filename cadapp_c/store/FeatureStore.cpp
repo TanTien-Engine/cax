@@ -92,6 +92,16 @@ public:
         }
     }
 
+    // [u32 count][u8 ...] -- 1 byte per element, used by enum-class
+    // vectors small enough to fit in a uint8_t (InputRole today).
+    void U8Vec(const std::vector<uint8_t>& v)
+    {
+        U32((uint32_t)v.size());
+        if (!v.empty()) {
+            Bytes(v.data(), v.size());
+        }
+    }
+
     void StringField(const std::string& s)
     {
         U32((uint32_t)s.size());
@@ -202,6 +212,17 @@ public:
         for (uint32_t i = 0; i < n; ++i)
         {
             v.push_back(U32());
+        }
+        return v;
+    }
+
+    std::vector<uint8_t> U8Vec()
+    {
+        uint32_t             n = U32();
+        std::vector<uint8_t> v;
+        v.resize(n);
+        if (n > 0) {
+            Bytes(v.data(), n);
         }
         return v;
     }
@@ -696,10 +717,19 @@ void EncodeExt(const FeatureIR& feat, BlobWriter& w)
         w.StringField(kv.second);
     }
 
-    // input_feature_ids (FEAT_VERSION 2+). Typed vector of upstream
-    // feature ids this feature consumes. See FeatureIR.h for the
-    // {} / {0} / {N} sentinel convention.
+    // input_feature_ids (FEAT_VERSION 2+) and parallel input_roles
+    // (FEAT_VERSION 3+). Together: the DAG edges this feature
+    // consumes. The two vectors are guaranteed equal length by
+    // construction (Reader-side invariant); the store re-checks at
+    // decode and treats a size mismatch as Role::Base padding so a
+    // malformed file still loads with sane defaults.
     w.U32Vec(feat.input_feature_ids);
+    std::vector<uint8_t> role_bytes;
+    role_bytes.reserve(feat.input_roles.size());
+    for (auto r : feat.input_roles) {
+        role_bytes.push_back((uint8_t)r);
+    }
+    w.U8Vec(role_bytes);
 }
 
 void DecodeExt(BlobReader& r, FeatureIR& feat)
@@ -721,6 +751,16 @@ void DecodeExt(BlobReader& r, FeatureIR& feat)
     }
 
     feat.input_feature_ids = r.U32Vec();
+    auto role_bytes = r.U8Vec();
+    feat.input_roles.clear();
+    feat.input_roles.reserve(feat.input_feature_ids.size());
+    for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+    {
+        // Pad with Base on size mismatch -- defensive against
+        // malformed stores or hand-edited fixtures.
+        uint8_t b = (i < role_bytes.size()) ? role_bytes[i] : 0u;
+        feat.input_roles.push_back((InputRole)b);
+    }
 }
 
 } // anonymous namespace

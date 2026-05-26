@@ -378,30 +378,30 @@ sketch 40 name=Sketch007 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 18 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=18
 feat 19 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=18 dir=(0.000,0.000,1.000) dist=1.270 dist2=0.000 end=0 flip=1
-  inputs=[0]
+  inputs=[0:base]
 feat 20 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[19]
+  inputs=[19:base]
 feat 22 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:linpat dir1=(0.000,1.000,0.000) count1=3 spacing1=0.305] [1:linpat dir1=(0.000,-1.000,0.000) count1=3 spacing1=0.305]
-  inputs=[21]
+  inputs=[21:base]
 feat 25 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=25
 feat 26 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=25 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[22]
+  inputs=[22:base]
 feat 27 name=MultiTransform001 type=MultiTransform suppressed=0 payload=multixform steps=2 [0:linpat dir1=(0.000,1.000,0.000) count1=4 spacing1=0.305] [1:linpat dir1=(0.000,-1.000,0.000) count1=2 spacing1=0.610]
-  inputs=[26]
+  inputs=[26:base]
 feat 30 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=30
 feat 31 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=30 dir=(0.000,0.000,1.000) dist=1.270 dist2=0.000 end=0 flip=1
-  inputs=[27]
+  inputs=[27:base]
 feat 32 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=32
 feat 33 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=32 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[31]
+  inputs=[31:base]
 feat 34 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(0.000,1.000,0.000)
-  inputs=[33]
+  inputs=[33:base]
 feat 35 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=35
 feat 36 name=Pocket003 type=CutExtrude suppressed=0 payload=extrude sketch_id=35 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[34]
+  inputs=[34:base]
 feat 37 name=MultiTransform002 type=MultiTransform suppressed=0 payload=multixform steps=2 [0:linpat dir1=(0.000,0.000,1.000) count1=3 spacing1=0.457] [1:mirror plane_n=(0.000,1.000,0.000)]
-  inputs=[36]
+  inputs=[36:base]
 feat 40 name=Sketch007 type=Sketch suppressed=0 payload=sketch sketch_id=40
 feat 41 name=Pocket004 type=CutExtrude suppressed=0 payload=extrude sketch_id=40 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[37]
+  inputs=[37:base]

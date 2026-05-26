@@ -31,17 +31,17 @@ sketch 16 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1
   geo 26 type=Circle constr=0 params=[0.023,-0.023,0.009]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.090 dist2=0.000 end=4 flip=0
-  inputs=[0]
+  inputs=[0:base]
 feat 11 name=Box type=PrimBox suppressed=0 payload=box l=0.063 w=0.063 h=0.045
-  inputs=[10]
+  inputs=[10:base]
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=6 flip=1
-  inputs=[11]
+  inputs=[11:base]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=6 flip=0
-  inputs=[13]
+  inputs=[13:base]
 feat 16 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[15]
+  inputs=[15:base]
 feat 18 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.022 edges=4
-  inputs=[17]
+  inputs=[17:base]

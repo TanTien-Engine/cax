@@ -18,12 +18,12 @@ sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   geo 16 type=Line constr=0 params=[-0.007,0.010,-0.007,0.000]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.016 dist2=0.000 end=0 flip=0
-  inputs=[0]
+  inputs=[0:base]
 feat 11 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.006 d2=0.000 edges=2
-  inputs=[10]
+  inputs=[10:base]
 feat 12 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.030
-  inputs=[11]
+  inputs=[11:base]
 feat 13 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.007
-  inputs=[12]
+  inputs=[12:base]
 feat 14 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[13]
+  inputs=[13:base]

@@ -153,4 +153,45 @@ enum class ExtrudeEndType : uint8_t
     UpToFirst         = 6,  // stop at first face hit (FreeCAD Type=2)
 };
 
+// Role of an entry in FeatureIR::input_feature_ids. Each input id
+// is paired with one of these via the parallel FeatureIR::input_roles
+// vector. Introduced in P3.3 of the multi-last_node refactor to
+// disambiguate the DAG-level inputs that earlier landed in disjoint
+// ad-hoc channels (body chain pred / Boolean operands / pattern
+// Originals / Draft Array target / sketch supports).
+//
+// Order must stay stable across releases; serialized as one byte
+// per role in FeatureStore. Only append at the bottom.
+enum class InputRole : uint8_t
+{
+    // Body shape this feature extends or modifies. The PartDesign
+    // chain predecessor and standalone-operator base (Part::Thickness
+    // referencing a body tip). Replayer's ResolveBaseNode picks
+    // the first Base-role input, falling back to -1 if absent.
+    Base          = 0,
+
+    // Multi-input fold operand (Part::Cut / Fuse / Common /
+    // MultiFuse / MultiCommon). Replayer's Boolean handler reads
+    // every Operand-role entry in order.
+    Operand       = 1,
+
+    // Tool feature whose tool_node + base_node + op_kind get
+    // multiplied by a Pattern / Mirror / MultiTransform (the
+    // PartDesign Originals list).
+    Tool          = 2,
+
+    // Single body to pattern wholesale (Draft polar Array's Base
+    // link). Distinct from Tool because there's no per-tool
+    // base/op_kind to recombine -- the patterned body itself IS
+    // the result.
+    PatternTarget = 3,
+
+    // Geometry the feature depends on but doesn't consume as its
+    // body shape. Sketch.Support face / DatumPlane MapMode parent.
+    // Replayer currently ignores this role; it's recorded so a
+    // future "rebuild this feature when its support changes" pass
+    // can walk the graph.
+    Reference     = 4,
+};
+
 } // namespace cadapp

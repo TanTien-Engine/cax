@@ -36,9 +36,9 @@ feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=AdditiveLoft type=Loft suppressed=0 payload=loft profile_count=4 closed=0 profiles=[9,9,10,11]
-  inputs=[0]
+  inputs=[0:base]
 feat 13 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.002 dist2=0.000 end=0 flip=0
-  inputs=[12]
+  inputs=[12:base]
 feat 15 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[14]
+  inputs=[14:base]

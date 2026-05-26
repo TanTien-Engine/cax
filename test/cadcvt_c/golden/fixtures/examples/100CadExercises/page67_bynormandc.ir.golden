@@ -26,24 +26,24 @@ sketch 20 name=Sketch005 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   geo 19 type=Circle constr=0 params=[0.035,0.175,0.010]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.120 dist2=0.000 end=4 flip=0
-  inputs=[0]
+  inputs=[0:base]
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=2 flip=0
-  inputs=[10]
+  inputs=[10:base]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[13]
+  inputs=[13:base]
 feat 16 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[15]
+  inputs=[15:base]
 feat 18 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=18
 feat 19 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=18 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[17]
+  inputs=[17:base]
 feat 20 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pocket003 type=CutExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
-  inputs=[19]
+  inputs=[19:base]
 feat 22 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.025 edges=4
-  inputs=[21]
+  inputs=[21:base]
 feat 23 name=Page type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawPage
 feat 24 name=Template type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawSVGTemplate
 feat 25 name=ProjGroup type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroup
