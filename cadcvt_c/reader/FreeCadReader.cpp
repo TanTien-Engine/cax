@@ -3,6 +3,8 @@
 #include "cadapp_c/ir/TopoRefIR.h"
 #include "cadapp_c/resolve/TopoGeomUtils.h"
 
+#include "brepkit_c/TopoShape.h"
+
 // Single-file deps in thirdparty/. See PLACE_*_HERE.txt in each dir
 // for how to drop them in.
 #include "miniz.h"
@@ -10,6 +12,7 @@
 
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
@@ -26,6 +29,7 @@
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
+#include <gp_Trsf.hxx>
 
 #include <algorithm>
 #include <cctype>
@@ -3559,6 +3563,39 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             pl.strings["freecad_type"] = pending.type;
             feat.type = FeatType::Unknown;
             feat.data = std::move(pl);
+        }
+
+        // Pre-load the FreeCAD-authored brep for this feature, if
+        // present in the .FCStd archive, and stash it in
+        // doc.authored_shapes under the feature id. The Replayer
+        // uses this as a hard-failure fallback when cax's own
+        // replay of the feature returns a null shape (typically an
+        // OCCT bug demoted to clean failure by the SEH harness in
+        // TopoAlgo -- Page_037's Thickness AV is the prototype
+        // case). No-op for archives that don't store a brep for
+        // this feature (sketches, container-only entries, etc.).
+        if (m_zip) {
+            auto bp_it = m_feat_brep_path.find(feat.name);
+            if (bp_it != m_feat_brep_path.end()) {
+                TopoDS_Shape authored;
+                if (LoadAuthoredShape(m_zip, bp_it->second, authored)
+                    && !authored.IsNull())
+                {
+                    if (m_unit_scale != 1.0) {
+                        gp_Trsf trsf;
+                        trsf.SetScale(gp_Pnt(0.0, 0.0, 0.0), m_unit_scale);
+                        BRepBuilderAPI_Transform trf(authored, trsf,
+                                                     /*Copy*/ Standard_True);
+                        if (trf.IsDone()) {
+                            authored = trf.Shape();
+                        }
+                    }
+                    if (!authored.IsNull()) {
+                        out.authored_shapes[feat.id] =
+                            std::make_shared<brepkit::TopoShape>(authored);
+                    }
+                }
+            }
         }
 
         out.features.push_back(std::move(feat));

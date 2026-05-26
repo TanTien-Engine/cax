@@ -1474,6 +1474,52 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
         if (node >= 0)
         {
+            // Hard-failure substitution: if cax's replay of this
+            // feature returns a null/empty shape and the reader
+            // pre-loaded a FreeCAD-authored brep for it, replace
+            // the failed node with a const node holding the
+            // authored shape. Catches OCCT-bug dead-ends like
+            // Page_037's Thickness (MakeThickSolidByJoin SEH-AVs
+            // inside BRepTools_History on certain geometries; the
+            // SEH harness in TopoAlgo demotes the AV to a clean
+            // nullptr). Without this fallback the whole document
+            // fails to load even though FreeCAD has the correct
+            // shelled body sitting right there in the .FCStd.
+            //
+            // Eager-eval cost: the node would be eval'd at final
+            // emit anyway; CalcGraph caches, so the only added
+            // work is the per-feature decision -- bounded by the
+            // size of doc.authored_shapes (empty when the source
+            // wasn't .FCStd, in which case this is a no-op).
+            //
+            // Trigger gated on hard nulls only -- "let the doc
+            // finish loading when OCCT is wedged", not "silently
+            // mask normal-path bugs". TopoNaming lineage breaks
+            // for the substituted feature (the authored shape's
+            // TShape* aren't in the running lineage chain), but
+            // downstream refs in this codebase resolve
+            // geometrically (centroid + normal + samples), not by
+            // UID, so the chain break only affects
+            // write-back-uid consumers.
+            auto auth_it = doc.authored_shapes.find(feat.id);
+            if (auth_it != doc.authored_shapes.end() && auth_it->second)
+            {
+                auto val = cg->Eval(node);
+                auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
+                bool ok = sv && sv->shape && !sv->shape->GetShape().IsNull();
+                if (!ok)
+                {
+                    int sub = cg->AddConst(auth_it->second,
+                                           "authored_sub_" + feat.name);
+                    std::fprintf(stderr,
+                                 "[Replayer] feat %s (id=%u) cax replay "
+                                 "null; substituting FreeCAD authored brep "
+                                 "(node %d -> %d)\n",
+                                 feat.name.c_str(), feat.id, node, sub);
+                    node = sub;
+                }
+            }
+
             last_node = node;
             feature_nodes[feat.id] = node;
             if (!feat.name.empty()) {

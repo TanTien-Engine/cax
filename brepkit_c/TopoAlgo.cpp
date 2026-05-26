@@ -2017,6 +2017,15 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
     // the whole op as failed and return nullptr -- the caller (the
     // "shell" calc op in calc_ops.cpp) already handles a null shape
     // the same way it handles any other op failure.
+    //
+    // A BySimple recovery attempt was tried and reverted: each SEH
+    // catch leaks OCCT internal allocations (C++ unwind is bypassed,
+    // see the comment near seh_call_void), and stacking two of them
+    // -- one for ByJoin's history, one for BySimple's -- corrupted
+    // enough state that ves runtime constants got trampled, crashing
+    // the script VM with a null ObjString. One SEH catch per op is
+    // the budget; spend it on the failure path and exit, don't try
+    // to recover.
     opencascade::handle<BRepTools_History> join_hist;
     {
         TopTools_ListOfShape join_args;

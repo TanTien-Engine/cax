@@ -7,9 +7,14 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <variant>
 #include <vector>
+
+// Forward-declare so DocumentIR can hold authored-shape handles
+// without pulling brepkit / OCCT headers into the IR layer.
+namespace brepkit { class TopoShape; }
 
 // ============================================================
 // cadapp/ir/FeatureIR.h
@@ -395,6 +400,19 @@ struct DocumentIR
     std::string            doc_path;   // origin file path, for diagnostics
     std::vector<SketchIR>  sketches;
     std::vector<FeatureIR> features;
+
+    // feature_id -> the source-side authored body for that feature.
+    // Populated by readers that have access to a ground-truth shape
+    // (FreeCAD's .brp dumps inside the .FCStd archive); empty for
+    // readers that don't. Already scaled into IR units. Used by the
+    // Replayer as a last-resort substitute when cax's own replay of
+    // a feature returns a null shape (typically an OCCT bug on a
+    // specific geometry that the SEH harness in TopoAlgo demoted to
+    // a clean failure -- see e.g. Page_037's MakeThickSolidByJoin
+    // BRepTools_History AV). Not consulted for soft divergences; the
+    // intent is "let the doc finish loading when OCCT is wedged",
+    // not "silently mask normal-path bugs".
+    std::map<uint32_t, std::shared_ptr<brepkit::TopoShape>> authored_shapes;
 };
 
 } // namespace cadapp
