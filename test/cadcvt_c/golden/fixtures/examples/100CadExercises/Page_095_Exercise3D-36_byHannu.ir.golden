@@ -1,0 +1,26 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=9 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.093,0.000]
+  geo 2 type=Line constr=0 params=[0.093,0.000,0.108,0.086]
+  geo 3 type=Line constr=0 params=[0.108,0.086,0.093,0.088]
+  geo 4 type=Arc constr=0 params=[0.092,0.083,0.005,1.3963,2.9671]
+  geo 5 type=Line constr=0 params=[0.088,0.084,0.080,0.042]
+  geo 6 type=Arc constr=0 params=[0.054,0.047,0.027,4.7124,6.1087]
+  geo 7 type=Line constr=0 params=[0.054,0.020,0.005,0.020]
+  geo 8 type=Arc constr=0 params=[0.005,0.015,0.005,1.5708,3.1416]
+  geo 9 type=Line constr=0 params=[0.000,0.015,0.000,0.000]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.035) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=9 cons=0
+  geo 10 type=Line constr=0 params=[0.000,-0.024,0.009,0.016]
+  geo 11 type=Arc constr=0 params=[0.045,0.185,0.173,4.5004,4.8967]
+  geo 12 type=Arc constr=0 params=[0.078,0.010,0.005,0.2094,1.7552]
+  geo 13 type=Line constr=0 params=[0.083,0.011,0.090,-0.024]
+  geo 14 type=Line constr=0 params=[0.090,-0.024,0.080,-0.024]
+  geo 15 type=Line constr=0 params=[0.080,-0.024,0.074,0.004]
+  geo 16 type=Arc constr=0 params=[0.045,0.185,0.183,4.5539,4.8713]
+  geo 17 type=Line constr=0 params=[0.016,0.004,0.010,-0.024]
+  geo 18 type=Line constr=0 params=[0.010,-0.024,0.000,-0.024]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.070 dist2=0.000 end=4 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+feat 13 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)

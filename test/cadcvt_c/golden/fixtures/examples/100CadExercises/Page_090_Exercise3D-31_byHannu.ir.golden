@@ -1,0 +1,43 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=13 cons=0
+  geo 1 type=Arc constr=0 params=[0.000,0.070,0.035,0.0000,3.1416]
+  geo 2 type=Line constr=0 params=[-0.035,0.070,-0.035,0.070]
+  geo 3 type=Line constr=0 params=[0.035,0.070,0.035,0.000]
+  geo 4 type=Line constr=0 params=[-0.035,0.000,0.035,0.000]
+  geo 5 type=Point constr=0 params=[0.000,0.000]
+  geo 6 type=Circle constr=0 params=[0.000,0.070,0.020]
+  geo 7 type=Line constr=1 params=[-0.070,0.000,-0.035,0.000]
+  geo 8 type=Line constr=1 params=[-0.049,0.056,-0.070,0.056]
+  geo 9 type=Line constr=1 params=[-0.070,0.056,-0.070,0.000]
+  geo 10 type=Arc constr=1 params=[-0.049,0.070,0.014,4.7124,6.2832]
+  geo 11 type=Line constr=0 params=[-0.035,0.000,-0.035,0.070]
+  geo 12 type=Circle constr=1 params=[-0.055,0.023,0.005]
+  geo 13 type=Line constr=1 params=[-0.035,0.070,0.035,0.070]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=13 cons=0
+  geo 14 type=Arc constr=1 params=[0.000,0.070,0.035,0.0000,3.1416]
+  geo 15 type=Line constr=1 params=[-0.035,0.070,-0.035,0.070]
+  geo 16 type=Line constr=1 params=[0.035,0.070,0.035,0.000]
+  geo 17 type=Line constr=1 params=[-0.035,0.000,0.035,0.000]
+  geo 18 type=Point constr=1 params=[0.000,0.000]
+  geo 19 type=Circle constr=1 params=[0.000,0.070,0.020]
+  geo 20 type=Line constr=0 params=[-0.070,0.000,-0.035,0.000]
+  geo 21 type=Line constr=0 params=[-0.049,0.056,-0.070,0.056]
+  geo 22 type=Line constr=0 params=[-0.070,0.056,-0.070,0.000]
+  geo 23 type=Arc constr=0 params=[-0.049,0.070,0.014,4.7124,6.2832]
+  geo 24 type=Line constr=0 params=[-0.035,0.000,-0.035,0.070]
+  geo 25 type=Circle constr=0 params=[-0.055,0.023,0.005]
+  geo 26 type=Line constr=1 params=[-0.035,0.070,0.035,0.070]
+sketch 14 name=Sketch002 plane_origin=(0.020,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=0
+  geo 27 type=Line constr=0 params=[0.000,0.030,0.047,0.030]
+  geo 28 type=Line constr=0 params=[0.047,0.030,0.029,0.071]
+  geo 29 type=Arc constr=0 params=[0.015,0.065,0.015,0.4188,3.1416]
+  geo 30 type=Line constr=0 params=[0.000,0.065,0.000,0.030]
+  geo 31 type=Circle constr=0 params=[0.015,0.065,0.005]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.030 dist2=0.000 end=0 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.025 dist2=0.000 end=0 flip=0
+feat 13 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
+feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
+feat 15 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.015 dist2=0.000 end=0 flip=0
+feat 16 name=Mirrored001 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)

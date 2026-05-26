@@ -1,0 +1,68 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=17 cons=0
+  geo 1 type=Line constr=0 params=[0.060,0.030,0.000,0.030]
+  geo 2 type=Arc constr=0 params=[0.000,0.000,0.030,1.5708,4.7124]
+  geo 3 type=Line constr=0 params=[0.000,-0.030,0.060,-0.030]
+  geo 4 type=Line constr=0 params=[0.060,-0.030,0.060,0.030]
+  geo 5 type=Circle constr=0 params=[0.000,0.000,0.010]
+  geo 6 type=Circle constr=0 params=[0.045,-0.015,0.005]
+  geo 7 type=Circle constr=0 params=[0.045,0.015,0.005]
+  geo 8 type=Arc constr=1 params=[0.000,0.000,0.020,1.5708,4.7124]
+  geo 9 type=Line constr=1 params=[0.000,-0.020,0.015,-0.020]
+  geo 10 type=Line constr=1 params=[0.015,-0.020,0.015,-0.030]
+  geo 11 type=Line constr=1 params=[0.000,0.020,0.015,0.020]
+  geo 12 type=Line constr=1 params=[0.015,0.020,0.015,0.030]
+  geo 13 type=Line constr=1 params=[0.015,0.020,0.015,-0.020]
+  geo 14 type=Line constr=1 params=[0.055,0.030,0.055,0.025]
+  geo 15 type=Line constr=1 params=[0.055,0.025,0.060,0.025]
+  geo 16 type=Line constr=1 params=[0.055,-0.030,0.055,-0.025]
+  geo 17 type=Line constr=1 params=[0.055,-0.025,0.060,-0.025]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.020) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=23 cons=0
+  geo 18 type=Arc constr=0 params=[0.000,0.000,0.030,1.5708,4.7124]
+  geo 19 type=Circle constr=1 params=[0.000,0.000,0.010]
+  geo 20 type=Circle constr=1 params=[0.045,-0.015,0.005]
+  geo 21 type=Circle constr=1 params=[0.045,0.015,0.005]
+  geo 22 type=Arc constr=0 params=[0.000,0.000,0.020,1.5708,4.7124]
+  geo 23 type=Line constr=0 params=[0.000,-0.020,0.015,-0.020]
+  geo 24 type=Line constr=0 params=[0.015,-0.020,0.015,-0.030]
+  geo 25 type=Line constr=0 params=[0.000,0.020,0.015,0.020]
+  geo 26 type=Line constr=0 params=[0.015,0.020,0.015,0.030]
+  geo 27 type=Line constr=1 params=[0.015,0.020,0.015,-0.020]
+  geo 28 type=Line constr=0 params=[0.055,0.030,0.055,0.025]
+  geo 29 type=Line constr=0 params=[0.055,0.025,0.060,0.025]
+  geo 30 type=Line constr=0 params=[0.055,-0.030,0.055,-0.025]
+  geo 31 type=Line constr=0 params=[0.055,-0.025,0.060,-0.025]
+  geo 32 type=Line constr=0 params=[0.055,0.030,0.060,0.030]
+  geo 33 type=Line constr=0 params=[0.055,-0.030,0.060,-0.030]
+  geo 34 type=Line constr=0 params=[0.060,0.025,0.060,0.030]
+  geo 35 type=Line constr=0 params=[0.060,-0.025,0.060,-0.030]
+  geo 36 type=Line constr=1 params=[0.060,-0.025,0.060,0.025]
+  geo 37 type=Line constr=0 params=[0.000,0.030,0.015,0.030]
+  geo 38 type=Line constr=1 params=[0.015,0.030,0.055,0.030]
+  geo 39 type=Line constr=0 params=[0.000,-0.030,0.015,-0.030]
+  geo 40 type=Line constr=1 params=[0.015,-0.030,0.055,-0.030]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.045 dist2=0.000 end=0 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+feat 13 name=Page type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawPage
+feat 14 name=Template type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawSVGTemplate
+feat 15 name=ProjGroup type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroup
+feat 16 name=ProjItem type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 17 name=ProjItem001 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 18 name=ProjItem003 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 19 name=Dimension type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 20 name=Dimension001 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 21 name=Dimension002 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 22 name=Dimension003 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 23 name=Dimension005 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 24 name=Dimension006 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 25 name=Dimension007 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 26 name=Dimension008 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 27 name=Dimension009 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 28 name=Dimension010 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 29 name=Dimension011 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 30 name=Dimension012 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 31 name=Dimension013 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 32 name=Dimension014 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 33 name=Dimension015 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension

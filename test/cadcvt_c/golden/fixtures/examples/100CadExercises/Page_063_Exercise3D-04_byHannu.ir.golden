@@ -1,0 +1,24 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=0
+  geo 1 type=Line constr=0 params=[-0.007,0.000,-0.026,0.000]
+  geo 2 type=Line constr=0 params=[-0.026,0.000,-0.026,0.007]
+  geo 3 type=Line constr=0 params=[-0.026,0.007,-0.015,0.007]
+  geo 4 type=Line constr=0 params=[-0.015,0.007,-0.015,0.032]
+  geo 5 type=Line constr=0 params=[-0.015,0.032,-0.005,0.032]
+  geo 6 type=Line constr=0 params=[-0.005,0.032,-0.005,0.017]
+  geo 7 type=Line constr=0 params=[-0.005,0.017,0.005,0.017]
+  geo 8 type=Line constr=0 params=[0.005,0.017,0.005,0.032]
+  geo 9 type=Line constr=0 params=[0.005,0.032,0.015,0.032]
+  geo 10 type=Line constr=0 params=[0.015,0.032,0.015,0.007]
+  geo 11 type=Line constr=0 params=[0.015,0.007,0.026,0.007]
+  geo 12 type=Line constr=0 params=[0.026,0.007,0.026,0.000]
+  geo 13 type=Line constr=0 params=[0.026,0.000,0.007,0.000]
+  geo 14 type=Line constr=0 params=[0.007,0.000,0.007,0.010]
+  geo 15 type=Line constr=0 params=[0.007,0.010,-0.007,0.010]
+  geo 16 type=Line constr=0 params=[-0.007,0.010,-0.007,0.000]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.016 dist2=0.000 end=0 flip=0
+feat 11 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.006 d2=0.000 edges=2
+feat 12 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.030
+feat 13 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.007
+feat 14 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)

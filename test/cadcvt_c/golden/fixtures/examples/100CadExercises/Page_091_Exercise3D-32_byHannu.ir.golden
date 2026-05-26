@@ -1,0 +1,36 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=10 cons=0
+  geo 1 type=Line constr=0 params=[0.004,-0.010,0.004,0.062]
+  geo 2 type=Line constr=0 params=[0.004,0.062,0.008,0.062]
+  geo 3 type=Arc constr=0 params=[0.008,0.060,0.002,0.0000,1.5708]
+  geo 4 type=Line constr=0 params=[0.010,0.060,0.010,0.038]
+  geo 5 type=Line constr=0 params=[0.010,0.038,0.014,0.038]
+  geo 6 type=Line constr=0 params=[0.014,0.038,0.014,0.014]
+  geo 7 type=Line constr=0 params=[0.014,0.014,0.018,0.014]
+  geo 8 type=Line constr=0 params=[0.018,0.014,0.018,-0.010]
+  geo 9 type=Line constr=0 params=[0.018,-0.010,0.004,-0.010]
+  geo 10 type=Point constr=0 params=[0.000,0.000]
+sketch 12 name=Sketch001 plane_origin=(0.010,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=10 cons=0
+  geo 11 type=Line constr=1 params=[0.038,0.010,0.062,0.010]
+  geo 12 type=Line constr=1 params=[0.062,0.010,0.062,-0.010]
+  geo 13 type=Line constr=1 params=[0.062,-0.010,0.038,-0.010]
+  geo 14 type=Line constr=1 params=[0.038,-0.010,0.038,0.010]
+  geo 15 type=Arc constr=0 params=[0.044,0.000,0.002,1.5708,4.7124]
+  geo 16 type=Arc constr=0 params=[0.056,0.000,0.002,4.7124,7.8540]
+  geo 17 type=Line constr=0 params=[0.044,-0.002,0.056,-0.002]
+  geo 18 type=Line constr=0 params=[0.044,0.002,0.056,0.002]
+  geo 19 type=Line constr=1 params=[0.038,0.000,0.044,0.000]
+  geo 20 type=Line constr=1 params=[0.056,0.000,0.062,0.000]
+sketch 14 name=Sketch002 plane_origin=(0.014,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=4 cons=0
+  geo 21 type=Line constr=0 params=[-0.010,0.020,0.010,0.020]
+  geo 22 type=Line constr=0 params=[0.010,0.020,0.010,-0.020]
+  geo 23 type=Line constr=0 params=[0.010,-0.020,-0.010,-0.020]
+  geo 24 type=Line constr=0 params=[-0.010,-0.020,-0.010,0.020]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=1
+feat 11 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.060
+feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
+feat 13 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.002 dist2=0.000 end=0 flip=1
+feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
+feat 15 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=0
+feat 16 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=2 total_angle=6.2832]

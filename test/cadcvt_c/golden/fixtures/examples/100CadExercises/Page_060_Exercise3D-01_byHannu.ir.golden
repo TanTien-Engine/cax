@@ -1,0 +1,21 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=11 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.019,0.000,0.045]
+  geo 2 type=Line constr=0 params=[0.000,0.045,-0.014,0.045]
+  geo 3 type=Line constr=0 params=[-0.014,0.045,-0.014,0.020]
+  geo 4 type=Line constr=0 params=[-0.014,0.020,-0.058,0.020]
+  geo 5 type=Line constr=0 params=[-0.058,0.020,-0.058,0.025]
+  geo 6 type=Line constr=0 params=[-0.058,0.025,-0.088,0.025]
+  geo 7 type=Line constr=0 params=[-0.088,0.025,-0.088,0.019]
+  geo 8 type=Line constr=0 params=[-0.088,0.019,-0.064,0.019]
+  geo 9 type=Line constr=0 params=[-0.064,0.019,-0.064,0.015]
+  geo 10 type=Line constr=0 params=[-0.064,0.015,-0.003,0.015]
+  geo 11 type=Line constr=0 params=[-0.003,0.015,0.000,0.019]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=2 cons=0
+  geo 12 type=Circle constr=1 params=[0.000,0.000,0.033]
+  geo 13 type=Circle constr=0 params=[0.033,0.000,0.006]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) angle=6.2832 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+feat 13 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) count=4 total_angle=6.2832

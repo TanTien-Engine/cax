@@ -1,0 +1,49 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=8 cons=0
+  geo 1 type=Line constr=0 params=[-0.060,0.000,0.060,0.000]
+  geo 2 type=Line constr=0 params=[0.060,0.000,0.060,0.010]
+  geo 3 type=Line constr=0 params=[0.060,0.010,0.003,0.010]
+  geo 4 type=Line constr=0 params=[-0.060,0.010,-0.060,0.000]
+  geo 5 type=Line constr=0 params=[0.003,0.070,0.003,0.010]
+  geo 6 type=Line constr=0 params=[-0.003,0.010,-0.003,0.070]
+  geo 7 type=Line constr=0 params=[-0.003,0.010,-0.060,0.010]
+  geo 8 type=Arc constr=0 params=[0.000,0.105,0.035,4.7982,10.9098]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=0
+  geo 9 type=Line constr=0 params=[-0.048,0.070,-0.042,0.020]
+  geo 10 type=Line constr=0 params=[-0.042,0.020,-0.042,-0.005]
+  geo 11 type=Line constr=0 params=[-0.042,-0.005,-0.053,-0.005]
+  geo 12 type=Line constr=0 params=[-0.053,-0.005,-0.053,0.070]
+  geo 13 type=Line constr=0 params=[-0.053,0.070,-0.048,0.070]
+sketch 13 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=0
+  geo 14 type=Line constr=0 params=[-0.042,0.105,-0.042,0.147]
+  geo 15 type=Arc constr=0 params=[-0.028,0.147,0.014,0.0000,3.1416]
+  geo 16 type=Line constr=0 params=[-0.014,0.147,-0.014,0.105]
+  geo 17 type=Line constr=0 params=[-0.014,0.105,-0.042,0.105]
+  geo 18 type=Circle constr=0 params=[-0.028,0.147,0.006]
+sketch 15 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=4 cons=0
+  geo 19 type=Line constr=0 params=[-0.036,0.010,-0.042,0.010]
+  geo 20 type=Line constr=0 params=[-0.042,0.010,-0.042,0.105]
+  geo 21 type=Line constr=0 params=[-0.042,0.105,-0.036,0.105]
+  geo 22 type=Line constr=0 params=[-0.036,0.105,-0.036,0.010]
+sketch 17 name=Sketch004 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=4 cons=0
+  geo 23 type=Arc constr=0 params=[0.000,0.105,0.030,1.6208,7.8040]
+  geo 24 type=Line constr=0 params=[-0.002,0.135,-0.002,0.170]
+  geo 25 type=Line constr=0 params=[-0.002,0.170,0.002,0.170]
+  geo 26 type=Line constr=0 params=[0.002,0.170,0.002,0.135]
+sketch 19 name=Sketch005 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 27 type=Circle constr=0 params=[-0.045,-0.021,0.008]
+  geo 28 type=Circle constr=0 params=[0.045,-0.021,0.008]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.048 dist2=0.000 end=0 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
+feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
+feat 14 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.065 dist2=0.000 end=4 flip=0
+feat 15 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=15
+feat 16 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.060 dist2=0.000 end=4 flip=0
+feat 17 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=17
+feat 18 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+feat 19 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=19
+feat 20 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=19 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+feat 21 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.006 edges=4
+feat 22 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.016 edges=2

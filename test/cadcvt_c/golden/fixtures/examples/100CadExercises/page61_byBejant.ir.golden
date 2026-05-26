@@ -1,0 +1,31 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=4 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.010,0.000]
+  geo 2 type=Line constr=0 params=[0.010,0.000,0.010,0.002]
+  geo 3 type=Line constr=0 params=[0.010,0.002,0.000,0.002]
+  geo 4 type=Line constr=0 params=[0.000,0.002,0.000,0.000]
+sketch 10 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=5 cons=0
+  geo 5 type=Arc constr=0 params=[0.000,0.025,0.020,4.7124,4.9763]
+  geo 6 type=Arc constr=0 params=[0.006,0.003,0.003,5.2583,8.1179]
+  geo 7 type=Arc constr=0 params=[0.015,-0.012,0.015,2.1167,2.8450]
+  geo 8 type=Line constr=0 params=[0.001,-0.008,0.000,-0.008]
+  geo 9 type=Line constr=0 params=[0.000,-0.008,0.000,0.005]
+sketch 13 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=4 cons=0
+  geo 10 type=Arc constr=0 params=[-0.009,-0.008,0.009,3.1416,6.2832]
+  geo 11 type=Arc constr=0 params=[-0.017,-0.008,0.001,0.0000,3.1416]
+  geo 12 type=Arc constr=0 params=[-0.009,-0.008,0.007,3.1416,6.2832]
+  geo 13 type=Line constr=0 params=[-0.002,-0.008,0.000,-0.008]
+sketch 15 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 14 type=Circle constr=0 params=[0.006,0.003,0.001]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
+feat 11 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.016 dist2=0.000 end=4 flip=0
+feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=10 dir=(0.000,0.000,1.000) dist=0.002 dist2=0.000 end=0 flip=0
+feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
+feat 14 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.001 dist2=0.000 end=0 flip=0
+feat 15 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=15
+feat 16 name=Pad003 type=BossExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=0
+feat 17 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
+feat 18 name=Mirrored001 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
+feat 19 name=Mirrored002 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
+feat 20 name=Mirrored003 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)

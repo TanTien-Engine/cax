@@ -1,0 +1,23 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=7 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.000,0.013]
+  geo 2 type=Line constr=0 params=[0.000,0.013,0.007,0.026]
+  geo 3 type=Line constr=0 params=[0.007,0.026,0.043,0.026]
+  geo 4 type=Line constr=0 params=[0.043,0.026,0.056,0.013]
+  geo 5 type=Line constr=0 params=[0.056,0.013,0.056,0.000]
+  geo 6 type=Line constr=0 params=[0.056,0.000,0.000,0.000]
+  geo 7 type=Line constr=1 params=[0.003,0.019,0.050,0.019]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.006) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=9 cons=0
+  geo 8 type=Line constr=1 params=[0.000,0.000,0.000,0.013]
+  geo 9 type=Line constr=1 params=[0.000,0.013,0.007,0.026]
+  geo 10 type=Line constr=0 params=[0.007,0.026,0.043,0.026]
+  geo 11 type=Line constr=1 params=[0.043,0.026,0.056,0.013]
+  geo 12 type=Line constr=1 params=[0.056,0.013,0.056,0.000]
+  geo 13 type=Line constr=1 params=[0.056,0.000,0.000,0.000]
+  geo 14 type=Line constr=0 params=[0.003,0.019,0.050,0.019]
+  geo 15 type=Line constr=0 params=[0.003,0.019,0.007,0.026]
+  geo 16 type=Line constr=0 params=[0.043,0.026,0.050,0.019]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.018 dist2=0.000 end=0 flip=0
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.006 dist2=0.000 end=0 flip=0

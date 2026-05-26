@@ -1,0 +1,35 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=10 cons=0
+  geo 1 type=Line constr=0 params=[-0.040,0.097,-0.030,0.097]
+  geo 2 type=Line constr=0 params=[-0.030,0.097,-0.006,0.077]
+  geo 3 type=Line constr=0 params=[0.000,0.077,0.000,0.023]
+  geo 4 type=Arc constr=0 params=[0.000,0.000,0.023,1.5708,4.7124]
+  geo 5 type=Line constr=0 params=[0.000,-0.023,0.000,-0.038]
+  geo 6 type=Arc constr=0 params=[0.000,0.000,0.038,2.4435,4.7124]
+  geo 7 type=Arc constr=0 params=[-0.044,0.037,0.020,5.5851,7.6502]
+  geo 8 type=Line constr=0 params=[-0.040,0.057,-0.040,0.097]
+  geo 9 type=Line constr=1 params=[0.000,0.000,-0.029,0.024]
+  geo 10 type=Line constr=0 params=[0.000,0.077,-0.006,0.077]
+sketch 12 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 11 type=Circle constr=0 params=[0.000,0.000,0.006]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=4 flip=0
+feat 11 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
+feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
+feat 13 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+feat 14 name=Page type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawPage
+feat 15 name=Template type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawSVGTemplate
+feat 16 name=ProjGroup type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroup
+feat 17 name=ProjItem type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 18 name=ProjItem002 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 19 name=ProjItem003 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 20 name=Dimension type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 21 name=Dimension001 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 22 name=Dimension002 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 23 name=Dimension003 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 24 name=Dimension004 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 25 name=Dimension005 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 26 name=Dimension006 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 27 name=Dimension007 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 28 name=Dimension008 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
+feat 29 name=Dimension009 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension

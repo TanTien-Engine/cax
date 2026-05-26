@@ -1,0 +1,11 @@
+doc source=freecad
+sketch 11 name=Sketch plane_origin=(0.025,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=2 cons=0
+  geo 1 type=Circle constr=0 params=[0.000,0.000,0.010]
+  geo 2 type=Circle constr=0 params=[0.000,0.000,0.013]
+feat 9 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.010 h=0.025
+feat 10 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.008 h=0.025
+feat 11 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.003 dist2=0.000 end=0 flip=1
+feat 13 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=3 total_angle=3.1416]
+feat 15 name=Cylinder002 type=PrimCylinder suppressed=0 payload=cylinder r=0.008 h=0.050
+feat 16 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.001 edges=14

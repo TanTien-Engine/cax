@@ -1,0 +1,36 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=30 cons=0
+  geo 1 type=Line constr=0 params=[0.048,0.000,-0.048,0.000]
+  geo 2 type=Arc constr=0 params=[-0.048,0.010,0.010,3.2856,4.7124]
+  geo 3 type=Line constr=0 params=[-0.058,0.009,-0.075,0.129]
+  geo 4 type=Arc constr=0 params=[-0.065,0.130,0.010,1.5708,3.2856]
+  geo 5 type=Line constr=0 params=[-0.065,0.140,-0.050,0.140]
+  geo 6 type=Arc constr=0 params=[-0.050,0.130,0.010,0.0000,1.5708]
+  geo 7 type=Line constr=0 params=[-0.040,0.130,-0.040,0.070]
+  geo 8 type=Arc constr=0 params=[-0.030,0.070,0.010,3.1416,4.7124]
+  geo 9 type=Line constr=0 params=[-0.030,0.060,0.030,0.060]
+  geo 10 type=Arc constr=0 params=[0.030,0.070,0.010,4.7124,6.2832]
+  geo 11 type=Line constr=0 params=[0.040,0.070,0.040,0.130]
+  geo 12 type=Arc constr=0 params=[0.050,0.130,0.010,1.5708,3.1416]
+  geo 13 type=Line constr=0 params=[0.050,0.140,0.065,0.140]
+  geo 14 type=Arc constr=0 params=[0.065,0.130,0.010,6.1392,7.8540]
+  geo 15 type=Line constr=0 params=[0.075,0.129,0.058,0.009]
+  geo 16 type=Arc constr=0 params=[0.048,0.010,0.010,4.7124,6.1392]
+  geo 17 type=Point constr=0 params=[0.000,0.000]
+  geo 18 type=Point constr=0 params=[0.000,0.000]
+  geo 19 type=Circle constr=0 params=[-0.057,0.120,0.008]
+  geo 20 type=Circle constr=0 params=[0.057,0.120,0.008]
+  geo 21 type=Circle constr=0 params=[0.045,0.020,0.008]
+  geo 22 type=Circle constr=0 params=[-0.045,0.020,0.008]
+  geo 23 type=Line constr=1 params=[-0.030,0.060,0.030,0.060]
+  geo 24 type=Line constr=1 params=[0.030,0.060,0.030,0.000]
+  geo 25 type=Line constr=1 params=[0.030,0.000,-0.030,0.000]
+  geo 26 type=Line constr=1 params=[-0.030,0.000,-0.030,0.060]
+  geo 27 type=Line constr=1 params=[-0.074,0.120,-0.040,0.120]
+  geo 28 type=Line constr=1 params=[0.040,0.120,0.074,0.120]
+  geo 29 type=Line constr=1 params=[-0.059,0.020,-0.030,0.020]
+  geo 30 type=Line constr=1 params=[0.030,0.020,0.059,0.020]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=4 flip=0
+feat 11 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.030 h=0.060
+feat 12 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.023 h=0.060

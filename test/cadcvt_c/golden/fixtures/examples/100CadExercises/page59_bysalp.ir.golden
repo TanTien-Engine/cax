@@ -1,0 +1,27 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=11 cons=0
+  geo 1 type=Line constr=0 params=[0.015,0.064,0.015,0.003]
+  geo 2 type=Line constr=0 params=[0.015,0.003,0.019,0.000]
+  geo 3 type=Line constr=0 params=[0.019,0.000,0.045,0.000]
+  geo 4 type=Line constr=0 params=[0.045,0.000,0.045,0.014]
+  geo 5 type=Line constr=0 params=[0.045,0.014,0.020,0.014]
+  geo 6 type=Line constr=0 params=[0.020,0.014,0.020,0.058]
+  geo 7 type=Line constr=0 params=[0.020,0.058,0.025,0.058]
+  geo 8 type=Line constr=0 params=[0.025,0.058,0.025,0.088]
+  geo 9 type=Line constr=0 params=[0.015,0.064,0.019,0.064]
+  geo 10 type=Line constr=0 params=[0.019,0.064,0.019,0.088]
+  geo 11 type=Line constr=0 params=[0.019,0.088,0.025,0.088]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,-1.000) plane_xdir=(1.000,0.000,0.000) geos=9 cons=0
+  geo 12 type=Line constr=1 params=[-0.023,0.023,0.023,0.023]
+  geo 13 type=Line constr=1 params=[0.023,0.023,0.023,-0.023]
+  geo 14 type=Line constr=1 params=[0.023,-0.023,-0.023,-0.023]
+  geo 15 type=Line constr=1 params=[-0.023,-0.023,-0.023,0.023]
+  geo 16 type=Circle constr=0 params=[0.023,0.023,0.006]
+  geo 17 type=Circle constr=0 params=[-0.023,0.023,0.006]
+  geo 18 type=Circle constr=0 params=[-0.023,-0.023,0.006]
+  geo 19 type=Circle constr=0 params=[0.023,-0.023,0.006]
+  geo 20 type=Line constr=1 params=[0.023,0.023,0.000,0.000]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) angle=6.2832 flip=1
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1

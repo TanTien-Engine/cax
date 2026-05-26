@@ -1,0 +1,30 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=11 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.001,0.000]
+  geo 2 type=Line constr=0 params=[0.001,0.000,0.001,0.037]
+  geo 3 type=Line constr=1 params=[0.001,0.037,0.000,0.037]
+  geo 4 type=Line constr=0 params=[0.000,0.037,0.000,0.000]
+  geo 5 type=Line constr=0 params=[0.000,0.037,0.000,0.043]
+  geo 6 type=Line constr=0 params=[0.000,0.043,0.001,0.037]
+  geo 7 type=Line constr=1 params=[0.001,0.001,0.009,0.001]
+  geo 8 type=Line constr=1 params=[0.009,0.000,0.001,0.000]
+  geo 9 type=Line constr=1 params=[0.001,0.000,0.001,0.001]
+  geo 10 type=Arc constr=1 params=[0.009,0.000,0.000,4.7124,7.8540]
+  geo 11 type=Point constr=0 params=[0.000,0.000]
+sketch 12 name=Sketch001 plane_origin=(0.000,0.005,0.000) plane_normal=(-1.000,0.000,0.000) plane_xdir=(0.000,0.000,1.000) geos=11 cons=0
+  geo 12 type=Line constr=1 params=[0.000,0.000,0.001,0.000]
+  geo 13 type=Line constr=1 params=[0.001,0.000,0.001,0.037]
+  geo 14 type=Line constr=1 params=[0.001,0.037,0.000,0.037]
+  geo 15 type=Line constr=1 params=[0.000,0.037,0.000,0.000]
+  geo 16 type=Line constr=1 params=[0.000,0.037,0.000,0.043]
+  geo 17 type=Line constr=1 params=[0.000,0.043,0.001,0.037]
+  geo 18 type=Line constr=0 params=[0.001,0.001,0.009,0.001]
+  geo 19 type=Line constr=0 params=[0.009,0.000,0.001,0.000]
+  geo 20 type=Line constr=0 params=[0.001,0.000,0.001,0.001]
+  geo 21 type=Arc constr=0 params=[0.009,0.000,0.000,4.7124,7.8540]
+  geo 22 type=Point constr=1 params=[0.000,0.000]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(0.000,1.000,0.000) angle=6.2832 flip=0
+feat 11 name=Helix type=Unknown suppressed=0 payload=opaque freecad_type=Part::Helix
+feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
+feat 13 name=Sweep type=Unknown suppressed=0 payload=opaque freecad_type=Part::Sweep
