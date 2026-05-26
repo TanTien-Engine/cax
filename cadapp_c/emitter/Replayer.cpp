@@ -202,69 +202,38 @@ std::vector<FeatureToolInfo> ResolveOriginals(
 }
 
 // Compute the base body node this feature visit should consume.
-// Folds the four "what's my base?" sources scattered across Replay()
-// into one place, in order of increasing authority:
+// Reads the single explicit-input channel the Reader writes:
 //
-//   running_last_node           -- default chain (legacy, used when
-//                                  the IR carries no explicit link)
-//   ext_params["body_root"]=1   -> -1 (force fresh body; first
-//                                  3D feature of a new PartDesign::Body)
-//   ext_params["base_feature_id"]=N
-//                               -> feature_nodes[N] (cross-body
-//                                  redirect; standalone Part::Thickness
-//                                  / Fillet that reference a body tip
-//                                  from outside any body)
 //   ext_params["input_feature_id"]=N
-//                               -> feature_nodes[N] (explicit body
-//                                  chain predecessor, emitted by the
-//                                  Reader for every non-root body-owned
-//                                  feature; pins the chain in the IR
-//                                  rather than re-deriving it at replay
-//                                  time from emission order)
+//     N == 0  -- no predecessor (body root, or a feature that
+//                doesn't consume a base); returns -1.
+//     N >= 1  -- feature_nodes[N] is the base; returns that node,
+//                or -1 if the upstream feature failed to produce
+//                a shape.
 //
-// Later sources override earlier ones, so an explicit link always
-// wins over the running cursor or the body_root sentinel. By
-// construction body_root and input_feature_id are mutually exclusive
-// (body_root fires only on the first 3D feature of a body, before
-// the Reader has any prev for that body to record), and base_feature_id
-// only appears on standalone features outside any body (which don't
-// get an input_feature_id). The fall-through order is therefore
-// stable regardless of which legacy channels the Reader fills.
+//   key absent -- standalone feature with no IR-declared input
+//                 (Part::Box, Part::Sphere, ...). These don't
+//                 consume a base, so the handler ignores the
+//                 returned value and the running_last_node default
+//                 keeps the caller's cursor unchanged.
+//
+// Body roots are encoded as input_feature_id=0 by the Reader; that
+// sentinel collapses the previous body_root channel into the same
+// field as the regular chain predecessor.
 int ResolveBaseNode(const FeatureIR&                feat,
                     int                             running_last_node,
                     const std::map<uint32_t, int>&  feature_nodes)
 {
-    int base = running_last_node;
-
-    auto rit = feat.ext_params.find("body_root");
-    if (rit != feat.ext_params.end() && rit->second != 0.0) {
-        base = -1;
-    }
-
-    auto bit = feat.ext_params.find("base_feature_id");
-    if (bit != feat.ext_params.end())
-    {
-        uint32_t bid = (uint32_t)bit->second;
-        if (bid != 0xFFFFFFFFu) {
-            auto fit = feature_nodes.find(bid);
-            if (fit != feature_nodes.end()) {
-                base = fit->second;
-            }
-        }
-    }
-
     auto iit = feat.ext_params.find("input_feature_id");
-    if (iit != feat.ext_params.end())
-    {
-        uint32_t iid = (uint32_t)iit->second;
-        if (iid != 0xFFFFFFFFu) {
-            auto fit = feature_nodes.find(iid);
-            if (fit != feature_nodes.end()) {
-                base = fit->second;
-            }
-        }
+    if (iit == feat.ext_params.end()) {
+        return running_last_node;
     }
-    return base;
+    uint32_t iid = (uint32_t)iit->second;
+    if (iid == 0u || iid == 0xFFFFFFFFu) {
+        return -1;
+    }
+    auto fit = feature_nodes.find(iid);
+    return fit != feature_nodes.end() ? fit->second : -1;
 }
 
 // Pattern / Mirror / MultiTransform target resolution. Folds two
@@ -276,12 +245,12 @@ int ResolveBaseNode(const FeatureIR&                feat,
 //                 op_kind) ready for "multiply the tool, recombine
 //                 with the base".
 //
-//   body_target -- Draft Array's Base link
-//                  (ext_strings "draft_array_base", a single FreeCAD
-//                  object name resolved through feature_id_by_name +
-//                  feature_nodes). -1 when absent. Only meaningful
-//                  when originals is empty -- a PartDesign pattern
-//                  with Originals never carries draft_array_base.
+//   body_target -- Draft Array's Base link, resolved by the Reader to
+//                  the linked feature's id and stashed under
+//                  ext_params "pattern_target_feature_id". -1 when
+//                  absent. Only meaningful when originals is empty --
+//                  a PartDesign pattern with Originals never carries
+//                  a Draft-style single-target link.
 //
 // Both empty -> caller falls back to last_node.
 struct PatternInputs
@@ -293,8 +262,7 @@ struct PatternInputs
 PatternInputs ResolvePatternInputs(
     const FeatureIR&                                 feat,
     const std::map<uint32_t, FeatureToolInfo>&       feature_tools,
-    const std::map<uint32_t, int>&                   feature_nodes,
-    const std::map<std::string, uint32_t>&           feature_id_by_name)
+    const std::map<uint32_t, int>&                   feature_nodes)
 {
     PatternInputs out;
     out.originals = ResolveOriginals(feat, feature_tools);
@@ -302,13 +270,13 @@ PatternInputs ResolvePatternInputs(
         return out;
     }
 
-    auto bit = feat.ext_strings.find("draft_array_base");
-    if (bit != feat.ext_strings.end() && !bit->second.empty())
+    auto tit = feat.ext_params.find("pattern_target_feature_id");
+    if (tit != feat.ext_params.end())
     {
-        auto nit = feature_id_by_name.find(bit->second);
-        if (nit != feature_id_by_name.end())
+        uint32_t tid = (uint32_t)tit->second;
+        if (tid != 0u && tid != 0xFFFFFFFFu)
         {
-            auto fit = feature_nodes.find(nit->second);
+            auto fit = feature_nodes.find(tid);
             if (fit != feature_nodes.end()) {
                 out.body_target = fit->second;
             }
@@ -409,10 +377,10 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
                           bool&                step_ok,
                           FeatureToolInfo*     tool_info_out = nullptr)
 {
-    // Note: body_root=1 (first 3D feature of a new PartDesign::Body)
-    // is honored by the caller via the per-visit last_node shadow in
-    // Replay(), so by the time we land here last_node has already
-    // been forced to -1 for body roots.
+    // Note: when the Reader emits input_feature_id=0 for the first
+    // 3D feature of a new PartDesign::Body, ResolveBaseNode resolves
+    // last_node to -1 before this handler runs, so a primitive at the
+    // root of a body never fuses with the previous body's tip.
     int cur = prim_node;
 
     bool   has_t   = feat.ext_params.count("placement_px") > 0;
@@ -557,16 +525,6 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // earlier body tips that have already scrolled past last_node.
     std::map<uint32_t, int> feature_nodes;
 
-    // FreeCAD object name (e.g. "Pad002") -> feature_id. Populated as
-    // each feature is replayed; consumed by Draft-Array CircularPattern
-    // (Base is a single PropertyLink stashed as a name string, not a
-    // PartDesign Originals id list) so the pattern target resolves to
-    // the named feature's body shape rather than the running last_node.
-    // Page_056_Exercise2D-48-1 has Array.Base=Pad002 but the Array
-    // emits after a later body's Pad004, so last_node fallback would
-    // pattern the wrong feature.
-    std::map<std::string, uint32_t> feature_id_by_name;
-
     // Output candidates collected in document declaration order. Each
     // entry pins the feat_id and calc-graph node of one potential
     // top-level result -- a PartDesign::Body tip (collapsed to a single
@@ -601,13 +559,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         bool step_ok = true;
 
         // Shadow last_node for the duration of this visit so the
-        // handler sees the per-feature base resolved from body_root /
-        // base_feature_id (see ResolveBaseNode for the precedence
-        // rules). Handlers like Pad / Pocket / Revolve compose their
-        // own boolean against last_node without going through
+        // handler sees the per-feature base resolved from the IR's
+        // explicit input_feature_id (see ResolveBaseNode). Handlers
+        // like Pad / Pocket / Revolve compose their own boolean
+        // against last_node without going through
         // FinalizePrimitiveNode, so the override has to bracket the
         // entire visit. The outer loop's persistent last_node is
-        // restored after the visit -- a body-root override never
+        // restored after the visit, so a per-feature override never
         // leaks into the next feature.
         int prev_outer_last = last_node;
         last_node = ResolveBaseNode(feat, last_node, feature_nodes);
@@ -1273,8 +1231,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                          p.plane_normal[2]};
 
                 auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes,
-                                               feature_id_by_name);
+                                               feature_nodes);
                 if (!pi.originals.empty() && last_node >= 0)
                 {
                     node = AddMirroredOriginals(*cg, last_node, pi.originals,
@@ -1307,13 +1264,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int c2 = cg->AddConst((int)p.count2, "count2");
                 int s2 = cg->AddConst(p.spacing2, "spacing2");
 
-                // Reader does not emit draft_array_base for LinearPattern
-                // (Draft only emits polar Arrays), so body_target is
-                // always -1 here -- but we still flow through the
-                // helper for shape consistency with CircularPattern.
+                // Reader does not emit pattern_target_feature_id for
+                // LinearPattern (Draft only emits polar Arrays), so
+                // body_target is always -1 here -- flow through the
+                // helper anyway for shape consistency with
+                // CircularPattern.
                 auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes,
-                                               feature_id_by_name);
+                                               feature_nodes);
                 int target = -1;
                 if (!pi.originals.empty()) {
                     target = pi.originals[0].tool_node;
@@ -1338,9 +1295,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             //      "originals_id_<i>") -- multiply each Original's tool,
             //      then combine with its base via op_kind. This is the
             //      PartDesign::PolarPattern path.
-            //   2. Draft polar Array's Base link (ext_strings
-            //      "draft_array_base", a single FreeCAD object name) --
-            //      pattern that feature's body shape directly. Draft
+            //   2. Draft polar Array's Base link, pre-resolved by the
+            //      Reader to ext_params "pattern_target_feature_id".
+            //      Pattern that feature's body shape directly. Draft
             //      Arrays don't carry the body-internal Originals list
             //      and are usually emitted after later bodies, so
             //      last_node fallback would target the wrong feature.
@@ -1359,8 +1316,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int t = cg->AddConst(p.total_angle, "total_angle");
 
                 auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes,
-                                               feature_id_by_name);
+                                               feature_nodes);
                 int target = -1;
                 if (!pi.originals.empty()) {
                     target = pi.originals[0].tool_node;
@@ -1456,13 +1412,12 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return cur;
                 };
 
-                // Reader does not emit draft_array_base for
+                // Reader does not emit pattern_target_feature_id for
                 // MultiTransform (only Draft polar Arrays carry it),
                 // so pi.body_target is always -1 here. Flow through
                 // the helper anyway for shape consistency.
                 auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes,
-                                               feature_id_by_name);
+                                               feature_nodes);
 
                 if (pi.originals.empty())
                 {
@@ -1560,11 +1515,12 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             }
         }, feat.data);
 
-        // Restore the outer last_node when the body_root override
+        // Restore the outer last_node when the per-visit override
         // didn't get superseded by a successful node assignment. If
         // node>=0 the subsequent assignment will overwrite it; we
-        // restore unconditionally so a failed body-root step doesn't
-        // leak the temporary -1 into the next feature.
+        // restore unconditionally so a failed step doesn't leak the
+        // temporary override (e.g. a body root's -1) into the next
+        // feature's visit.
         last_node = prev_outer_last;
 
         if (node >= 0)
@@ -1617,9 +1573,6 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
             last_node = node;
             feature_nodes[feat.id] = node;
-            if (!feat.name.empty()) {
-                feature_id_by_name[feat.name] = feat.id;
-            }
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
             // Record this feature as a potential top-level output.
@@ -1647,17 +1600,22 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
 
-            // Operand / base-link consumption: any feat whose shape
-            // gets folded into this one is marked so the emitter
-            // doesn't re-emit it alongside this feature.
+            // Operand / input consumption: any feat whose shape gets
+            // folded into this one is marked so the emitter doesn't
+            // re-emit it alongside this feature.
             //   * FeatPayloadBoolean operands (Part::Cut / Fuse /
             //     Common / MultiFuse / MultiCommon).
-            //   * base_feature_id ext_param, set by the reader for
-            //     standalone Part::Thickness / Part::Fillet /
-            //     Part::Chamfer that target a body's tip from
-            //     outside the body. Without this the Body candidate
-            //     keeps appearing next to the Thickness result
-            //     (Page_037 went 1 solid -> 2 solids that way).
+            //   * input_feature_id ext_param, written by the Reader
+            //     for every feature with an explicit IR-level base
+            //     (body-internal chain steps + standalone operators
+            //     like Part::Thickness). Marking the input as consumed
+            //     is what stops the Body candidate from appearing next
+            //     to a standalone Thickness that absorbed it
+            //     (Page_037 went 1 solid -> 2 solids before this gate
+            //     was added). Body-internal cases are no-ops in
+            //     practice: the body candidate is keyed on the latest
+            //     tip's feat_id, which differs from the prev's id,
+            //     so the insert here doesn't filter anything.
             if (auto* bp = std::get_if<FeatPayloadBoolean>(&feat.data))
             {
                 for (uint32_t opid : bp->operand_feature_ids) {
@@ -1665,12 +1623,12 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
             {
-                auto bfit = feat.ext_params.find("base_feature_id");
-                if (bfit != feat.ext_params.end())
+                auto iit = feat.ext_params.find("input_feature_id");
+                if (iit != feat.ext_params.end())
                 {
-                    uint32_t bid = (uint32_t)bfit->second;
-                    if (bid != 0xFFFFFFFFu) {
-                        consumed_feat_ids.insert(bid);
+                    uint32_t iid = (uint32_t)iit->second;
+                    if (iid != 0u && iid != 0xFFFFFFFFu) {
+                        consumed_feat_ids.insert(iid);
                     }
                 }
             }

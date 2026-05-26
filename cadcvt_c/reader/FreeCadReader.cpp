@@ -2320,12 +2320,13 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     // body_name -> id of the last 3D-producing feature emitted into
     // that body so far. Updated inside the per-feature emission loop
     // (right before push_back) and read at the top of the next
-    // iteration so each body-owned feature can carry an explicit
+    // iteration so each body-owned feature carries an explicit
     // input_feature_id ext_param naming its predecessor in the body
-    // chain. P2 in the multi-last_node refactor: the Replayer's
-    // ResolveBaseNode reads this in preference to the body_root /
-    // base_feature_id legacy channels, so the body chain comes from
-    // the IR rather than the Replayer's running last_node cursor.
+    // chain (0 for the first 3D feature, since real feature ids
+    // start at 1). The Replayer's ResolveBaseNode reads this as the
+    // authoritative base for body-owned features; the body chain is
+    // pinned in the IR rather than re-derived from emission order at
+    // replay time.
     std::unordered_map<std::string, uint32_t>    body_prev_id;
 
     for (const auto& pending : queue)
@@ -2422,22 +2423,29 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             if (bit != name_to_body.end())
             {
                 feat.ext_strings["freecad_body"] = bit->second;
-                auto fit = body_first_solid.find(bit->second);
-                if (fit != body_first_solid.end() && fit->second == pending.name) {
-                    feat.ext_params["body_root"] = 1.0;
-                }
-                // Explicit predecessor in the body's modeling chain.
-                // Mutually exclusive with body_root by construction
-                // (body_root fires on the first 3D feature, at which
-                // point body_prev_id has no entry yet for this body).
-                // Replayer's ResolveBaseNode prefers this over the
-                // running last_node cursor so the body chain is
-                // pinned in the IR, not re-derived from emission
-                // order at replay time.
-                auto pit = body_prev_id.find(bit->second);
-                if (pit != body_prev_id.end()) {
-                    feat.ext_params["input_feature_id"] =
-                        (double)pit->second;
+                // Body chain predecessor as an explicit IR field for
+                // 3D-producing features only. The first 3D feature
+                // in a body gets input_feature_id=0 (no predecessor;
+                // Replayer treats 0 as "fresh body"); every later
+                // 3D feature in the same body gets the running tip's
+                // id. Sketches don't produce 3D and don't consume a
+                // base, so they're skipped here -- emitting one
+                // would be dead information that just pollutes the
+                // IR fingerprint goldens.
+                if (pending.type != "Sketcher::SketchObject")
+                {
+                    auto fit = body_first_solid.find(bit->second);
+                    bool is_root = (fit != body_first_solid.end()
+                                    && fit->second == pending.name);
+                    if (is_root) {
+                        feat.ext_params["input_feature_id"] = 0.0;
+                    } else {
+                        auto pit = body_prev_id.find(bit->second);
+                        if (pit != body_prev_id.end()) {
+                            feat.ext_params["input_feature_id"] =
+                                (double)pit->second;
+                        }
+                    }
                 }
             }
         }
@@ -2965,9 +2973,9 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             //
             // Unlike PartDesign::Thickness, the base is not implicit
             // (no surrounding Body), so resolve the linked object
-            // to a feature id and stash it as base_feature_id; the
-            // Replayer's pre-visit override redirects last_node at
-            // that node before the Shell handler runs.
+            // to a feature id and stash it as input_feature_id; the
+            // Replayer's ResolveBaseNode treats this as the base
+            // body for the Shell handler.
             FeatPayloadShell pl;
             pl.thickness     = PropDouble(props, "Value", 0.0) * m_unit_scale;
             pl.shell_outward = false;
@@ -2990,7 +2998,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 }
             }
             if (base_id != 0xFFFFFFFFu) {
-                feat.ext_params["base_feature_id"] = (double)base_id;
+                feat.ext_params["input_feature_id"] = (double)base_id;
             }
             feat.ext_strings["freecad_type"] = pending.type;
 
@@ -3526,17 +3534,22 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
                 // Draft arrays don't use the PartDesign Originals
                 // mechanism -- the target is a single PropertyLink
-                // named Base. We stash the linked object name so the
-                // Replayer's CircularPattern handler can resolve it
-                // against feature_id_by_name and pattern that
-                // feature's body shape directly. last_node fallback
-                // alone is wrong when Base points at a feature inside
-                // an earlier PartDesign::Body and the Array is emitted
-                // after later bodies (Page_056_Exercise2D-48-1:
-                // Array.Base=Pad002 but Array sits after Pad004).
+                // named Base. Resolve the linked object name to a
+                // feature id at read time (m_name_to_id is fully
+                // populated by the time we reach the emission loop)
+                // and stash the resolved id as pattern_target_feature_id.
+                // last_node fallback alone is wrong when Base points
+                // at a feature inside an earlier PartDesign::Body and
+                // the Array is emitted after later bodies
+                // (Page_056_Exercise2D-48-1: Array.Base=Pad002 but
+                // Array sits after Pad004).
                 LinkRef base = PropLink(props, "Base");
                 if (!base.object_name.empty()) {
-                    feat.ext_strings["draft_array_base"] = base.object_name;
+                    auto nit = m_name_to_id.find(base.object_name);
+                    if (nit != m_name_to_id.end()) {
+                        feat.ext_params["pattern_target_feature_id"] =
+                            (double)nit->second;
+                    }
                 }
 
                 feat.type = FeatType::CircularPattern;
