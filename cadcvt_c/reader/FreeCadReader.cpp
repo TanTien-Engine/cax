@@ -3498,13 +3498,14 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
                 // Draft arrays don't use the PartDesign Originals
                 // mechanism -- the target is a single PropertyLink
-                // named Base. We stash it for traceability; the
-                // Replayer's CircularPattern handler falls back to
-                // last_node when no Originals are present, which
-                // works as long as Base is the immediately preceding
-                // feature in emission order (the common case for
-                // Draft arrays, which are usually applied to a body
-                // tip).
+                // named Base. We stash the linked object name so the
+                // Replayer's CircularPattern handler can resolve it
+                // against feature_id_by_name and pattern that
+                // feature's body shape directly. last_node fallback
+                // alone is wrong when Base points at a feature inside
+                // an earlier PartDesign::Body and the Array is emitted
+                // after later bodies (Page_056_Exercise2D-48-1:
+                // Array.Base=Pad002 but Array sits after Pad004).
                 LinkRef base = PropLink(props, "Base");
                 if (!base.object_name.empty()) {
                     feat.ext_strings["draft_array_base"] = base.object_name;

@@ -441,6 +441,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // earlier body tips that have already scrolled past last_node.
     std::map<uint32_t, int> feature_nodes;
 
+    // FreeCAD object name (e.g. "Pad002") -> feature_id. Populated as
+    // each feature is replayed; consumed by Draft-Array CircularPattern
+    // (Base is a single PropertyLink stashed as a name string, not a
+    // PartDesign Originals id list) so the pattern target resolves to
+    // the named feature's body shape rather than the running last_node.
+    // Page_056_Exercise2D-48-1 has Array.Base=Pad002 but the Array
+    // emits after a later body's Pad004, so last_node fallback would
+    // pattern the wrong feature.
+    std::map<std::string, uint32_t> feature_id_by_name;
+
     // Output candidates collected in document declaration order. Each
     // entry pins the feat_id and calc-graph node of one potential
     // top-level result -- a PartDesign::Body tip (collapsed to a single
@@ -1220,6 +1230,19 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             }
 
             // ---- CircularPattern ----
+            //
+            // Target resolution priority:
+            //   1. PartDesign Originals (ext_params "originals_count" /
+            //      "originals_id_<i>") -- multiply each Original's tool,
+            //      then combine with its base via op_kind. This is the
+            //      PartDesign::PolarPattern path.
+            //   2. Draft polar Array's Base link (ext_strings
+            //      "draft_array_base", a single FreeCAD object name) --
+            //      pattern that feature's body shape directly. Draft
+            //      Arrays don't carry the body-internal Originals list
+            //      and are usually emitted after later bodies, so
+            //      last_node fallback would target the wrong feature.
+            //   3. last_node -- legacy / no link info.
             else if constexpr (std::is_same_v<T, FeatPayloadCircularPattern>)
             {
                 brepgraph::Vec3 origin = {p.axis_origin[0],
@@ -1237,9 +1260,27 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int target = -1;
                 if (!origs.empty()) {
                     target = origs[0].tool_node;
-                } else if (last_node >= 0) {
-                    target = last_node;
-                } else {
+                }
+                else
+                {
+                    // Draft polar Array: resolve Base name -> body shape.
+                    auto bit = feat.ext_strings.find("draft_array_base");
+                    if (bit != feat.ext_strings.end() && !bit->second.empty())
+                    {
+                        auto nit = feature_id_by_name.find(bit->second);
+                        if (nit != feature_id_by_name.end())
+                        {
+                            auto fit = feature_nodes.find(nit->second);
+                            if (fit != feature_nodes.end()) {
+                                target = fit->second;
+                            }
+                        }
+                    }
+                    if (target < 0) {
+                        target = last_node;
+                    }
+                }
+                if (target < 0) {
                     step_ok = false;
                     return;
                 }
@@ -1435,6 +1476,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         {
             last_node = node;
             feature_nodes[feat.id] = node;
+            if (!feat.name.empty()) {
+                feature_id_by_name[feat.name] = feat.id;
+            }
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
             // Record this feature as a potential top-level output.
