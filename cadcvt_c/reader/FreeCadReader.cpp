@@ -2321,12 +2321,12 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     // that body so far. Updated inside the per-feature emission loop
     // (right before push_back) and read at the top of the next
     // iteration so each body-owned feature carries an explicit
-    // input_feature_id ext_param naming its predecessor in the body
-    // chain (0 for the first 3D feature, since real feature ids
-    // start at 1). The Replayer's ResolveBaseNode reads this as the
-    // authoritative base for body-owned features; the body chain is
-    // pinned in the IR rather than re-derived from emission order at
-    // replay time.
+    // FeatureIR::input_feature_ids entry naming its predecessor in
+    // the body chain (0 for the first 3D feature, since real
+    // feature ids start at 1). The Replayer's ResolveBaseNode reads
+    // this typed field as the authoritative base for body-owned
+    // features; the body chain is pinned in the IR rather than
+    // re-derived from emission order at replay time.
     std::unordered_map<std::string, uint32_t>    body_prev_id;
 
     for (const auto& pending : queue)
@@ -2423,27 +2423,27 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             if (bit != name_to_body.end())
             {
                 feat.ext_strings["freecad_body"] = bit->second;
-                // Body chain predecessor as an explicit IR field for
+                // Body chain predecessor as a typed IR field for
                 // 3D-producing features only. The first 3D feature
-                // in a body gets input_feature_id=0 (no predecessor;
-                // Replayer treats 0 as "fresh body"); every later
-                // 3D feature in the same body gets the running tip's
-                // id. Sketches don't produce 3D and don't consume a
-                // base, so they're skipped here -- emitting one
-                // would be dead information that just pollutes the
-                // IR fingerprint goldens.
+                // in a body gets input_feature_ids={0} (no
+                // predecessor; Replayer treats 0 as "fresh body");
+                // every later 3D feature in the same body gets the
+                // running tip's id. Sketches don't produce 3D and
+                // don't consume a base, so they're skipped here --
+                // emitting input_feature_ids on them would be dead
+                // information that just pollutes the IR fingerprint
+                // goldens.
                 if (pending.type != "Sketcher::SketchObject")
                 {
                     auto fit = body_first_solid.find(bit->second);
                     bool is_root = (fit != body_first_solid.end()
                                     && fit->second == pending.name);
                     if (is_root) {
-                        feat.ext_params["input_feature_id"] = 0.0;
+                        feat.input_feature_ids.push_back(0u);
                     } else {
                         auto pit = body_prev_id.find(bit->second);
                         if (pit != body_prev_id.end()) {
-                            feat.ext_params["input_feature_id"] =
-                                (double)pit->second;
+                            feat.input_feature_ids.push_back(pit->second);
                         }
                     }
                 }
@@ -2973,9 +2973,9 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             //
             // Unlike PartDesign::Thickness, the base is not implicit
             // (no surrounding Body), so resolve the linked object
-            // to a feature id and stash it as input_feature_id; the
-            // Replayer's ResolveBaseNode treats this as the base
-            // body for the Shell handler.
+            // to a feature id and push it into input_feature_ids;
+            // the Replayer's ResolveBaseNode treats this as the
+            // base body for the Shell handler.
             FeatPayloadShell pl;
             pl.thickness     = PropDouble(props, "Value", 0.0) * m_unit_scale;
             pl.shell_outward = false;
@@ -2998,7 +2998,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 }
             }
             if (base_id != 0xFFFFFFFFu) {
-                feat.ext_params["input_feature_id"] = (double)base_id;
+                feat.input_feature_ids.push_back(base_id);
             }
             feat.ext_strings["freecad_type"] = pending.type;
 
@@ -3636,11 +3636,12 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
 
         // Update the running body tip so the next feature in the
-        // same body records its prev correctly via input_feature_id.
-        // Sketches don't produce a 3D body, so they can't anchor a
-        // chain step -- skipping them lines up with the Replayer's
-        // feature_nodes map, which is also only populated for
-        // 3D-producing features (sketches set node=-1).
+        // same body records its prev correctly via the typed
+        // input_feature_ids field. Sketches don't produce a 3D body,
+        // so they can't anchor a chain step -- skipping them lines
+        // up with the Replayer's feature_nodes map, which is also
+        // only populated for 3D-producing features (sketches set
+        // node=-1).
         if (feat.type != FeatType::Sketch)
         {
             auto nb_it = name_to_body.find(feat.name);

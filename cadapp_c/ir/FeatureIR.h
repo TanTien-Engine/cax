@@ -368,6 +368,26 @@ struct FeatureIR
     FeatType       type       = FeatType::Unknown;
     bool           suppressed = false;
 
+    // Explicit upstream features this one consumes. Promoted from
+    // ext_params["input_feature_id"] in P3.1 of the multi-last_node
+    // refactor. Today the vector holds at most one element (body
+    // chain predecessor); the plural form is the destination of the
+    // DAG IR migration, where Pattern/Mirror/MultiTransform tools
+    // and Boolean operands will land here too once roles
+    // (input_roles) disambiguate them.
+    //
+    // Convention:
+    //   {}    -- no input declared. Standalone primitive (Part::Box
+    //            outside any Body), sketches, or a feature the Reader
+    //            hasn't promoted yet. Replayer's ResolveBaseNode
+    //            falls back to the running last_node cursor for these.
+    //   {0}   -- explicit "no predecessor" (first 3D feature of a
+    //            fresh PartDesign::Body). 0 is unambiguous as a
+    //            sentinel because real feature ids start at 1.
+    //   {N}   -- predecessor is feature N. Replayer routes
+    //            feature_nodes[N] in as the base body shape.
+    std::vector<uint32_t> input_feature_ids;
+
     // Typed payload; default-constructs to Opaque so a fresh
     // FeatureIR is always queryable.
     FeaturePayload data       = FeatPayloadOpaque{};

@@ -695,6 +695,11 @@ void EncodeExt(const FeatureIR& feat, BlobWriter& w)
         w.StringField(kv.first);
         w.StringField(kv.second);
     }
+
+    // input_feature_ids (FEAT_VERSION 2+). Typed vector of upstream
+    // feature ids this feature consumes. See FeatureIR.h for the
+    // {} / {0} / {N} sentinel convention.
+    w.U32Vec(feat.input_feature_ids);
 }
 
 void DecodeExt(BlobReader& r, FeatureIR& feat)
@@ -714,6 +719,8 @@ void DecodeExt(BlobReader& r, FeatureIR& feat)
         std::string val = r.StringField();
         feat.ext_strings.emplace(std::move(key), std::move(val));
     }
+
+    feat.input_feature_ids = r.U32Vec();
 }
 
 } // anonymous namespace

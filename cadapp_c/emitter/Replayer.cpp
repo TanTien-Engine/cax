@@ -202,33 +202,31 @@ std::vector<FeatureToolInfo> ResolveOriginals(
 }
 
 // Compute the base body node this feature visit should consume.
-// Reads the single explicit-input channel the Reader writes:
+// Reads the typed IR field FeatureIR::input_feature_ids:
 //
-//   ext_params["input_feature_id"]=N
-//     N == 0  -- no predecessor (body root, or a feature that
-//                doesn't consume a base); returns -1.
-//     N >= 1  -- feature_nodes[N] is the base; returns that node,
-//                or -1 if the upstream feature failed to produce
-//                a shape.
+//   {}      -- no input declared. Standalone feature (Part::Box,
+//              Part::Sphere outside any Body) or a sketch. These
+//              don't consume a base, so the handler ignores the
+//              returned value and the running_last_node default
+//              keeps the caller's cursor unchanged.
+//   {0}     -- explicit "no predecessor" (body root). Returns -1
+//              so the body's first 3D feature never fuses with the
+//              previous body's tip.
+//   {N>=1}  -- predecessor is feature N. Returns
+//              feature_nodes[N], or -1 if upstream failed.
 //
-//   key absent -- standalone feature with no IR-declared input
-//                 (Part::Box, Part::Sphere, ...). These don't
-//                 consume a base, so the handler ignores the
-//                 returned value and the running_last_node default
-//                 keeps the caller's cursor unchanged.
-//
-// Body roots are encoded as input_feature_id=0 by the Reader; that
-// sentinel collapses the previous body_root channel into the same
-// field as the regular chain predecessor.
+// Multi-element vectors are reserved for the upcoming P3.3 roles
+// migration (pattern tools, Boolean operands). Today only the
+// first element is consulted; the contract is that body-chain
+// predecessor lives at index 0 when present.
 int ResolveBaseNode(const FeatureIR&                feat,
                     int                             running_last_node,
                     const std::map<uint32_t, int>&  feature_nodes)
 {
-    auto iit = feat.ext_params.find("input_feature_id");
-    if (iit == feat.ext_params.end()) {
+    if (feat.input_feature_ids.empty()) {
         return running_last_node;
     }
-    uint32_t iid = (uint32_t)iit->second;
+    uint32_t iid = feat.input_feature_ids.front();
     if (iid == 0u || iid == 0xFFFFFFFFu) {
         return -1;
     }
@@ -377,10 +375,11 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
                           bool&                step_ok,
                           FeatureToolInfo*     tool_info_out = nullptr)
 {
-    // Note: when the Reader emits input_feature_id=0 for the first
-    // 3D feature of a new PartDesign::Body, ResolveBaseNode resolves
-    // last_node to -1 before this handler runs, so a primitive at the
-    // root of a body never fuses with the previous body's tip.
+    // Note: when the Reader emits input_feature_ids={0} for the
+    // first 3D feature of a new PartDesign::Body, ResolveBaseNode
+    // resolves last_node to -1 before this handler runs, so a
+    // primitive at the root of a body never fuses with the
+    // previous body's tip.
     int cur = prim_node;
 
     bool   has_t   = feat.ext_params.count("placement_px") > 0;
@@ -560,7 +559,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
         // Shadow last_node for the duration of this visit so the
         // handler sees the per-feature base resolved from the IR's
-        // explicit input_feature_id (see ResolveBaseNode). Handlers
+        // typed input_feature_ids (see ResolveBaseNode). Handlers
         // like Pad / Pocket / Revolve compose their own boolean
         // against last_node without going through
         // FinalizePrimitiveNode, so the override has to bracket the
@@ -1605,31 +1604,25 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // re-emit it alongside this feature.
             //   * FeatPayloadBoolean operands (Part::Cut / Fuse /
             //     Common / MultiFuse / MultiCommon).
-            //   * input_feature_id ext_param, written by the Reader
-            //     for every feature with an explicit IR-level base
-            //     (body-internal chain steps + standalone operators
-            //     like Part::Thickness). Marking the input as consumed
-            //     is what stops the Body candidate from appearing next
-            //     to a standalone Thickness that absorbed it
-            //     (Page_037 went 1 solid -> 2 solids before this gate
-            //     was added). Body-internal cases are no-ops in
-            //     practice: the body candidate is keyed on the latest
-            //     tip's feat_id, which differs from the prev's id,
-            //     so the insert here doesn't filter anything.
+            //   * FeatureIR::input_feature_ids, the typed body-chain
+            //     pred field. Marking the input as consumed is what
+            //     stops the Body candidate from appearing next to a
+            //     standalone Thickness that absorbed it (Page_037
+            //     went 1 solid -> 2 solids before this gate was
+            //     added). Body-internal cases are no-ops in practice:
+            //     the body candidate is keyed on the latest tip's
+            //     feat_id, which differs from the prev's id, so the
+            //     insert here doesn't filter anything.
             if (auto* bp = std::get_if<FeatPayloadBoolean>(&feat.data))
             {
                 for (uint32_t opid : bp->operand_feature_ids) {
                     consumed_feat_ids.insert(opid);
                 }
             }
+            for (uint32_t iid : feat.input_feature_ids)
             {
-                auto iit = feat.ext_params.find("input_feature_id");
-                if (iit != feat.ext_params.end())
-                {
-                    uint32_t iid = (uint32_t)iit->second;
-                    if (iid != 0u && iid != 0xFFFFFFFFu) {
-                        consumed_feat_ids.insert(iid);
-                    }
+                if (iid != 0u && iid != 0xFFFFFFFFu) {
+                    consumed_feat_ids.insert(iid);
                 }
             }
 

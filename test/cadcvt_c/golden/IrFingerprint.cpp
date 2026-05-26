@@ -388,6 +388,22 @@ std::string FingerprintDocument(const cadapp::DocumentIR& doc, const Fingerprint
         EmitPayload(os, feat, opt);
         os << "\n";
 
+        // Typed body-chain pred / future inputs (P3.1+). Emitted
+        // outside the dump_ext gate because this is a first-class
+        // field of FeatureIR, not an ext bag entry; absence of any
+        // input is rendered as an empty list so the fingerprint
+        // tracks the difference between "no inputs declared" and
+        // "explicit fresh body" ({0}).
+        if (!feat.input_feature_ids.empty())
+        {
+            os << "  inputs=[";
+            for (size_t i = 0; i < feat.input_feature_ids.size(); ++i) {
+                if (i) os << ',';
+                os << feat.input_feature_ids[i];
+            }
+            os << "]\n";
+        }
+
         if (opt.dump_ext)
         {
             // ext maps are already std::map (sorted), but copy
