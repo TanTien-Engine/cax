@@ -255,6 +255,44 @@ std::vector<std::string> PropLinkList(const pugi::xml_node& props_node,
     return out;
 }
 
+// App::PropertyLinkSubList: ordered list of (object, sub-element)
+// pairs. Used by Sketcher::SketchObject's Support (which face/edge
+// the sketch is attached to) and similar attach-by-reference props.
+// Returns just the object name(s); sub elements are discarded
+// because Reference-role inputs only care about feature dependency,
+// not which sub-element.
+//
+// Two XML forms exist in the wild:
+//   <LinkSubList count="N">
+//     <Link obj="Pad" sub="Face3"/>
+//   </LinkSubList>
+// and (older):
+//   <LinkSubList count="N">
+//     <Link value="Pad"><Sub value="Face3"/></Link>
+//   </LinkSubList>
+// The helper accepts both: tries `obj` attribute first, falls back
+// to `value` attribute.
+std::vector<std::string> PropLinkSubList(const pugi::xml_node& props_node,
+                                          const char*           prop_name)
+{
+    std::vector<std::string> out;
+    auto p = FindProperty(props_node, prop_name);
+    if (!p) return out;
+    auto list = p.first_child();
+    if (!list) return out;
+    for (auto ln = list.child("Link"); ln; ln = ln.next_sibling("Link"))
+    {
+        const char* name = ln.attribute("obj").value();
+        if (!name || !*name) {
+            name = ln.attribute("value").value();
+        }
+        if (name && *name) {
+            out.emplace_back(name);
+        }
+    }
+    return out;
+}
+
 // App::PropertyVector / PropertyVectorDistance: three doubles stored
 // on a <PropertyVector valueX=".." valueY=".." valueZ=".."/> child.
 // Returns false (with out untouched) when the property or child node
@@ -2493,6 +2531,30 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 double qz = AttrDouble(place, "Q2", 0.0);
                 double qw = AttrDouble(place, "Q3", 1.0);
                 QuatToAxes(qx, qy, qz, qw, sk.plane_x_dir, sk.plane_normal);
+            }
+
+            // Support: which face/edge the sketch is attached to.
+            // FreeCAD stores this as a PropertyLinkSubList; we only
+            // track the linked feature(s) as Role::Reference inputs
+            // -- the sub-element (Face3 / Edge2) and the live face
+            // mapping aren't materialised in the IR yet, that's a
+            // future pass. Skip-type targets (App::Plane origin
+            // planes, PartDesign::Plane datums) are filtered out
+            // because they don't produce an emitted FeatureIR and a
+            // Reference pointing at a missing id would be confusing.
+            // Replayer ignores Role::Reference; the only consumer
+            // today is the IR fingerprint, so this surfaces the
+            // dependency without affecting shape output.
+            for (const auto& support_name :
+                     PropLinkSubList(props, "Support"))
+            {
+                auto pit = by_name.find(support_name);
+                if (pit == by_name.end()) continue;
+                if (IsSkipType(pit->second->type)) continue;
+                auto nit = m_name_to_id.find(support_name);
+                if (nit == m_name_to_id.end()) continue;
+                PushInput(feat, nit->second,
+                          cadapp::InputRole::Reference);
             }
 
             // Geometry list.

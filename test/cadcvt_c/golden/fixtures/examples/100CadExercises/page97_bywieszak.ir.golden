@@ -41,5 +41,6 @@ feat 12 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=
 feat 13 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.005 edges=1
   inputs=[12:base]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
+  inputs=[13:ref]
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[13:base]

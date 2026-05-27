@@ -34,9 +34,11 @@ feat 18 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=18
 feat 19 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=18 spine_sketch_id=17
   inputs=[0:base]
 feat 20 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=20
+  inputs=[19:ref]
 feat 21 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.011 dist2=0.000 end=0 flip=0
   inputs=[19:base]
 feat 22 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=22
+  inputs=[21:ref]
 feat 23 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=22 dir=(0.000,0.000,1.000) dist=0.008 dist2=0.000 end=0 flip=0
   inputs=[21:base]
 feat 24 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.003 edges=2

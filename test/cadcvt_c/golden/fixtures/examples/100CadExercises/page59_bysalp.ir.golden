@@ -25,5 +25,6 @@ feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=9 axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) angle=6.2832 flip=1
   inputs=[0:base]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+  inputs=[10:ref]
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[10:base]

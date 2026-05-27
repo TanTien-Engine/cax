@@ -39,8 +39,10 @@ feat 12 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=
 feat 13 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) count=2 total_angle=6.2832
   inputs=[12:base,12:tool]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
+  inputs=[13:ref]
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.026 dist2=0.000 end=0 flip=1
   inputs=[13:base]
 feat 16 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=16
+  inputs=[15:ref]
 feat 17 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.022 dist2=0.000 end=0 flip=1
   inputs=[15:base]

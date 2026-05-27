@@ -30,5 +30,6 @@ feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 d
 feat 13 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.015 h=0.080
   inputs=[12:base]
 feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
+  inputs=[13:ref]
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[13:base]
