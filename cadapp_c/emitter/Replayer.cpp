@@ -1552,6 +1552,86 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 node = cur;
             }
 
+            // ---- Link (Assembly4 part instance) ----
+            //
+            // The sub-doc's features were inlined by FreeCadReader's
+            // App::Link branch ahead of this Link feature, so by the
+            // time we visit the Link the sub-tip has already been
+            // replayed and feature_nodes[link.sub_tip_feature_id]
+            // holds its CalcGraph node. We layer the Link's baked
+            // placement on top: rotate(axis, angle) about the origin,
+            // then translate(p). FreeCAD-side LCS-pair solving has
+            // already collapsed every constr_* contribution into this
+            // single Placement, so no constraint evaluation is needed
+            // here.
+            //
+            // Identity-or-near-identity placements skip the ops
+            // entirely so the Link node is the sub-tip node verbatim,
+            // matching the "viewer sees the part exactly where the
+            // sub-doc puts it" intuition for the root part of an asm.
+            else if constexpr (std::is_same_v<T, FeatPayloadLink>)
+            {
+                int cur = base_node;
+
+                if (cur < 0 && p.sub_tip_feature_id != 0)
+                {
+                    // Defensive: a malformed doc with the Role::Base
+                    // input missing but sub_tip_feature_id set still
+                    // points us at the right sub-node.
+                    auto sit = feature_nodes.find(p.sub_tip_feature_id);
+                    if (sit != feature_nodes.end()) {
+                        cur = sit->second;
+                    }
+                }
+
+                if (cur < 0)
+                {
+                    step_ok = false;
+                    out.err_msg = "link " + feat.name +
+                                  " has no sub-tip CalcGraph node";
+                    return;
+                }
+
+                const double k_eps_angle = 1e-12;
+                const double k_eps_pos   = 1e-15;
+
+                if (std::fabs(p.placement_angle) > k_eps_angle)
+                {
+                    brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
+                    brepgraph::Vec3 axis   = {
+                        p.placement_ox, p.placement_oy, p.placement_oz };
+                    int o_n = cg->AddConst(origin, "link_origin");
+                    int d_n = cg->AddConst(axis,   "link_axis");
+                    int a_n = cg->AddConst(p.placement_angle, "link_angle");
+                    cur = cg->AddOp("rotate",
+                                    {cur, o_n, d_n, a_n}, {},
+                                    feat.name + ":link_rot");
+                }
+
+                if (std::fabs(p.placement_px) > k_eps_pos
+                    || std::fabs(p.placement_py) > k_eps_pos
+                    || std::fabs(p.placement_pz) > k_eps_pos)
+                {
+                    brepgraph::Vec3 off = {
+                        p.placement_px, p.placement_py, p.placement_pz };
+                    int o_n = cg->AddConst(off, "link_offset");
+                    cur = cg->AddOp("translate",
+                                    {cur, o_n}, {},
+                                    feat.name + ":link_tr");
+                }
+
+                node = cur;
+            }
+            else if constexpr (std::is_same_v<T, FeatPayloadAsmConstraint>)
+            {
+                // Geometry-free metadata: Phase 4 LCS-pair solver
+                // (when added) will read FeatPayloadAsmConstraint to
+                // compute a Link's Placement at edit time; today the
+                // Reader trusts FreeCAD's already-baked Placement and
+                // this payload contributes no CalcGraph node.
+                (void)p;
+            }
+
             // ---- Not implemented yet ----
             else
             {

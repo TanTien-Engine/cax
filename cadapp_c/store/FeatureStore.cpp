@@ -470,6 +470,37 @@ void Encode(const FeatPayloadMultiTransform& p, BlobWriter& w)
     }
 }
 
+void Encode(const FeatPayloadLink& p, BlobWriter& w)
+{
+    w.StringField(p.linked_file);
+    w.StringField(p.linked_object_name);
+    w.U32(p.sub_tip_feature_id);
+    w.F64(p.placement_px);
+    w.F64(p.placement_py);
+    w.F64(p.placement_pz);
+    w.F64(p.placement_ox);
+    w.F64(p.placement_oy);
+    w.F64(p.placement_oz);
+    w.F64(p.placement_angle);
+}
+
+void Encode(const FeatPayloadAsmConstraint& p, BlobWriter& w)
+{
+    w.U32(p.linked_link_feature_id);
+    w.U32(p.parent_link_feature_id);
+    w.StringField(p.first_lcs_name);
+    w.StringField(p.second_lcs_name);
+    w.StringField(p.is_attached_to);
+    w.F64(p.offset_px);
+    w.F64(p.offset_py);
+    w.F64(p.offset_pz);
+    w.F64(p.offset_ox);
+    w.F64(p.offset_oy);
+    w.F64(p.offset_oz);
+    w.F64(p.offset_angle);
+    w.U8(p.constraint_type);
+}
+
 
 // ============================================================
 // Decode dispatch: payload tag -> Decode(reader, payload)
@@ -695,6 +726,37 @@ void Decode(BlobReader& r, FeatPayloadMultiTransform& p)
         s.count       = r.I32();
         s.total_angle = r.F64();
     }
+}
+
+void Decode(BlobReader& r, FeatPayloadLink& p)
+{
+    p.linked_file        = r.StringField();
+    p.linked_object_name = r.StringField();
+    p.sub_tip_feature_id = r.U32();
+    p.placement_px       = r.F64();
+    p.placement_py       = r.F64();
+    p.placement_pz       = r.F64();
+    p.placement_ox       = r.F64();
+    p.placement_oy       = r.F64();
+    p.placement_oz       = r.F64();
+    p.placement_angle    = r.F64();
+}
+
+void Decode(BlobReader& r, FeatPayloadAsmConstraint& p)
+{
+    p.linked_link_feature_id = r.U32();
+    p.parent_link_feature_id = r.U32();
+    p.first_lcs_name         = r.StringField();
+    p.second_lcs_name        = r.StringField();
+    p.is_attached_to         = r.StringField();
+    p.offset_px              = r.F64();
+    p.offset_py              = r.F64();
+    p.offset_pz              = r.F64();
+    p.offset_ox              = r.F64();
+    p.offset_oy              = r.F64();
+    p.offset_oz              = r.F64();
+    p.offset_angle           = r.F64();
+    p.constraint_type        = r.U8();
 }
 
 
@@ -1015,6 +1077,20 @@ bool FeatureStore::ExportToIR(uint32_t entry_idx, FeatureIR& out) const
     case 24:
     {
         FeatPayloadPrimEllipsoid p;
+        Decode(r, p);
+        out.data = std::move(p);
+        break;
+    }
+    case 25:
+    {
+        FeatPayloadLink p;
+        Decode(r, p);
+        out.data = std::move(p);
+        break;
+    }
+    case 26:
+    {
+        FeatPayloadAsmConstraint p;
         Decode(r, p);
         out.data = std::move(p);
         break;

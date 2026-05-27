@@ -403,6 +403,109 @@ void QuatToAxes(double qx, double qy, double qz, double qw,
     z_axis[2] = 1.0 - 2.0 * (qx * qx + qy * qy);
 }
 
+// Quaternion (qx, qy, qz, qw) -> axis-angle (unit axis + radians).
+// Falls back to (0,0,1, 0) for an identity-or-near-identity rotation.
+// Matches the convention used by StashPlacement/Replayer placement
+// ops: rotate(axis, angle) about origin, then translate(p).
+void QuatToAxisAngle(double qx, double qy, double qz, double qw,
+                     double& ax, double& ay, double& az, double& angle)
+{
+    // Normalize to guard against accumulated FP drift in saved files.
+    double n = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+    if (n > 0.0) {
+        qx /= n; qy /= n; qz /= n; qw /= n;
+    }
+    // Clamp qw into [-1,1] so acos() stays in domain.
+    if (qw >  1.0) qw =  1.0;
+    if (qw < -1.0) qw = -1.0;
+    angle = 2.0 * std::acos(qw);
+
+    double s = std::sqrt(1.0 - qw * qw);
+    if (s < 1e-12) {
+        // No rotation: arbitrary axis (use +Z so downstream
+        // cg.AddOp("rotate", ...) with angle=0 stays a no-op).
+        ax = 0.0; ay = 0.0; az = 1.0;
+        angle = 0.0;
+        return;
+    }
+    ax = qx / s;
+    ay = qy / s;
+    az = qz / s;
+}
+
+// Return the parent directory of an absolute or relative file path
+// (everything up to the last '/' or '\\'); empty on no separator.
+std::string PathParentDir(const std::string& path)
+{
+    size_t pos = path.find_last_of("/\\");
+    if (pos == std::string::npos) {
+        return std::string{};
+    }
+    return path.substr(0, pos);
+}
+
+// Per-thread stack of canonical paths currently being parsed by some
+// FreeCadReader instance in this call chain. App::Link recursion
+// pushes the resolved sub-doc path on entry and pops on exit; a path
+// already present means the document graph has a cycle (e.g. file A
+// links B, B links A). Stored thread-locally so concurrent Reader
+// invocations on different threads do not interfere.
+thread_local std::unordered_set<std::string> g_link_path_stack;
+
+// Remap every feature-id reference that lives INSIDE a FeaturePayload
+// variant or in ext_params (where readers stash auxiliary ids that
+// don't fit a typed field). Called once per sub-doc feature while
+// merging an App::Link sub-doc into the host DocumentIR; the host's
+// `remap` callback maps a sub-doc feature_id to its newly-allocated
+// host feature_id. Sentinels (0 and 0xFFFFFFFF) pass through.
+//
+// Coverage:
+//   FeatPayloadSketch.sketch_id          - sketch's own feature id
+//   FeatPayloadExtrude.sketch_id         - profile sketch
+//   FeatPayloadRevolve.sketch_id
+//   FeatPayloadLoft.profile_sketch_ids   - vector
+//   FeatPayloadSweep.profile_sketch_id
+//   FeatPayloadHoleWizard.sketch_id
+//   FeatPayloadRib.sketch_id
+//   ext_params["spine_sketch_id"]        - Sweep spine, stored as
+//                                          double for ext_params
+//
+// FeatureIR::input_feature_ids is remapped by the caller (separate
+// code path), so this helper does not touch it.
+template <typename RemapFn>
+void RemapPayloadFeatureRefs(cadapp::FeatureIR& feat, RemapFn&& remap)
+{
+    using namespace cadapp;
+    std::visit([&](auto& p) {
+        using T = std::decay_t<decltype(p)>;
+        if constexpr (std::is_same_v<T, FeatPayloadSketch>) {
+            p.sketch_id = remap(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadExtrude>) {
+            p.sketch_id = remap(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadRevolve>) {
+            p.sketch_id = remap(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadLoft>) {
+            for (auto& sid : p.profile_sketch_ids) {
+                sid = remap(sid);
+            }
+        } else if constexpr (std::is_same_v<T, FeatPayloadSweep>) {
+            p.profile_sketch_id = remap(p.profile_sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadHoleWizard>) {
+            p.sketch_id = remap(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadRib>) {
+            p.sketch_id = remap(p.sketch_id);
+        }
+        // Other payloads (Fillet/Chamfer/Shell/Boolean/Prim*/Link/...
+        // /AsmConstraint/Opaque) carry no feature-id refs in their
+        // typed fields.
+    }, feat.data);
+
+    auto sp = feat.ext_params.find("spine_sketch_id");
+    if (sp != feat.ext_params.end()) {
+        sp->second = (double)remap((uint32_t)sp->second);
+    }
+}
+
 
 // Resolve a (object_name, sub_name) ref to a world-frame plane
 // normal. Recognised forms:
@@ -797,9 +900,16 @@ bool IsSkipType(const std::string& t)
 // produce a feature of their own. PartDesign::Body is the main
 // example: its Group lists every Sketch / Pad / Pocket / ... in
 // modeling order (and Tip points at the active leaf).
+//
+// App::DocumentObjectGroup is the Assembly4 "Constraints" group --
+// it holds the constr_* features as siblings but contributes no
+// geometry. Listing it here makes the reader skip emitting a
+// FeatureIR for the group object itself (the children stay in
+// the queue and get emitted on their own).
 bool IsContainerType(const std::string& t)
 {
-    if (t == "PartDesign::Body") { return true; }
+    if (t == "PartDesign::Body")            { return true; }
+    if (t == "App::DocumentObjectGroup")    { return true; }
     return false;
 }
 
@@ -2397,12 +2507,24 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
         auto props = it->second.child("Properties");
         auto group = PropLinkList(props, "Group");
+
+        // App::DocumentObjectGroup (e.g. Assembly4 "Constraints")
+        // only acts as a queueing parent: its children still need
+        // to be pushed for emission, but they are NOT body-owned --
+        // tagging them via name_to_body would later make the host's
+        // body-chain block at emission time assign them a Role::Base
+        // body-root sentinel that is meaningless for free-standing
+        // metadata features like Assembly4's constr_*.
+        bool is_body_carrier = (pending.type != "App::DocumentObjectGroup");
+
         for (const auto& child_name : group)
         {
             auto cit = by_name.find(child_name);
             if (cit != by_name.end()) {
                 push_if_unseen(cit->second);
-                name_to_body[child_name] = pending.name;
+                if (is_body_carrier) {
+                    name_to_body[child_name] = pending.name;
+                }
             }
         }
         // Pick the tip: prefer the explicit Tip link, else the last
@@ -3655,6 +3777,407 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 feat.type = FeatType::Unknown;
                 feat.data = std::move(pl);
             }
+        }
+        else if (pending.type == "App::Link")
+        {
+            // ---- App::Link (Assembly4 part instance) ----
+            //
+            // FreeCAD Assembly4 represents each placed part as an
+            // App::Link with two driving properties:
+            //   LinkedObject : PropertyXLink -> <XLink file="X.FCStd"
+            //                  name="Model"/> naming a sibling doc and
+            //                  the root object (typically App::Part
+            //                  "Model") inside it
+            //   Placement    : already-baked final world placement,
+            //                  the result of evaluating Assembly4's
+            //                  LCS-pair ExpressionEngine formula
+            //
+            // We recursively load the linked doc with a fresh reader,
+            // re-id its features into this DocumentIR, and emit a
+            // FeatType::Link feature whose payload carries the
+            // Placement and whose Role::Base input edge points at the
+            // sub-doc's body tip. The Replayer's Link arm (Phase 3)
+            // then layers rotate(axis, angle) + translate(p) over the
+            // sub-tip CalcGraph node to position the part.
+            //
+            // Why not solve the LCS-pair constraint here:
+            //   Assembly4 has already baked the resulting placement
+            //   onto each App::Link at save time. The ExpressionEngine
+            //   formula is round-trip metadata only; loading code can
+            //   trust Placement verbatim. The constr_* features carry
+            //   the binding for a future solver (parsed separately as
+            //   FeatPayloadAsmConstraint in the constr_* branch).
+
+            auto xlink_prop = FindProperty(props, "LinkedObject");
+            pugi::xml_node xnode;
+            if (xlink_prop) {
+                xnode = xlink_prop.child("XLink");
+            }
+            std::string linked_file   = xnode ? AttrStr(xnode, "file") : "";
+            std::string linked_object = xnode ? AttrStr(xnode, "name") : "";
+
+            if (linked_file.empty())
+            {
+                // Internal-only Link (LinkedObject points within the
+                // same document via "value=" instead of XLink "file=").
+                // Not used by Assembly4; fall back to Opaque so the
+                // doc still loads. A later pass can recognise the
+                // intra-doc case if needed.
+                FeatPayloadOpaque pl;
+                pl.strings["freecad_type"]            = pending.type;
+                pl.strings["link_internal_target"]    = linked_object;
+                feat.type = FeatType::Unknown;
+                feat.data = std::move(pl);
+            }
+            else
+            {
+                // Resolve sibling-file path relative to the host doc.
+                std::string host_dir = PathParentDir(out.doc_path);
+                std::string sub_path = host_dir.empty()
+                                     ? linked_file
+                                     : (host_dir + "/" + linked_file);
+
+                if (g_link_path_stack.count(sub_path))
+                {
+                    if (err_msg) {
+                        *err_msg = "App::Link cycle: " + sub_path
+                                 + " (host: " + out.doc_path + ")";
+                    }
+                    return false;
+                }
+
+                FreeCadReader sub_reader;
+                sub_reader.SetUnitScale(m_unit_scale);
+                sub_reader.SetStrict(m_strict);
+
+                DocumentIR  sub_doc;
+                std::string sub_err;
+
+                g_link_path_stack.insert(sub_path);
+                bool sub_ok = sub_reader.ReadFile(sub_path,
+                                                  sub_doc,
+                                                  &sub_err);
+                g_link_path_stack.erase(sub_path);
+
+                if (!sub_ok)
+                {
+                    if (err_msg)
+                    {
+                        std::ostringstream oss;
+                        oss << "App::Link " << pending.name
+                            << " sub-doc read failed ("
+                            << sub_path << "): " << sub_err;
+                        *err_msg = oss.str();
+                    }
+                    return false;
+                }
+
+                // Re-id sub-doc features into the host's id space and
+                // merge. Sub-feature ids start at 1 in the sub-reader;
+                // we shift them past m_next_feature_id (which already
+                // covers every host-side pending). Body-root sentinels
+                // (0) and unresolved sentinels (0xFFFFFFFF) pass
+                // through unchanged.
+                std::unordered_map<uint32_t, uint32_t> sub_id_to_host;
+                sub_id_to_host.reserve(sub_doc.features.size());
+
+                auto remap_id = [&](uint32_t id) -> uint32_t {
+                    if (id == 0 || id == 0xFFFFFFFFu) return id;
+                    auto rit = sub_id_to_host.find(id);
+                    return (rit == sub_id_to_host.end()) ? id : rit->second;
+                };
+
+                for (auto& sf : sub_doc.features)
+                {
+                    uint32_t new_id = m_next_feature_id++;
+                    sub_id_to_host[sf.id] = new_id;
+                    sf.id = new_id;
+                    for (auto& iid : sf.input_feature_ids) {
+                        iid = remap_id(iid);
+                    }
+                    // Remap typed sketch_id / profile_sketch_id /
+                    // spine_sketch_id refs inside the payload variant
+                    // and ext_params. Without this, an inlined Pad's
+                    // FeatPayloadExtrude.sketch_id still points at the
+                    // sub-doc's old sketch feature_id, and the
+                    // Replayer's sketch_face_nodes lookup misses --
+                    // "missing sketch for feature Pad". The remap
+                    // closure must already be visible to merge passes
+                    // for sketches / authored_shapes below; it is.
+                    RemapPayloadFeatureRefs(sf, remap_id);
+
+                    // Tag inlined features with the source so a
+                    // diagnostic / fingerprint pass can see which
+                    // Link instance introduced them.
+                    sf.ext_strings["link_source"] = pending.name;
+                    out.features.push_back(std::move(sf));
+                }
+
+                for (auto& sk : sub_doc.sketches)
+                {
+                    sk.feature_id = remap_id(sk.feature_id);
+                    out.sketches.push_back(std::move(sk));
+                }
+
+                for (auto& kv : sub_doc.authored_shapes)
+                {
+                    uint32_t new_key = remap_id(kv.first);
+                    out.authored_shapes[new_key] = kv.second;
+                }
+
+                // Sub-tip: walk back through the just-appended block
+                // and pick the latest non-Sketch feature -- in
+                // FreeCAD's modeling order that is the Body's Tip.
+                // The pre-allocation pass guarantees sub ids start
+                // strictly after host ids, so the appended block sits
+                // contiguously at the tail of out.features.
+                uint32_t sub_tip_host_id = 0;
+                if (!sub_id_to_host.empty())
+                {
+                    uint32_t lo = std::numeric_limits<uint32_t>::max();
+                    for (const auto& kv : sub_id_to_host) {
+                        if (kv.second < lo) lo = kv.second;
+                    }
+                    for (auto rit = out.features.rbegin();
+                         rit != out.features.rend(); ++rit)
+                    {
+                        if (rit->id < lo) break;
+                        if (rit->type == FeatType::Sketch) continue;
+                        if (rit->type == FeatType::Unknown) continue;
+                        sub_tip_host_id = rit->id;
+                        break;
+                    }
+                }
+
+                FeatPayloadLink pl;
+                pl.linked_file        = linked_file;
+                pl.linked_object_name = linked_object;
+                pl.sub_tip_feature_id = sub_tip_host_id;
+
+                // Placement: same Pq + quaternion convention used by
+                // sketches, converted to axis-angle for the Replayer's
+                // rotate(axis, angle) op. Translation scales by
+                // m_unit_scale; the quaternion is dimensionless.
+                auto place_prop = FindProperty(props, "Placement");
+                if (place_prop)
+                {
+                    auto place = place_prop.child("PropertyPlacement");
+                    pl.placement_px = AttrDouble(place, "Px", 0.0) * m_unit_scale;
+                    pl.placement_py = AttrDouble(place, "Py", 0.0) * m_unit_scale;
+                    pl.placement_pz = AttrDouble(place, "Pz", 0.0) * m_unit_scale;
+
+                    double qx = AttrDouble(place, "Q0", 0.0);
+                    double qy = AttrDouble(place, "Q1", 0.0);
+                    double qz = AttrDouble(place, "Q2", 0.0);
+                    double qw = AttrDouble(place, "Q3", 1.0);
+                    QuatToAxisAngle(qx, qy, qz, qw,
+                                    pl.placement_ox,
+                                    pl.placement_oy,
+                                    pl.placement_oz,
+                                    pl.placement_angle);
+                }
+
+                feat.type = FeatType::Link;
+                feat.data = std::move(pl);
+                feat.ext_strings["freecad_type"] = pending.type;
+
+                if (sub_tip_host_id != 0) {
+                    PushInput(feat, sub_tip_host_id,
+                              cadapp::InputRole::Base);
+                }
+            }
+        }
+        else if (pending.type == "App::FeaturePython"
+                 && FindProperty(props, "is_attached_to"))
+        {
+            // ---- Assembly4 constr_* (LCS-pair binding) ----
+            //
+            // Recognised by the presence of the Assembly4-specific
+            // "is_attached_to" property on a generic App::FeaturePython
+            // (the Proxy class identifier is a base64-encoded Python
+            // pickle that we don't decode). Captured for round-trip /
+            // future constraint solver; produces no geometry, so the
+            // Replayer's FeatPayloadAsmConstraint arm is a no-op.
+            //
+            // Resolved fields:
+            //   linked_link_feature_id : the Link this constraint
+            //       positions, derived from the naming convention
+            //       constr_<link_name>  ->  Link "<link_name>"
+            //   parent_link_feature_id : 0 when is_attached_to is
+            //       "Parent Assembly" (LCS lives on the root); else
+            //       the feature id of the named parent Link
+            //   first_lcs_name / second_lcs_name : best-effort
+            //       extraction from the Link's Placement expression
+            //       ("<<LCS>>.Placement.multiply(...).multiply(.
+            //        <<LCS.>>.Placement.inverse())"). Used by a
+            //       future LCS-pair solver to look up the two
+            //       coordinate frames; empty when the expression
+            //       parse fails (then the solver will need to fall
+            //       back on the cached Offset alone).
+            //   offset_* : raw Offset placement (rigid mate between
+            //       the two LCS), in IR units / radians
+            //   is_attached_to : raw string kept verbatim so a future
+            //       writer can round-trip the FreeCAD file unchanged
+
+            FeatPayloadAsmConstraint pl;
+
+            auto offs_prop = FindProperty(props, "Offset");
+            if (offs_prop)
+            {
+                auto place = offs_prop.child("PropertyPlacement");
+                pl.offset_px = AttrDouble(place, "Px", 0.0) * m_unit_scale;
+                pl.offset_py = AttrDouble(place, "Py", 0.0) * m_unit_scale;
+                pl.offset_pz = AttrDouble(place, "Pz", 0.0) * m_unit_scale;
+                double qx = AttrDouble(place, "Q0", 0.0);
+                double qy = AttrDouble(place, "Q1", 0.0);
+                double qz = AttrDouble(place, "Q2", 0.0);
+                double qw = AttrDouble(place, "Q3", 1.0);
+                QuatToAxisAngle(qx, qy, qz, qw,
+                                pl.offset_ox,
+                                pl.offset_oy,
+                                pl.offset_oz,
+                                pl.offset_angle);
+            }
+
+            // is_attached_to
+            {
+                auto a_prop = FindProperty(props, "is_attached_to");
+                if (a_prop) {
+                    auto s = a_prop.child("String");
+                    pl.is_attached_to = AttrStr(s, "value");
+                }
+            }
+
+            // Resolve linked Link by name (strip "constr_" prefix).
+            {
+                static const std::string kPrefix = "constr_";
+                if (pending.name.rfind(kPrefix, 0) == 0)
+                {
+                    std::string link_name =
+                        pending.name.substr(kPrefix.size());
+                    auto nit = m_name_to_id.find(link_name);
+                    if (nit != m_name_to_id.end()) {
+                        pl.linked_link_feature_id = nit->second;
+                    }
+                }
+            }
+
+            // Resolve parent Link from is_attached_to. The literal
+            // "Parent Assembly" means the LCS sits on the root, not
+            // on another Link -- leave parent_link_feature_id at 0.
+            if (!pl.is_attached_to.empty()
+                && pl.is_attached_to != "Parent Assembly")
+            {
+                auto nit = m_name_to_id.find(pl.is_attached_to);
+                if (nit != m_name_to_id.end()) {
+                    pl.parent_link_feature_id = nit->second;
+                }
+            }
+
+            // Best-effort: extract the LCS-pair names from the linked
+            // Link's Placement expression. Pattern with parent on
+            // root assembly:
+            //   <<LCS_A>>.Placement.multiply(<<constr_X>>.Offset)
+            //                     .multiply(.<<LCS_B.>>.Placement.inverse())
+            // Pattern with parent on another Link:
+            //   <<PLINK>>.Placement.multiply(<<PLINK>>.<<LCS_A.>>.Placement)
+            //            .multiply(<<constr_X>>.Offset)
+            //            .multiply(.<<LCS_B.>>.Placement.inverse())
+            // In both cases the LCS adjacent to the constr.Offset
+            // marker is the "first" (parent-side) LCS, and the LCS
+            // inside the trailing .inverse() is the "second" (child
+            // side, inside the linked part).
+            if (pl.linked_link_feature_id != 0)
+            {
+                auto link_data_it = data_by_name.find(
+                    pending.name.substr(7) /* "constr_" */);
+                if (link_data_it != data_by_name.end())
+                {
+                    auto link_props = link_data_it->second.child("Properties");
+                    auto expr_prop  = FindProperty(link_props, "ExpressionEngine");
+                    if (expr_prop)
+                    {
+                        auto ee = expr_prop.child("ExpressionEngine");
+                        for (auto e = ee.child("Expression"); e; e = e.next_sibling("Expression"))
+                        {
+                            std::string path = AttrStr(e, "path");
+                            if (path != "Placement") continue;
+                            std::string expr = AttrStr(e, "expression");
+
+                            // First LCS: the token wrapped in <<...>>
+                            // that immediately precedes the
+                            // ".multiply(<<constr_NAME>>.Offset)"
+                            // substring. Walk backwards from one
+                            // position before the marker (so we
+                            // skip the marker's own "<<") and find
+                            // the previous "<<X>>" token.
+                            std::string marker = "<<" + pending.name + ">>.Offset";
+                            size_t mpos = expr.find(marker);
+                            if (mpos != std::string::npos && mpos > 0)
+                            {
+                                size_t scan_end = mpos;
+                                size_t open = expr.rfind("<<", scan_end - 1);
+                                size_t close = (open == std::string::npos)
+                                                   ? std::string::npos
+                                                   : expr.find(">>", open);
+                                if (open != std::string::npos
+                                    && close != std::string::npos
+                                    && close < scan_end)
+                                {
+                                    // Could be the link-name <<X>> in
+                                    // a chained pattern; the actual
+                                    // LCS is in the *next* "<<...>>"
+                                    // token before the marker. Walk
+                                    // once more if the token before
+                                    // ends with ".Placement" without
+                                    // a chained LCS, since the chained
+                                    // pattern always has the LCS as
+                                    // the inner <<X.>> wrapped in
+                                    // X.Placement form.
+                                    std::string tok = expr.substr(
+                                        open + 2, close - open - 2);
+                                    // Strip trailing dot from the
+                                    // "<<NAME.>>" pattern used for
+                                    // sub-object refs.
+                                    if (!tok.empty() && tok.back() == '.') {
+                                        tok.pop_back();
+                                    }
+                                    pl.first_lcs_name = tok;
+                                }
+                            }
+
+                            // Second LCS: trailing
+                            // ".multiply(.<<LCS.>>.Placement.inverse())"
+                            // -- the LCS is the only "<<X.>>" wrapped
+                            // in a leading-dot context near the end.
+                            // Take the LAST <<...>> token in the
+                            // expression as a good-enough heuristic
+                            // for this Assembly4-generated layout.
+                            size_t last_open = expr.rfind("<<");
+                            size_t last_close = (last_open == std::string::npos)
+                                                ? std::string::npos
+                                                : expr.find(">>", last_open);
+                            if (last_open != std::string::npos
+                                && last_close != std::string::npos)
+                            {
+                                std::string tok = expr.substr(
+                                    last_open + 2,
+                                    last_close - last_open - 2);
+                                if (!tok.empty() && tok.back() == '.') {
+                                    tok.pop_back();
+                                }
+                                pl.second_lcs_name = tok;
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+
+            feat.type = FeatType::AsmConstraint;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
         }
         else
         {

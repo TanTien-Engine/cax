@@ -324,6 +324,81 @@ struct FeatPayloadOpaque
     std::vector<TopoRefIR>             face_refs;
 };
 
+// Instance of an external part / sub-document, placed with a rigid
+// transform. FreeCAD Assembly4 App::Link is the driving case:
+//   - linked_file           the sibling .FCStd referenced via
+//                           PropertyXLink (relative to host doc dir)
+//   - linked_object_name    the root object inside that file (typically
+//                           "Model", the App::Part container)
+//   - sub_tip_feature_id    after the host reader recursively reads the
+//                           sub-doc and re-ids its features into the
+//                           parent DocumentIR, this points at the
+//                           sub-doc's body tip feature. Replayer's
+//                           Base-role input edge to the Link feature
+//                           also carries this id; the field is kept
+//                           explicit so a future "swap linked file"
+//                           operation has the binding.
+//   - placement_*           rigid transform applied to the sub-tip
+//                           shape. Same axis-angle convention as
+//                           StashPlacement: rotate(axis, angle) about
+//                           origin, then translate(px,py,pz). Already
+//                           in IR units (metres / radians).
+struct FeatPayloadLink
+{
+    std::string linked_file;
+    std::string linked_object_name;
+    uint32_t    sub_tip_feature_id = 0;
+
+    double placement_px = 0.0;
+    double placement_py = 0.0;
+    double placement_pz = 0.0;
+    double placement_ox = 0.0;
+    double placement_oy = 0.0;
+    double placement_oz = 1.0;
+    double placement_angle = 0.0;
+};
+
+// Assembly4 constr_* object: an LCS-to-LCS coincidence with an
+// optional rigid offset. Captured for round-trip / future solver
+// integration; the Replayer ignores this payload because Assembly4
+// has already baked the resulting placement onto each App::Link.
+//
+//   - linked_link_feature_id   the FeatPayloadLink this constraint
+//                              positions (the host-side feature id
+//                              after re-id); 0 if unresolved
+//   - first_lcs_name           LCS in the parent assembly's frame
+//                              (typically a child of the asm root or
+//                              of an earlier Link)
+//   - second_lcs_name          LCS inside the linked part's body
+//   - parent_link_feature_id   when first_lcs lives on another Link
+//                              (chained asm), the id of that parent
+//                              Link feature; 0 when LCS is on the
+//                              root assembly itself
+//   - is_attached_to           raw FreeCAD string, kept verbatim for
+//                              round-trip (e.g. "Parent Assembly")
+//   - offset_*                 same axis-angle convention as
+//                              FeatPayloadLink
+//   - constraint_type          0 = coincident (default in Assembly4);
+//                              reserved for future kinds
+struct FeatPayloadAsmConstraint
+{
+    uint32_t    linked_link_feature_id = 0;
+    uint32_t    parent_link_feature_id = 0;
+    std::string first_lcs_name;
+    std::string second_lcs_name;
+    std::string is_attached_to;
+
+    double  offset_px = 0.0;
+    double  offset_py = 0.0;
+    double  offset_pz = 0.0;
+    double  offset_ox = 0.0;
+    double  offset_oy = 0.0;
+    double  offset_oz = 1.0;
+    double  offset_angle = 0.0;
+
+    uint8_t constraint_type = 0;
+};
+
 
 // ---- variant alias ----
 //
@@ -355,7 +430,9 @@ using FeaturePayload = std::variant<
     FeatPayloadRib,              // 21
     FeatPayloadOpaque,           // 22
     FeatPayloadMultiTransform,   // 23
-    FeatPayloadPrimEllipsoid     // 24
+    FeatPayloadPrimEllipsoid,    // 24
+    FeatPayloadLink,             // 25
+    FeatPayloadAsmConstraint     // 26
 >;
 
 

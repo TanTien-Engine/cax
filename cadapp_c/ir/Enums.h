@@ -139,6 +139,10 @@ enum class FeatType : uint8_t
 
     // hole wizard
     HoleWizard       = 90,
+
+    // assembly
+    Link             = 100, // instance of an external part/sub-doc with a rigid placement
+    AsmConstraint    = 101, // FreeCAD Assembly4 constr_* : LCS-pair coincidence + offset
 };
 
 // Extrude / revolve end condition.
