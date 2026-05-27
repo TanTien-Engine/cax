@@ -576,8 +576,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         // It's a local-per-iteration value -- there's no running
         // cursor that survives across features. Every handler that
         // needs a base reads base_node; handlers that don't (Sketch,
-        // Boolean reading typed operand_feature_ids, Pattern reading
-        // Originals tools) ignore it.
+        // Boolean reading Role::Operand inputs, Pattern reading its
+        // own Originals tools) ignore it.
         int base_node = ResolveBaseNode(feat, feature_nodes);
 
         std::visit([&](auto& p)
@@ -1469,23 +1469,37 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // ---- Boolean (Part::Cut / Fuse / Common / MultiFuse /
             //              MultiCommon) ----
             //
-            // The operand list was resolved at read time to feature
-            // ids that produce a shape; look each one up in
-            // feature_nodes and fold them pairwise in list order.
-            // For Cut the first operand is the kept base; for Fuse /
-            // Common the order only matters for graph layout. The
-            // boolean's result is committed to feature_nodes under
-            // this feature's id, so a downstream Fillet / pattern
-            // that names this id as its input_feature_ids[0] picks
-            // it up via ResolveBaseNode.
+            // The operand list lives in FeatureIR::input_feature_ids
+            // with Role::Operand on each entry (P3.3.B). Collect them
+            // in declaration order, look each one up in feature_nodes,
+            // and fold pairwise. For Cut the first operand is the
+            // kept base; for Fuse / Common the order only matters for
+            // graph layout. The boolean's result is committed to
+            // feature_nodes under this feature's id, so a downstream
+            // Fillet / pattern that names this id as its Role::Base
+            // input picks it up via ResolveBaseNode.
             else if constexpr (std::is_same_v<T, FeatPayloadBoolean>)
             {
-                if (p.operand_feature_ids.size() < 2)
+                (void)p; // empty payload; data lives in feat.input_*
+
+                std::vector<uint32_t> operands;
+                operands.reserve(feat.input_feature_ids.size());
+                for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+                {
+                    InputRole role = (i < feat.input_roles.size())
+                                        ? feat.input_roles[i]
+                                        : InputRole::Base;
+                    if (role == InputRole::Operand) {
+                        operands.push_back(feat.input_feature_ids[i]);
+                    }
+                }
+
+                if (operands.size() < 2)
                 {
                     step_ok     = false;
                     out.err_msg = "boolean " + feat.name +
                                   " needs at least 2 operands, got " +
-                                  std::to_string(p.operand_feature_ids.size());
+                                  std::to_string(operands.size());
                     return;
                 }
 
@@ -1494,16 +1508,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 if (feat.type == FeatType::Common) op = "common";
 
                 int cur = -1;
-                for (size_t oi = 0; oi < p.operand_feature_ids.size(); ++oi)
+                for (size_t oi = 0; oi < operands.size(); ++oi)
                 {
-                    auto nit = feature_nodes.find(p.operand_feature_ids[oi]);
+                    auto nit = feature_nodes.find(operands[oi]);
                     if (nit == feature_nodes.end())
                     {
                         step_ok = false;
                         out.err_msg = "boolean " + feat.name +
                                       " operand " + std::to_string(oi) +
                                       " (feature id " +
-                                      std::to_string(p.operand_feature_ids[oi]) +
+                                      std::to_string(operands[oi]) +
                                       ") has no replayed shape";
                         return;
                     }
@@ -1511,7 +1525,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         cur = nit->second;
                     } else {
                         std::string tag = feat.name;
-                        if (oi + 1 < p.operand_feature_ids.size()) {
+                        if (oi + 1 < operands.size()) {
                             tag += ":fold" + std::to_string(oi);
                         }
                         cur = cg->AddOp(op, {cur, nit->second}, {}, tag);
@@ -1609,34 +1623,20 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
 
-            // Operand / input consumption: any feat whose shape gets
-            // folded into this one is marked so the emitter doesn't
-            // re-emit it alongside this feature.
-            //   * FeatPayloadBoolean operands (Part::Cut / Fuse /
-            //     Common / MultiFuse / MultiCommon). Migrates into
-            //     input_feature_ids w/ Role::Operand in P3.3.B; the
-            //     payload field stays for now.
-            //   * FeatureIR::input_feature_ids entries with a
-            //     consuming role (Base / Operand / Tool /
-            //     PatternTarget). Marking the input as consumed is
-            //     what stops the Body candidate from appearing next
-            //     to a standalone Thickness that absorbed it
-            //     (Page_037 went 1 solid -> 2 solids before this
-            //     gate was added). Body-internal cases are no-ops
-            //     in practice: the body candidate is keyed on the
-            //     latest tip's feat_id, which differs from the
-            //     prev's id, so the insert here doesn't filter
-            //     anything.
+            // Input consumption: any feat whose shape gets folded
+            // into this one is marked so the emitter doesn't re-emit
+            // it alongside this feature. Walks the typed
+            // FeatureIR::input_feature_ids; entries with a consuming
+            // role (Base / Operand / Tool / PatternTarget) absorb
+            // the upstream candidate, Reference-role entries don't.
             //
-            // Reference-role entries (sketch supports, datum
-            // parents) are inputs in the DAG sense but do NOT
-            // consume the referenced shape, so they're skipped.
-            if (auto* bp = std::get_if<FeatPayloadBoolean>(&feat.data))
-            {
-                for (uint32_t opid : bp->operand_feature_ids) {
-                    consumed_feat_ids.insert(opid);
-                }
-            }
+            // Marking the input as consumed is what stops the Body
+            // candidate from appearing next to a standalone Thickness
+            // that absorbed it (Page_037 went 1 solid -> 2 solids
+            // before this gate was added). Body-internal cases are
+            // no-ops in practice: the body candidate is keyed on the
+            // latest tip's feat_id, which differs from the prev's
+            // id, so the insert here doesn't filter anything.
             for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
             {
                 InputRole role = (i < feat.input_roles.size())

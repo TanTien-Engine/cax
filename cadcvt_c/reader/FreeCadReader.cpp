@@ -3429,11 +3429,13 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             FeatPayloadBoolean pl;
             uint32_t base_id = resolve(PropLink(props, "Base").object_name);
             uint32_t tool_id = resolve(PropLink(props, "Tool").object_name);
+            // Operand order matters: Replayer folds pairwise, and for
+            // Part::Cut the first operand is the kept base.
             if (base_id != 0xFFFFFFFFu) {
-                pl.operand_feature_ids.push_back(base_id);
+                PushInput(feat, base_id, cadapp::InputRole::Operand);
             }
             if (tool_id != 0xFFFFFFFFu) {
-                pl.operand_feature_ids.push_back(tool_id);
+                PushInput(feat, tool_id, cadapp::InputRole::Operand);
             }
 
             if (pending.type == "Part::Cut") {
@@ -3473,7 +3475,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             for (const auto& name : PropLinkList(props, "Shapes")) {
                 uint32_t id = resolve(name);
                 if (id != 0xFFFFFFFFu) {
-                    pl.operand_feature_ids.push_back(id);
+                    PushInput(feat, id, cadapp::InputRole::Operand);
                 }
             }
 

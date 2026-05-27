@@ -61,5 +61,7 @@ feat 30 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.025 edges=4
   inputs=[29:base]
 feat 41 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.015 h=0.220
   inputs=[0:base]
-feat 42 name=Fusion type=Fuse suppressed=0 payload=boolean operands=[30,32]
-feat 43 name=Cut type=Cut suppressed=0 payload=boolean operands=[42,41]
+feat 42 name=Fusion type=Fuse suppressed=0 payload=boolean
+  inputs=[30:operand,32:operand]
+feat 43 name=Cut type=Cut suppressed=0 payload=boolean
+  inputs=[42:operand,41:operand]

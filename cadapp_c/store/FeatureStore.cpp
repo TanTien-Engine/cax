@@ -365,9 +365,12 @@ void Encode(const FeatPayloadCircularPattern& p, BlobWriter& w)
     w.F64(p.total_angle);
 }
 
-void Encode(const FeatPayloadBoolean& p, BlobWriter& w)
+void Encode(const FeatPayloadBoolean& /*p*/, BlobWriter& /*w*/)
 {
-    w.U32Vec(p.operand_feature_ids);
+    // Empty payload as of P3.3.B: the operand list lives in
+    // FeatureIR::input_feature_ids w/ Role::Operand. No bytes
+    // are written here, but the function stays so the variant
+    // dispatch (and payload_tag indexing) remains stable.
 }
 
 void Encode(const FeatPayloadPrimBox& p, BlobWriter& w)
@@ -588,9 +591,9 @@ void Decode(BlobReader& r, FeatPayloadCircularPattern& p)
     p.total_angle = r.F64();
 }
 
-void Decode(BlobReader& r, FeatPayloadBoolean& p)
+void Decode(BlobReader& /*r*/, FeatPayloadBoolean& /*p*/)
 {
-    p.operand_feature_ids = r.U32Vec();
+    // See Encode counterpart: empty as of P3.3.B.
 }
 
 void Decode(BlobReader& r, FeatPayloadPrimBox& p)

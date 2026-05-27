@@ -340,14 +340,10 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
             }
         }
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadBoolean>) {
-            os << "boolean operands=[";
-            for (size_t oi = 0; oi < p.operand_feature_ids.size(); ++oi) {
-                if (oi) {
-                    os << ",";
-                }
-                os << p.operand_feature_ids[oi];
-            }
-            os << "]";
+            // Payload is empty as of P3.3.B; operands appear on the
+            // typed inputs= line that follows the payload= line.
+            (void)p;
+            os << "boolean";
         }
         else {
             // Any payload type without a dedicated branch above. The

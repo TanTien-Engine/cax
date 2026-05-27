@@ -18,6 +18,8 @@ feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(
   inputs=[0:base]
 feat 11 name=Sphere type=PrimSphere suppressed=0 payload=sphere r=0.045
   inputs=[0:base]
-feat 20 name=Cut type=Cut suppressed=0 payload=boolean operands=[10,11]
+feat 20 name=Cut type=Cut suppressed=0 payload=boolean
+  inputs=[10:operand,11:operand]
 feat 21 name=Sphere001 type=PrimSphere suppressed=0 payload=sphere r=0.050
-feat 22 name=Common type=Common suppressed=0 payload=boolean operands=[21,20]
+feat 22 name=Common type=Common suppressed=0 payload=boolean
+  inputs=[21:operand,20:operand]

@@ -56,5 +56,6 @@ feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.007 dist2=0.000 end=4 flip=1
   inputs=[10:base]
 feat 13 name=Box type=PrimBox suppressed=0 payload=box l=0.350 w=0.350 h=0.020
-feat 14 name=Cut type=Cut suppressed=0 payload=boolean operands=[12,13]
+feat 14 name=Cut type=Cut suppressed=0 payload=boolean
+  inputs=[12:operand,13:operand]
 feat 15 name=Array type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) count=3 total_angle=6.2832

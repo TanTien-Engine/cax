@@ -39,9 +39,12 @@
 //   a typed [u32 count][u32...] section right after ext_strings in
 //   each feature payload.
 //   V3 (P3.3.A) added the parallel input_roles section as
-//   [u32 count][u8...] immediately after input_feature_ids. V1
-//   and V2 are not loaded (no in-tree fixtures persist them;
-//   clean break is cheaper than a compat path).
+//   [u32 count][u8...] immediately after input_feature_ids.
+//   V4 (P3.3.B) removed the FeatPayloadBoolean::operand_feature_ids
+//   field (operands now live in input_feature_ids w/ Role::Operand);
+//   the boolean payload is now zero bytes. V1-V3 are not loaded
+//   (no in-tree fixtures persist them; clean break is cheaper than
+//   a compat path).
 // ============================================================
 
 namespace cadapp
@@ -79,7 +82,7 @@ struct FeatureEntry
 #pragma pack(pop)
 
 static constexpr uint32_t FEAT_MAGIC   = 0x54414546;   // 'F','E','A','T' little-endian
-static constexpr uint32_t FEAT_VERSION = 3;
+static constexpr uint32_t FEAT_VERSION = 4;
 
 
 // ============================================================
