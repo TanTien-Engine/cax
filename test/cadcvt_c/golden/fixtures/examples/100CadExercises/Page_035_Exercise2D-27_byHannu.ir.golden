@@ -108,11 +108,11 @@ feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(
   inputs=[0:base]
 feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 13 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:mirror plane_n=(1.000,0.000,0.000)] [1:mirror plane_n=(0.000,1.000,0.000)]
-  inputs=[10:base]
+  inputs=[10:base,10:tool]
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[13:base]
 feat 16 name=Mirrored002 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[12:base]
+  inputs=[12:base,12:tool]
 feat 17 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=17
 feat 18 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[16:base]
@@ -120,4 +120,4 @@ feat 19 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=19
 feat 20 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=19 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[18:base]
 feat 21 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) count=4 total_angle=2.3562
-  inputs=[20:base]
+  inputs=[20:base,20:tool]

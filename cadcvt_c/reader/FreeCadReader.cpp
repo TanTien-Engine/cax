@@ -2051,27 +2051,34 @@ size_t StashFilletRefsFromFacePicks(
 }
 
 // Record an "Originals" link list (the features a Transformed
-// feature operates on) into FeatureIR ext_params:
-//   originals_count            -> N
-//   originals_id_<i>           -> feature_id of i-th original
-//   originals_name_<i>         -> name (ext_strings, for diagnostics)
-// The Replayer reads these to apply the pattern to each Original's
-// tool shape rather than to the whole running body.
+// feature operates on) into FeatureIR::input_feature_ids with
+// Role::Tool on each entry. The Replayer's ResolveOriginals walks
+// the typed inputs for Role::Tool to find which features' tool
+// shapes the pattern should multiply (rather than multiplying the
+// whole running body). P3.3.D migrated this off ext_params
+// originals_count / originals_id_<i> / originals_name_<i>.
+//
+// Names whose name_to_id lookup misses get skipped silently --
+// previously the count would include them via originals_count but
+// the corresponding id entry was absent. With the typed channel
+// the absence is just "no Role::Tool entry for that index", which
+// the Replayer treats identically.
 void StashOriginals(FeatureIR&                                          feat,
                     const std::vector<std::string>&                     originals,
                     const std::unordered_map<std::string, uint32_t>&    name_to_id)
 {
     if (originals.empty()) return;
-    feat.ext_params["originals_count"] = (double)originals.size();
-    for (size_t i = 0; i < originals.size(); ++i)
+    for (const auto& name : originals)
     {
-        auto it = name_to_id.find(originals[i]);
-        if (it != name_to_id.end())
-        {
-            feat.ext_params["originals_id_" + std::to_string(i)] =
-                (double)it->second;
-        }
-        feat.ext_strings["originals_name_" + std::to_string(i)] = originals[i];
+        auto it = name_to_id.find(name);
+        if (it == name_to_id.end()) continue;
+        // Open-coded PushInput because PushInput lives in a
+        // different anonymous namespace in the same TU (Section A)
+        // and isn't visible from here. The two-line append below
+        // is exactly what PushInput does, so the lock-step
+        // invariant (ids.size() == roles.size()) is preserved.
+        feat.input_feature_ids.push_back(it->second);
+        feat.input_roles.push_back(cadapp::InputRole::Tool);
     }
 }
 

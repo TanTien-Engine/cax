@@ -200,6 +200,6 @@ feat 22 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=22
 feat 23 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=22 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
   inputs=[17:base]
 feat 18 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=4 total_angle=6.2832]
-  inputs=[23:base]
+  inputs=[23:base,11:tool,13:tool,15:tool,17:tool,23:tool]
 feat 21 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.151 h=0.005
   inputs=[18:base]

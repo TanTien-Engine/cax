@@ -155,6 +155,6 @@ feat 17 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=17
 feat 18 name=Pad004 type=BossExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.028 dist2=0.000 end=0 flip=0
   inputs=[16:base]
 feat 19 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,1.000,0.000) count=2 total_angle=6.2832]
-  inputs=[18:base]
+  inputs=[18:base,18:tool,16:tool]
 feat 21 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.005 d2=0.000 edges=2
   inputs=[19:base]

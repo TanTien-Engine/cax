@@ -38,4 +38,4 @@ feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=0
   inputs=[13:base]
 feat 16 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=2 total_angle=6.2832]
-  inputs=[15:base]
+  inputs=[15:base,13:tool,15:tool]

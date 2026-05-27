@@ -202,7 +202,7 @@ feat 13 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[12:base]
 feat 15 name=LinearPattern type=LinearPattern suppressed=0 payload=linpat dir1=(1.000,0.000,0.000) count1=9 spacing1=0.007 count2=1 spacing2=0.000
-  inputs=[14:base]
+  inputs=[14:base,14:tool]
 feat 17 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.008 h=0.100
   inputs=[15:base]
 feat 16 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=16

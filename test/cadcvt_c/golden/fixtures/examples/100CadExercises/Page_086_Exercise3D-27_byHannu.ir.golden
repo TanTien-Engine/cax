@@ -111,4 +111,4 @@ feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 14 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=4 flip=0
   inputs=[12:base]
 feat 15 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=1 [0:circpat axis_d=(0.000,0.000,1.000) count=3 total_angle=6.2832]
-  inputs=[14:base]
+  inputs=[14:base,12:tool,14:tool]

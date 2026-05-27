@@ -72,16 +72,16 @@ feat 12 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=11 d
   inputs=[10:base]
 feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
 feat 18 name=Mirrored001 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[12:base]
+  inputs=[12:base,12:tool]
 feat 14 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
   inputs=[18:base]
 feat 15 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=15
 feat 19 name=Mirrored002 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[14:base]
+  inputs=[14:base,14:tool]
 feat 16 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.002 dist2=0.000 end=0 flip=1
   inputs=[19:base]
 feat 17 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[16:base]
+  inputs=[16:base,12:tool,16:tool]
 feat 20 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
   inputs=[17:base]

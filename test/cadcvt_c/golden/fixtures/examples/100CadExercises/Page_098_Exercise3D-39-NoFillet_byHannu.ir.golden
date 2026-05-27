@@ -63,7 +63,7 @@ feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.008 dist2=0.000 end=0 flip=0
   inputs=[0:base]
 feat 11 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) count=4 total_angle=6.2832
-  inputs=[10:base]
+  inputs=[10:base,10:tool]
 feat 12 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 13 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.015 dist2=0.000 end=0 flip=0
   inputs=[11:base]

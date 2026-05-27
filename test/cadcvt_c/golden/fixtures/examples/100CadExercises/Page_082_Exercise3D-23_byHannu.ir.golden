@@ -63,4 +63,4 @@ feat 15 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=15
 feat 16 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
   inputs=[14:base]
 feat 17 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[16:base]
+  inputs=[16:base,10:tool,12:tool,14:tool,16:tool]

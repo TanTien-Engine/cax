@@ -176,24 +176,30 @@ struct FeatureToolInfo
     char op_kind   = '0';
 };
 
-// Read FeatureIR's ext_params for "originals_id_<i>" entries and
-// return the resolved tool/base records that the pattern op should
-// operate on. Returns empty when Originals is empty or unresolved,
-// which signals the caller to fall back to "apply pattern to the
-// base body" (base_node from ResolveBaseNode).
+// Walk FeatureIR::input_feature_ids for Role::Tool entries and
+// resolve each to the original feature's FeatureToolInfo record
+// (tool_node + base_node + op_kind, populated at the original's
+// own replay time). Pattern handlers use these to "multiply the
+// tool, then recombine with the base" instead of patterning the
+// whole running body.
+//
+// Returns empty when no Tool roles are present, which signals the
+// caller to fall back to "apply pattern to the base body"
+// (base_node from ResolveBaseNode). Originals whose id isn't in
+// feature_tools (upstream not yet replayed / failed) are silently
+// dropped; the surrounding pattern still runs on the remainder.
 std::vector<FeatureToolInfo> ResolveOriginals(
     const FeatureIR&                                 feat,
     const std::map<uint32_t, FeatureToolInfo>&       feature_tools)
 {
     std::vector<FeatureToolInfo> out;
-    auto cnt_it = feat.ext_params.find("originals_count");
-    if (cnt_it == feat.ext_params.end()) return out;
-    int n = (int)cnt_it->second;
-    for (int i = 0; i < n; ++i)
+    for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
     {
-        auto id_it = feat.ext_params.find("originals_id_" + std::to_string(i));
-        if (id_it == feat.ext_params.end()) continue;
-        uint32_t id = (uint32_t)id_it->second;
+        InputRole role = (i < feat.input_roles.size())
+                            ? feat.input_roles[i]
+                            : InputRole::Base;
+        if (role != InputRole::Tool) continue;
+        uint32_t id = feat.input_feature_ids[i];
         auto t_it = feature_tools.find(id);
         if (t_it == feature_tools.end()) continue;
         out.push_back(t_it->second);
@@ -250,9 +256,9 @@ int ResolveBaseNode(const FeatureIR&                feat,
 // Pattern / Mirror / MultiTransform target resolution. Folds two
 // link sources into one struct:
 //
-//   originals  -- PartDesign Originals list
-//                 (ext_params "originals_count" / "originals_id_<i>").
-//                 One entry per original feature with (tool, base,
+//   originals  -- PartDesign Originals list, resolved from
+//                 input_feature_ids entries with Role::Tool. One
+//                 entry per original feature with (tool, base,
 //                 op_kind) ready for "multiply the tool, recombine
 //                 with the base".
 //
@@ -1315,10 +1321,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // ---- CircularPattern ----
             //
             // Target resolution priority:
-            //   1. PartDesign Originals (ext_params "originals_count" /
-            //      "originals_id_<i>") -- multiply each Original's tool,
-            //      then combine with its base via op_kind. This is the
-            //      PartDesign::PolarPattern path.
+            //   1. PartDesign Originals (input_feature_ids entries
+            //      with Role::Tool) -- multiply each Original's
+            //      tool, then combine with its base via op_kind.
+            //      This is the PartDesign::PolarPattern path.
             //   2. Draft polar Array's Base link, pre-resolved by the
             //      Reader and pushed into input_feature_ids with
             //      Role::PatternTarget. Pattern that feature's body

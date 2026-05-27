@@ -18,6 +18,6 @@ feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
   inputs=[0:base]
 feat 11 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:mirror plane_n=(1.000,0.000,0.000)] [1:circpat axis_d=(0.000,0.000,1.000) count=3 total_angle=6.2832]
-  inputs=[10:base]
+  inputs=[10:base,10:tool]
 feat 14 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.005 edges=6
   inputs=[11:base]

@@ -30,10 +30,10 @@ feat 15 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=15
 feat 16 name=Pad003 type=BossExtrude suppressed=0 payload=extrude sketch_id=15 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=0
   inputs=[14:base]
 feat 17 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[16:base]
+  inputs=[16:base,11:tool]
 feat 18 name=Mirrored001 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[17:base]
+  inputs=[17:base,12:tool]
 feat 19 name=Mirrored002 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[18:base]
+  inputs=[18:base,14:tool]
 feat 20 name=Mirrored003 type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[19:base]
+  inputs=[19:base,16:tool]

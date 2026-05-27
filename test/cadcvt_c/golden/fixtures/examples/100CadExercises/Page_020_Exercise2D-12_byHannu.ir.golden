@@ -313,6 +313,6 @@ feat 20 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.090 dist2=0.000 end=1 flip=0
   inputs=[19:base]
 feat 22 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[21:base]
+  inputs=[21:base,11:tool,13:tool,15:tool,17:tool,19:tool,21:tool]
 feat 23 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.010 edges=1
   inputs=[22:base]

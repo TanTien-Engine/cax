@@ -14,4 +14,4 @@ feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.001 dist2=0.000 end=0 flip=1
   inputs=[10:base]
 feat 13 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.001) axis_d=(0.000,0.000,1.000) count=5 total_angle=6.2832
-  inputs=[12:base]
+  inputs=[12:base,12:tool]

@@ -26,4 +26,4 @@ feat 12 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=
 feat 13 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.007
   inputs=[12:base]
 feat 14 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(1.000,0.000,0.000)
-  inputs=[13:base]
+  inputs=[13:base,13:tool]

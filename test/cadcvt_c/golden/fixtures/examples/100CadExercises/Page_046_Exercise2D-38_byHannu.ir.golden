@@ -52,6 +52,6 @@ feat 23 name=Sketch006 type=Sketch suppressed=0 payload=sketch sketch_id=23
 feat 25 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=23 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=6 flip=1
   inputs=[24:base]
 feat 27 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(-0.053,0.035,0.000) axis_d=(-1.000,0.000,0.000) count=4 total_angle=6.2832
-  inputs=[25:base]
+  inputs=[25:base,25:tool]
 feat 28 name=Box type=PrimBox suppressed=0 payload=box l=0.200 w=0.200 h=0.100
   inputs=[27:base]

@@ -25,12 +25,12 @@ feat 14 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=14
 feat 15 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.011 dist2=0.000 end=0 flip=0
   inputs=[12:base]
 feat 13 name=Mirrored type=Mirror suppressed=0 payload=mirror plane_o=(0.000,0.000,0.000) plane_n=(0.000,1.000,0.000)
-  inputs=[15:base]
+  inputs=[15:base,10:tool,12:tool,15:tool]
 feat 16 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.003 h=0.026
   inputs=[13:base]
 feat 18 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.034,0.000) axis_d=(0.000,0.000,1.000) count=6 total_angle=6.2832
-  inputs=[16:base]
+  inputs=[16:base,16:tool]
 feat 20 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.004 h=0.013
   inputs=[18:base]
 feat 21 name=PolarPattern001 type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,-0.034,-0.006) axis_d=(0.000,0.000,1.000) count=8 total_angle=6.2832
-  inputs=[20:base]
+  inputs=[20:base,20:tool]

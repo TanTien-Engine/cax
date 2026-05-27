@@ -115,7 +115,7 @@ feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
   inputs=[10:base]
 feat 13 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:linpat dir1=(1.000,0.000,0.000) count1=7 spacing1=0.014] [1:linpat dir1=(0.000,1.000,0.000) count1=7 spacing1=0.014]
-  inputs=[12:base]
+  inputs=[12:base,12:tool]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 16 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
   inputs=[13:base]

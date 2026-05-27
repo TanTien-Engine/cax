@@ -42,4 +42,4 @@ feat 16 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=16
 feat 17 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=16 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=1
   inputs=[15:base]
 feat 18 name=MultiTransform type=MultiTransform suppressed=0 payload=multixform steps=2 [0:mirror plane_n=(1.000,0.000,0.000)] [1:mirror plane_n=(1.000,0.000,0.000)]
-  inputs=[17:base]
+  inputs=[17:base,12:tool,10:tool]
