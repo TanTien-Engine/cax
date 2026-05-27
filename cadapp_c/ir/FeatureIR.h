@@ -358,6 +358,24 @@ struct FeatPayloadLink
     double placement_angle = 0.0;
 };
 
+// Baked geometry passthrough: a feature with no synthesizable
+// parameters in our IR; geometry is whatever lives in
+// DocumentIR::authored_shapes[feat.id] (typically a FreeCAD .brp
+// dump). FreeCAD's Part::Feature is the driving case -- it surfaces
+// in collapsed PartDesign Bodies, e.g. Piston.FCStd's Fillet001_solid,
+// where the original feature history has been compacted to a single
+// shape carrier. Identical mechanism could host other "we don't model
+// the parameters yet but we DO have authored geometry" cases.
+//
+// The struct is intentionally empty: all useful information lives
+// outside (authored_shapes for the shape, ext_strings for any
+// reader-side diagnostic like "freecad_type"). The variant alternative
+// exists so the Replayer can std::visit-dispatch a typed arm rather
+// than overloading FeatPayloadOpaque's semantics.
+struct FeatPayloadBakedShape
+{
+};
+
 // Assembly4 constr_* object: an LCS-to-LCS coincidence with an
 // optional rigid offset. Captured for round-trip / future solver
 // integration; the Replayer ignores this payload because Assembly4
@@ -432,7 +450,8 @@ using FeaturePayload = std::variant<
     FeatPayloadMultiTransform,   // 23
     FeatPayloadPrimEllipsoid,    // 24
     FeatPayloadLink,             // 25
-    FeatPayloadAsmConstraint     // 26
+    FeatPayloadAsmConstraint,    // 26
+    FeatPayloadBakedShape        // 27
 >;
 
 

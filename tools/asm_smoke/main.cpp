@@ -46,6 +46,7 @@ const char* TypeName(cadapp::FeatType t)
         case T::HoleWizard:      return "HoleWizard";
         case T::Link:            return "Link";
         case T::AsmConstraint:   return "AsmConstraint";
+        case T::BakedShape:      return "BakedShape";
     }
     return "???";
 }

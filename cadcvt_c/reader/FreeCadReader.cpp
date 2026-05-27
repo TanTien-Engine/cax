@@ -403,6 +403,104 @@ void QuatToAxes(double qx, double qy, double qz, double qw,
     z_axis[2] = 1.0 - 2.0 * (qx * qx + qy * qy);
 }
 
+// Axis-angle rotation applied to a vector (Rodrigues' formula).
+//   v_rot = v cos + (k x v) sin + k (k . v) (1 - cos)
+void RotateVec3(double ax, double ay, double az, double angle,
+                double vx, double vy, double vz,
+                double& ox, double& oy, double& oz)
+{
+    double c = std::cos(angle);
+    double s = std::sin(angle);
+    double kdotv = ax * vx + ay * vy + az * vz;
+    double kxvx  = ay * vz - az * vy;
+    double kxvy  = az * vx - ax * vz;
+    double kxvz  = ax * vy - ay * vx;
+    ox = vx * c + kxvx * s + ax * kdotv * (1.0 - c);
+    oy = vy * c + kxvy * s + ay * kdotv * (1.0 - c);
+    oz = vz * c + kxvz * s + az * kdotv * (1.0 - c);
+}
+
+// Compose two axis-angle rotations: out = A * B (apply B then A).
+// Goes through quaternion form because composing axis-angle directly
+// is awkward (no closed form).
+void ComposeAxisAngle(double ax_a, double ay_a, double az_a, double angle_a,
+                      double ax_b, double ay_b, double az_b, double angle_b,
+                      double& ax_o, double& ay_o, double& az_o, double& angle_o)
+{
+    auto to_quat = [](double ax, double ay, double az, double angle,
+                      double& qx, double& qy, double& qz, double& qw) {
+        double h = 0.5 * angle;
+        double s = std::sin(h);
+        qx = ax * s; qy = ay * s; qz = az * s;
+        qw = std::cos(h);
+    };
+    double aqx, aqy, aqz, aqw;
+    double bqx, bqy, bqz, bqw;
+    to_quat(ax_a, ay_a, az_a, angle_a, aqx, aqy, aqz, aqw);
+    to_quat(ax_b, ay_b, az_b, angle_b, bqx, bqy, bqz, bqw);
+
+    // Hamilton product: r = a * b
+    double rx = aqw * bqx + aqx * bqw + aqy * bqz - aqz * bqy;
+    double ry = aqw * bqy - aqx * bqz + aqy * bqw + aqz * bqx;
+    double rz = aqw * bqz + aqx * bqy - aqy * bqx + aqz * bqw;
+    double rw = aqw * bqw - aqx * bqx - aqy * bqy - aqz * bqz;
+
+    // Forward declaration would be cleaner; QuatToAxisAngle is below
+    // in this file. Inline the conversion to avoid an extra dispatch:
+    double n = std::sqrt(rx*rx + ry*ry + rz*rz + rw*rw);
+    if (n > 0.0) { rx /= n; ry /= n; rz /= n; rw /= n; }
+    if (rw >  1.0) rw =  1.0;
+    if (rw < -1.0) rw = -1.0;
+    angle_o = 2.0 * std::acos(rw);
+    double sn = std::sqrt(1.0 - rw * rw);
+    if (sn < 1e-12) {
+        ax_o = 0.0; ay_o = 0.0; az_o = 1.0;
+        angle_o = 0.0;
+        return;
+    }
+    ax_o = rx / sn;
+    ay_o = ry / sn;
+    az_o = rz / sn;
+}
+
+// Compose two FeatPayloadLink placements: result = outer * inner.
+// In SE(3) semantics:
+//   result.rotation    = outer.rotation * inner.rotation
+//   result.translation = outer.translation + outer.rotation(inner.translation)
+// Reads outer's fields, writes back into inner_inout's fields. Used
+// when an App::Link recursively embeds a multi-Link sub-assembly --
+// each inner Link's locally-stored Placement must absorb the outer
+// Link's Placement so the inner shape ends up in the host's world
+// frame after Replay, not at its sub-asm-local position.
+void ComposeLinkPlacement(const cadapp::FeatPayloadLink& outer,
+                          cadapp::FeatPayloadLink& inner_inout)
+{
+    double rotated_px, rotated_py, rotated_pz;
+    RotateVec3(outer.placement_ox, outer.placement_oy, outer.placement_oz,
+               outer.placement_angle,
+               inner_inout.placement_px, inner_inout.placement_py, inner_inout.placement_pz,
+               rotated_px, rotated_py, rotated_pz);
+
+    double new_px = outer.placement_px + rotated_px;
+    double new_py = outer.placement_py + rotated_py;
+    double new_pz = outer.placement_pz + rotated_pz;
+
+    double new_ox, new_oy, new_oz, new_angle;
+    ComposeAxisAngle(outer.placement_ox, outer.placement_oy, outer.placement_oz,
+                     outer.placement_angle,
+                     inner_inout.placement_ox, inner_inout.placement_oy, inner_inout.placement_oz,
+                     inner_inout.placement_angle,
+                     new_ox, new_oy, new_oz, new_angle);
+
+    inner_inout.placement_px    = new_px;
+    inner_inout.placement_py    = new_py;
+    inner_inout.placement_pz    = new_pz;
+    inner_inout.placement_ox    = new_ox;
+    inner_inout.placement_oy    = new_oy;
+    inner_inout.placement_oz    = new_oz;
+    inner_inout.placement_angle = new_angle;
+}
+
 // Quaternion (qx, qy, qz, qw) -> axis-angle (unit axis + radians).
 // Falls back to (0,0,1, 0) for an identity-or-near-identity rotation.
 // Matches the convention used by StashPlacement/Replayer placement
@@ -3868,6 +3966,28 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 feat.data = std::move(pl);
             }
         }
+        else if (pending.type == "Part::Feature")
+        {
+            // ---- Part::Feature (baked shape carrier) ----
+            //
+            // FreeCAD's plain Part workbench shape: no synthesizable
+            // parameters from our IR's perspective. Geometry lives
+            // entirely in the .brp dump that the existing post-emit
+            // pre-load (m_feat_brep_path -> doc.authored_shapes) picks
+            // up automatically. The Replayer's FeatPayloadBakedShape
+            // arm reads doc.authored_shapes[feat.id] directly.
+            //
+            // Drives Piston.FCStd's "Fillet001_solid" object, which is
+            // what asm_Cylinders' Piston_1..4 Links point at. Without
+            // this branch the feature would land in the Opaque
+            // catch-all as FeatType::Unknown, and sub_tip detection
+            // would skip it -- the Link would then have sub_tip=0
+            // and contribute no geometry to the assembly.
+            FeatPayloadBakedShape pl;
+            feat.type = FeatType::BakedShape;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
         else if (pending.type == "App::Link")
         {
             // ---- App::Link (Assembly4 part instance) ----
@@ -3962,6 +4082,30 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     return false;
                 }
 
+                // Parse the host-side Placement up-front so we can
+                // optionally compose it down into inner Links during
+                // the merge below.
+                FeatPayloadLink outer_pl;
+                outer_pl.linked_file        = linked_file;
+                outer_pl.linked_object_name = linked_object;
+                auto place_prop = FindProperty(props, "Placement");
+                if (place_prop)
+                {
+                    auto place = place_prop.child("PropertyPlacement");
+                    outer_pl.placement_px = AttrDouble(place, "Px", 0.0) * m_unit_scale;
+                    outer_pl.placement_py = AttrDouble(place, "Py", 0.0) * m_unit_scale;
+                    outer_pl.placement_pz = AttrDouble(place, "Pz", 0.0) * m_unit_scale;
+                    double qx = AttrDouble(place, "Q0", 0.0);
+                    double qy = AttrDouble(place, "Q1", 0.0);
+                    double qz = AttrDouble(place, "Q2", 0.0);
+                    double qw = AttrDouble(place, "Q3", 1.0);
+                    QuatToAxisAngle(qx, qy, qz, qw,
+                                    outer_pl.placement_ox,
+                                    outer_pl.placement_oy,
+                                    outer_pl.placement_oz,
+                                    outer_pl.placement_angle);
+                }
+
                 // Re-id sub-doc features into the host's id space and
                 // merge. Sub-feature ids start at 1 in the sub-reader;
                 // we shift them past m_next_feature_id (which already
@@ -3976,6 +4120,15 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     auto rit = sub_id_to_host.find(id);
                     return (rit == sub_id_to_host.end()) ? id : rit->second;
                 };
+
+                // Track whether the sub-doc contains inner App::Link
+                // features. If so, we are dealing with a nested
+                // assembly (multi-Link sub-asm) -- each inner Link
+                // absorbs the outer Link's Placement so the inner
+                // shapes end up in the host's world frame, and the
+                // outer Link itself becomes pure metadata (no
+                // sub_tip, no further transform).
+                bool has_inner_links = false;
 
                 for (auto& sf : sub_doc.features)
                 {
@@ -3996,6 +4149,21 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     // for sketches / authored_shapes below; it is.
                     RemapPayloadFeatureRefs(sf, remap_id);
 
+                    // Compose-down: outer Placement -> inner Link
+                    // Placement. The inner Link's locally-stored
+                    // Placement is in the sub-asm frame; after this
+                    // compose it is in the host (outer) frame, so
+                    // the Replayer's Link arm transforms the inner
+                    // shape directly into world coordinates without
+                    // depending on the outer Link contributing any
+                    // further transform.
+                    if (sf.type == FeatType::Link)
+                    {
+                        has_inner_links = true;
+                        auto& sub_pl = std::get<FeatPayloadLink>(sf.data);
+                        ComposeLinkPlacement(outer_pl, sub_pl);
+                    }
+
                     // Tag inlined features with the source so a
                     // diagnostic / fingerprint pass can see which
                     // Link instance introduced them.
@@ -4015,14 +4183,33 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     out.authored_shapes[new_key] = kv.second;
                 }
 
-                // Sub-tip: walk back through the just-appended block
-                // and pick the latest non-Sketch feature -- in
-                // FreeCAD's modeling order that is the Body's Tip.
-                // The pre-allocation pass guarantees sub ids start
-                // strictly after host ids, so the appended block sits
-                // contiguously at the tail of out.features.
+                // Sub-tip selection depends on whether the sub-doc
+                // is a nested asm (already absorbed our Placement
+                // into its inner Links) or a simple part:
+                //
+                //   has_inner_links == true
+                //     Multi-Link sub-asm. The compose-down loop above
+                //     has already pushed our Placement into every
+                //     inner Link's locally-stored placement. The outer
+                //     Link should NOT additionally transform any node
+                //     -- doing so would double-apply our Placement to
+                //     the inner Link node it picks as sub_tip.
+                //     Leave sub_tip_host_id = 0; the Replayer's Link
+                //     arm treats this as a no-op metadata feature.
+                //     The Placement is still kept on the outer Link
+                //     for round-trip / diagnostic purposes.
+                //
+                //   has_inner_links == false
+                //     Simple-part sub-doc (Cylindre.FCStd, Bielle.fcstd
+                //     standalone, Test_Block_*, etc.). Walk back
+                //     through the appended block and pick the latest
+                //     non-Sketch / non-Unknown / non-AsmConstraint
+                //     feature as the body tip -- in FreeCAD's modeling
+                //     order that is the Body's Tip. The outer Link
+                //     arm then rotates+translates that single node
+                //     by our Placement.
                 uint32_t sub_tip_host_id = 0;
-                if (!sub_id_to_host.empty())
+                if (!has_inner_links && !sub_id_to_host.empty())
                 {
                     uint32_t lo = std::numeric_limits<uint32_t>::max();
                     for (const auto& kv : sub_id_to_host) {
@@ -4034,42 +4221,24 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                         if (rit->id < lo) break;
                         if (rit->type == FeatType::Sketch) continue;
                         if (rit->type == FeatType::Unknown) continue;
+                        if (rit->type == FeatType::AsmConstraint) continue;
+                        // Inner Link case is already excluded by
+                        // has_inner_links == false above; the check
+                        // here is defensive.
+                        if (rit->type == FeatType::Link) continue;
                         sub_tip_host_id = rit->id;
                         break;
                     }
                 }
 
-                FeatPayloadLink pl;
-                pl.linked_file        = linked_file;
-                pl.linked_object_name = linked_object;
-                pl.sub_tip_feature_id = sub_tip_host_id;
-
-                // Placement: same Pq + quaternion convention used by
-                // sketches, converted to axis-angle for the Replayer's
-                // rotate(axis, angle) op. Translation scales by
-                // m_unit_scale; the quaternion is dimensionless.
-                auto place_prop = FindProperty(props, "Placement");
-                if (place_prop)
-                {
-                    auto place = place_prop.child("PropertyPlacement");
-                    pl.placement_px = AttrDouble(place, "Px", 0.0) * m_unit_scale;
-                    pl.placement_py = AttrDouble(place, "Py", 0.0) * m_unit_scale;
-                    pl.placement_pz = AttrDouble(place, "Pz", 0.0) * m_unit_scale;
-
-                    double qx = AttrDouble(place, "Q0", 0.0);
-                    double qy = AttrDouble(place, "Q1", 0.0);
-                    double qz = AttrDouble(place, "Q2", 0.0);
-                    double qw = AttrDouble(place, "Q3", 1.0);
-                    QuatToAxisAngle(qx, qy, qz, qw,
-                                    pl.placement_ox,
-                                    pl.placement_oy,
-                                    pl.placement_oz,
-                                    pl.placement_angle);
-                }
+                outer_pl.sub_tip_feature_id = sub_tip_host_id;
 
                 feat.type = FeatType::Link;
-                feat.data = std::move(pl);
+                feat.data = std::move(outer_pl);
                 feat.ext_strings["freecad_type"] = pending.type;
+                if (has_inner_links) {
+                    feat.ext_strings["link_role"] = "nested_asm";
+                }
 
                 if (sub_tip_host_id != 0) {
                     PushInput(feat, sub_tip_host_id,
@@ -4078,73 +4247,98 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             }
         }
         else if (pending.type == "App::FeaturePython"
-                 && FindProperty(props, "is_attached_to"))
+                 && (FindProperty(props, "is_attached_to")
+                     || FindProperty(props, "AttachedTo")))
         {
             // ---- Assembly4 constr_* (LCS-pair binding) ----
             //
-            // Recognised by the presence of the Assembly4-specific
-            // "is_attached_to" property on a generic App::FeaturePython
-            // (the Proxy class identifier is a base64-encoded Python
-            // pickle that we don't decode). Captured for round-trip /
-            // future constraint solver; produces no geometry, so the
-            // Replayer's FeatPayloadAsmConstraint arm is a no-op.
+            // Recognised by the presence of EITHER:
+            //   - is_attached_to  (older schema, 2019-era asm4-test
+            //     vintage): LCS names embedded in the linked Link's
+            //     Placement ExpressionEngine formula; Offset is a
+            //     plain PropertyPlacement named "Offset"; the linked
+            //     Link is identified by the "constr_<LinkName>"
+            //     naming convention
+            //   - AttachedTo      (newer schema, asm_Cylinders /
+            //     asm_Bielle / asm_Hypnotic vintage): LCS names and
+            //     ConstraintType are first-class properties; Offset
+            //     lives in "AttachmentOffset"; linked Link is named
+            //     directly via "LinkName" (the naming convention
+            //     is no longer load-bearing)
             //
-            // Resolved fields:
-            //   linked_link_feature_id : the Link this constraint
-            //       positions, derived from the naming convention
-            //       constr_<link_name>  ->  Link "<link_name>"
-            //   parent_link_feature_id : 0 when is_attached_to is
-            //       "Parent Assembly" (LCS lives on the root); else
-            //       the feature id of the named parent Link
-            //   first_lcs_name / second_lcs_name : best-effort
-            //       extraction from the Link's Placement expression
-            //       ("<<LCS>>.Placement.multiply(...).multiply(.
-            //        <<LCS.>>.Placement.inverse())"). Used by a
-            //       future LCS-pair solver to look up the two
-            //       coordinate frames; empty when the expression
-            //       parse fails (then the solver will need to fall
-            //       back on the cached Offset alone).
-            //   offset_* : raw Offset placement (rigid mate between
-            //       the two LCS), in IR units / radians
-            //   is_attached_to : raw string kept verbatim so a future
-            //       writer can round-trip the FreeCAD file unchanged
+            // Both schemas produce the same FeatPayloadAsmConstraint;
+            // the typed payload contributes no geometry, so the
+            // Replayer's arm is a no-op. The data is captured for
+            // round-trip and a future LCS-pair solver.
 
-            FeatPayloadAsmConstraint pl;
+            bool new_schema = (bool)FindProperty(props, "AttachedTo");
 
-            auto offs_prop = FindProperty(props, "Offset");
-            if (offs_prop)
-            {
-                auto place = offs_prop.child("PropertyPlacement");
-                pl.offset_px = AttrDouble(place, "Px", 0.0) * m_unit_scale;
-                pl.offset_py = AttrDouble(place, "Py", 0.0) * m_unit_scale;
-                pl.offset_pz = AttrDouble(place, "Pz", 0.0) * m_unit_scale;
+            // PropertyPlacement helper: read Px/Py/Pz + Q0..Q3 from
+            // a placement element and scale into offset_* fields.
+            auto load_placement = [&](pugi::xml_node place,
+                                      FeatPayloadAsmConstraint& dst) {
+                if (!place) return;
+                dst.offset_px = AttrDouble(place, "Px", 0.0) * m_unit_scale;
+                dst.offset_py = AttrDouble(place, "Py", 0.0) * m_unit_scale;
+                dst.offset_pz = AttrDouble(place, "Pz", 0.0) * m_unit_scale;
                 double qx = AttrDouble(place, "Q0", 0.0);
                 double qy = AttrDouble(place, "Q1", 0.0);
                 double qz = AttrDouble(place, "Q2", 0.0);
                 double qw = AttrDouble(place, "Q3", 1.0);
                 QuatToAxisAngle(qx, qy, qz, qw,
-                                pl.offset_ox,
-                                pl.offset_oy,
-                                pl.offset_oz,
-                                pl.offset_angle);
-            }
+                                dst.offset_ox, dst.offset_oy,
+                                dst.offset_oz, dst.offset_angle);
+            };
 
-            // is_attached_to
+            // String helper: read <Property name="X"><String value="..."/>.
+            auto load_string = [&](const char* prop_name) -> std::string {
+                auto p = FindProperty(props, prop_name);
+                if (!p) return {};
+                auto s = p.child("String");
+                return AttrStr(s, "value");
+            };
+
+            FeatPayloadAsmConstraint pl;
+
+            // ---- Offset placement ----
+            if (new_schema)
             {
-                auto a_prop = FindProperty(props, "is_attached_to");
-                if (a_prop) {
-                    auto s = a_prop.child("String");
-                    pl.is_attached_to = AttrStr(s, "value");
+                if (auto offs = FindProperty(props, "AttachmentOffset")) {
+                    load_placement(offs.child("PropertyPlacement"), pl);
+                }
+            }
+            else
+            {
+                if (auto offs = FindProperty(props, "Offset")) {
+                    load_placement(offs.child("PropertyPlacement"), pl);
                 }
             }
 
-            // Resolve linked Link by name (strip "constr_" prefix).
+            // ---- AttachedTo / is_attached_to ----
+            pl.is_attached_to = new_schema
+                                  ? load_string("AttachedTo")
+                                  : load_string("is_attached_to");
+
+            // ---- Linked Link feature id ----
+            //
+            // New schema: explicit "LinkName" string. Falls back to
+            // the "constr_<link>" naming convention if the field is
+            // missing (some older asm_Cylinders revisions).
+            // Old schema: name-prefix convention.
             {
-                static const std::string kPrefix = "constr_";
-                if (pending.name.rfind(kPrefix, 0) == 0)
+                std::string link_name;
+                if (new_schema) {
+                    link_name = load_string("LinkName");
+                }
+                if (link_name.empty())
                 {
-                    std::string link_name =
-                        pending.name.substr(kPrefix.size());
+                    static const std::string kPrefix = "constr_";
+                    if (pending.name.rfind(kPrefix, 0) == 0) {
+                        link_name = pending.name.substr(kPrefix.size());
+                    }
+                }
+                if (!link_name.empty())
+                {
                     auto nit = m_name_to_id.find(link_name);
                     if (nit != m_name_to_id.end()) {
                         pl.linked_link_feature_id = nit->second;
@@ -4164,9 +4358,34 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 }
             }
 
-            // Best-effort: extract the LCS-pair names from the linked
-            // Link's Placement expression. Pattern with parent on
-            // root assembly:
+            // ---- LCS pair (parent-side + child-side) ----
+            if (new_schema)
+            {
+                // New schema gives LCS names as first-class fields.
+                pl.first_lcs_name  = load_string("AttachmentLCS");
+                pl.second_lcs_name = load_string("LinkedPartLCS");
+
+                // ConstraintType is a literal string in the new
+                // schema (e.g. "AttachmentByLCS"). Keep it verbatim
+                // in ext_strings; constraint_type stays 0 because
+                // we have not assigned numeric ids yet -- the named
+                // string is the source of truth for a future writer.
+                std::string ct = load_string("ConstraintType");
+                if (!ct.empty()) {
+                    feat.ext_strings["asm_constraint_type"] = std::move(ct);
+                }
+                // LinkedFile is informational (the linked sub-doc
+                // referenced by the constrained Link). Stash for
+                // round-trip; the Link's own LinkedObject XLink is
+                // the load-bearing reference.
+                std::string lf = load_string("LinkedFile");
+                if (!lf.empty()) {
+                    feat.ext_strings["linked_file"] = std::move(lf);
+                }
+            }
+            // Old schema: extract LCS-pair names by parsing the
+            // linked Link's Placement expression. Pattern with parent
+            // on root assembly:
             //   <<LCS_A>>.Placement.multiply(<<constr_X>>.Offset)
             //                     .multiply(.<<LCS_B.>>.Placement.inverse())
             // Pattern with parent on another Link:
@@ -4177,7 +4396,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             // marker is the "first" (parent-side) LCS, and the LCS
             // inside the trailing .inverse() is the "second" (child
             // side, inside the linked part).
-            if (pl.linked_link_feature_id != 0)
+            else if (pl.linked_link_feature_id != 0)
             {
                 auto link_data_it = data_by_name.find(
                     pending.name.substr(7) /* "constr_" */);

@@ -501,6 +501,12 @@ void Encode(const FeatPayloadAsmConstraint& p, BlobWriter& w)
     w.U8(p.constraint_type);
 }
 
+void Encode(const FeatPayloadBakedShape& p, BlobWriter& w)
+{
+    (void)p;
+    (void)w;
+}
+
 
 // ============================================================
 // Decode dispatch: payload tag -> Decode(reader, payload)
@@ -757,6 +763,12 @@ void Decode(BlobReader& r, FeatPayloadAsmConstraint& p)
     p.offset_oz              = r.F64();
     p.offset_angle           = r.F64();
     p.constraint_type        = r.U8();
+}
+
+void Decode(BlobReader& r, FeatPayloadBakedShape& p)
+{
+    (void)r;
+    (void)p;
 }
 
 
@@ -1091,6 +1103,13 @@ bool FeatureStore::ExportToIR(uint32_t entry_idx, FeatureIR& out) const
     case 26:
     {
         FeatPayloadAsmConstraint p;
+        Decode(r, p);
+        out.data = std::move(p);
+        break;
+    }
+    case 27:
+    {
+        FeatPayloadBakedShape p;
         Decode(r, p);
         out.data = std::move(p);
         break;

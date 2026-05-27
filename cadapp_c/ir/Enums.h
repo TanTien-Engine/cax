@@ -143,6 +143,12 @@ enum class FeatType : uint8_t
     // assembly
     Link             = 100, // instance of an external part/sub-doc with a rigid placement
     AsmConstraint    = 101, // FreeCAD Assembly4 constr_* : LCS-pair coincidence + offset
+
+    // baked / opaque shape carrier
+    BakedShape       = 102, // shape that has no synthesizable parameters in our IR;
+                            // geometry comes verbatim from doc.authored_shapes
+                            // (e.g. FreeCAD's Part::Feature, used by Piston.FCStd
+                            // when a PartDesign body has been collapsed)
 };
 
 // Extrude / revolve end condition.

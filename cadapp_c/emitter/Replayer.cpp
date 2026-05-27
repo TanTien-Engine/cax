@@ -1586,9 +1586,17 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 if (cur < 0)
                 {
-                    step_ok = false;
-                    out.err_msg = "link " + feat.name +
-                                  " has no sub-tip CalcGraph node";
+                    // No sub-tip is a legitimate state, not an error:
+                    // layout-only sub-docs (Crankshaft.FCStd in
+                    // asm_Cylinders is the prototype -- App::Part
+                    // container holding sketches + LCS reference
+                    // frames but zero PartDesign Body) contribute no
+                    // geometry, so the Link should produce no
+                    // CalcGraph node. node stays at -1, feature_nodes
+                    // does not record an entry for this id, and
+                    // downstream features see "no upstream" which is
+                    // correct -- there is no upstream solid to
+                    // chain into.
                     return;
                 }
 
@@ -1659,6 +1667,33 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // body chain still produces SOMETHING -- the body without
             // the hole -- and record a diagnostic. Better than a
             // hard fail on the whole document.
+            // ---- BakedShape (FreeCAD Part::Feature etc.) ----
+            //
+            // Same shape-from-authored mechanism as the HoleWizard
+            // arm below, but for features that carry NO synthesizable
+            // parameters at all in our IR. Geometry comes verbatim
+            // from doc.authored_shapes (the .brp dump). Drives
+            // Piston.FCStd's Fillet001_solid (a collapsed PartDesign
+            // body surfaced as a Part::Feature).
+            else if constexpr (std::is_same_v<T, FeatPayloadBakedShape>)
+            {
+                (void)p;
+                auto auth_it = doc.authored_shapes.find(feat.id);
+                if (auth_it != doc.authored_shapes.end() && auth_it->second)
+                {
+                    node = cg->AddConst(auth_it->second,
+                                        "baked_" + feat.name);
+                }
+                else
+                {
+                    if (!out.err_msg.empty()) {
+                        out.err_msg += "; ";
+                    }
+                    out.err_msg +=
+                        "BakedShape " + feat.name +
+                        " has no authored shape; skipped";
+                }
+            }
             else if constexpr (std::is_same_v<T, FeatPayloadHoleWizard>)
             {
                 (void)p;
