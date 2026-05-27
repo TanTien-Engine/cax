@@ -256,11 +256,12 @@ int ResolveBaseNode(const FeatureIR&                feat,
 //                 op_kind) ready for "multiply the tool, recombine
 //                 with the base".
 //
-//   body_target -- Draft Array's Base link, resolved by the Reader to
-//                  the linked feature's id and stashed under
-//                  ext_params "pattern_target_feature_id". -1 when
-//                  absent. Only meaningful when originals is empty --
-//                  a PartDesign pattern with Originals never carries
+//   body_target -- Draft Array's Base link, resolved by the Reader
+//                  to a feature id and pushed into
+//                  FeatureIR::input_feature_ids with
+//                  Role::PatternTarget. -1 when absent. Only
+//                  meaningful when originals is empty -- a
+//                  PartDesign pattern with Originals never carries
 //                  a Draft-style single-target link.
 //
 // Both empty -> caller falls back to its base_node (the body
@@ -282,17 +283,28 @@ PatternInputs ResolvePatternInputs(
         return out;
     }
 
-    auto tit = feat.ext_params.find("pattern_target_feature_id");
-    if (tit != feat.ext_params.end())
+    // First Role::PatternTarget entry resolves to the target body.
+    // Only Draft polar Arrays emit this today; the loop tolerates
+    // extra inputs of other roles (e.g. a future body-owned Draft
+    // Array could carry both Role::Base for its body chain and
+    // Role::PatternTarget for its Base link).
+    for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
     {
-        uint32_t tid = (uint32_t)tit->second;
-        if (tid != 0u && tid != 0xFFFFFFFFu)
-        {
-            auto fit = feature_nodes.find(tid);
-            if (fit != feature_nodes.end()) {
-                out.body_target = fit->second;
-            }
+        InputRole role = (i < feat.input_roles.size())
+                            ? feat.input_roles[i]
+                            : InputRole::Base;
+        if (role != InputRole::PatternTarget) {
+            continue;
         }
+        uint32_t tid = feat.input_feature_ids[i];
+        if (tid == 0u || tid == 0xFFFFFFFFu) {
+            break;
+        }
+        auto fit = feature_nodes.find(tid);
+        if (fit != feature_nodes.end()) {
+            out.body_target = fit->second;
+        }
+        break;
     }
     return out;
 }
@@ -1276,10 +1288,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int c2 = cg->AddConst((int)p.count2, "count2");
                 int s2 = cg->AddConst(p.spacing2, "spacing2");
 
-                // Reader does not emit pattern_target_feature_id for
+                // Reader does not emit Role::PatternTarget on
                 // LinearPattern (Draft only emits polar Arrays), so
-                // body_target is always -1 here -- flow through the
-                // helper anyway for shape consistency with
+                // pi.body_target is always -1 here -- flow through
+                // the helper anyway for shape consistency with
                 // CircularPattern.
                 auto pi = ResolvePatternInputs(feat, feature_tools,
                                                feature_nodes);
@@ -1308,13 +1320,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             //      then combine with its base via op_kind. This is the
             //      PartDesign::PolarPattern path.
             //   2. Draft polar Array's Base link, pre-resolved by the
-            //      Reader to ext_params "pattern_target_feature_id".
-            //      Pattern that feature's body shape directly. The
-            //      pre-resolution in the Reader means this doesn't
-            //      depend on emission order -- a Draft Array sitting
-            //      after later bodies still patterns the linked
-            //      target rather than whatever the running tip
-            //      happens to be.
+            //      Reader and pushed into input_feature_ids with
+            //      Role::PatternTarget. Pattern that feature's body
+            //      shape directly. The pre-resolution in the Reader
+            //      means this doesn't depend on emission order -- a
+            //      Draft Array sitting after later bodies still
+            //      patterns the linked target rather than whatever
+            //      the running tip happens to be.
             //   3. base_node -- body chain pred for body-owned
             //      Patterns; -1 / errors out for everyone else.
             else if constexpr (std::is_same_v<T, FeatPayloadCircularPattern>)
@@ -1428,7 +1440,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return cur;
                 };
 
-                // Reader does not emit pattern_target_feature_id for
+                // Reader does not emit Role::PatternTarget on
                 // MultiTransform (only Draft polar Arrays carry it),
                 // so pi.body_target is always -1 here. Flow through
                 // the helper anyway for shape consistency.
@@ -1625,24 +1637,39 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
             // Input consumption: any feat whose shape gets folded
             // into this one is marked so the emitter doesn't re-emit
-            // it alongside this feature. Walks the typed
-            // FeatureIR::input_feature_ids; entries with a consuming
-            // role (Base / Operand / Tool / PatternTarget) absorb
-            // the upstream candidate, Reference-role entries don't.
+            // it alongside this feature. Roles split by semantics:
             //
-            // Marking the input as consumed is what stops the Body
-            // candidate from appearing next to a standalone Thickness
-            // that absorbed it (Page_037 went 1 solid -> 2 solids
-            // before this gate was added). Body-internal cases are
-            // no-ops in practice: the body candidate is keyed on the
-            // latest tip's feat_id, which differs from the prev's
-            // id, so the insert here doesn't filter anything.
+            //   Base / Operand / Tool  -- this feature absorbs the
+            //     upstream: the upstream's shape is no longer a
+            //     standalone output, only the result of this feature
+            //     is. Marking the input as consumed is what stops a
+            //     Body candidate from appearing next to a standalone
+            //     Thickness that absorbed it (Page_037 went
+            //     1 solid -> 2 solids before this gate was added).
+            //     Body-internal cases are no-ops in practice: the
+            //     body candidate is keyed on the latest tip's
+            //     feat_id, which differs from the prev's id, so the
+            //     insert doesn't filter anything.
+            //
+            //   PatternTarget          -- the feature multiplies but
+            //     does not replace the target. FreeCAD's document
+            //     tree shows both the targeted body AND the Array
+            //     as separate top-level objects (Page_056-48-1: 4
+            //     solids = 3 body candidates + Array, with Array's
+            //     angle=0 copy overlapping Pad002). Skipping the
+            //     mark preserves that count.
+            //
+            //   Reference              -- the feature reads the
+            //     upstream's geometry but produces independent
+            //     output (sketch supports, datum parents). Not
+            //     consumed by definition.
             for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
             {
                 InputRole role = (i < feat.input_roles.size())
                                     ? feat.input_roles[i]
                                     : InputRole::Base;
-                if (role == InputRole::Reference) {
+                if (role == InputRole::Reference ||
+                    role == InputRole::PatternTarget) {
                     continue;
                 }
                 uint32_t iid = feat.input_feature_ids[i];

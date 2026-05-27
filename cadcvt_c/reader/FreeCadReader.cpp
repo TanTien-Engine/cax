@@ -3552,18 +3552,18 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 // named Base. Resolve the linked object name to a
                 // feature id at read time (m_name_to_id is fully
                 // populated by the time we reach the emission loop)
-                // and stash the resolved id as pattern_target_feature_id.
-                // last_node fallback alone is wrong when Base points
-                // at a feature inside an earlier PartDesign::Body and
-                // the Array is emitted after later bodies
-                // (Page_056_Exercise2D-48-1: Array.Base=Pad002 but
-                // Array sits after Pad004).
+                // and push it into the typed input_feature_ids with
+                // Role::PatternTarget. last_node fallback alone is
+                // wrong when Base points at a feature inside an
+                // earlier PartDesign::Body and the Array is emitted
+                // after later bodies (Page_056_Exercise2D-48-1:
+                // Array.Base=Pad002 but Array sits after Pad004).
                 LinkRef base = PropLink(props, "Base");
                 if (!base.object_name.empty()) {
                     auto nit = m_name_to_id.find(base.object_name);
                     if (nit != m_name_to_id.end()) {
-                        feat.ext_params["pattern_target_feature_id"] =
-                            (double)nit->second;
+                        PushInput(feat, nit->second,
+                                  cadapp::InputRole::PatternTarget);
                     }
                 }
 
