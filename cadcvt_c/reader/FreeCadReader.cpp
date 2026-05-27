@@ -2815,6 +2815,96 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                           : FeatType::CutExtrude;
             feat.data = std::move(pl);
         }
+        else if (pending.type == "PartDesign::Hole")
+        {
+            // ---- PartDesign::Hole ----
+            //
+            // FreeCAD's Hole feature is a richer relative of Pocket:
+            // a point sketch + cylindrical bore + optional counterbore /
+            // countersink / drill-point cone / threaded helix. We map
+            // the structural shape (sketch, diameter, depth, through-all)
+            // onto FeatPayloadHoleWizard's existing fields, and stash
+            // every other Hole-specific knob into ext_params /
+            // ext_strings so:
+            //   - Future IR growth can hoist any of them into typed
+            //     fields without changing the reader
+            //   - The Replayer arm (which currently leans on the
+            //     FreeCAD-authored .brp) can read these for a future
+            //     synthesised-Cut implementation
+            //   - Diagnostic / round-trip writers see them
+            //
+            // DepthType enum (FreeCAD source):
+            //   0 = Dimension  (Blind)
+            //   1 = ThroughAll
+            //   2 = UpToFirst
+            //   3 = UpToFace   (UpToFace property names the target)
+            //   4 = UpToShape  (newer, similar to face)
+            //
+            // BaseFeature linkage: pre-emission body-chain code at
+            // the top of this loop already pushed Role::Base from
+            // the PartDesign::Body's running tip via body_prev_id,
+            // so no explicit BaseFeature read is needed here.
+
+            FeatPayloadHoleWizard pl;
+
+            // Profile: PropertyLinkSub. PropLink handles the single
+            // <LinkSub value="Sketch003" .../> form correctly.
+            LinkRef profile = PropLink(props, "Profile");
+            if (!profile.object_name.empty())
+            {
+                auto sid = m_name_to_id.find(profile.object_name);
+                if (sid != m_name_to_id.end()) {
+                    pl.sketch_id = sid->second;
+                }
+            }
+
+            pl.diameter = PropDouble(props, "Diameter", 0.0) * m_unit_scale;
+            pl.depth    = PropDouble(props, "Depth",    0.0) * m_unit_scale;
+
+            int dt = PropInt(props, "DepthType", 0);
+            pl.through_all = (dt == 1);
+
+            // Capture the full Hole knob set into ext_*. Lengths
+            // scale through m_unit_scale; angles stay in degrees
+            // (matching FreeCAD's on-disk convention -- they are
+            // user-facing values, not engine inputs).
+            feat.ext_strings["freecad_type"] = pending.type;
+            feat.ext_params["depth_type"]    = (double)dt;
+            feat.ext_params["reversed"]      = PropBool(props, "Reversed", false) ? 1.0 : 0.0;
+            feat.ext_params["midplane"]      = PropBool(props, "Midplane",  false) ? 1.0 : 0.0;
+            feat.ext_params["tapered"]       = PropBool(props, "Tapered",   false) ? 1.0 : 0.0;
+            feat.ext_params["tapered_angle_deg"]   = PropDouble(props, "TaperedAngle", 90.0);
+            feat.ext_params["drill_point_kind"]    = (double)PropInt(props, "DrillPoint", 0);
+            feat.ext_params["drill_point_angle_deg"] = PropDouble(props, "DrillPointAngle", 118.0);
+            feat.ext_params["hole_cut_type"]       = (double)PropInt(props, "HoleCutType", 0);
+            feat.ext_params["hole_cut_diameter"]   = PropDouble(props, "HoleCutDiameter", 0.0) * m_unit_scale;
+            feat.ext_params["hole_cut_depth"]      = PropDouble(props, "HoleCutDepth",    0.0) * m_unit_scale;
+            feat.ext_params["hole_cut_countersink_angle_deg"]
+                                                   = PropDouble(props, "HoleCutCountersinkAngle", 90.0);
+            feat.ext_params["threaded"]            = PropBool(props, "Threaded", false) ? 1.0 : 0.0;
+            feat.ext_params["thread_pitch"]        = PropDouble(props, "ThreadPitch", 0.0) * m_unit_scale;
+            feat.ext_params["thread_angle_deg"]    = PropDouble(props, "ThreadAngle", 60.0);
+            feat.ext_params["thread_class"]        = (double)PropInt(props, "ThreadClass",     0);
+            feat.ext_params["thread_direction"]    = (double)PropInt(props, "ThreadDirection", 0);
+            feat.ext_params["thread_fit"]          = (double)PropInt(props, "ThreadFit",       0);
+            feat.ext_params["thread_size"]         = (double)PropInt(props, "ThreadSize",      0);
+            feat.ext_params["thread_type"]         = (double)PropInt(props, "ThreadType",      0);
+            feat.ext_params["model_actual_thread"] = PropBool(props, "ModelActualThread", false) ? 1.0 : 0.0;
+
+            // UpToFace target (only meaningful for DepthType==3).
+            // Mirrors the Pad/Pocket UpToFace stub-ref pattern.
+            if (dt == 3)
+            {
+                LinkRef up = PropLink(props, "UpToFace");
+                if (!up.object_name.empty() && !up.sub_names.empty()) {
+                    feat.ext_strings["end1_target_name"] =
+                        up.object_name + "." + up.sub_names[0];
+                }
+            }
+
+            feat.type = FeatType::HoleWizard;
+            feat.data = std::move(pl);
+        }
         else if (pending.type == "PartDesign::Revolution" ||
                  pending.type == "PartDesign::Groove")
         {

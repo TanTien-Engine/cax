@@ -1632,6 +1632,65 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 (void)p;
             }
 
+            // ---- HoleWizard / PartDesign::Hole ----
+            //
+            // FreeCAD's Hole is rich: a cylindrical bore + optional
+            // counterbore / countersink / conical drill-point tip +
+            // optional threaded helix. Synthesising the right Cut
+            // shape from FeatPayloadHoleWizard's typed fields plus the
+            // ext_params bag (hole_cut_*, drill_point_*, thread_*) is
+            // a real chunk of work that this arm does NOT do today.
+            //
+            // Minimum-viable behaviour: if the source was a .FCStd
+            // (so doc.authored_shapes carries the FreeCAD-emitted
+            // post-Hole running body shape from the .brp dump), use
+            // that authored shape verbatim as this feature's node.
+            // The shape already includes everything up through and
+            // including the Hole operation, so downstream features
+            // in the same body chain see a correct running body. The
+            // standard authored-substitution fallback further down
+            // would also catch this, but it requires node>=0 first
+            // (i.e. an attempted-but-null cax replay); we never
+            // attempt here, so we have to seed the const node up
+            // front.
+            //
+            // No authored shape (raw .xml fixtures, or future readers
+            // that don't dump .brp): pass base_node through so the
+            // body chain still produces SOMETHING -- the body without
+            // the hole -- and record a diagnostic. Better than a
+            // hard fail on the whole document.
+            else if constexpr (std::is_same_v<T, FeatPayloadHoleWizard>)
+            {
+                (void)p;
+                auto auth_it = doc.authored_shapes.find(feat.id);
+                if (auth_it != doc.authored_shapes.end() && auth_it->second)
+                {
+                    node = cg->AddConst(auth_it->second,
+                                        "authored_hole_" + feat.name);
+                }
+                else if (base_node >= 0)
+                {
+                    node = base_node;
+                    if (!out.err_msg.empty()) {
+                        out.err_msg += "; ";
+                    }
+                    out.err_msg +=
+                        "Hole " + feat.name +
+                        " has no authored .brp; chain continues without "
+                        "the hole geometry";
+                }
+                else
+                {
+                    if (!out.err_msg.empty()) {
+                        out.err_msg += "; ";
+                    }
+                    out.err_msg +=
+                        "Hole " + feat.name +
+                        " has neither authored .brp nor base shape; "
+                        "skipped";
+                }
+            }
+
             // ---- Not implemented yet ----
             else
             {

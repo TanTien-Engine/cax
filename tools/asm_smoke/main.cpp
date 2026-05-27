@@ -103,6 +103,33 @@ int main(int argc, char** argv)
             auto* pl = std::get_if<cadapp::FeatPayloadSketch>(&f.data);
             if (pl) std::printf("  sketch_id=#%u", pl->sketch_id);
         }
+        else if (f.type == cadapp::FeatType::HoleWizard)
+        {
+            auto* pl = std::get_if<cadapp::FeatPayloadHoleWizard>(&f.data);
+            if (pl)
+            {
+                std::printf("\n         sketch_id=#%u  diameter=%gm  depth=%gm  through_all=%d",
+                            pl->sketch_id,
+                            pl->diameter,
+                            pl->depth,
+                            (int)pl->through_all);
+                // Spill a curated subset of the ext bag (the rest are
+                // mostly thread / cosmetic knobs).
+                auto dump = [&](const char* key, const char* label) {
+                    auto it = f.ext_params.find(key);
+                    if (it != f.ext_params.end())
+                        std::printf("  %s=%g", label, it->second);
+                };
+                std::printf("\n        ");
+                dump("threaded", "threaded");
+                dump("hole_cut_type", "hole_cut_type");
+                dump("hole_cut_diameter", "hole_cut_d");
+                dump("hole_cut_depth", "hole_cut_h");
+                dump("drill_point_kind", "drill_pt");
+                dump("drill_point_angle_deg", "drill_ang");
+                dump("thread_pitch", "pitch");
+            }
+        }
         else if (f.type == cadapp::FeatType::AsmConstraint)
         {
             auto* pl = std::get_if<cadapp::FeatPayloadAsmConstraint>(&f.data);
