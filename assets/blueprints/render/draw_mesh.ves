@@ -615,14 +615,11 @@ var node71 = ::rendergraph::nodes::draw::Draw()
 
 node71.set_prim_type("lines")
 node71.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "lequal", "clip_plane" : false }
-// X-RAY TEST: surface pass runs with depth_mask off, so there is no
-// surface depth in the buffer for these topological edges to test
-// against -- every edge (front and back) would pass depth_test and
-// clutter the view. Skip the edge pass while x-ray transparency is
-// on. The real per-part path re-enables edges for the opaque pass
-// (which writes depth) and leaves them off only for transparent
-// parts.
-node71.skip = true
+// Edges test against the opaque surface depth (the opaque pass writes
+// depth), so front/back edges occlude correctly. Transparent parts
+// are drawn by a separate pass that doesn't write depth and doesn't
+// feed edges here, so the x-ray interior stays clean.
+node71.skip = false
 
 _editor.add_node(node71, 1100, -100)
 
@@ -687,8 +684,37 @@ node72.render_gen()
 
 _editor.add_node(node72, 900, -100)
 
+// --- transparent (x-ray) surface pass ---------------------------
+// geos_transparent: the subset of parts with authored transparency.
+// Drawn after the opaque surface + edge passes, into the same
+// GBuffer, by a blend + depth_mask-off variant so assembly interiors
+// show through the translucent shells. Empty (nil) for models with no
+// transparency -> the for_each inside the subgraph simply runs zero
+// times.
+var node73 = ::blueprint::nodes::input::Input()
+
+node73.var_name = "geos_transparent"
+node73.var_type = "array"
+
+_editor.add_node(node73, 1058.5131816029, -300)
+
+var node74 = ::blueprint::nodes::subgraph::Subgraph()
+node74.load_from_file(_editor, "draw_mesh_single_xray.ves")
+
+_editor.add_node(node74, 1256.5201463633, -300)
+
 Blueprint.connect(node50, "next", node70, "prev")
-Blueprint.connect(node70, "next", node62, "do")
+// Transparent pass runs after the edge for_each (node70), still
+// inside the GBuffer pass (node62). Was: node70.next -> node62.do.
+Blueprint.connect(node70, "next", node74, "prev")
+Blueprint.connect(node74, "next", node62, "do")
+Blueprint.connect(node73, "var", node74, "geos")
+Blueprint.connect(node59, "var", node74, "model")
+Blueprint.connect(node3,  "mat", node74, "view")
+Blueprint.connect(node57, "var", node74, "light_pos")
+Blueprint.connect(node51, "v3",  node74, "light_col")
+Blueprint.connect(node55, "var", node74, "cam_pos")
+Blueprint.connect(node53, "var", node74, "projection")
 Blueprint.connect(node69, "var", node70, "in")
 Blueprint.connect(node70, "out", node71, "va")
 Blueprint.connect(node72, "out", node71, "shader")

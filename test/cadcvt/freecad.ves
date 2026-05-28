@@ -36,9 +36,28 @@ node5.query_param("disable").value = false
 
 _editor.add_node(node5, 397.97407447121, 120.3305785124)
 
-Blueprint.connect(node4, "shape", node2, "shape")
+// Transparent group: a second ToMesh + cache for the parts whose
+// MaterialIR.transparency > 0 (e.g. cylinder shells). Fed into
+// draw_mesh's geos_transparent input so they render in the blend /
+// depth-mask-off pass after the opaque parts.
+var node6 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node6, 210.13432009961, 380.93279498784)
+
+var node7 = ::blueprint::nodes::cache::Cache()
+node7.query_param("disable").value = false
+
+_editor.add_node(node7, 392.18895050427, 420.79090897199)
+
+// Opaque group -> main surface + edges.
+Blueprint.connect(node4, "shape_opaque", node2, "shape")
 Blueprint.connect(node2, "edges", node5, "var")
 Blueprint.connect(node2, "va", node3, "var")
 Blueprint.connect(node3, "var", node1, "geos")
 Blueprint.connect(node0, "this", node1, "view_cam")
 Blueprint.connect(node5, "var", node1, "edges")
+
+// Transparent group -> x-ray surface pass (no edges).
+Blueprint.connect(node4, "shape_transparent", node6, "shape")
+Blueprint.connect(node6, "va", node7, "var")
+Blueprint.connect(node7, "var", node1, "geos_transparent")

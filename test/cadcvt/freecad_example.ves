@@ -25,7 +25,8 @@ node3.query_param("disable").value = false
 _editor.add_node(node3, 392.18895050427, 211.79090897199)
 
 var node4 = ::cadcvt::nodes::load_freecad::LoadFreecad()
-node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/100CadExercises/Page_058_Exercise2D-50_byHannu.fcstd"
+//node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/100CadExercises/Page_058_Exercise2D-50-sketched_byHannu.fcstd"
+node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/freecad_assembly_test_corpus/Assembly4_examples/asm_Cylinders.FCStd"
 node4.query_param("unit_scale").value = 0.001
 node4.query_param("strict").value = false
 
@@ -36,9 +37,27 @@ node5.query_param("disable").value = false
 
 _editor.add_node(node5, 397.97407447121, 120.3305785124)
 
-Blueprint.connect(node4, "shape", node2, "shape")
+// Transparent group: second ToMesh + cache for parts with
+// MaterialIR.transparency > 0 (cylinder shells etc.), fed into
+// draw_mesh's geos_transparent so they render in the blend pass.
+var node6 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node6, 210.13432009961, 380.93279498784)
+
+var node7 = ::blueprint::nodes::cache::Cache()
+node7.query_param("disable").value = false
+
+_editor.add_node(node7, 392.18895050427, 420.79090897199)
+
+// Opaque group -> main surface + edges.
+Blueprint.connect(node4, "shape_opaque", node2, "shape")
 Blueprint.connect(node2, "edges", node5, "var")
 Blueprint.connect(node2, "va", node3, "var")
 Blueprint.connect(node3, "var", node1, "geos")
 Blueprint.connect(node0, "this", node1, "view_cam")
 Blueprint.connect(node5, "var", node1, "edges")
+
+// Transparent group -> x-ray surface pass (no edges).
+Blueprint.connect(node4, "shape_transparent", node6, "shape")
+Blueprint.connect(node6, "va", node7, "var")
+Blueprint.connect(node7, "var", node1, "geos_transparent")

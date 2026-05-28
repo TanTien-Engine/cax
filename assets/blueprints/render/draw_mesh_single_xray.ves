@@ -8,14 +8,19 @@ _editor.add_node(node0, 787.93294950249, -5.7075172787282)
 var node1 = ::rendergraph::nodes::draw::Draw()
 
 node1.set_prim_type("triangles")
-// OPAQUE pass: writes depth (depth_mask default on), no blend. This
-// is the standard surface draw shared by the main geometry (node50)
-// and the selection highlight (node63) in draw_mesh.ves. Transparent
-// parts are drawn separately by draw_mesh_single_xray.ves, which runs
-// after this pass with blend on + depth_mask off so they show the
-// interior through. gMain stays vec4 (GBuffer is rgba8) with alpha 1
-// so the opaque output is unchanged.
-node1.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "less", "clip_plane" : false }
+// TRANSPARENT pass: blend on + depth_mask off. Runs AFTER the opaque
+// pass (draw_mesh_single.ves) has filled the GBuffer and written
+// depth, so these translucent fragments:
+//   - depth_test on  -> are still rejected behind nearer OPAQUE
+//                        geometry (a transparent shell does not draw
+//                        over a solid part that is in front of it)
+//   - depth_mask off -> do not themselves write depth, so they never
+//                        occlude the opaque interior parts already in
+//                        the buffer -> interiors stay visible through
+//                        the shell.
+// No edge pass is fed from transparent parts (edges would have no
+// depth to test against and clutter the x-ray).
+node1.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : true, "depth_mask" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "less", "clip_plane" : false }
 node1.skip = false
 
 _editor.add_node(node1, 784.30380359571, -191.81447758435)
@@ -43,8 +48,6 @@ uniform UBO
 void main()
 {
 	vs_out.frag_pos = vec3(model * vec4(aPos, 1.0));
-	// inverse-transpose handles non-uniform scale correctly; for
-	// rigid-body model matrices it reduces to mat3(model).
 	vs_out.normal   = mat3(transpose(inverse(model))) * aNormal;
     gl_Position = projection * view * model * vec4(aPos, 1.0);
 }
@@ -54,15 +57,12 @@ node2.tes = ""
 node2.gs = ""
 node2.fs = "
 #version 330 core
-// gMain is RGBA so the fragment's alpha output participates in the
-// blend stage. Downstream composite / post pass still read the .rgb
-// slice; the .a is consumed only by the immediate blend of this
-// draw. The Vulkan-flavour GLSL parser this pipeline uses rejects
-// 'non-opaque uniforms outside a block', so per-draw transparency
-// will be plumbed via a UBO field once the format change is proven
-// (B step). For now the alpha is hardcoded to validate that blend
-// + RGBA GBuffer + downstream composite all honour the alpha
-// channel.
+// Same Phong as the opaque variant, but the fragment alpha is < 1 so
+// the blend stage makes the surface translucent. gMain is vec4 (the
+// GBuffer is rgba8). The alpha is a fixed interim value; the planned
+// upgrade feeds it per-part from MaterialIR.transparency (per-vertex
+// attribute, since Vulkan-flavour GLSL rejects bare non-opaque
+// uniforms).
 layout (location = 0) out vec4 gMain;
 layout (location = 1) out vec3 gDepth;
 layout (location = 2) out vec3 gNormal;
@@ -89,42 +89,28 @@ float LinearizeDepth(float depth)
 
 void main()
 {
-	// Per-vertex normal from TopoAdapter, oriented outward of the
-	// solid. Flip it when the rasterizer reports we are on the
-	// back side - that keeps gNormal consistent (toward camera)
-	// for the downstream edge-detection pass.
 	vec3 N = normalize(fs_in.normal);
 	if (!gl_FrontFacing) {
 		N = -N;
 	}
 
-	// ambient
 	vec3 ambient = vec3(0.25) * light_col;
 
-	// Diffuse with two-sided shading: abs() instead of max() so a
-	// face whose outward normal happens to point away from the
-	// world light still gets lit. CAD viewers want every face
-	// clearly visible regardless of where the single directional
-	// light sits.
 	vec3 light_dir = normalize(light_pos - fs_in.frag_pos);
 	float diff = abs(dot(N, light_dir));
 	vec3 diffuse = vec3(diff) * light_col;
 
-	// Specular: keep one-sided (Blinn-Phong is only physically
-	// meaningful on the lit side). N has already been flipped to
-	// face the camera, so this matches the visible hemisphere.
 	vec3 view_dir = normalize(cam_pos - fs_in.frag_pos);
 	vec3 halfway_dir = normalize(light_dir + view_dir);
 	float spec = pow(max(dot(N, halfway_dir), 0.0), 32.0);
 	vec3 specular = spec * vec3(1.0);
 
-	float depth = LinearizeDepth(gl_FragCoord.z) / far; // divide by far to get depth in range [0,1] for visualization purposes
+	float depth = LinearizeDepth(gl_FragCoord.z) / far;
 	gDepth = vec3(depth);
 
-	// Opaque: alpha 1. gMain is vec4 to match the rgba8 GBuffer; the
-	// transparent variant (draw_mesh_single_xray.ves) is what emits a
-	// sub-1 alpha.
-	gMain = vec4(ambient + diffuse + specular, 1.0);
+	// Interim fixed transparency: alpha 0.25 (~ a 0.75-transparent
+	// shell). Tune here, or wire per-part later.
+	gMain = vec4(ambient + diffuse + specular, 0.25);
 	gNormal = N;
 }
 "

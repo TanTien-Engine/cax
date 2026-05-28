@@ -23,6 +23,23 @@ foreign class FreeCadLoader
     foreign load(path)
 
     foreign last_error()
+
+    // ---- per-part access (valid after load) ----
+    //
+    // The assembly is also kept split into parts, each with its
+    // source GUI appearance, so a host can render per part instead
+    // of the single merged shape.
+    //   part_count()         number of parts
+    //   part_shape(i)        i-th part's TopoShape (nil on bad index)
+    //   part_transparency(i) i-th part's transparency (0..1)
+    foreign part_count()
+    foreign part_shape(i)
+    foreign part_transparency(i)
+
+    // Merged opaque / transparent subsets of the last load(), for
+    // two-pass see-through rendering. nil when the subset is empty.
+    foreign merged_opaque()
+    foreign merged_transparent()
 }
 
 );

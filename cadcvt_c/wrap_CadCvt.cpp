@@ -7,9 +7,14 @@
 
 #include <wrapper/Proxy.h>
 
+#include <BRep_Builder.hxx>
+#include <TopoDS_Compound.hxx>
+#include <TopoDS_Shape.hxx>
+
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 // ============================================================
 // wrap_CadCvt.cpp
@@ -195,6 +200,88 @@ void w_FreeCadLoader_part_transparency()
     ves_set_number(0, t);
 }
 
+// Merge the last load()'s parts into a single TopoShape, selecting
+// either the opaque (transparency ~ 0) or the transparent
+// (transparency > 0) subset. Returns nil when the subset is empty
+// so the host can skip wiring an empty draw. Used by the two-pass
+// renderer: opaque subset draws with depth writes + edges, the
+// transparent subset draws after with blend + depth writes off so
+// interiors show through.
+std::shared_ptr<brepkit::TopoShape>
+MergePartsSubset(const std::vector<cadapp::ReplayPart>& parts,
+                 bool                                  want_transparent)
+{
+    const double k_eps = 1e-6;
+
+    BRep_Builder    bb;
+    TopoDS_Compound comp;
+    bb.MakeCompound(comp);
+
+    int                                 added = 0;
+    std::shared_ptr<brepkit::TopoShape> solo;
+    for (const auto& p : parts)
+    {
+        bool is_transparent = p.transparency > k_eps;
+        if (is_transparent != want_transparent) {
+            continue;
+        }
+        if (!p.shape) {
+            continue;
+        }
+        const TopoDS_Shape& s = p.shape->GetShape();
+        if (s.IsNull()) {
+            continue;
+        }
+        bb.Add(comp, s);
+        if (added == 0) {
+            solo = p.shape;
+        }
+        ++added;
+    }
+
+    if (added == 0) {
+        return nullptr;
+    }
+    if (added == 1) {
+        return solo;            // avoid a 1-child compound wrapper
+    }
+    return std::make_shared<brepkit::TopoShape>(comp);
+}
+
+// Merged opaque subset of the last load(); nil when there are none.
+void w_FreeCadLoader_merged_opaque()
+{
+    auto* st = GetState(0);
+    if (!st) {
+        ves_set_nil(0);
+        return;
+    }
+    auto sh = MergePartsSubset(st->parts, /*want_transparent*/ false);
+    if (!sh) {
+        ves_set_nil(0);
+        return;
+    }
+    brepkit::return_topo_shape(sh);
+}
+
+// Merged transparent subset of the last load(); nil when there are
+// none (e.g. a model with no transparency authored -> host draws
+// only the opaque pass).
+void w_FreeCadLoader_merged_transparent()
+{
+    auto* st = GetState(0);
+    if (!st) {
+        ves_set_nil(0);
+        return;
+    }
+    auto sh = MergePartsSubset(st->parts, /*want_transparent*/ true);
+    if (!sh) {
+        ves_set_nil(0);
+        return;
+    }
+    brepkit::return_topo_shape(sh);
+}
+
 void w_FreeCadLoader_last_error()
 {
     auto* st = GetState(0);
@@ -235,6 +322,12 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "FreeCadLoader.part_transparency(_)") == 0) {
         return w_FreeCadLoader_part_transparency;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.merged_opaque()") == 0) {
+        return w_FreeCadLoader_merged_opaque;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.merged_transparent()") == 0) {
+        return w_FreeCadLoader_merged_transparent;
     }
     return nullptr;
 }

@@ -38,7 +38,15 @@ class LoadFreecad is Node
             Pin(this, "strict",     VAR_TYPE_BOOLEAN),
         ]
         this.exports = [
-            Pin(this, "shape", VAR_TOPO_SHAPE),
+            // shape             : whole merged body (back-compat)
+            // shape_opaque      : parts with transparency ~ 0
+            // shape_transparent : parts with transparency > 0
+            // The split lets the renderer draw opaque parts first
+            // (depth write + edges) and transparent shells after
+            // (blend, no depth write) so assembly interiors show.
+            Pin(this, "shape",             VAR_TOPO_SHAPE),
+            Pin(this, "shape_opaque",      VAR_TOPO_SHAPE),
+            Pin(this, "shape_transparent", VAR_TOPO_SHAPE),
         ]
 
         this.params.add(NodeParam("path", ""))
@@ -59,7 +67,11 @@ class LoadFreecad is Node
         this.last_error   = nil
     }
 
-    calc_value(idx)
+    // Ensure the heavy load ran for the current (path, unit_scale,
+    // strict) key. Caches the merged shape; the loader keeps the
+    // per-part split internally so merged_opaque/merged_transparent
+    // can be queried after. Returns the merged shape (or nil).
+    ensure_loaded()
     {
         var path       = NodeHelper.calc_prop_value(this, "path")
         var unit_scale = NodeHelper.calc_prop_value(this, "unit_scale")
@@ -71,39 +83,54 @@ class LoadFreecad is Node
         }
 
         var key = "%(path)|%(unit_scale)|%(strict)"
-        if (key == this.cached_key and this.cached_shape) {
-            return Variant(VAR_TOPO_SHAPE, this.cached_shape)
+        if (key == this.cached_key) {
+            return this.cached_shape
         }
 
         this.loader.set_unit_scale(unit_scale)
         this.loader.set_strict(strict)
 
         var shape = this.loader.load(path)
+        this.cached_key   = key
+        this.cached_shape = shape
+        this.last_error   = this.loader.last_error()
+
         if (!shape) {
-            this.last_error   = this.loader.last_error()
-            this.cached_key   = key
-            this.cached_shape = nil
             if (this.last_error) {
                 System.print("LoadFreeCad ERROR: %(this.last_error)")
             }
-            return nil
-        }
-
-        // Replayer may still have produced a shape while collecting
-        // diagnostics for skipped features; surface the message
-        // anyway.
-        this.last_error   = this.loader.last_error()
-        this.cached_key   = key
-        this.cached_shape = shape
-
-        // Even with a returned shape, the Replayer may have logged
-        // per-feature problems (e.g. "prism produced non-solid").
-        // Print so the user sees them - the shape may render fine
-        // but be topologically broken.
-        if (this.last_error) {
+        } else if (this.last_error) {
+            // Shape produced but with per-feature diagnostics worth
+            // surfacing (e.g. "prism produced non-solid").
             System.print("LoadFreeCad WARN: %(this.last_error)")
         }
 
+        return shape
+    }
+
+    calc_value(idx)
+    {
+        var shape = this.ensure_loaded()
+        if (!shape) {
+            return nil
+        }
+
+        // idx maps to the exports order:
+        //   0 shape, 1 shape_opaque, 2 shape_transparent
+        if (idx == 1) {
+            var op = this.loader.merged_opaque()
+            if (!op) {
+                return nil
+            }
+            return Variant(VAR_TOPO_SHAPE, op)
+        }
+        if (idx == 2) {
+            var tr = this.loader.merged_transparent()
+            if (!tr) {
+                return nil
+            }
+            return Variant(VAR_TOPO_SHAPE, tr)
+        }
         return Variant(VAR_TOPO_SHAPE, shape)
     }
 }
