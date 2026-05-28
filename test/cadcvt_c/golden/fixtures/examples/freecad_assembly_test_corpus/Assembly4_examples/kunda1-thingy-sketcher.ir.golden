@@ -1,0 +1,17 @@
+doc source=freecad
+sketch 1 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=14 cons=0
+  geo 1 type=Line constr=0 params=[0.018,0.081,-0.061,0.056]
+  geo 2 type=Line constr=0 params=[-0.061,0.056,-0.079,-0.025]
+  geo 3 type=Line constr=0 params=[-0.079,-0.025,-0.018,-0.081]
+  geo 4 type=Line constr=0 params=[-0.018,-0.081,0.061,-0.056]
+  geo 5 type=Line constr=0 params=[0.061,-0.056,0.079,0.025]
+  geo 6 type=Line constr=0 params=[0.079,0.025,0.018,0.081]
+  geo 7 type=Circle constr=1 params=[0.000,0.000,0.083]
+  geo 8 type=Line constr=0 params=[-0.025,-0.008,-0.016,-0.075]
+  geo 9 type=Line constr=0 params=[-0.016,-0.075,0.037,-0.034]
+  geo 10 type=Line constr=0 params=[0.037,-0.034,-0.025,-0.008]
+  geo 11 type=Circle constr=1 params=[-0.001,-0.039,0.039]
+  geo 12 type=Line constr=1 params=[0.061,-0.056,-0.061,0.056]
+  geo 13 type=Line constr=1 params=[-0.079,-0.025,0.079,0.025]
+  geo 14 type=Line constr=1 params=[-0.018,-0.081,0.018,0.081]
+feat 1 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=1

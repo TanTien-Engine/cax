@@ -1,0 +1,20 @@
+doc source=freecad
+sketch 11 name=Sketch_0 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=2 cons=0
+  geo 1 type=Circle constr=0 params=[0.000,0.000,0.210]
+  geo 2 type=Circle constr=0 params=[0.000,0.000,0.008]
+sketch 12 name=Sketch_1 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=7 cons=0
+  geo 3 type=Line constr=1 params=[0.000,0.000,0.210,0.000]
+  geo 4 type=Line constr=1 params=[0.000,0.000,0.105,0.182]
+  geo 5 type=Line constr=0 params=[0.114,0.177,0.017,0.010]
+  geo 6 type=Line constr=0 params=[0.210,0.010,0.017,0.010]
+  geo 7 type=Line constr=1 params=[0.017,0.010,0.017,0.000]
+  geo 8 type=Line constr=1 params=[0.017,0.010,0.009,0.015]
+  geo 9 type=Arc constr=0 params=[0.000,0.000,0.210,0.0476,0.9996]
+feat 21 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=1
+  inputs=[0:base]
+feat 22 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.000 end=0 flip=0
+  inputs=[21:base]
+feat 23 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) count=6 total_angle=6.2832
+  inputs=[22:base,22:tool]
+feat 11 name=Sketch_0 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Sketch_1 type=Sketch suppressed=0 payload=sketch sketch_id=12

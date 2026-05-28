@@ -1,0 +1,134 @@
+doc source=freecad
+sketch 17 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=6 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.000,0.020]
+  geo 2 type=Line constr=0 params=[0.000,0.020,0.020,0.020]
+  geo 3 type=Line constr=0 params=[0.020,0.020,0.020,0.005]
+  geo 4 type=Line constr=0 params=[0.020,0.005,0.010,0.005]
+  geo 5 type=Line constr=0 params=[0.010,0.005,0.010,0.000]
+  geo 6 type=Line constr=0 params=[0.010,0.000,0.000,0.000]
+sketch 19 name=Sketch001 plane_origin=(0.000,0.000,0.010) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 7 type=Circle constr=0 params=[0.006,0.009,0.003]
+  geo 8 type=Line constr=1 params=[0.006,0.009,0.010,0.005]
+sketch 21 name=Sketch002 plane_origin=(0.000,0.000,0.005) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 9 type=Line constr=0 params=[0.006,0.009,0.008,0.009]
+  geo 10 type=Line constr=0 params=[0.006,0.009,0.006,0.010]
+sketch 26 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,-1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 11 type=Circle constr=0 params=[0.006,-0.009,0.002]
+sketch 29 name=Sketch001 plane_origin=(0.000,0.000,0.050) plane_normal=(0.000,0.000,1.000) plane_xdir=(-1.000,0.000,0.000) geos=2 cons=0
+  geo 1 type=Line constr=0 params=[0.002,-0.002,0.000,0.000]
+  geo 2 type=Line constr=0 params=[0.000,0.000,0.004,0.004]
+sketch 30 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=13 cons=0
+  geo 3 type=Line constr=0 params=[0.000,0.000,0.000,0.050]
+  geo 4 type=Line constr=0 params=[0.000,0.050,-0.003,0.050]
+  geo 5 type=Line constr=0 params=[-0.003,0.000,0.000,0.000]
+  geo 6 type=Line constr=0 params=[-0.003,0.050,-0.003,0.042]
+  geo 7 type=Line constr=0 params=[-0.003,0.042,-0.005,0.039]
+  geo 8 type=Line constr=0 params=[-0.005,0.039,-0.011,0.039]
+  geo 9 type=Line constr=0 params=[-0.011,0.039,-0.011,0.033]
+  geo 10 type=Line constr=0 params=[-0.011,0.033,-0.004,0.033]
+  geo 11 type=Line constr=0 params=[-0.004,0.033,-0.004,0.021]
+  geo 12 type=Line constr=0 params=[-0.004,0.021,-0.007,0.014]
+  geo 13 type=Line constr=0 params=[-0.007,0.014,-0.007,0.009]
+  geo 14 type=Line constr=0 params=[-0.007,0.009,-0.003,0.009]
+  geo 15 type=Line constr=0 params=[-0.003,0.009,-0.003,0.000]
+sketch 32 name=Sketch002 plane_origin=(0.000,0.000,0.039) plane_normal=(0.000,0.000,1.000) plane_xdir=(-1.000,0.000,0.000) geos=9 cons=0
+  geo 16 type=Line constr=0 params=[0.000,0.012,-0.010,0.006]
+  geo 17 type=Line constr=0 params=[-0.010,0.006,-0.010,-0.006]
+  geo 18 type=Line constr=0 params=[-0.010,-0.006,0.000,-0.012]
+  geo 19 type=Line constr=0 params=[0.000,-0.012,0.010,-0.006]
+  geo 20 type=Line constr=0 params=[0.010,-0.006,0.010,0.006]
+  geo 21 type=Line constr=0 params=[0.010,0.006,0.000,0.012]
+  geo 22 type=Circle constr=1 params=[0.000,0.000,0.012]
+  geo 23 type=Circle constr=0 params=[0.000,0.000,0.015]
+  geo 24 type=Line constr=1 params=[0.000,-0.012,0.000,-0.015]
+sketch 37 name=Sketch003 plane_origin=(0.000,0.000,0.050) plane_normal=(0.000,0.000,1.000) plane_xdir=(-1.000,0.000,0.000) geos=1 cons=0
+  geo 25 type=Circle constr=0 params=[0.000,0.000,0.001]
+sketch 39 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=6 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.000,0.020]
+  geo 2 type=Line constr=0 params=[0.000,0.020,0.020,0.020]
+  geo 3 type=Line constr=0 params=[0.020,0.020,0.020,0.005]
+  geo 4 type=Line constr=0 params=[0.020,0.005,0.010,0.005]
+  geo 5 type=Line constr=0 params=[0.010,0.005,0.010,0.000]
+  geo 6 type=Line constr=0 params=[0.010,0.000,0.000,0.000]
+sketch 41 name=Sketch001 plane_origin=(0.000,0.000,0.010) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 7 type=Circle constr=0 params=[0.006,0.009,0.003]
+  geo 8 type=Line constr=1 params=[0.006,0.009,0.010,0.005]
+sketch 43 name=Sketch002 plane_origin=(0.000,0.000,0.005) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 9 type=Line constr=0 params=[0.006,0.009,0.008,0.009]
+  geo 10 type=Line constr=0 params=[0.006,0.009,0.006,0.010]
+sketch 48 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,-1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 11 type=Circle constr=0 params=[0.006,-0.009,0.002]
+feat 12 name=constr_Test_Block_00_A type=Unknown suppressed=0 payload=other
+feat 14 name=constr_Test_Block_01_A type=Unknown suppressed=0 payload=other
+feat 16 name=constr_Test_Block_00_B type=Unknown suppressed=0 payload=other
+feat 17 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=17
+feat 18 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=17 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+  inputs=[0:base]
+feat 19 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=19
+  inputs=[18:ref]
+feat 20 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=19 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=1
+  inputs=[18:base]
+feat 21 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=21
+  inputs=[20:ref]
+feat 22 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.003 edges=1
+  inputs=[20:base]
+feat 23 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.002 d2=0.000 edges=4
+  inputs=[22:base]
+feat 24 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.001 edges=1
+  inputs=[23:base]
+feat 25 name=Chamfer001 type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=1
+  inputs=[24:base]
+feat 26 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=26
+  inputs=[25:ref]
+feat 27 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=26 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=6 flip=1
+  inputs=[25:base]
+feat 28 name=Chamfer002 type=Chamfer suppressed=0 payload=chamfer d1=0.000 d2=0.000 edges=2
+  inputs=[27:base]
+feat 11 name=Test_Block_00_A type=Unknown suppressed=0 payload=other
+  inputs=[28:base]
+feat 29 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=29
+  inputs=[22:ref]
+feat 30 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=30
+feat 31 name=Revolution type=BossRevolve suppressed=0 payload=revolve sketch_id=30 axis_o=(0.000,0.000,0.000) axis_d=(0.000,0.000,1.000) angle=6.2832 flip=0
+  inputs=[0:base]
+feat 32 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=32
+  inputs=[31:ref]
+feat 33 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=32 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=1
+  inputs=[31:base]
+feat 34 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.000 edges=7
+  inputs=[33:base]
+feat 35 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.001 edges=4
+  inputs=[34:base]
+feat 36 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=1
+  inputs=[35:base]
+feat 37 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=37
+  inputs=[36:ref]
+feat 38 name=Hole type=HoleWizard suppressed=0 payload=other
+  inputs=[36:base]
+feat 13 name=Test_Block_01_A type=Unknown suppressed=0 payload=other
+  inputs=[38:base]
+feat 39 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=39
+feat 40 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=39 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+  inputs=[0:base]
+feat 41 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=41
+  inputs=[40:ref]
+feat 42 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=41 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=1
+  inputs=[40:base]
+feat 43 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=43
+  inputs=[42:ref]
+feat 44 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.003 edges=1
+  inputs=[42:base]
+feat 45 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.002 d2=0.000 edges=4
+  inputs=[44:base]
+feat 46 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.001 edges=1
+  inputs=[45:base]
+feat 47 name=Chamfer001 type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=1
+  inputs=[46:base]
+feat 48 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=48
+  inputs=[47:ref]
+feat 49 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=48 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=6 flip=1
+  inputs=[47:base]
+feat 50 name=Chamfer002 type=Chamfer suppressed=0 payload=chamfer d1=0.000 d2=0.000 edges=2
+  inputs=[49:base]
+feat 15 name=Test_Block_00_B type=Unknown suppressed=0 payload=other
+  inputs=[50:base]

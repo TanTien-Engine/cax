@@ -1,0 +1,20 @@
+FreeCAD assembly test corpus (open-source example files, bundled for testing)
+
+native_AssemblyWB/         FreeCAD 1.0+ built-in Assembly workbench (joints)
+                           source: github.com/ShawnHymel/introduction-to-freecad
+                           scissor_lift.FCStd / scissor_lift_stops.FCStd
+                           -> single-file assemblies; all parts + joints in one doc.
+
+Assembly4_examples/        Assembly4 workbench (App::Link + LCS + ExpressionEngine)
+                           source: github.com/easyw/Asm4  (Asm4_Examples/)
+                           Multi-file assemblies (link to external .FCStd in same folder):
+                             asm4-test.FCStd      -> Test_Block_00/01      (simplest)
+                             asm_Hypnotic.fcstd   -> Support/Triangle/Wheel
+                             asm_Bielle.fcstd     -> Bague/Bielle/Cuve/Screw_CHC
+                             asm_Cylinders.FCStd  -> Crankshaft/Cylindre/Piston/asm_Bielle
+                                                     (NESTED: links a sub-assembly that
+                                                      itself links parts; 13 links total)
+                           The remaining files are the individual linked part docs.
+
+Keep each folder intact when testing: external links are resolved by relative
+path within the same directory.

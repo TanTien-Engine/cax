@@ -1,0 +1,27 @@
+doc source=freecad
+sketch 11 name=Sketch_0 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=0
+  geo 1 type=Circle constr=0 params=[0.000,0.000,0.008]
+  geo 2 type=Arc constr=0 params=[0.000,0.000,0.025,0.2875,2.8541]
+  geo 3 type=Line constr=0 params=[-0.024,0.007,-0.100,-0.250]
+  geo 4 type=Line constr=0 params=[0.024,0.007,0.100,-0.250]
+  geo 5 type=Line constr=0 params=[-0.100,-0.250,0.100,-0.250]
+sketch 13 name=Sketch_1 plane_origin=(0.085,0.000,-0.100) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=0
+  geo 6 type=Circle constr=0 params=[0.000,0.000,0.008]
+  geo 7 type=Arc constr=0 params=[0.000,0.000,0.025,5.6397,10.0683]
+  geo 8 type=Line constr=0 params=[-0.100,-0.150,-0.020,-0.015]
+  geo 9 type=Line constr=0 params=[0.020,-0.015,0.100,-0.150]
+  geo 10 type=Line constr=0 params=[0.100,-0.150,-0.100,-0.150]
+sketch 14 name=Sketch_2 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=4 cons=0
+  geo 11 type=Line constr=0 params=[-0.100,-0.250,0.100,-0.250]
+  geo 12 type=Line constr=0 params=[0.100,-0.250,0.100,-0.270]
+  geo 13 type=Line constr=0 params=[0.100,-0.270,-0.100,-0.270]
+  geo 14 type=Line constr=0 params=[-0.100,-0.270,-0.100,-0.250]
+feat 23 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+  inputs=[0:base]
+feat 24 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=14 dir=(0.000,0.000,1.000) dist=0.085 dist2=0.000 end=0 flip=0
+  inputs=[23:base]
+feat 25 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=13 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=1
+  inputs=[24:base]
+feat 11 name=Sketch_0 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 13 name=Sketch_1 type=Sketch suppressed=0 payload=sketch sketch_id=13
+feat 14 name=Sketch_2 type=Sketch suppressed=0 payload=sketch sketch_id=14

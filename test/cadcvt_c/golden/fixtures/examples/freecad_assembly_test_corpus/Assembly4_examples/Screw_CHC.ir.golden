@@ -1,0 +1,27 @@
+doc source=freecad
+sketch 20 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 1 type=Circle constr=0 params=[0.000,0.000,0.005]
+sketch 22 name=Sketch001 plane_origin=(0.000,0.000,0.006) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=7 cons=0
+  geo 2 type=Line constr=0 params=[0.003,0.000,0.001,0.002]
+  geo 3 type=Line constr=0 params=[0.001,0.002,-0.001,0.003]
+  geo 4 type=Line constr=0 params=[-0.001,0.003,-0.003,0.000]
+  geo 5 type=Line constr=0 params=[-0.003,0.000,-0.001,-0.003]
+  geo 6 type=Line constr=0 params=[-0.001,-0.003,0.001,-0.003]
+  geo 7 type=Line constr=0 params=[0.001,-0.003,0.003,0.000]
+  geo 8 type=Circle constr=1 params=[0.000,0.000,0.003]
+sketch 24 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 9 type=Circle constr=0 params=[0.000,0.000,0.003]
+feat 20 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=20
+feat 21 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.006 dist2=0.000 end=0 flip=0
+  inputs=[0:base]
+feat 22 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=22
+  inputs=[21:ref]
+feat 23 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=22 dir=(0.000,0.000,1.000) dist=0.004 dist2=0.000 end=0 flip=1
+  inputs=[21:base]
+feat 24 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=24
+feat 25 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=24 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.000 end=0 flip=1
+  inputs=[23:base]
+feat 26 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.001 edges=1
+  inputs=[25:base]
+feat 27 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=1
+  inputs=[26:base]

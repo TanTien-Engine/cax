@@ -1,0 +1,39 @@
+doc source=freecad
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=6 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.000,0.020]
+  geo 2 type=Line constr=0 params=[0.000,0.020,0.020,0.020]
+  geo 3 type=Line constr=0 params=[0.020,0.020,0.020,0.005]
+  geo 4 type=Line constr=0 params=[0.020,0.005,0.010,0.005]
+  geo 5 type=Line constr=0 params=[0.010,0.005,0.010,0.000]
+  geo 6 type=Line constr=0 params=[0.010,0.000,0.000,0.000]
+sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.010) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 7 type=Circle constr=0 params=[0.006,0.009,0.003]
+  geo 8 type=Line constr=1 params=[0.006,0.009,0.010,0.005]
+sketch 13 name=Sketch002 plane_origin=(0.000,0.000,0.005) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  geo 9 type=Line constr=0 params=[0.006,0.009,0.008,0.009]
+  geo 10 type=Line constr=0 params=[0.006,0.009,0.006,0.010]
+sketch 29 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,-1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 11 type=Circle constr=0 params=[0.006,-0.009,0.002]
+feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
+  inputs=[0:base]
+feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+  inputs=[10:ref]
+feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=1
+  inputs=[10:base]
+feat 13 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=13
+  inputs=[12:ref]
+feat 25 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.003 edges=1
+  inputs=[12:base]
+feat 26 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.002 d2=0.000 edges=4
+  inputs=[25:base]
+feat 27 name=Fillet001 type=Fillet suppressed=0 payload=fillet radius=0.001 edges=1
+  inputs=[26:base]
+feat 28 name=Chamfer001 type=Chamfer suppressed=0 payload=chamfer d1=0.001 d2=0.000 edges=1
+  inputs=[27:base]
+feat 29 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=29
+  inputs=[28:ref]
+feat 30 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=29 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=6 flip=1
+  inputs=[28:base]
+feat 31 name=Chamfer002 type=Chamfer suppressed=0 payload=chamfer d1=0.000 d2=0.000 edges=2
+  inputs=[30:base]

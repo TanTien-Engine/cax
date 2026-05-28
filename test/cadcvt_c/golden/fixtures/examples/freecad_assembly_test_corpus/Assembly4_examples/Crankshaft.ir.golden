@@ -1,0 +1,40 @@
+doc source=freecad
+sketch 11 name=Sketch_arrow plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=0
+  geo 1 type=Line constr=0 params=[0.000,0.000,0.000,0.075]
+  geo 2 type=Line constr=0 params=[0.000,0.075,0.007,0.062]
+  geo 3 type=Line constr=0 params=[0.000,0.075,-0.007,0.062]
+sketch 12 name=Sketch_pos_cylindres plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=0
+  geo 4 type=Line constr=0 params=[0.000,0.000,0.050,0.000]
+  geo 5 type=Line constr=0 params=[0.050,0.000,0.100,0.000]
+  geo 6 type=Line constr=0 params=[0.100,0.000,0.160,0.000]
+  geo 7 type=Line constr=0 params=[0.160,0.000,0.210,0.000]
+  geo 8 type=Line constr=0 params=[0.210,0.000,0.260,0.000]
+sketch 13 name=Sketch_travel plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 9 type=Circle constr=0 params=[0.000,0.000,0.040]
+sketch 14 name=Sketch_clocking1 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 10 type=Line constr=0 params=[0.000,0.000,-0.028,0.028]
+sketch 15 name=Sketch_clocking2 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 11 type=Line constr=0 params=[0.000,0.000,0.028,0.028]
+sketch 16 name=Sketch_clocking3 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 12 type=Line constr=0 params=[0.000,0.000,0.028,-0.028]
+sketch 17 name=Sketch_clocking4 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 13 type=Line constr=0 params=[0.000,0.000,-0.028,-0.028]
+sketch 26 name=Sketch_1 plane_origin=(0.000,0.050,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 14 type=Circle constr=0 params=[-0.028,0.028,0.015]
+sketch 27 name=Sketch_2 plane_origin=(0.000,0.100,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 15 type=Circle constr=0 params=[0.028,0.028,0.015]
+sketch 28 name=Sketch_3 plane_origin=(0.000,0.160,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 16 type=Circle constr=0 params=[0.028,-0.028,0.015]
+sketch 29 name=Sketch_4 plane_origin=(0.000,0.210,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+  geo 17 type=Circle constr=0 params=[-0.028,-0.028,0.015]
+feat 11 name=Sketch_arrow type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 12 name=Sketch_pos_cylindres type=Sketch suppressed=0 payload=sketch sketch_id=12
+feat 13 name=Sketch_travel type=Sketch suppressed=0 payload=sketch sketch_id=13
+feat 14 name=Sketch_clocking1 type=Sketch suppressed=0 payload=sketch sketch_id=14
+feat 15 name=Sketch_clocking2 type=Sketch suppressed=0 payload=sketch sketch_id=15
+feat 16 name=Sketch_clocking3 type=Sketch suppressed=0 payload=sketch sketch_id=16
+feat 17 name=Sketch_clocking4 type=Sketch suppressed=0 payload=sketch sketch_id=17
+feat 26 name=Sketch_1 type=Sketch suppressed=0 payload=sketch sketch_id=26
+feat 27 name=Sketch_2 type=Sketch suppressed=0 payload=sketch sketch_id=27
+feat 28 name=Sketch_3 type=Sketch suppressed=0 payload=sketch sketch_id=28
+feat 29 name=Sketch_4 type=Sketch suppressed=0 payload=sketch sketch_id=29
