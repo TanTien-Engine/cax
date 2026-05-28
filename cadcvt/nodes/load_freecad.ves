@@ -2,7 +2,7 @@ import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
 import "blueprint.node_param" for NodeParam
-import "blueprint.variant" for Variant, VAR_TYPE_STRING, VAR_TYPE_NUMBER, VAR_TYPE_BOOLEAN
+import "blueprint.variant" for Variant, VAR_TYPE_STRING, VAR_TYPE_NUMBER, VAR_TYPE_BOOLEAN, VAR_TYPE_ARRAY
 import "blueprint.node_helper" for NodeHelper
 import "brepkit.variant" for VAR_TOPO_SHAPE
 import "cadcvt" for FreeCadLoader
@@ -38,15 +38,21 @@ class LoadFreecad is Node
             Pin(this, "strict",     VAR_TYPE_BOOLEAN),
         ]
         this.exports = [
-            // shape             : whole merged body (back-compat)
-            // shape_opaque      : parts with transparency ~ 0
-            // shape_transparent : parts with transparency > 0
+            // shape              : whole merged body (back-compat)
+            // shape_opaque       : merged parts with transparency ~ 0
+            // shape_transparent  : ARRAY of transparent parts (NOT
+            //                      merged), so each can be meshed with
+            //                      its own per-part alpha
+            // transparent_alphas : parallel ARRAY of per-part alpha
+            //                      (1 - transparency), zipped with
+            //                      shape_transparent by ToMesh
             // The split lets the renderer draw opaque parts first
             // (depth write + edges) and transparent shells after
             // (blend, no depth write) so assembly interiors show.
-            Pin(this, "shape",             VAR_TOPO_SHAPE),
-            Pin(this, "shape_opaque",      VAR_TOPO_SHAPE),
-            Pin(this, "shape_transparent", VAR_TOPO_SHAPE),
+            Pin(this, "shape",              VAR_TOPO_SHAPE),
+            Pin(this, "shape_opaque",       VAR_TOPO_SHAPE),
+            Pin(this, "shape_transparent",  VAR_TYPE_ARRAY),
+            Pin(this, "transparent_alphas", VAR_TYPE_ARRAY),
         ]
 
         this.params.add(NodeParam("path", ""))
@@ -116,7 +122,7 @@ class LoadFreecad is Node
         }
 
         // idx maps to the exports order:
-        //   0 shape, 1 shape_opaque, 2 shape_transparent
+        //   0 shape, 1 shape_opaque, 2 shape_transparent, 3 transparent_alphas
         if (idx == 1) {
             var op = this.loader.merged_opaque()
             if (!op) {
@@ -125,11 +131,20 @@ class LoadFreecad is Node
             return Variant(VAR_TOPO_SHAPE, op)
         }
         if (idx == 2) {
-            var tr = this.loader.merged_transparent()
-            if (!tr) {
-                return nil
+            // Array of transparent parts (may be empty). The loader
+            // hands back raw TopoShape foreign objects; wrap each in a
+            // Variant so ToMesh's array path (which keys off .type)
+            // recognises them like any other shape input.
+            var parts = this.loader.transparent_parts()
+            var wrapped = []
+            for (var p in parts) {
+                wrapped.add(Variant(VAR_TOPO_SHAPE, p))
             }
-            return Variant(VAR_TOPO_SHAPE, tr)
+            return Variant(VAR_TYPE_ARRAY, wrapped)
+        }
+        if (idx == 3) {
+            // Parallel array of per-part alpha (1 - transparency).
+            return Variant(VAR_TYPE_ARRAY, this.loader.transparent_alphas())
         }
         return Variant(VAR_TOPO_SHAPE, shape)
     }

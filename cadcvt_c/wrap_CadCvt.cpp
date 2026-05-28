@@ -282,6 +282,56 @@ void w_FreeCadLoader_merged_transparent()
     brepkit::return_topo_shape(sh);
 }
 
+// Transparent parts as a LIST of TopoShapes (NOT merged), so the host
+// can build a per-part mesh and bake each part's own alpha. Parallel
+// to transparent_alphas(). Empty list when there are none.
+void w_FreeCadLoader_transparent_parts()
+{
+    const double k_eps = 1e-6;
+    std::vector<std::shared_ptr<brepkit::TopoShape>> list;
+
+    auto* st = GetState(0);
+    if (st)
+    {
+        for (const auto& p : st->parts)
+        {
+            if (p.transparency > k_eps && p.shape) {
+                list.push_back(p.shape);
+            }
+        }
+    }
+    brepkit::return_topo_shape_list(list);
+}
+
+// Per-part alpha (1 - transparency) for the transparent parts, in the
+// same order as transparent_parts(). A number list the host zips with
+// the shape list when building meshes.
+void w_FreeCadLoader_transparent_alphas()
+{
+    const double k_eps = 1e-6;
+    std::vector<double> alphas;
+
+    auto* st = GetState(0);
+    if (st)
+    {
+        for (const auto& p : st->parts)
+        {
+            if (p.transparency > k_eps && p.shape) {
+                alphas.push_back(1.0 - p.transparency);
+            }
+        }
+    }
+
+    ves_pop(ves_argnum());
+    ves_newlist((int)alphas.size());
+    for (int i = 0; i < (int)alphas.size(); ++i)
+    {
+        ves_pushnumber(alphas[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
 void w_FreeCadLoader_last_error()
 {
     auto* st = GetState(0);
@@ -328,6 +378,12 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "FreeCadLoader.merged_transparent()") == 0) {
         return w_FreeCadLoader_merged_transparent;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.transparent_parts()") == 0) {
+        return w_FreeCadLoader_transparent_parts;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.transparent_alphas()") == 0) {
+        return w_FreeCadLoader_transparent_alphas;
     }
     return nullptr;
 }

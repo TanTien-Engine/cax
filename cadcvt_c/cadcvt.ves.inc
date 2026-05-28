@@ -40,6 +40,12 @@ foreign class FreeCadLoader
     // two-pass see-through rendering. nil when the subset is empty.
     foreign merged_opaque()
     foreign merged_transparent()
+
+    // Transparent parts un-merged, for per-part alpha. transparent_parts()
+    // is a list of TopoShape; transparent_alphas() is the parallel list
+    // of per-part alpha (1 - transparency). Zip them when building meshes.
+    foreign transparent_parts()
+    foreign transparent_alphas()
 }
 
 );

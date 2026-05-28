@@ -1,7 +1,7 @@
 import "blueprint.node" for Node
 import "blueprint.pin" for Pin
 import "blueprint.blueprint" for Blueprint
-import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY, VAR_TYPE_NUMBER
 import "rendergraph.variant" for VAR_TYPE_VERTEX_ARRAY
 import "brepkit.variant" for VAR_TOPO_SHAPE, VAR_TOPO_SHELL
 import "brepkit" for TopoAdapter
@@ -15,6 +15,12 @@ class ToMesh is Node
 
 		this.imports = [
 			Pin(this, "shape", [ VAR_TOPO_SHAPE, VAR_TOPO_SHELL, VAR_TYPE_ARRAY ]),
+			// Optional per-vertex opacity baked into the mesh:
+			//   nil        -> 1.0 (opaque) for all
+			//   number     -> that alpha for all shapes
+			//   array      -> per-shape alpha, zipped with the shape
+			//                 array by index
+			Pin(this, "alpha", [ VAR_TYPE_NUMBER, VAR_TYPE_ARRAY ]),
 		]
 		this.exports = [
 			Pin(this, "va",    [ VAR_TYPE_VERTEX_ARRAY, VAR_TYPE_ARRAY ]),
@@ -35,7 +41,8 @@ class ToMesh is Node
 		if (idx == 1) {
 			this.build_edges(v_shape, items)
 		} else {
-			this.build_meshes(v_shape, items)
+			var v_alpha = Blueprint.calc_input_value(this, 1)   // optional
+			this.build_meshes(v_shape, v_alpha, items)
 		}
 
 		if (items.count == 0)
@@ -52,18 +59,55 @@ class ToMesh is Node
 		}
 	}
 
-	build_meshes(v_shape, meshes)
+	// Scalar alpha from the optional alpha input (number -> its value,
+	// anything else / nil -> 1.0 opaque).
+	scalar_alpha(v_alpha)
+	{
+		if (v_alpha and v_alpha.type == VAR_TYPE_NUMBER) {
+			return v_alpha.value
+		}
+		return 1.0
+	}
+
+	build_meshes(v_shape, v_alpha, meshes)
 	{
 		if (v_shape.type == VAR_TYPE_ARRAY)
 		{
+			// When alpha is also an array, zip per shape by index;
+			// otherwise apply the scalar (or 1.0) to every shape.
+			var alpha_arr = nil
+			if (v_alpha and v_alpha.type == VAR_TYPE_ARRAY) {
+				alpha_arr = v_alpha.value
+			}
+			var arr = v_shape.value
+			for (var i = 0; i < arr.count; i = i + 1)
+			{
+				var a = this.scalar_alpha(v_alpha)
+				if (alpha_arr and i < alpha_arr.count) {
+					a = alpha_arr[i]
+				}
+				this.build_one(arr[i], a, meshes)
+			}
+		}
+		else
+		{
+			this.build_one(v_shape, this.scalar_alpha(v_alpha), meshes)
+		}
+	}
+
+	build_one(v_shape, alpha, meshes)
+	{
+		if (v_shape.type == VAR_TYPE_ARRAY)
+		{
+			// Nested array: same alpha for each element.
 			for (var shape in v_shape.value)
 			{
-				this.build_meshes(shape, meshes)
+				this.build_one(shape, alpha, meshes)
 			}
 		}
 		else if (v_shape.type == VAR_TOPO_SHAPE)
 		{
-			var va = TopoAdapter.build_mesh(Device.init(), v_shape.value)
+			var va = TopoAdapter.build_mesh(Device.init(), v_shape.value, alpha)
 			if (va) {
 				meshes.add(va)
 			}

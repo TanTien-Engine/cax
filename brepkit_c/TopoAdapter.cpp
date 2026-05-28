@@ -127,14 +127,14 @@ Handle(Poly_Polygon3D) PolygonOfEdge(const TopoDS_Edge& edge, TopLoc_Location& l
 namespace brepkit
 {
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape, float alpha)
 {
-    return BuildMesh(dev, shape.GetShape());
+    return BuildMesh(dev, shape.GetShape(), alpha);
 }
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShell(const std::shared_ptr<ur::Device>& dev, const TopoShape& shell)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShell(const std::shared_ptr<ur::Device>& dev, const TopoShape& shell, float alpha)
 {
-    return BuildMesh(dev, shell.GetShape());
+    return BuildMesh(dev, shell.GetShape(), alpha);
 }
 
 std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape)
@@ -217,12 +217,14 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::sha
     va->SetVertexBuffer(vbuf);
 
     std::vector<std::shared_ptr<ur::VertexInputAttribute>> vbuf_attrs;
+    // Vertex grew to 28 bytes (pos+normal+alpha); edges don't use the
+    // alpha attribute but the stride must still match the struct.
     // pos
     vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
-        0, ur::ComponentDataType::Float, 3, 0, 24));
+        0, ur::ComponentDataType::Float, 3, 0, 28));
     // normal (zeroed - sentinel meaning "edge, no shading")
     vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
-        1, ur::ComponentDataType::Float, 3, 12, 24));
+        1, ur::ComponentDataType::Float, 3, 12, 28));
     va->SetVertexBufferAttrs(vbuf_attrs);
 
     return va;
@@ -293,7 +295,7 @@ std::shared_ptr<TopoShape> TopoAdapter::ToWire(const TopoShape& shape)
     return std::make_shared<TopoShape>(TopoDS::Wire(shape.GetShape()));
 }
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur::Device>& dev, const TopoDS_Shape& shape)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur::Device>& dev, const TopoDS_Shape& shape, float alpha)
 {
     std::vector<Vertex> vertices;
 
@@ -311,7 +313,7 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
         BRepMesh_IncrementalMesh algo(shape, 0.01, Standard_False, 0.1);
         algo.Perform();
 
-        TriangulationFaces(shape, vertices);
+        TriangulationFaces(shape, vertices, alpha);
     }
 
     if (vertices.empty()) {
@@ -326,20 +328,25 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
 	va->SetVertexBuffer(vbuf);
 
 	std::vector<std::shared_ptr<ur::VertexInputAttribute>> vbuf_attrs;
+    // Vertex is now { vec3 pos; vec3 normal; float alpha; } = 28 bytes.
     // pos
 	vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
-        0, ur::ComponentDataType::Float, 3, 0, 24
+        0, ur::ComponentDataType::Float, 3, 0, 28
     ));
     // normal
 	vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
-        1, ur::ComponentDataType::Float, 3, 12, 24
+        1, ur::ComponentDataType::Float, 3, 12, 28
+    ));
+    // alpha (per-vertex opacity)
+	vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
+        2, ur::ComponentDataType::Float, 1, 24, 28
     ));
 	va->SetVertexBufferAttrs(vbuf_attrs);
 
     return va;
 }
 
-void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vertex>& vertices)
+void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vertex>& vertices, float alpha)
 {
     TopLoc_Location aLoc;
 
@@ -416,17 +423,17 @@ void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vert
                 static_cast<float>(V1.X()),
                 static_cast<float>(V1.Y()),
                 static_cast<float>(V1.Z())
-            ), norm }));
+            ), norm, alpha }));
             vertices.push_back(Vertex({ sm::vec3(
                 static_cast<float>(V2.X()),
                 static_cast<float>(V2.Y()),
                 static_cast<float>(V2.Z())
-            ), norm }));
+            ), norm, alpha }));
             vertices.push_back(Vertex({ sm::vec3(
                 static_cast<float>(V3.X()),
                 static_cast<float>(V3.Y()),
                 static_cast<float>(V3.Z())
-            ), norm }));
+            ), norm, alpha }));
         }
     }
 }

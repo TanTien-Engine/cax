@@ -32,10 +32,12 @@ node2.vs = "
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
+layout (location = 2) in float aAlpha;
 
 out VS_OUT {
     vec3 frag_pos;
     vec3 normal;
+    float alpha;
 } vs_out;
 
 uniform UBO
@@ -49,6 +51,7 @@ void main()
 {
 	vs_out.frag_pos = vec3(model * vec4(aPos, 1.0));
 	vs_out.normal   = mat3(transpose(inverse(model))) * aNormal;
+	vs_out.alpha    = aAlpha;
     gl_Position = projection * view * model * vec4(aPos, 1.0);
 }
 "
@@ -70,6 +73,7 @@ layout (location = 2) out vec3 gNormal;
 in VS_OUT {
     vec3 frag_pos;
     vec3 normal;
+    float alpha;
 } fs_in;
 
 uniform UBO
@@ -108,9 +112,10 @@ void main()
 	float depth = LinearizeDepth(gl_FragCoord.z) / far;
 	gDepth = vec3(depth);
 
-	// Interim fixed transparency: alpha 0.25 (~ a 0.75-transparent
-	// shell). Tune here, or wire per-part later.
-	gMain = vec4(ambient + diffuse + specular, 0.25);
+	// Per-part alpha baked per vertex by TopoAdapter from each part's
+	// MaterialIR.transparency (alpha = 1 - transparency). Different
+	// shells can now carry different opacity in one pass.
+	gMain = vec4(ambient + diffuse + specular, fs_in.alpha);
 	gNormal = N;
 }
 "

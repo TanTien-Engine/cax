@@ -122,6 +122,8 @@ foreign class TopoAlgo
 foreign class TopoAdapter
 {
 	foreign static build_mesh(dev, shape)
+	// 3-arg form bakes a per-vertex alpha (per-part transparency).
+	foreign static build_mesh(dev, shape, alpha)
 	foreign static build_edges(dev, shape)
 
 	foreign static build_edge_geo(edge)

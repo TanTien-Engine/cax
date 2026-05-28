@@ -57,7 +57,9 @@ Blueprint.connect(node3, "var", node1, "geos")
 Blueprint.connect(node0, "this", node1, "view_cam")
 Blueprint.connect(node5, "var", node1, "edges")
 
-// Transparent group -> x-ray surface pass (no edges).
+// Transparent group -> x-ray surface pass (no edges). Each part's
+// alpha (1 - transparency) is zipped into ToMesh and baked per-vertex.
 Blueprint.connect(node4, "shape_transparent", node6, "shape")
+Blueprint.connect(node4, "transparent_alphas", node6, "alpha")
 Blueprint.connect(node6, "va", node7, "var")
 Blueprint.connect(node7, "var", node1, "geos_transparent")
