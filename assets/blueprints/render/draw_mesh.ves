@@ -42,7 +42,14 @@ var node6 = ::rendergraph::nodes::texture::Texture()
 node6.query_param("unif_name").value = "u_tex"
 node6.gamma_correction = false
 node6.mipmap = false
-node6.init_texture(0, 0, "rgb")
+// Switched to RGBA so the alpha channel produced by the per-draw
+// transparency uniform in draw_mesh_single.ves survives GBuffer
+// storage. Downstream composite / post passes still read the .rgb
+// slice; the .a is consumed only by the immediate blend stage of
+// the draw that wrote it. wrap_Render's str_to_tex_format only
+// accepts "rgba8" / "rgba16f" / "rgba32f" (no bare "rgba"), so
+// "rgba8" matches the previous "rgb" 8-bit precision.
+node6.init_texture(0, 0, "rgba8")
 
 _editor.add_node(node6, 474.40405076971, -784.61954261786)
 
@@ -608,7 +615,14 @@ var node71 = ::rendergraph::nodes::draw::Draw()
 
 node71.set_prim_type("lines")
 node71.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "lequal", "clip_plane" : false }
-node71.skip = false
+// X-RAY TEST: surface pass runs with depth_mask off, so there is no
+// surface depth in the buffer for these topological edges to test
+// against -- every edge (front and back) would pass depth_test and
+// clutter the view. Skip the edge pass while x-ray transparency is
+// on. The real per-part path re-enables edges for the opaque pass
+// (which writes depth) and leaves them off only for transparent
+// parts.
+node71.skip = true
 
 _editor.add_node(node71, 1100, -100)
 

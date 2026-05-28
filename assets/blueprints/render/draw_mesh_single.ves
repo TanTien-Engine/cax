@@ -8,7 +8,15 @@ _editor.add_node(node0, 787.93294950249, -5.7075172787282)
 var node1 = ::rendergraph::nodes::draw::Draw()
 
 node1.set_prim_type("triangles")
-node1.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "less", "clip_plane" : false }
+// X-RAY MODE: blend on + depth_mask off so back fragments are not
+// rejected by depth writes -> the whole merged shape renders as a
+// translucent ghost (alpha hardcoded 0.5 in the fragment shader),
+// letting interiors of an assembly show through. depth_test stays
+// on so the result is bounded; depth_mask off is what reveals the
+// inside. This is an interim whole-model x-ray; the per-part path
+// (opaque parts write depth + draw edges, transparent parts skip
+// both, alpha from MaterialIR.transparency) is the planned upgrade.
+node1.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : true, "depth_mask" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "less", "clip_plane" : false }
 node1.skip = false
 
 _editor.add_node(node1, 784.30380359571, -191.81447758435)
@@ -47,7 +55,16 @@ node2.tes = ""
 node2.gs = ""
 node2.fs = "
 #version 330 core
-layout (location = 0) out vec3 gMain;
+// gMain is RGBA so the fragment's alpha output participates in the
+// blend stage. Downstream composite / post pass still read the .rgb
+// slice; the .a is consumed only by the immediate blend of this
+// draw. The Vulkan-flavour GLSL parser this pipeline uses rejects
+// 'non-opaque uniforms outside a block', so per-draw transparency
+// will be plumbed via a UBO field once the format change is proven
+// (B step). For now the alpha is hardcoded to validate that blend
+// + RGBA GBuffer + downstream composite all honour the alpha
+// channel.
+layout (location = 0) out vec4 gMain;
 layout (location = 1) out vec3 gDepth;
 layout (location = 2) out vec3 gNormal;
 
@@ -105,7 +122,14 @@ void main()
 	float depth = LinearizeDepth(gl_FragCoord.z) / far; // divide by far to get depth in range [0,1] for visualization purposes
 	gDepth = vec3(depth);
 
-	gMain = ambient + diffuse + specular;
+	// X-RAY MODE: fixed 0.5 alpha gives a uniform whole-model
+	// translucency so assembly interiors are visible. The per-part
+	// upgrade replaces this constant with a per-vertex alpha
+	// attribute (or a per-draw UBO field; Vulkan flavour rejects
+	// bare non-opaque uniforms) fed from each part's
+	// MaterialIR.transparency, with depth_mask off only on the
+	// transparent parts.
+	gMain = vec4(ambient + diffuse + specular, 0.5);
 	gNormal = N;
 }
 "
