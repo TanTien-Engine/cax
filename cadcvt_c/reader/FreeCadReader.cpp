@@ -1164,6 +1164,108 @@ bool FreeCadReader::ExtractDocumentXml(const std::string& path,
     return true;
 }
 
+bool FreeCadReader::ExtractGuiDocumentXml(const std::string& path,
+                                          char**             out_text,
+                                          size_t*            out_size)
+{
+    *out_text = nullptr;
+    *out_size = 0;
+
+    if (!m_zip) {
+        return false;
+    }
+    auto* zip = static_cast<mz_zip_archive*>(m_zip);
+
+    int idx = mz_zip_reader_locate_file(zip, "GuiDocument.xml", nullptr, 0);
+    if (idx < 0) {
+        // Optional entry: headless-generated .FCStd files sometimes
+        // omit it. Silent miss so ReadFile can proceed without a
+        // material map.
+        (void)path;
+        return false;
+    }
+
+    size_t out_sz = 0;
+    void*  buf    = mz_zip_reader_extract_to_heap(zip, idx, &out_sz, 0);
+    if (!buf) {
+        return false;
+    }
+    *out_text = (char*)buf;
+    *out_size = out_sz;
+    return true;
+}
+
+void FreeCadReader::ParseGuiDocumentXml(const char* xml_data, size_t xml_size)
+{
+    using namespace cadapp;
+
+    pugi::xml_document doc;
+    auto res = doc.load_buffer(xml_data, xml_size);
+    if (!res) {
+        // Bad GuiDocument: leave the material map empty so the
+        // emission loop falls back to "no material" everywhere.
+        return;
+    }
+
+    auto root = doc.child("Document");
+    if (!root) {
+        return;
+    }
+    auto vpd = root.child("ViewProviderData");
+    if (!vpd) {
+        return;
+    }
+
+    for (auto vp = vpd.child("ViewProvider");
+         vp;
+         vp = vp.next_sibling("ViewProvider"))
+    {
+        std::string name = AttrStr(vp, "name");
+        if (name.empty()) {
+            continue;
+        }
+
+        auto props = vp.child("Properties");
+        if (!props) {
+            continue;
+        }
+
+        // ShapeMaterial: PropertyMaterial child carries all six
+        // numeric fields as attributes on a single element.
+        auto sm = FindProperty(props, "ShapeMaterial");
+        if (!sm) {
+            continue;
+        }
+        auto m = sm.child("PropertyMaterial");
+        if (!m) {
+            continue;
+        }
+
+        MaterialIR mat;
+        mat.present       = true;
+        mat.ambient_rgba  = (uint32_t)AttrDouble(m, "ambientColor",  0.0);
+        mat.diffuse_rgba  = (uint32_t)AttrDouble(m, "diffuseColor",  0.0);
+        mat.specular_rgba = (uint32_t)AttrDouble(m, "specularColor", 0.0);
+        mat.emissive_rgba = (uint32_t)AttrDouble(m, "emissiveColor", 0.0);
+        mat.shininess     = AttrDouble(m, "shininess",    0.0);
+        mat.transparency  = AttrDouble(m, "transparency", 0.0);
+
+        // App::Link OverrideMaterial bool (when present). Older
+        // FreeCAD versions store it on the View side as
+        // OverrideMaterial; newer FreeCAD versions hoist it onto
+        // the App side. Read whichever is here; non-Link ViewProviders
+        // simply don't have it.
+        if (auto om = FindProperty(props, "OverrideMaterial"))
+        {
+            auto b = om.child("Bool");
+            std::string v = AttrStr(b, "value");
+            mat.has_override = (v == "true" || v == "1");
+        }
+
+        m_name_to_material[std::move(name)] = mat;
+    }
+}
+
 void FreeCadReader::FreeXmlBuffer(char* buf)
 {
     if (buf) {
@@ -2349,6 +2451,7 @@ bool FreeCadReader::ReadFile(const std::string& path,
     m_name_to_id.clear();
     m_sk_geo_idx_to_id.clear();
     m_feat_brep_path.clear();
+    m_name_to_material.clear();
     m_next_feature_id     = 1;
     m_next_sketch_geo_id  = 1;
     m_next_sketch_cons_id = 1;
@@ -2360,6 +2463,24 @@ bool FreeCadReader::ReadFile(const std::string& path,
         if (!OpenArchive(path, err_msg)) {
             return false;
         }
+
+        // Optional GuiDocument.xml -- carries ShapeMaterial /
+        // Transparency / OverrideMaterial per ViewProvider. Parse
+        // up-front so the main emission loop can look up the
+        // material by object name. Silent miss if the entry is
+        // absent (some headless-generated .FCStd lack it); silent
+        // miss is acceptable because m_name_to_material stays empty
+        // and every emitted feature gets MaterialIR{present=false}.
+        {
+            char*  gbuf  = nullptr;
+            size_t gsize = 0;
+            if (ExtractGuiDocumentXml(path, &gbuf, &gsize) && gbuf)
+            {
+                ParseGuiDocumentXml(gbuf, gsize);
+                FreeXmlBuffer(gbuf);
+            }
+        }
+
         char*  buf  = nullptr;
         size_t size = 0;
         bool ok = ExtractDocumentXml(path, &buf, &size, err_msg)
@@ -4563,6 +4684,53 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             auto nb_it = name_to_body.find(feat.name);
             if (nb_it != name_to_body.end()) {
                 body_prev_id[nb_it->second] = feat.id;
+            }
+        }
+
+        // Look up the GUI-side material (ShapeMaterial / Transparency /
+        // OverrideMaterial) keyed by the feature's source object name.
+        // Empty m_name_to_material (raw .xml fixtures, headless-
+        // generated .FCStd lacking GuiDocument.xml) leaves
+        // feat.material at the default present=false.
+        {
+            auto mit = m_name_to_material.find(feat.name);
+            if (mit != m_name_to_material.end()) {
+                feat.material = mit->second;
+            }
+        }
+
+        // App::Link material inheritance. A FreeCAD Link with no
+        // explicit OverrideMaterial renders with the LINKED object's
+        // appearance, not its own. In asm_Cylinders the Cylindre_*
+        // Links carry no material of their own; the transparency
+        // (0.8) lives on the linked part's Body/Pad, which we inlined
+        // as the sub-tip feature. Copy the sub-tip's material onto
+        // the Link so the Link's emitted (placed) shape carries the
+        // right transparency for the renderer.
+        //
+        // Skipped when the Link explicitly overrides (has_override),
+        // matching FreeCAD: then the Link's own ShapeMaterial wins.
+        // The sub-tip feature is already in out.features (the App::Link
+        // branch appended the inlined sub-doc features before this
+        // Link feature reaches here), so a linear scan finds it.
+        if (feat.type == FeatType::Link
+            && (!feat.material.present || !feat.material.has_override))
+        {
+            if (auto* lp = std::get_if<FeatPayloadLink>(&feat.data))
+            {
+                if (lp->sub_tip_feature_id != 0)
+                {
+                    for (const auto& sf : out.features)
+                    {
+                        if (sf.id == lp->sub_tip_feature_id)
+                        {
+                            if (sf.material.present) {
+                                feat.material = sf.material;
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         }
 

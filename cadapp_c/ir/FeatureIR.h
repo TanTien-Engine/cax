@@ -455,6 +455,58 @@ using FeaturePayload = std::variant<
 >;
 
 
+// ---- MaterialIR ----
+//
+// Visual appearance of a feature's surface(s) as authored by the
+// source CAD GUI layer. Held alongside the geometric FeatureIR so a
+// downstream renderer (or a future material-aware emitter / writer)
+// can apply the same look the source application showed.
+//
+// FreeCAD origin (the only reader populating this today):
+//   GuiDocument.xml carries one PropertyMaterial per ViewProvider:
+//     ambient/diffuse/specular/emissive : 32-bit packed RGBA, MSB->LSB
+//                                          = R G B A. Alpha=0xFF means
+//                                          opaque; FreeCAD often
+//                                          writes 0x00 for ambient
+//                                          because the alpha channel
+//                                          is not actually used for
+//                                          that slot.
+//     shininess                          : 0..1 phong exponent normaliser
+//     transparency                       : 0..1, 1 = fully transparent
+//                                          (mirror of the integer
+//                                          PropertyPercent "Transparency",
+//                                          same value rescaled)
+//
+// App::Link inheritance:
+//   By default a Link inherits the linked object's material at render
+//   time -- the Link's own ShapeMaterial is read but the Link's
+//   OverrideMaterial bool decides whether to apply it. has_override
+//   mirrors that bool so a renderer can branch:
+//     has_override == false -> walk to the linked object (in our IR,
+//                              the inlined sub-features each carry
+//                              their own MaterialIR) and apply theirs
+//     has_override == true  -> use this MaterialIR for every output
+//                              shape this feature contributes
+//   For non-Link features has_override is ignored.
+//
+// "present" gates the whole struct: if false, the rest of the fields
+// are default-constructed garbage and the renderer should fall back
+// to whatever default it would use absent a material override.
+struct MaterialIR
+{
+    bool     present       = false;
+
+    uint32_t ambient_rgba  = 0;
+    uint32_t diffuse_rgba  = 0;
+    uint32_t specular_rgba = 0;
+    uint32_t emissive_rgba = 0;
+    double   shininess     = 0.0;
+    double   transparency  = 0.0;
+
+    bool     has_override  = false;
+};
+
+
 // ---- FeatureIR ----
 
 struct FeatureIR
@@ -504,6 +556,11 @@ struct FeatureIR
     // forwards them only to readers that recognise the keys.
     std::map<std::string, double>      ext_params;
     std::map<std::string, std::string> ext_strings;
+
+    // Visual material as authored by the source GUI layer. Default-
+    // constructed (present=false) means "no material override on
+    // this feature, use the renderer default". See MaterialIR doc.
+    MaterialIR                         material;
 };
 
 // Convenience: build a FeatureIR around a payload, deducing type

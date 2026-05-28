@@ -807,6 +807,20 @@ void EncodeExt(const FeatureIR& feat, BlobWriter& w)
         role_bytes.push_back((uint8_t)r);
     }
     w.U8Vec(role_bytes);
+
+    // MaterialIR (FEAT_VERSION 3+). One leading u8 "present" flag
+    // gates the body so absent-material features cost only one byte.
+    w.Bool(feat.material.present);
+    if (feat.material.present)
+    {
+        w.U32 (feat.material.ambient_rgba);
+        w.U32 (feat.material.diffuse_rgba);
+        w.U32 (feat.material.specular_rgba);
+        w.U32 (feat.material.emissive_rgba);
+        w.F64 (feat.material.shininess);
+        w.F64 (feat.material.transparency);
+        w.Bool(feat.material.has_override);
+    }
 }
 
 void DecodeExt(BlobReader& r, FeatureIR& feat)
@@ -837,6 +851,26 @@ void DecodeExt(BlobReader& r, FeatureIR& feat)
         // malformed stores or hand-edited fixtures.
         uint8_t b = (i < role_bytes.size()) ? role_bytes[i] : 0u;
         feat.input_roles.push_back((InputRole)b);
+    }
+
+    // MaterialIR (FEAT_VERSION 3+). The bool-gated body keeps the
+    // common "no material" case to a single byte. r.ok() check after
+    // gating avoids reading past EOF on legacy V2-or-older payloads
+    // that the upstream version check should have already rejected,
+    // but be defensive.
+    if (r.ok())
+    {
+        feat.material.present = r.Bool();
+        if (feat.material.present)
+        {
+            feat.material.ambient_rgba  = r.U32();
+            feat.material.diffuse_rgba  = r.U32();
+            feat.material.specular_rgba = r.U32();
+            feat.material.emissive_rgba = r.U32();
+            feat.material.shininess     = r.F64();
+            feat.material.transparency  = r.F64();
+            feat.material.has_override  = r.Bool();
+        }
     }
 }
 

@@ -78,7 +78,7 @@ struct FeatureEntry
 #pragma pack(pop)
 
 static constexpr uint32_t FEAT_MAGIC   = 0x54414546;   // 'F','E','A','T' little-endian
-static constexpr uint32_t FEAT_VERSION = 2;
+static constexpr uint32_t FEAT_VERSION = 3;
 
 
 // ============================================================

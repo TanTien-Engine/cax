@@ -1909,58 +1909,70 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // doc like Page_031 -- two Body tips fed into a Part::Cut, whose
     // result is then fed into a Part::Common -- from emitting the
     // already-absorbed bodies alongside the Common result.
-    std::vector<int> live_nodes;
+    // Keep the source feat_id alongside each live node so the
+    // per-part appearance (transparency) can be recovered below.
+    std::vector<std::pair<int, uint32_t>> live_nodes;  // (node, feat_id)
     live_nodes.reserve(output_candidates.size());
     for (const auto& c : output_candidates) {
         if (consumed_feat_ids.count(c.feat_id) == 0) {
-            live_nodes.push_back(c.node);
+            live_nodes.push_back({c.node, c.feat_id});
         }
     }
 
-    if (live_nodes.size() > 1)
+    // feat_id -> transparency, for tagging each emitted part. Built
+    // once from the doc so the per-part loop is O(1) per node.
+    std::unordered_map<uint32_t, double> feat_transparency;
+    feat_transparency.reserve(doc.features.size());
+    for (const auto& f : doc.features) {
+        if (f.material.present) {
+            feat_transparency[f.id] = f.material.transparency;
+        }
+    }
+    auto transparency_of = [&](uint32_t feat_id) -> double {
+        auto it = feat_transparency.find(feat_id);
+        return it != feat_transparency.end() ? it->second : 0.0;
+    };
+
+    // Evaluate every live node once, collect (shape, transparency)
+    // into out.parts, and assemble out.shape from the same set.
+    out.parts.reserve(live_nodes.size());
     {
         BRep_Builder    bb;
         TopoDS_Compound comp;
         bb.MakeCompound(comp);
         int                                 added = 0;
         std::shared_ptr<brepkit::TopoShape> solo_ts;
-        for (int n : live_nodes)
+
+        for (const auto& ln : live_nodes)
         {
-            auto val = cg->Eval(n);
+            auto val = cg->Eval(ln.first);
             auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
             if (!sv || !sv->shape) continue;
             const TopoDS_Shape& s = sv->shape->GetShape();
             if (s.IsNull()) continue;
+
+            ReplayPart part;
+            part.shape        = sv->shape;
+            part.transparency = transparency_of(ln.second);
+            part.feat_id      = ln.second;
+            out.parts.push_back(std::move(part));
+
             bb.Add(comp, s);
             if (added == 0) solo_ts = sv->shape;
             ++added;
         }
+
         if (added > 1) {
             out.shape = std::make_shared<brepkit::TopoShape>(comp);
         } else if (added == 1) {
             out.shape = solo_ts;
         } else if (out.err_msg.empty()) {
+            // The graph was assembled OK but evaluation collapsed to
+            // an empty Val somewhere downstream -- typically a
+            // sketch_face whose wire didn't close, or a boolean whose
+            // operand was already empty. Pin the failure here so the
+            // caller doesn't get a silent nullptr shape with ok=true.
             out.err_msg = "shape evaluation produced no result";
-        }
-    }
-    else
-    {
-        int emit_node = !live_nodes.empty() ? live_nodes.front() : -1;
-        if (emit_node >= 0)
-        {
-            auto val = cg->Eval(emit_node);
-            auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
-            if (sv && sv->shape) {
-                out.shape = sv->shape;
-            } else if (out.err_msg.empty()) {
-                // The graph was assembled OK but evaluation collapsed
-                // to an empty Val somewhere downstream -- typically a
-                // sketch_face whose wire didn't close, or a boolean
-                // whose operand was already empty. Pin the failure
-                // here so the caller doesn't get a silent nullptr
-                // shape with ok=true.
-                out.err_msg = "shape evaluation produced no result";
-            }
         }
     }
 

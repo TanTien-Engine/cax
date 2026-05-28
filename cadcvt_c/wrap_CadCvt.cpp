@@ -42,6 +42,14 @@ struct FreeCadLoaderState
     FreeCadReader      reader;       // cadcvt::FreeCadReader
     cadapp::Replayer   replayer;
     std::string        last_error;
+
+    // Per-part split of the last load(), with source appearance.
+    // Populated from ReplayResult::parts so the host can render each
+    // part with its own transparency (FreeCAD-style see-through
+    // assemblies). load() still returns the merged shape for
+    // back-compat; part_count / part_shape / part_transparency
+    // expose this vector.
+    std::vector<cadapp::ReplayPart> parts;
 };
 
 
@@ -139,7 +147,52 @@ void w_FreeCadLoader_load()
         st->last_error.clear();
     }
 
+    // Stash the per-part split so part_count / part_shape /
+    // part_transparency can serve it after this load returns.
+    st->parts = std::move(res.parts);
+
     brepkit::return_topo_shape(res.shape);
+}
+
+// Number of parts produced by the last load(). 0 before any load
+// or when the load produced no shape.
+void w_FreeCadLoader_part_count()
+{
+    auto* st = GetState(0);
+    ves_set_number(0, st ? (double)st->parts.size() : 0.0);
+}
+
+// i-th part's shape (TopoShape) from the last load(). nil on a bad
+// index so the host can stop iterating defensively.
+void w_FreeCadLoader_part_shape()
+{
+    auto* st = GetState(0);
+    if (!st) {
+        ves_set_nil(0);
+        return;
+    }
+    int i = (int)ves_tonumber(1);
+    if (i < 0 || i >= (int)st->parts.size() || !st->parts[i].shape) {
+        ves_set_nil(0);
+        return;
+    }
+    brepkit::return_topo_shape(st->parts[i].shape);
+}
+
+// i-th part's transparency (0 opaque .. 1 fully transparent) from
+// the last load(). 0 on a bad index.
+void w_FreeCadLoader_part_transparency()
+{
+    auto* st = GetState(0);
+    if (!st) {
+        ves_set_number(0, 0.0);
+        return;
+    }
+    int i = (int)ves_tonumber(1);
+    double t = (i >= 0 && i < (int)st->parts.size())
+                   ? st->parts[i].transparency
+                   : 0.0;
+    ves_set_number(0, t);
 }
 
 void w_FreeCadLoader_last_error()
@@ -173,6 +226,15 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "FreeCadLoader.last_error()") == 0) {
         return w_FreeCadLoader_last_error;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.part_count()") == 0) {
+        return w_FreeCadLoader_part_count;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.part_shape(_)") == 0) {
+        return w_FreeCadLoader_part_shape;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.part_transparency(_)") == 0) {
+        return w_FreeCadLoader_part_transparency;
     }
     return nullptr;
 }

@@ -150,6 +150,15 @@ int main(int argc, char** argv)
             }
         }
 
+        // material (transparency + override flag)
+        if (f.material.present)
+        {
+            std::printf("  mat[tr=%.2f override=%d diff=0x%08x]",
+                        f.material.transparency,
+                        (int)f.material.has_override,
+                        f.material.diffuse_rgba);
+        }
+
         // body / link tags
         auto bit = f.ext_strings.find("freecad_body");
         if (bit != f.ext_strings.end()) {

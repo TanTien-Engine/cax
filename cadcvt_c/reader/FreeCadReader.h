@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cadcvt_c/reader/Reader.h"
+#include "cadapp_c/ir/FeatureIR.h"
 
 #include <cstdint>
 #include <string>
@@ -107,6 +108,24 @@ private:
                             size_t*            out_size,
                             std::string*       err_msg);
 
+    // Same as ExtractDocumentXml but for GuiDocument.xml (the GUI /
+    // view side of a .FCStd; carries ShapeMaterial / Transparency /
+    // OverrideMaterial per ViewProvider). Optional input: returns
+    // false silently when the entry is absent (some hand-edited /
+    // headless-generated .FCStd files lack it). Caller frees with
+    // FreeXmlBuffer.
+    bool ExtractGuiDocumentXml(const std::string& path,
+                               char**             out_text,
+                               size_t*            out_size);
+
+    // Populate m_name_to_material from GuiDocument.xml bytes. Parses
+    // each ViewProvider's ShapeMaterial property (and App::Link's
+    // OverrideMaterial bool when present) and stores the keyed
+    // MaterialIR. Called once per .FCStd up-front; the main ParseDocumentXml
+    // emission loop then looks up each emitted feature's name in
+    // the resulting map.
+    void ParseGuiDocumentXml(const char* xml_data, size_t xml_size);
+
     static void FreeXmlBuffer(char* buf);
 
     // Open / close the .FCStd zip backing m_zip. Open is a no-op
@@ -133,6 +152,14 @@ private:
     // Populated from Part::PropertyPartShape properties during the
     // ObjectData scan; empty for raw .xml fixtures.
     std::unordered_map<std::string, std::string> m_feat_brep_path;
+
+    // freecad object name -> MaterialIR. Populated up-front from
+    // GuiDocument.xml's ViewProviderData by ParseGuiDocumentXml().
+    // The main emission loop in ParseDocumentXml looks each emitted
+    // feature's name up here and copies the material onto
+    // FeatureIR::material. Empty for raw .xml fixtures or .FCStd
+    // archives that omit GuiDocument.xml.
+    std::unordered_map<std::string, cadapp::MaterialIR> m_name_to_material;
 
     // Opaque mz_zip_archive*; non-null only while a .FCStd is being
     // parsed. Owned by OpenArchive/CloseArchive.

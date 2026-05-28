@@ -80,13 +80,36 @@ struct ReplayOptions
     bool refine_after_primitive = false;
 };
 
+// One emitted top-level shape plus the appearance the source GUI
+// authored for it. The Replayer fills one ReplayPart per surviving
+// output candidate (the same set it folds into ReplayResult::shape),
+// so a caller that wants per-shape rendering -- e.g. FreeCAD-style
+// per-part transparency -- can draw the parts individually instead
+// of the merged compound. transparency is 0 (opaque) .. 1 (fully
+// transparent), mirrored from FeatureIR::MaterialIR.
+struct ReplayPart
+{
+    std::shared_ptr<brepkit::TopoShape> shape;
+    double                              transparency = 0.0;
+    uint32_t                           feat_id      = 0;
+};
+
 struct ReplayResult
 {
     bool                                  ok = false;
     std::string                           err_msg;
 
-    // Final (top-of-chain) shape produced by Replay.
+    // Final (top-of-chain) shape produced by Replay. When there is
+    // more than one live output candidate this is their compound;
+    // ReplayResult::parts carries the same shapes split out with
+    // per-part appearance.
     std::shared_ptr<brepkit::TopoShape> shape;
+
+    // Per-emitted-shape split of `shape`, with source appearance.
+    // One entry per surviving output candidate, in the same order
+    // they were added to the compound. Empty only when no candidate
+    // produced a shape.
+    std::vector<ReplayPart>               parts;
 
     // Per-feature op_id (0 means skipped). Same length as
     // doc.features.
