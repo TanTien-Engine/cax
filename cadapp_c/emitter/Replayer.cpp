@@ -1729,6 +1729,21 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // ---- Not implemented yet ----
             else
             {
+                // Native Assembly WB joints carry a FeatPayloadOpaque
+                // (no dedicated payload type) but are a deliberate
+                // geometry-free no-op, not an unimplemented gap: the
+                // joint graph lives in ext_strings/ext_params and the
+                // solved part poses are already baked onto each Body's
+                // Placement, so this feature contributes no CalcGraph
+                // node. Skip silently instead of logging a spurious
+                // "skipped unimplemented feature" warning. Genuine
+                // unknown features keep FeatType::Unknown and still
+                // surface the diagnostic below.
+                if (feat.type == FeatType::Joint)
+                {
+                    return;
+                }
+
                 std::ostringstream oss;
                 oss << "skipped unimplemented feature: " << feat.name
                     << " (type=" << (int)feat.type << ")";
