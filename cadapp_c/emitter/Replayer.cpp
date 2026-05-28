@@ -1790,12 +1790,60 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             feature_nodes[feat.id] = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
+            // Body assembly placement (native Assembly WB). The reader
+            // stashes the owning Body's Placement as asm_* ext_params on
+            // the body's TIP feature; here we layer it onto the PART
+            // output (rotate(axis, angle) about the origin, then
+            // translate) so the body lands in its assembly pose. Crucially
+            // we transform a SEPARATE node and leave feature_nodes[feat.id]
+            // in body-local frame: an in-document FeatureBase clone reads
+            // the source body's tip via feature_nodes and must get the
+            // local geometry (it carries its own Body.Placement), not the
+            // already-placed one. Same convention as the FeatPayloadLink
+            // arm above.
+            int out_node = node;
+            {
+                auto a_it = feat.ext_params.find("asm_angle");
+                auto px_it = feat.ext_params.find("asm_px");
+                auto py_it = feat.ext_params.find("asm_py");
+                auto pz_it = feat.ext_params.find("asm_pz");
+                double a  = (a_it  != feat.ext_params.end()) ? a_it->second  : 0.0;
+                double px = (px_it != feat.ext_params.end()) ? px_it->second : 0.0;
+                double py = (py_it != feat.ext_params.end()) ? py_it->second : 0.0;
+                double pz = (pz_it != feat.ext_params.end()) ? pz_it->second : 0.0;
+                if (std::fabs(a) > 1e-12)
+                {
+                    brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
+                    brepgraph::Vec3 axis   = {
+                        feat.ext_params.count("asm_ox") ? feat.ext_params.at("asm_ox") : 0.0,
+                        feat.ext_params.count("asm_oy") ? feat.ext_params.at("asm_oy") : 0.0,
+                        feat.ext_params.count("asm_oz") ? feat.ext_params.at("asm_oz") : 1.0 };
+                    int o_n = cg->AddConst(origin, "asm_origin");
+                    int d_n = cg->AddConst(axis,   "asm_axis");
+                    int a_n = cg->AddConst(a,       "asm_angle");
+                    out_node = cg->AddOp("rotate",
+                                         {out_node, o_n, d_n, a_n}, {},
+                                         feat.name + ":asm_rot");
+                }
+                if (std::fabs(px) > 1e-15 || std::fabs(py) > 1e-15
+                    || std::fabs(pz) > 1e-15)
+                {
+                    brepgraph::Vec3 off = {px, py, pz};
+                    int o_n = cg->AddConst(off, "asm_offset");
+                    out_node = cg->AddOp("translate",
+                                         {out_node, o_n}, {},
+                                         feat.name + ":asm_tr");
+                }
+            }
+
             // Record this feature as a potential top-level output.
             // Body-owned features collapse to a single candidate per
             // body (the latest tip overwrites earlier members in
             // emission order); standalone Part::* features each get
             // their own candidate and are filtered out at emission
             // if a downstream boolean consumed them as an operand.
+            // The candidate carries the PLACED node (out_node) so the
+            // emitted part sits in its assembly pose.
             {
                 auto bit = feat.ext_strings.find("freecad_body");
                 std::string body_name = (bit != feat.ext_strings.end())
@@ -1805,13 +1853,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     auto cit = body_candidate_idx.find(body_name);
                     if (cit == body_candidate_idx.end()) {
                         body_candidate_idx[body_name] = output_candidates.size();
-                        output_candidates.push_back({feat.id, node});
+                        output_candidates.push_back({feat.id, out_node});
                     } else {
-                        output_candidates[cit->second] = {feat.id, node};
+                        output_candidates[cit->second] = {feat.id, out_node};
                     }
                 }
                 else {
-                    output_candidates.push_back({feat.id, node});
+                    output_candidates.push_back({feat.id, out_node});
                 }
             }
 

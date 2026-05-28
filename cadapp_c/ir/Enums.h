@@ -143,6 +143,8 @@ enum class FeatType : uint8_t
     // assembly
     Link             = 100, // instance of an external part/sub-doc with a rigid placement
     AsmConstraint    = 101, // FreeCAD Assembly4 constr_* : LCS-pair coincidence + offset
+    Joint            = 103, // FreeCAD native Assembly WB joint (Revolute / Cylindrical /
+                            // Distance / Grounded / ...) : geometry-free constraint metadata
 
     // baked / opaque shape carrier
     BakedShape       = 102, // shape that has no synthesizable parameters in our IR;

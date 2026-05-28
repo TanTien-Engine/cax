@@ -991,6 +991,14 @@ bool IsSkipType(const std::string& t)
     if (t == "PartDesign::Point")          { return true; }
     if (t == "PartDesign::ShapeBinder")    { return true; }
     if (t == "PartDesign::SubShapeBinder") { return true; }
+    // Native Assembly WB scaffolding. The AssemblyObject and the
+    // JointGroup are pure containers: the placed parts (PartDesign::Body)
+    // and the joints are top-level document objects in their own right,
+    // so skipping the containers drops no geometry -- it only avoids
+    // emitting an Opaque feature for the wrapper. (The individual joints
+    // ARE captured, in the App::FeaturePython joint branch below.)
+    if (t == "Assembly::AssemblyObject")   { return true; }
+    if (t == "Assembly::JointGroup")       { return true; }
     return false;
 }
 
@@ -2715,6 +2723,20 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     // re-derived from emission order at replay time.
     std::unordered_map<std::string, uint32_t>    body_prev_id;
 
+    // body_name -> the PartDesign::Body's own Placement, the rigid
+    // transform that positions the whole body in the assembly (native
+    // Assembly WB) or world (standalone docs). For non-assembly docs
+    // this is identity and never recorded. Stashed onto the body's TIP
+    // feature as asm_* ext_params during emission and applied by the
+    // Replayer to that feature's PART output -- the in-body feature
+    // chain stays in body-local frame so a FeatureBase clone of this
+    // body picks up the local geometry, not the placed one.
+    struct BodyAsmPose {
+        double px = 0.0, py = 0.0, pz = 0.0;
+        double ox = 0.0, oy = 0.0, oz = 1.0, angle = 0.0;
+    };
+    std::unordered_map<std::string, BodyAsmPose> body_asm_placement;
+
     for (const auto& pending : queue)
     {
         if (!IsContainerType(pending.type)) {
@@ -2782,6 +2804,34 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             body_first_solid[pending.name] = child_name;
             break;
         }
+        // Body assembly placement (native Assembly WB). Recorded only
+        // when non-identity; standalone PartDesign docs keep the body
+        // at the origin so nothing is stashed and no golden moves.
+        if (pending.type == "PartDesign::Body")
+        {
+            if (auto place = FindProperty(props, "Placement"))
+            {
+                auto v = place.child("PropertyPlacement");
+                if (v)
+                {
+                    BodyAsmPose pose;
+                    pose.px = AttrDouble(v, "Px", 0.0) * m_unit_scale;
+                    pose.py = AttrDouble(v, "Py", 0.0) * m_unit_scale;
+                    pose.pz = AttrDouble(v, "Pz", 0.0) * m_unit_scale;
+                    double qx = AttrDouble(v, "Q0", 0.0);
+                    double qy = AttrDouble(v, "Q1", 0.0);
+                    double qz = AttrDouble(v, "Q2", 0.0);
+                    double qw = AttrDouble(v, "Q3", 1.0);
+                    QuatToAxisAngle(qx, qy, qz, qw,
+                                    pose.ox, pose.oy, pose.oz, pose.angle);
+                    bool ident = (pose.px == 0.0 && pose.py == 0.0
+                                  && pose.pz == 0.0 && pose.angle == 0.0);
+                    if (!ident) {
+                        body_asm_placement[pending.name] = pose;
+                    }
+                }
+            }
+        }
         // Mark the Body itself as seen so it doesn't get re-queued
         // at the tail; we never emit a feature for the container.
         seen.insert(pending.name);
@@ -2845,6 +2895,27 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                                       cadapp::InputRole::Base);
                         }
                     }
+                }
+
+                // Body assembly placement rides on the TIP feature only:
+                // the Replayer applies it to that feature's part output
+                // (rotate-then-translate), leaving the in-body chain in
+                // local frame. Keyed asm_* so it never collides with a
+                // primitive's own placement_* keys.
+                auto tip_it = body_tip_id.find(bit->second);
+                auto pose_it = body_asm_placement.find(bit->second);
+                if (tip_it != body_tip_id.end()
+                    && tip_it->second == pending.feature_id
+                    && pose_it != body_asm_placement.end())
+                {
+                    const auto& pose = pose_it->second;
+                    feat.ext_params["asm_px"]    = pose.px;
+                    feat.ext_params["asm_py"]    = pose.py;
+                    feat.ext_params["asm_pz"]    = pose.pz;
+                    feat.ext_params["asm_ox"]    = pose.ox;
+                    feat.ext_params["asm_oy"]    = pose.oy;
+                    feat.ext_params["asm_oz"]    = pose.oz;
+                    feat.ext_params["asm_angle"] = pose.angle;
                 }
             }
         }
@@ -4087,6 +4158,78 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 feat.data = std::move(pl);
             }
         }
+        else if (pending.type == "PartDesign::FeatureBase")
+        {
+            // ---- PartDesign::FeatureBase (native Assembly WB clone) ----
+            //
+            // When the Assembly WB inserts a second instance of an
+            // existing part it wraps it in a fresh PartDesign::Body whose
+            // single feature is a FeatureBase "Clone": a reference to the
+            // source Body's tip shape plus a local Placement. We model it
+            // exactly like an Assembly4 App::Link -- a FeatPayloadLink
+            // pointing at the source tip with a rigid placement -- so the
+            // Replayer's Link arm rebuilds it from the live source
+            // geometry (parametric: edit the source, the clone follows)
+            // rather than from a baked .brp.
+            //
+            //   BaseFeature -> the source PartDesign::Body (resolved to
+            //                  that body's tip feature id, the same id a
+            //                  Part-workbench boolean would reference)
+            //   Placement   -> the clone's offset WITHIN its own body's
+            //                  local frame; the body's assembly Placement
+            //                  is layered on top separately via the
+            //                  asm_* ext_params stashed above.
+            //
+            // The source tip is referenced as Role::Reference (NOT Base):
+            // a clone does not consume/replace the source -- both the
+            // original body and the clone are independent parts. The Link
+            // arm reads sub_tip_feature_id directly, so no Base edge is
+            // needed for replay, and leaving the source out of the
+            // consumed set keeps the original body in the output.
+            FeatPayloadLink pl;
+
+            LinkRef base_ref = PropLink(props, "BaseFeature");
+            uint32_t src_tip = 0;
+            if (!base_ref.object_name.empty())
+            {
+                auto bt = body_tip_id.find(base_ref.object_name);
+                if (bt != body_tip_id.end()) {
+                    src_tip = bt->second;
+                } else {
+                    auto nit = m_name_to_id.find(base_ref.object_name);
+                    if (nit != m_name_to_id.end()) {
+                        src_tip = nit->second;
+                    }
+                }
+            }
+            pl.sub_tip_feature_id = src_tip;
+            pl.linked_object_name = base_ref.object_name;
+
+            if (auto place = FindProperty(props, "Placement"))
+            {
+                auto v = place.child("PropertyPlacement");
+                if (v)
+                {
+                    pl.placement_px = AttrDouble(v, "Px", 0.0) * m_unit_scale;
+                    pl.placement_py = AttrDouble(v, "Py", 0.0) * m_unit_scale;
+                    pl.placement_pz = AttrDouble(v, "Pz", 0.0) * m_unit_scale;
+                    double qx = AttrDouble(v, "Q0", 0.0);
+                    double qy = AttrDouble(v, "Q1", 0.0);
+                    double qz = AttrDouble(v, "Q2", 0.0);
+                    double qw = AttrDouble(v, "Q3", 1.0);
+                    QuatToAxisAngle(qx, qy, qz, qw,
+                                    pl.placement_ox, pl.placement_oy,
+                                    pl.placement_oz, pl.placement_angle);
+                }
+            }
+
+            feat.type = FeatType::Link;
+            feat.data = std::move(pl);
+            feat.ext_strings["freecad_type"] = pending.type;
+            if (src_tip != 0) {
+                PushInput(feat, src_tip, cadapp::InputRole::Reference);
+            }
+        }
         else if (pending.type == "Part::Feature")
         {
             // ---- Part::Feature (baked shape carrier) ----
@@ -4608,6 +4751,131 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.type = FeatType::AsmConstraint;
             feat.data = std::move(pl);
             feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "App::FeaturePython"
+                 && (FindProperty(props, "JointType")
+                     || FindProperty(props, "ObjectToGround")))
+        {
+            // ---- native Assembly WB Joint (geometry-free metadata) ----
+            //
+            // FreeCAD's built-in Assembly WB (1.0+) stores every joint as
+            // an App::FeaturePython driven by JointObject.py. Two shapes:
+            //   GroundedJoint -- pins one Body's placement (ObjectToGround
+            //                    + the grounding Placement)
+            //   Joint         -- a kinematic pair (Revolute / Cylindrical /
+            //                    Distance / ...) with JointType, two
+            //                    XLinkSub references onto part sub-elements,
+            //                    and a local connector Placement on each
+            //                    side
+            //
+            // The solver has already baked the resulting part poses onto
+            // each Body's Placement at save time, so this payload is
+            // geometry-free: the Replayer ignores it. We capture the joint
+            // graph (kind, which parts are jointed, on which elements, and
+            // the connector frames) as ext_strings / ext_params for
+            // round-trip and a future kinematics pass, and surface the
+            // joint -> part dependency as Role::Reference edges.
+            FeatPayloadOpaque pl;
+            pl.strings["freecad_type"] = pending.type;
+            feat.type = FeatType::Joint;
+
+            // Connector / grounding placement -> ext_params under `prefix`.
+            auto stash_pose = [&](const char* prop_name, const char* prefix)
+            {
+                auto p = FindProperty(props, prop_name);
+                if (!p) return;
+                auto v = p.child("PropertyPlacement");
+                if (!v) return;
+                double ox, oy, oz, angle;
+                double qx = AttrDouble(v, "Q0", 0.0);
+                double qy = AttrDouble(v, "Q1", 0.0);
+                double qz = AttrDouble(v, "Q2", 0.0);
+                double qw = AttrDouble(v, "Q3", 1.0);
+                QuatToAxisAngle(qx, qy, qz, qw, ox, oy, oz, angle);
+                feat.ext_params[std::string(prefix) + "_px"] =
+                    AttrDouble(v, "Px", 0.0) * m_unit_scale;
+                feat.ext_params[std::string(prefix) + "_py"] =
+                    AttrDouble(v, "Py", 0.0) * m_unit_scale;
+                feat.ext_params[std::string(prefix) + "_pz"] =
+                    AttrDouble(v, "Pz", 0.0) * m_unit_scale;
+                feat.ext_params[std::string(prefix) + "_ox"] = ox;
+                feat.ext_params[std::string(prefix) + "_oy"] = oy;
+                feat.ext_params[std::string(prefix) + "_oz"] = oz;
+                feat.ext_params[std::string(prefix) + "_angle"] = angle;
+            };
+
+            // XLinkSub reference -> (part name, sub-element) + a
+            // Role::Reference edge onto the referenced body's tip.
+            auto stash_ref = [&](const char* prop_name,
+                                 const char* part_key, const char* elem_key)
+            {
+                auto p = FindProperty(props, prop_name);
+                if (!p) return;
+                auto xl = p.child("XLink");
+                if (!xl) return;
+                auto sub = xl.child("Sub");
+                std::string val = sub ? AttrStr(sub, "value") : std::string{};
+                if (val.empty()) return;
+                size_t dot = val.find('.');
+                std::string part = (dot == std::string::npos)
+                                       ? val : val.substr(0, dot);
+                std::string elem = (dot == std::string::npos)
+                                       ? std::string{} : val.substr(dot + 1);
+                feat.ext_strings[part_key] = part;
+                if (!elem.empty()) {
+                    feat.ext_strings[elem_key] = elem;
+                }
+                auto bt = body_tip_id.find(part);
+                if (bt != body_tip_id.end()) {
+                    PushInput(feat, bt->second, cadapp::InputRole::Reference);
+                }
+            };
+
+            if (FindProperty(props, "ObjectToGround"))
+            {
+                feat.ext_strings["joint_kind"] = "Grounded";
+                LinkRef g = PropLink(props, "ObjectToGround");
+                if (!g.object_name.empty())
+                {
+                    feat.ext_strings["joint_ground_part"] = g.object_name;
+                    auto bt = body_tip_id.find(g.object_name);
+                    if (bt != body_tip_id.end()) {
+                        PushInput(feat, bt->second,
+                                  cadapp::InputRole::Reference);
+                    }
+                }
+                stash_pose("Placement", "joint_ground");
+            }
+            else
+            {
+                // JointType is a PropertyEnumeration: an Integer index
+                // into the inline CustomEnumList of joint-kind names.
+                std::string kind;
+                if (auto jt = FindProperty(props, "JointType"))
+                {
+                    int idx = jt.child("Integer").attribute("value").as_int(-1);
+                    int i = 0;
+                    for (auto e = jt.child("CustomEnumList").child("Enum");
+                         e; e = e.next_sibling("Enum"), ++i)
+                    {
+                        if (i == idx) {
+                            kind = AttrStr(e, "value");
+                            break;
+                        }
+                    }
+                }
+                if (kind.empty()) {
+                    kind = pending.name;  // fallback to the object name
+                }
+                feat.ext_strings["joint_kind"] = kind;
+
+                stash_ref("Reference1", "joint_ref1_part", "joint_ref1_elem");
+                stash_ref("Reference2", "joint_ref2_part", "joint_ref2_elem");
+                stash_pose("Placement1", "joint_p1");
+                stash_pose("Placement2", "joint_p2");
+            }
+
+            feat.data = std::move(pl);
         }
         else
         {

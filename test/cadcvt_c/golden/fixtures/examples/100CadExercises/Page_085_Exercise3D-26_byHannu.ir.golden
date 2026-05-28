@@ -1,8 +1,8 @@
 doc source=freecad
 sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
   geo 1 type=Circle constr=0 params=[0.015,0.000,0.002]
-feat 11 name=BaseFeature type=Unknown suppressed=0 payload=opaque freecad_type=PartDesign::FeatureBase
-  inputs=[0:base]
+feat 11 name=BaseFeature type=Unknown suppressed=0 payload=other
+  inputs=[0:base,10:ref]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 12 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=9 spine_sketch_id=11
   inputs=[11:base]

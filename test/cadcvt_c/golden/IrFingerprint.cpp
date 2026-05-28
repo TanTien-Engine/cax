@@ -143,6 +143,7 @@ const char* FeatTypeName(cadapp::FeatType t)
     case cadapp::FeatType::PrimTorus:       return "PrimTorus";
     case cadapp::FeatType::PrimEllipsoid:   return "PrimEllipsoid";
     case cadapp::FeatType::HoleWizard:      return "HoleWizard";
+    case cadapp::FeatType::Joint:           return "Joint";
     default:                                return "Unknown";
     }
 }

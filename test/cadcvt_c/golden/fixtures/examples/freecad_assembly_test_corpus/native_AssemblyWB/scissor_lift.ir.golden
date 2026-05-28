@@ -24,22 +24,28 @@ feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(
 feat 20 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pad001 type=BossExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.003 dist2=0.000 end=0 flip=0
   inputs=[0:base]
-feat 30 name=Clone type=Unknown suppressed=0 payload=opaque freecad_type=PartDesign::FeatureBase
-  inputs=[0:base]
+feat 30 name=Clone type=Unknown suppressed=0 payload=other
+  inputs=[0:base,21:ref]
 feat 39 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=39
 feat 40 name=Pad002 type=BossExtrude suppressed=0 payload=extrude sketch_id=39 dir=(0.000,0.000,1.000) dist=0.009 dist2=0.000 end=0 flip=0
   inputs=[0:base]
-feat 49 name=Clone001 type=Unknown suppressed=0 payload=opaque freecad_type=PartDesign::FeatureBase
-  inputs=[0:base]
-feat 58 name=Clone002 type=Unknown suppressed=0 payload=opaque freecad_type=PartDesign::FeatureBase
-  inputs=[0:base]
-feat 59 name=Assembly type=Unknown suppressed=0 payload=opaque freecad_type=Assembly::AssemblyObject
-feat 67 name=Joints type=Unknown suppressed=0 payload=opaque freecad_type=Assembly::JointGroup
-feat 68 name=GroundedJoint type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
-feat 69 name=Revolute type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
-feat 70 name=Cylindrical type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
-feat 71 name=Distance type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
-feat 72 name=Revolute001 type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
-feat 73 name=Revolute002 type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
-feat 74 name=Revolute003 type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
-feat 75 name=Distance001 type=Unknown suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 49 name=Clone001 type=Unknown suppressed=0 payload=other
+  inputs=[0:base,40:ref]
+feat 58 name=Clone002 type=Unknown suppressed=0 payload=other
+  inputs=[0:base,40:ref]
+feat 68 name=GroundedJoint type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[10:ref]
+feat 69 name=Revolute type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[40:ref,10:ref]
+feat 70 name=Cylindrical type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[40:ref,21:ref]
+feat 71 name=Distance type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[21:ref,10:ref]
+feat 72 name=Revolute001 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[49:ref,21:ref]
+feat 73 name=Revolute002 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[30:ref,49:ref]
+feat 74 name=Revolute003 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[58:ref,30:ref]
+feat 75 name=Distance001 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+  inputs=[10:ref,58:ref]
