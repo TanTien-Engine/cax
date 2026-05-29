@@ -651,7 +651,7 @@ endif()
 # stays tidy. Optional tools/tests are guarded by if(TARGET) so this block
 # survives any of the CAX_BUILD_* options being turned off.
 ################################################################################
-foreach(_cax_tgt cax deepbrep_demo deepbrep_train deepbrep_data_gen)
+foreach(_cax_tgt cax asmsolver deepbrep_demo deepbrep_train deepbrep_data_gen)
     if(TARGET ${_cax_tgt})
         set_target_properties(${_cax_tgt} PROPERTIES FOLDER "${CAX_VS_FOLDER}")
     endif()
@@ -661,7 +661,9 @@ foreach(_cax_test_tgt
         brepdb_occt_test
         brepgraph_test
         deepbrep_test
-        cadcvt_golden)
+        cadcvt_golden
+        asmsolver_test
+        asmsolver_import_test)
     if(TARGET ${_cax_test_tgt})
         # NOTE: sub-folder is "cax_tests" not "tests" -- ogdf creates a
         # vcxproj literally named "tests" elsewhere in tantien.sln, and
