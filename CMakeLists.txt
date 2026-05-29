@@ -553,7 +553,19 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ceres-solver/CMakeLists.txt" A
     set(BUILD_BENCHMARKS OFF)
     set(BUILD_DOCUMENTATION OFF)
     set(PROVIDE_UNINSTALL_TARGET OFF)
+    # Ceres's CMakeLists generates its install/export config at CONFIGURE
+    # time (even under EXCLUDE_FROM_ALL), calling file(RELATIVE_PATH ...)
+    # which requires an ABSOLUTE CMAKE_INSTALL_PREFIX. Some VS/preset setups
+    # leave it relative (e.g. "install"), which makes Ceres error out. Shadow
+    # it with an absolute path just for the Ceres subdirectory, then restore
+    # (we never install Ceres -- it is vendored and statically linked).
+    set(_cax_saved_install_prefix "${CMAKE_INSTALL_PREFIX}")
+    if(NOT IS_ABSOLUTE "${CMAKE_INSTALL_PREFIX}")
+        get_filename_component(CMAKE_INSTALL_PREFIX
+            "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_PREFIX}" ABSOLUTE)
+    endif()
     add_subdirectory(thirdparty/ceres-solver EXCLUDE_FROM_ALL)
+    set(CMAKE_INSTALL_PREFIX "${_cax_saved_install_prefix}")
 
     add_library(asmsolver STATIC
         asmsolver_c/AsmSolver.cpp
