@@ -3700,19 +3700,35 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             // / Fillet operates on a missing base, so the whole part
             // ends up wrong (see Page_020_Exercise2D-12).
             FeatPayloadLoft pl;
+            // FreeCAD keeps the anchor section in `Profile` and the rest
+            // in `Sections`. Some documents (Page_094) ALSO repeat the
+            // Profile sketch as the first entry of the Sections LinkList,
+            // so a blind Profile + Sections concatenation duplicates it
+            // (profiles=[9,9,10,11]). Two coincident section wires make
+            // OCCT's BRepOffsetAPI_ThruSections build a zero-length segment
+            // and fail with StdFail_NotDone -- the loft then silently falls
+            // back to FreeCAD's authored brep. Drop consecutive duplicate
+            // ids so each distinct profile feeds the loft exactly once;
+            // Page_020 (profiles=[9,10], no repeat) is unaffected.
+            auto push_section = [&pl](auto id) {
+                if (pl.profile_sketch_ids.empty() ||
+                    pl.profile_sketch_ids.back() != id) {
+                    pl.profile_sketch_ids.push_back(id);
+                }
+            };
             LinkRef profile = PropLink(props, "Profile");
             if (!profile.object_name.empty())
             {
                 auto sid = m_name_to_id.find(profile.object_name);
                 if (sid != m_name_to_id.end()) {
-                    pl.profile_sketch_ids.push_back(sid->second);
+                    push_section(sid->second);
                 }
             }
             for (const auto& sec_name : PropLinkList(props, "Sections"))
             {
                 auto sid = m_name_to_id.find(sec_name);
                 if (sid != m_name_to_id.end()) {
-                    pl.profile_sketch_ids.push_back(sid->second);
+                    push_section(sid->second);
                 }
             }
             pl.closed = PropBool(props, "Closed", false);

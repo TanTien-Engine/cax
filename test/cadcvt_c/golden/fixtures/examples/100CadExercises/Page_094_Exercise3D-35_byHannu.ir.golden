@@ -35,7 +35,7 @@ sketch 13 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=11
-feat 12 name=AdditiveLoft type=Loft suppressed=0 payload=loft profile_count=4 closed=0 profiles=[9,9,10,11]
+feat 12 name=AdditiveLoft type=Loft suppressed=0 payload=loft profile_count=3 closed=0 profiles=[9,10,11]
   inputs=[0:base]
 feat 13 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=13
   inputs=[12:ref]
