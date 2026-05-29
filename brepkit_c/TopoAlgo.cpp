@@ -2084,21 +2084,50 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
                                                   uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                                   const std::shared_ptr<brepdb::VersionTree>& vt)
 {
-    BRepOffsetAPI_ThruSections thru_sections(is_solid ? Standard_True : Standard_False);
-    for (auto& wire : wires) {
-        thru_sections.AddWire(wire->ToWire());
-    }
+    // OCCT's BRepOffsetAPI_ThruSections never reports failure by return
+    // value: AddWire / Build can leave the algorithm "not done", and the
+    // first Shape() access then raises StdFail_NotDone from deep inside
+    // TKTopAlgo. That throw used to escape this function and unwind all
+    // the way out through the loft op lambda -> Evaluator -> Replayer ->
+    // the ves VM with nothing catching it, crashing editor.exe (golden
+    // Page_094: incompatible / degenerate section wires). Mirror the
+    // ThickSolid contract above -- swallow the OCCT failure here and
+    // return nullptr; the "loft" calc op already maps a null shape onto
+    // an ordinary op failure (calc_ops.cpp: `if (!shp) return {};`).
+    try {
+        BRepOffsetAPI_ThruSections thru_sections(is_solid ? Standard_True : Standard_False);
+        for (auto& wire : wires) {
+            thru_sections.AddWire(wire->ToWire());
+        }
+        thru_sections.Build();
+        if (!thru_sections.IsDone() || thru_sections.Shape().IsNull()) {
+            std::fprintf(stderr,
+                         "[TopoAlgo::ThruSections] loft did not build "
+                         "(%zu section wires, is_solid=%d); treating op "
+                         "as failed\n",
+                         wires.size(), (int)is_solid);
+            return nullptr;
+        }
+        const TopoDS_Shape result = thru_sections.Shape();
 
-    brepgraph::TopoNaming::PidMap pid_map;
-    if (tn)
-    {
-        auto old_shp = ShapeBuilder::MakeCompound(wires);
-        pid_map = tn->Update(thru_sections, thru_sections.Shape(), old_shp->GetShape(), op_id);
+        brepgraph::TopoNaming::PidMap pid_map;
+        if (tn)
+        {
+            auto old_shp = ShapeBuilder::MakeCompound(wires);
+            pid_map = tn->Update(thru_sections, result, old_shp->GetShape(), op_id);
+        }
+        auto dst = std::make_shared<brepkit::TopoShape>(result);
+        auto dummy_src = std::make_shared<brepkit::TopoShape>();
+        commit_to_vt(tn, vt, dummy_src, dst, pid_map, "thru_sections");
+        return dst;
     }
-    auto dst = std::make_shared<brepkit::TopoShape>(thru_sections.Shape());
-    auto dummy_src = std::make_shared<brepkit::TopoShape>();
-    commit_to_vt(tn, vt, dummy_src, dst, pid_map, "thru_sections");
-    return dst;
+    catch (const Standard_Failure& e) {
+        std::fprintf(stderr,
+                     "[TopoAlgo::ThruSections] OCCT failure: %s; treating "
+                     "op as failed\n",
+                     e.GetMessageString());
+        return nullptr;
+    }
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape>& shape, float offset, bool is_solid,

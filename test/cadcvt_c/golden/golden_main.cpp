@@ -5,6 +5,8 @@
 #include "cadapp_c/emitter/Replayer.h"
 #include "brepkit_c/TopoShape.h"
 
+#include <Standard_Failure.hxx>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -151,18 +153,35 @@ bool RunReader(const fs::path& fixture, cadapp::DocumentIR& doc, std::string& er
 // Replay the IR into an OCCT shape. Returns the geometry fingerprint.
 std::string BuildGeoSnapshot(cadapp::DocumentIR& doc)
 {
-    cadapp::Replayer replayer;
-    cadapp::ReplayOptions opt;
-    cadapp::ReplayResult res;
-    replayer.Replay(doc, opt, res);
+    try
+    {
+        cadapp::Replayer replayer;
+        cadapp::ReplayOptions opt;
+        cadapp::ReplayResult res;
+        replayer.Replay(doc, opt, res);
 
-    if (!res.ok) {
-        // A replay failure is itself a stable, diffable fact. Record
-        // the message so a regression that breaks replay shows up in
-        // the geo golden rather than silently passing.
-        return std::string("geo REPLAY_FAILED msg=") + res.err_msg + "\n";
+        if (!res.ok) {
+            // A replay failure is itself a stable, diffable fact. Record
+            // the message so a regression that breaks replay shows up in
+            // the geo golden rather than silently passing.
+            return std::string("geo REPLAY_FAILED msg=") + res.err_msg + "\n";
+        }
+        return cadcvt_golden::FingerprintShape(res.shape);
     }
-    return cadcvt_golden::FingerprintShape(res.shape);
+    catch (Standard_Failure& e)
+    {
+        // OCCT signals hard failures (e.g. StdFail_NotDone from a fillet
+        // that cannot complete) by throwing rather than returning a
+        // status. Pin it as a stable, diffable line like any other
+        // replay failure -- one fixture must never abort the suite.
+        const char* msg = e.GetMessageString();
+        return std::string("geo REPLAY_THREW exception=") +
+               (msg ? msg : "Standard_Failure") + "\n";
+    }
+    catch (const std::exception& e)
+    {
+        return std::string("geo REPLAY_THREW exception=") + e.what() + "\n";
+    }
 }
 
 struct CaseResult
@@ -298,8 +317,27 @@ int main(int argc, char** argv)
     int failed = 0;
     for (const auto& f : fixtures)
     {
-        CaseResult cr = ProcessFixture(f, o);
-        if (!cr.passed) {
+        // Safety net: the harness contract is "run every fixture, then
+        // print the summary". An exception escaping any layer (reader,
+        // fingerprint, OCCT) must degrade to a per-fixture failure, not
+        // terminate the whole run.
+        try
+        {
+            CaseResult cr = ProcessFixture(f, o);
+            if (!cr.passed) {
+                ++failed;
+            }
+        }
+        catch (Standard_Failure& e)
+        {
+            std::printf("[FAIL]   %s  uncaught OCCT exception: %s\n",
+                        f.stem().string().c_str(), e.GetMessageString());
+            ++failed;
+        }
+        catch (const std::exception& e)
+        {
+            std::printf("[FAIL]   %s  uncaught exception: %s\n",
+                        f.stem().string().c_str(), e.what());
             ++failed;
         }
     }
