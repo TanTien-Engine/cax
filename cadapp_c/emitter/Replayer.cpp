@@ -15,6 +15,7 @@
 #include <TopoDS_Vertex.hxx>
 #include <gp_Pnt.hxx>
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -22,7 +23,10 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -1875,7 +1879,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // UID, so the chain break only affects
             // write-back-uid consumers.
             auto auth_it = doc.authored_shapes.find(feat.id);
-            if (auth_it != doc.authored_shapes.end() && auth_it->second)
+            if (!opt.analyze_only
+                && auth_it != doc.authored_shapes.end() && auth_it->second)
             {
                 auto val = cg->Eval(node);
                 auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
@@ -2073,6 +2078,24 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         }
     }
 
+    // Publish the surviving part feat_ids (emission order) regardless of
+    // analyze_only -- ReplayParts uses this to split the document.
+    out.live_feat_ids.reserve(live_nodes.size());
+    for (const auto& ln : live_nodes) {
+        out.live_feat_ids.push_back(ln.second);
+    }
+
+    // analyze_only: graph + candidates are all the caller wanted; skip
+    // every geometry eval (the eager authored-shape fallback above was
+    // already gated off, and the per-part / write-back evals below are
+    // skipped here).
+    if (opt.analyze_only)
+    {
+        out.calc_graph = cg;
+        out.ok         = true;
+        return true;
+    }
+
     // feat_id -> transparency, for tagging each emitted part. Built
     // once from the doc so the per-part loop is O(1) per node.
     std::unordered_map<uint32_t, double> feat_transparency;
@@ -2153,6 +2176,252 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
     out.calc_graph = cg;
     out.ok         = true;
+    return true;
+}
+
+// ============================================================
+// Per-part replay (ReplayParts)
+// ============================================================
+
+namespace {
+
+// Read-side mirror of FreeCadReader's RemapPayloadFeatureRefs: collect
+// every feature-id this feature references through TYPED payload fields
+// (sketch profiles / spines). input_feature_ids are followed separately
+// by the closure walk. Keep this in lock-step with RemapPayloadFeatureRefs
+// -- a payload that gains a feature-id ref there must gain one here, or
+// the split sub-doc would drop a dependency.
+void CollectPayloadFeatureRefs(const FeatureIR& feat, std::vector<uint32_t>& out)
+{
+    std::visit([&](const auto& p) {
+        using T = std::decay_t<decltype(p)>;
+        if constexpr (std::is_same_v<T, FeatPayloadSketch>) {
+            out.push_back(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadExtrude>) {
+            out.push_back(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadRevolve>) {
+            out.push_back(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadLoft>) {
+            for (uint32_t sid : p.profile_sketch_ids) out.push_back(sid);
+        } else if constexpr (std::is_same_v<T, FeatPayloadSweep>) {
+            out.push_back(p.profile_sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadHoleWizard>) {
+            out.push_back(p.sketch_id);
+        } else if constexpr (std::is_same_v<T, FeatPayloadRib>) {
+            out.push_back(p.sketch_id);
+        }
+    }, feat.data);
+
+    auto sp = feat.ext_params.find("spine_sketch_id");
+    if (sp != feat.ext_params.end()) {
+        out.push_back((uint32_t)sp->second);
+    }
+}
+
+// Transitive feature closure of `part_feat_id`: the part itself plus
+// every feature it depends on via input_feature_ids and typed sketch
+// refs. This is the exact set of features the part needs to replay in
+// isolation.
+std::unordered_set<uint32_t> CollectClosure(
+    const std::unordered_map<uint32_t, const FeatureIR*>& by_id,
+    uint32_t part_feat_id)
+{
+    std::unordered_set<uint32_t> keep;
+    std::vector<uint32_t>        work{ part_feat_id };
+    std::vector<uint32_t>        refs;
+
+    while (!work.empty())
+    {
+        uint32_t fid = work.back();
+        work.pop_back();
+        if (fid == 0u || fid == 0xFFFFFFFFu) continue;
+        if (!keep.insert(fid).second) continue;   // already visited
+
+        auto it = by_id.find(fid);
+        if (it == by_id.end()) continue;
+        const FeatureIR* f = it->second;
+
+        for (uint32_t iid : f->input_feature_ids) work.push_back(iid);
+        refs.clear();
+        CollectPayloadFeatureRefs(*f, refs);
+        for (uint32_t r : refs) work.push_back(r);
+    }
+    return keep;
+}
+
+// Materialise a standalone sub-document from a feature closure. Features
+// keep their original ids and document order, so the sub-doc replays
+// identically to the same features inside the full doc -- only isolated.
+DocumentIR BuildPartSubDoc(const DocumentIR& doc,
+                           const std::unordered_set<uint32_t>& keep)
+{
+    DocumentIR sub;
+    sub.source   = doc.source;
+    sub.doc_path = doc.doc_path;
+    for (const auto& f : doc.features) {
+        if (keep.count(f.id)) sub.features.push_back(f);
+    }
+    for (const auto& sk : doc.sketches) {
+        if (keep.count(sk.feature_id)) sub.sketches.push_back(sk);
+    }
+    for (const auto& kv : doc.authored_shapes) {
+        if (keep.count(kv.first)) sub.authored_shapes.insert(kv);
+    }
+    return sub;
+}
+
+} // namespace
+
+bool Replayer::ReplayParts(DocumentIR& doc, const ReplayOptions& opt,
+                           ReplayResult& out, bool parallel)
+{
+    out = ReplayResult{};
+
+    // 1. Analysis pass -- discover the top-level parts using the SAME
+    //    candidate logic Replay uses, but without materialising geometry.
+    ReplayResult ares;
+    {
+        ReplayOptions aopt       = opt;
+        aopt.analyze_only        = true;
+        aopt.write_back_resolved = false;
+        aopt.commit_versions     = false;
+        Replayer analyzer;   // own naming/vtree; discarded
+        if (!analyzer.Replay(doc, aopt, ares)) {
+            out.err_msg = ares.err_msg.empty()
+                              ? "ReplayParts: analysis pass failed"
+                              : ares.err_msg;
+            return false;
+        }
+    }
+    const std::vector<uint32_t> parts = ares.live_feat_ids;
+
+    // Nothing to gain from splitting 0 or 1 part -- replay whole serially.
+    if (parts.size() <= 1) {
+        return Replay(doc, opt, out);
+    }
+
+    // 2. Compute each part's feature closure, then gate on independence.
+    //    Splitting is only geometry-identical to a serial Replay when the
+    //    parts are INDEPENDENT (disjoint closures). If two parts share a
+    //    feature -- a Pattern's target (PatternTarget role) or a Clone's
+    //    source (Reference role) is a non-consumed input that lands in
+    //    BOTH closures -- building them in isolation can diverge in
+    //    topology (shared sub-shapes counted/merged differently), so we
+    //    fall back to a whole-document serial Replay. Pure assemblies
+    //    (independent instances) stay disjoint and split cleanly.
+    std::unordered_map<uint32_t, const FeatureIR*> by_id;
+    by_id.reserve(doc.features.size());
+    for (const auto& f : doc.features) by_id[f.id] = &f;
+
+    std::vector<std::unordered_set<uint32_t>> closures;
+    closures.reserve(parts.size());
+    std::unordered_map<uint32_t, int> claim_count;
+    bool disjoint = true;
+    for (uint32_t pid : parts) {
+        auto c = CollectClosure(by_id, pid);
+        for (uint32_t fid : c) {
+            if (++claim_count[fid] > 1) { disjoint = false; }
+        }
+        closures.push_back(std::move(c));
+    }
+
+    if (!disjoint) {
+        // Not safely splittable -- replay the whole document serially.
+        return Replay(doc, opt, out);
+    }
+
+    std::vector<DocumentIR> subdocs;
+    subdocs.reserve(parts.size());
+    for (auto& c : closures) {
+        subdocs.push_back(BuildPartSubDoc(doc, c));
+    }
+
+    // 3. Replay each sub-doc through its OWN Replayer (isolated CalcGraph
+    //    + TopoNaming + Evaluator), so the runs share no mutable state and
+    //    can execute concurrently. Per-part naming is not persisted, so
+    //    write-back / version commits are forced off.
+    std::vector<ReplayResult> subres(subdocs.size());
+    ReplayOptions sopt       = opt;
+    sopt.analyze_only        = false;
+    sopt.write_back_resolved = false;
+    sopt.commit_versions     = false;
+
+    auto run_one = [&](size_t i) {
+        Replayer r;
+        r.Replay(subdocs[i], sopt, subres[i]);
+    };
+
+    if (!parallel)
+    {
+        for (size_t i = 0; i < subdocs.size(); ++i) run_one(i);
+    }
+    else
+    {
+        unsigned hw      = std::thread::hardware_concurrency();
+        size_t   workers = std::min<size_t>(subdocs.size(), hw ? hw : 4u);
+        std::atomic<size_t>      next{ 0 };
+        std::vector<std::thread> pool;
+        pool.reserve(workers);
+        for (size_t w = 0; w < workers; ++w) {
+            pool.emplace_back([&] {
+                for (;;) {
+                    size_t i = next.fetch_add(1);
+                    if (i >= subdocs.size()) break;
+                    run_one(i);
+                }
+            });
+        }
+        for (auto& t : pool) t.join();
+    }
+
+    // 4. Merge parts in document (analysis) order; compound the shapes.
+    //    Each sub-doc was built for ONE part (parts[i]); take exactly
+    //    that part. A sub-doc can surface EXTRA live candidates -- a
+    //    Pattern's target (PatternTarget role) or a Clone's source
+    //    (Reference role) is a NON-consumed input, so it re-appears as a
+    //    standalone output inside this sub-doc even though it's already
+    //    emitted by its own sub-doc. Selecting feat_id == parts[i] keeps
+    //    the merged set byte-identical to a serial Replay (no duplicates).
+    BRep_Builder    bb;
+    TopoDS_Compound comp;
+    bb.MakeCompound(comp);
+    int                                 added = 0;
+    std::shared_ptr<brepkit::TopoShape> solo;
+
+    for (size_t i = 0; i < subres.size(); ++i)
+    {
+        auto& sr = subres[i];
+
+        ReplayPart* chosen = nullptr;
+        for (auto& part : sr.parts) {
+            if (part.feat_id == parts[i]) { chosen = &part; break; }
+        }
+        if (chosen && chosen->shape && !chosen->shape->GetShape().IsNull())
+        {
+            bb.Add(comp, chosen->shape->GetShape());
+            if (added == 0) solo = chosen->shape;
+            ++added;
+            out.parts.push_back(std::move(*chosen));
+        }
+
+        if (!sr.err_msg.empty()) {
+            if (!out.err_msg.empty()) out.err_msg += "; ";
+            out.err_msg += sr.err_msg;
+        }
+    }
+
+    if (added > 1) {
+        out.shape = std::make_shared<brepkit::TopoShape>(comp);
+    } else if (added == 1) {
+        out.shape = solo;
+    }
+
+    // Hand back the analysis pass's (empty) naming/vtree so callers that
+    // read these fields don't deref null. Per-part naming is intentionally
+    // not merged -- ReplayParts is for the non-persisted load path.
+    out.naming = ares.naming;
+    out.vtree  = ares.vtree;
+    out.ok     = true;
     return true;
 }
 

@@ -78,6 +78,16 @@ struct ReplayOptions
     // topology cleanup at the cost of that regression, opt-in
     // per-call.
     bool refine_after_primitive = false;
+
+    // Analysis-only: build the CalcGraph and resolve the live output
+    // candidates, but DO NOT materialise any geometry (skips the
+    // authored-shape eager-eval fallback and the final per-part eval).
+    // ReplayResult::live_feat_ids is filled with the surviving output
+    // candidates in emission order; ReplayResult::shape / parts stay
+    // empty. Used by ReplayParts() to discover, without paying the
+    // geometry cost, exactly which features are top-level parts so it
+    // can split the document and replay each part independently.
+    bool analyze_only = false;
 };
 
 // One emitted top-level shape plus the appearance the source GUI
@@ -115,6 +125,13 @@ struct ReplayResult
     // doc.features.
     std::vector<uint32_t>                 op_ids;
 
+    // feat_id of each surviving top-level output candidate, in
+    // emission order (same order as `parts`). Always populated by
+    // Replay, including analyze_only runs where `parts` is empty.
+    // ReplayParts() reads this to know which features are top-level
+    // parts so it can split the document per part.
+    std::vector<uint32_t>                 live_feat_ids;
+
     // History / naming structures created by Replay. The caller
     // forwards them to BrepDB::Flush().
     std::shared_ptr<brepgraph::TopoNaming> naming;
@@ -141,6 +158,22 @@ public:
     // Main entry. doc is in/out: when write_back_resolved is true
     // the TopoRefIR uid / topo_index fields get filled in.
     bool Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& out);
+
+    // Per-part replay: split `doc` into one independent sub-document
+    // per top-level output part (each carrying just that part's
+    // feature closure), replay each through its OWN Replayer / CalcGraph
+    // / TopoNaming, and merge the resulting shapes back into `out`
+    // (out.parts in document order, out.shape their compound).
+    //
+    // Because every part is fully isolated, the per-part replays can run
+    // concurrently: when `parallel` is true they are dispatched across a
+    // thread pool; the merged result is geometry-identical to a serial
+    // Replay (only the work is spread over cores). Intended for the
+    // one-shot load path -- naming / version state is per-part and not
+    // persisted, so callers that need a coherent TopoNaming / VersionTree
+    // (write_back_resolved / commit_versions) must use Replay instead.
+    bool ReplayParts(DocumentIR& doc, const ReplayOptions& opt,
+                     ReplayResult& out, bool parallel);
 
 private:
     struct Impl;

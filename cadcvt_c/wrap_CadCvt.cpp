@@ -134,8 +134,17 @@ void w_FreeCadLoader_load()
     opt.write_back_resolved = false;  // no need to mutate doc for one-shot load
     opt.commit_versions     = false;  // host script decides versioning policy
 
+    // One-shot load: replay each top-level part independently and in
+    // parallel. ReplayParts splits the document per part, replays each
+    // through its own isolated CalcGraph/TopoNaming on a thread pool, and
+    // merges the shapes -- geometry-identical to a serial Replay but
+    // spread across cores (multi-instance assemblies see a large speedup).
+    // It auto-falls back to a whole-document serial Replay when the parts
+    // are not independent (patterns / clones that cross-reference). Safe
+    // here precisely because write_back / commit are off: per-part naming
+    // is transient and never persisted.
     cadapp::ReplayResult res;
-    if (!st->replayer.Replay(doc, opt, res))
+    if (!st->replayer.ReplayParts(doc, opt, res, /*parallel*/ true))
     {
         st->last_error = res.err_msg.empty() ? "Replay failed" : res.err_msg;
         ves_set_nil(0);
