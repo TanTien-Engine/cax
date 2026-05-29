@@ -20,6 +20,7 @@
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepOffsetAPI_MakePipe.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <GeomFill_Trihedron.hxx>
 #include <BRepOffsetAPI_MakeOffset.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
@@ -508,7 +509,8 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::Sweep(
     const std::shared_ptr<TopoShape>& path,
     bool is_solid,
     uint32_t op_id,
-    const std::shared_ptr<brepgraph::TopoNaming>& tn)
+    const std::shared_ptr<brepgraph::TopoNaming>& tn,
+    bool frenet)
 {
     if (!profile || !path) {
         return nullptr;
@@ -531,8 +533,15 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::Sweep(
         return nullptr;
     }
 
-    // BRepOffsetAPI_MakePipe is the simplest sweep: profile follows path
-    BRepOffsetAPI_MakePipe pipe(path_wire, profile->GetShape());
+    // BRepOffsetAPI_MakePipe is the simplest sweep: profile follows path.
+    // The trihedron mode controls how the cross-section is transported:
+    // true Frenet keeps a non-symmetric profile radially oriented along a
+    // helix (FreeCAD Part::Sweep Frenet=true), while the default corrected
+    // Frenet minimizes twist (what the circular PartDesign Pipe expects).
+    GeomFill_Trihedron mode = frenet ? GeomFill_IsFrenet
+                                     : GeomFill_IsCorrectedFrenet;
+    BRepOffsetAPI_MakePipe pipe(path_wire, profile->GetShape(),
+                                mode, Standard_False);
     pipe.Build();
     if (!pipe.IsDone()) {
         return nullptr;

@@ -1106,6 +1106,54 @@ void StashPlacement(FeatureIR&            feat,
     }
 }
 
+// Stash a standalone Part::Helix's Placement on the Sweep FeatureIR so
+// the Replayer can orient the parametric coil in world space before it
+// sweeps the profile along it. Distinct from StashPlacement's
+// "placement_" keys: this transform applies to the spine WIRE node, not
+// to a feature's output, and it must NOT collide with any placement the
+// Sweep feature itself might carry. A PartDesign::AdditivePipe reaches
+// its helix through a FeatureBase that clones LOCAL geometry (placement
+// not applied), so that path deliberately leaves these keys absent; only
+// the Part-workbench Part::Sweep, which links a standalone Part::Helix,
+// stashes them. Keys (all absent when identity):
+//   helix_place_px / py / pz  : translation
+//   helix_place_ox / oy / oz  : rotation axis (unit vector)
+//   helix_place_angle         : rotation angle in radians
+void StashHelixPlacement(cadapp::FeatureIR&    feat,
+                         const pugi::xml_node& helix_props,
+                         double                unit_scale)
+{
+    auto p = FindProperty(helix_props, "Placement");
+    if (!p) {
+        return;
+    }
+    auto v = p.child("PropertyPlacement");
+    if (!v) {
+        return;
+    }
+    double px = AttrDouble(v, "Px", 0.0) * unit_scale;
+    double py = AttrDouble(v, "Py", 0.0) * unit_scale;
+    double pz = AttrDouble(v, "Pz", 0.0) * unit_scale;
+    double a  = AttrDouble(v, "A",  0.0);
+    double ox = AttrDouble(v, "Ox", 0.0);
+    double oy = AttrDouble(v, "Oy", 0.0);
+    double oz = AttrDouble(v, "Oz", 1.0);
+
+    if (a != 0.0)
+    {
+        feat.ext_params["helix_place_angle"] = a;
+        feat.ext_params["helix_place_ox"]    = ox;
+        feat.ext_params["helix_place_oy"]    = oy;
+        feat.ext_params["helix_place_oz"]    = oz;
+    }
+    if ((px != 0.0) || (py != 0.0) || (pz != 0.0))
+    {
+        feat.ext_params["helix_place_px"] = px;
+        feat.ext_params["helix_place_py"] = py;
+        feat.ext_params["helix_place_pz"] = pz;
+    }
+}
+
 
 // ============================================================
 // Section B: .FCStd zip extractor
@@ -2777,22 +2825,25 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
     }
 
-    // ---- Collect helix spines consumed by a Pipe ----
+    // ---- Collect helix spines consumed by a sweep ----
     //
-    // When an AdditivePipe / SubtractivePipe sweeps along a Part::Helix
-    // (referenced through a PartDesign::FeatureBase), the reader rebuilds
-    // the coil parametrically as the sweep spine. The standalone Helix
-    // object then carries no independent geometry of its own and, left in
-    // the emission list, would surface as an Unknown/opaque feature the
-    // Replayer can only log "skipped unimplemented feature: Helix" for.
-    // Track those helix names so the emission walk skips them; the
-    // FeatureBase wrapper is left alone (it already replays as a clean
-    // node=-1 base reference, no warning).
+    // When a PartDesign AdditivePipe / SubtractivePipe (referenced
+    // through a PartDesign::FeatureBase) or a Part-workbench Part::Sweep
+    // (referencing a standalone Part::Helix directly) sweeps along a
+    // Part::Helix, the reader rebuilds the coil parametrically as the
+    // sweep spine. The standalone Helix object then carries no
+    // independent geometry of its own and, left in the emission list,
+    // would surface as an Unknown/opaque feature the Replayer can only
+    // log "skipped unimplemented feature: Helix" for. Track those helix
+    // names so the emission walk skips them; the FeatureBase wrapper (if
+    // any) is left alone (it already replays as a clean node=-1 base
+    // reference, no warning).
     std::unordered_set<std::string> consumed_helix_objs;
     for (const auto& pending : queue)
     {
         if (pending.type != "PartDesign::AdditivePipe" &&
-            pending.type != "PartDesign::SubtractivePipe") {
+            pending.type != "PartDesign::SubtractivePipe" &&
+            pending.type != "Part::Sweep") {
             continue;
         }
         auto it = data_by_name.find(pending.name);
@@ -3557,6 +3608,82 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             feat.data = std::move(pl);
             // PartDesign::AdditivePipe vs PartDesign::SubtractivePipe
             // is read back by the Replayer to pick fuse vs cut.
+            feat.ext_strings["freecad_type"] = pending.type;
+        }
+        else if (pending.type == "Part::Sweep")
+        {
+            // Part-workbench sweep (Part::Sweep). A standalone object,
+            // NOT a body feature, so it emits its own top-level output
+            // node alongside any bodies in the document. Properties:
+            //   Sections -> LinkList(sketch, ...)    cross-section(s)
+            //   Spine    -> LinkSub(Part::Helix|sketch, Edge*)  path
+            //   Solid                                 true -> capped
+            //                                         solid; false ->
+            //                                         open tube shell
+            //   Frenet / Transition                  frame options
+            //                                         (Replayer uses the
+            //                                         default sweep frame)
+            // Maps to FeatType::Sweep like PartDesign's Pipe, but the
+            // spine helix is a standalone Part::Helix whose own Placement
+            // orients the coil in world space -- stash that placement so
+            // the Replayer transforms the spine wire before sweeping
+            // (see StashHelixPlacement). The profile section sketch is
+            // already built on its world-frame plane by the sketch pass,
+            // so it lands at the spine start exactly as FreeCAD authored.
+            FeatPayloadSweep pl;
+
+            // Profile = first section. Multi-section Part::Sweep (a
+            // lofted sweep) is not yet modeled; we take the first wire,
+            // which covers the common single-profile coil/thread case.
+            for (const auto& sec_name : PropLinkList(props, "Sections"))
+            {
+                auto sid = m_name_to_id.find(sec_name);
+                if (sid != m_name_to_id.end()) {
+                    pl.profile_sketch_id = sid->second;
+                }
+                break;
+            }
+
+            LinkRef spine = PropLink(props, "Spine");
+            if (!spine.object_name.empty())
+            {
+                pugi::xml_node helix_props = find_helix_props(spine.object_name);
+                if (helix_props)
+                {
+                    ReadHelixSpine(helix_props, m_unit_scale, feat);
+                    StashHelixPlacement(feat, helix_props, m_unit_scale);
+                    feat.ext_strings["spine_ref"] = spine.object_name;
+                }
+                else
+                {
+                    auto sid = m_name_to_id.find(spine.object_name);
+                    if (sid != m_name_to_id.end()) {
+                        feat.ext_params["spine_sketch_id"] =
+                            (double)sid->second;
+                    }
+                    feat.ext_strings["spine_ref"] = spine.object_name;
+                }
+            }
+
+            // Solid flag drives capped-solid vs open-shell sweep. Part
+            // workbench defaults Solid=false (a surface tube); PartDesign
+            // Pipe always builds a solid, so only Part::Sweep records it.
+            feat.ext_params["sweep_solid"] =
+                PropBool(props, "Solid", false) ? 1.0 : 0.0;
+
+            // Frenet=true makes FreeCAD transport the section along the
+            // spine's true Frenet frame; for a non-symmetric thread
+            // profile on a helix this is what keeps it radially oriented.
+            // The Replayer maps it to the GeomFill_IsFrenet trihedron;
+            // absent -> corrected Frenet (OCCT default).
+            if (PropBool(props, "Frenet", false)) {
+                feat.ext_params["sweep_frenet"] = 1.0;
+            }
+
+            feat.type = FeatType::Sweep;
+            feat.data = std::move(pl);
+            // Read back by the Replayer: Part::Sweep is always additive
+            // (a standalone shape), never the SubtractivePipe cut path.
             feat.ext_strings["freecad_type"] = pending.type;
         }
         else if (pending.type == "PartDesign::AdditiveLoft" ||

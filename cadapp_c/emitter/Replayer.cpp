@@ -944,13 +944,35 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     return;
                 }
 
-                int face_n;
-                auto fit = sketch_face_nodes.find(p.profile_sketch_id);
-                if (fit != sketch_face_nodes.end()) {
-                    face_n = fit->second;
-                } else {
-                    face_n = AddSketchFaceNode(*cg, *profile_sk);
-                    sketch_face_nodes[p.profile_sketch_id] = face_n;
+                // PartDesign Pipe always builds a capped solid; a Part
+                // workbench Part::Sweep honors its Solid flag (default
+                // false -> open tube shell), stashed as sweep_solid.
+                // brepkit's Sweep (BRepOffsetAPI_MakePipe) derives the
+                // result topology from the profile shape, NOT the is_solid
+                // arg: a FACE profile yields a capped solid, a WIRE
+                // profile yields an open shell. Pick the profile node
+                // accordingly -- a face for a solid sweep, the boundary
+                // wire for a shell sweep.
+                bool is_solid = true;
+                auto solid_it = feat.ext_params.find("sweep_solid");
+                if (solid_it != feat.ext_params.end()) {
+                    is_solid = (solid_it->second != 0.0);
+                }
+
+                int profile_n;
+                if (is_solid)
+                {
+                    auto fit = sketch_face_nodes.find(p.profile_sketch_id);
+                    if (fit != sketch_face_nodes.end()) {
+                        profile_n = fit->second;
+                    } else {
+                        profile_n = AddSketchFaceNode(*cg, *profile_sk);
+                        sketch_face_nodes[p.profile_sketch_id] = profile_n;
+                    }
+                }
+                else
+                {
+                    profile_n = AddSketchWireNode(*cg, *profile_sk);
                 }
 
                 int wire_n;
@@ -975,6 +997,42 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     wire_n = cg->AddOp("helix_wire",
                                        {pitch_n, height_n, radius_n, angle_n, lh_n},
                                        {}, feat.name + ":helix");
+
+                    // A Part-workbench Part::Sweep links a STANDALONE
+                    // Part::Helix whose own Placement orients the coil in
+                    // world space; the reader stashed it under
+                    // helix_place_* (PartDesign's FeatureBase clone path
+                    // leaves these absent -- it builds in the local +Z
+                    // frame). Apply rotate-then-translate to the spine
+                    // wire so the swept profile follows the placed coil,
+                    // matching FreeCAD's authored shape.
+                    if (feat.ext_params.count("helix_place_angle"))
+                    {
+                        brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
+                        brepgraph::Vec3 axis   = {
+                            ExtParam(feat, "helix_place_ox", 0.0),
+                            ExtParam(feat, "helix_place_oy", 0.0),
+                            ExtParam(feat, "helix_place_oz", 1.0)};
+                        int o_n = cg->AddConst(origin, "helix_place_origin");
+                        int d_n = cg->AddConst(axis,   "helix_place_axis");
+                        int a_n = cg->AddConst(
+                            ExtParam(feat, "helix_place_angle", 0.0),
+                            "helix_place_angle");
+                        wire_n = cg->AddOp("rotate", {wire_n, o_n, d_n, a_n},
+                                           {}, feat.name + ":helix_rot");
+                    }
+                    if (feat.ext_params.count("helix_place_px") ||
+                        feat.ext_params.count("helix_place_py") ||
+                        feat.ext_params.count("helix_place_pz"))
+                    {
+                        brepgraph::Vec3 off = {
+                            ExtParam(feat, "helix_place_px", 0.0),
+                            ExtParam(feat, "helix_place_py", 0.0),
+                            ExtParam(feat, "helix_place_pz", 0.0)};
+                        int o_n = cg->AddConst(off, "helix_place_offset");
+                        wire_n = cg->AddOp("translate", {wire_n, o_n},
+                                           {}, feat.name + ":helix_tr");
+                    }
                 }
                 else
                 {
@@ -993,9 +1051,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                     wire_n = AddSketchWireNode(*cg, *spine_sk);
                 }
-                int solid_n  = cg->AddConst(true, "is_solid");
+                int solid_n  = cg->AddConst(is_solid, "is_solid");
+                // FreeCAD Part::Sweep Frenet=true needs the true Frenet
+                // trihedron so a non-symmetric section stays radially
+                // oriented along the helix (a thread). Stashed as
+                // sweep_frenet; absent (-> false / corrected Frenet) for
+                // the PartDesign Pipe path, preserving its behavior.
+                bool sweep_frenet = (ExtParam(feat, "sweep_frenet", 0.0) != 0.0);
+                int frenet_n = cg->AddConst(sweep_frenet, "sweep_frenet");
                 int tool_n   = cg->AddOp("sweep",
-                                          {face_n, wire_n, solid_n},
+                                          {profile_n, wire_n, solid_n, frenet_n},
                                           {}, feat.name);
 
                 bool subtractive = false;

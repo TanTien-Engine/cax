@@ -85,12 +85,21 @@ public:
     // profile: cross-section wire/face
     // path:    sweep path wire
     // is_solid: produce solid (true) or shell (false)
+    // frenet:  true  -> GeomFill_IsFrenet trihedron (the profile follows
+    //                   the path's true Frenet frame; required for a
+    //                   non-symmetric section swept along a helix so it
+    //                   stays radially oriented, e.g. a thread -- matches
+    //                   FreeCAD Part::Sweep with Frenet=true);
+    //          false -> GeomFill_IsCorrectedFrenet (OCCT's default; what
+    //                   the circular-section PartDesign Pipe path relies
+    //                   on). Defaulted so existing callers are unchanged.
     static std::shared_ptr<TopoShape> Sweep(
         const std::shared_ptr<TopoShape>& profile,
         const std::shared_ptr<TopoShape>& path,
         bool is_solid,
         uint32_t op_id,
-        const std::shared_ptr<brepgraph::TopoNaming>& tn);
+        const std::shared_ptr<brepgraph::TopoNaming>& tn,
+        bool frenet = false);
 
     // ========================================================
     // HelixWire (FreeCAD Part::Helix spine)
