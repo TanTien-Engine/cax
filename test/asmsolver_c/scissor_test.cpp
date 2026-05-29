@@ -124,7 +124,25 @@ int main()
     std::printf("    (1-DOF mechanism: residual~0 = valid config; sub-mm drift "
                 "= the free scissor DOF)\n\n");
 
-    bool pass = ok1 && ok2;
+    // ---- (3) mobility / constraint diagnostics ----
+    // The constraint Jacobian has a clean rank gap (32 singular values
+    // ~O(1), then 4 at ~1e-16). mobility = 36 - 32 = 4: ONE useful lift DOF
+    // plus THREE idle DOF (each round pin spins freely about its own axis
+    // through its Revolute/Cylindrical joints -- a passive freedom). The 3
+    // redundant equations are the planar-Distance parallelism, already
+    // pinned by the kinematic chain (a real, consistent over-constraint,
+    // exactly what FreeCAD would also flag).
+    asmsolver::DofInfo dof = asmsolver::AnalyzeDof(G);
+    std::printf("(3) DOF analysis at ground truth:\n");
+    std::printf("    tangent_dofs=%d rank=%d intended=%d -> mobility=%d redundancy=%d\n",
+                dof.tangent_dofs, dof.rank, dof.intended_constraints,
+                dof.mobility, dof.redundancy);
+    bool ok3 = (dof.tangent_dofs == 36) && (dof.rank == 32) &&
+               (dof.mobility == 4) && (dof.redundancy == 3);
+    std::printf("    %s (mobility 4 = 1 lift + 3 idle pin spins; 3 redundant)\n\n",
+                ok3 ? "PASS" : "FAIL");
+
+    bool pass = ok1 && ok2 && ok3;
     std::printf("RESULT: %s\n", pass ? "PASS" : "FAIL");
     return pass ? 0 : 1;
 }

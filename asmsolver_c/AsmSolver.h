@@ -72,9 +72,24 @@ struct SolveResult {
     std::vector<double> joint_residuals;         // per joint, post-solve
 };
 
-// Solve: adjust assembly.bodies[] so every joint residual -> 0.
-// bodies[] is read as the initial guess and overwritten with the result.
+// Mobility / constraint diagnostics from the constraint Jacobian rank at
+// the assembly's current poses.
+struct DofInfo {
+    int tangent_dofs        = 0;  // 6 * number of bodies (SE(3) tangent)
+    int intended_constraints= 0;  // sum of DOF each joint is meant to remove
+    int rank                = 0;  // numerical rank of the constraint Jacobian
+    int mobility            = 0;  // tangent_dofs - rank: remaining DOF
+                                  // (0 = fully constrained, >0 = under-)
+    int redundancy          = 0;  // intended_constraints - rank: redundant
+                                  // (over-constrained) equations
+};
+
+// Adjust assembly.bodies[] so every joint residual -> 0. bodies[] is read
+// as the initial guess and overwritten with the result.
 SolveResult Solve(Assembly& assembly, const SolveOptions& opts = {});
+
+// Analyse mobility / over-constraint without moving the assembly.
+DofInfo AnalyzeDof(const Assembly& assembly);
 
 // Residual L2 norm of a single joint at the assembly's current poses
 // (no solving). For validation / over-constraint diagnostics.

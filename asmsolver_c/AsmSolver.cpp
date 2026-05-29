@@ -2,8 +2,12 @@
 
 #include <ceres/ceres.h>
 #include <Eigen/Geometry>
+#include <Eigen/SVD>
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 namespace asmsolver {
 namespace {
@@ -129,6 +133,53 @@ JointCost MakeJointCost(const Joint& j)
     return c;
 }
 
+// DOF each joint is meant to remove (its residual rank if non-degenerate).
+int ConstraintCount(const Joint& j)
+{
+    if (j.grounded) return 6;
+    switch (j.kind) {
+    case JointKind::Fixed:       return 6;
+    case JointKind::Revolute:    return 5;
+    case JointKind::Cylindrical: return 4;
+    case JointKind::Slider:      return 5;
+    case JointKind::Ball:        return 3;
+    case JointKind::Planar:      return 3;
+    case JointKind::Distance:    return j.radius > 0.0 ? 2 : 3;
+    }
+    return 0;
+}
+
+// Add every joint as a residual block + put each quaternion block on the
+// unit-quaternion manifold. Shared by Solve and AnalyzeDof.
+void BuildProblem(Assembly& A, ceres::Problem& prob)
+{
+    for (const auto& j : A.joints) {
+        if (j.grounded) {
+            if (j.body_a < 0) continue;
+            auto* g = new GroundedCost;
+            for (int i = 0; i < 3; ++i) g->tg[i] = j.conn_a.t[i];
+            for (int i = 0; i < 4; ++i) g->qg[i] = j.conn_a.q[i];
+            prob.AddResidualBlock(
+                new ceres::AutoDiffCostFunction<GroundedCost, 6, 3, 4>(g),
+                nullptr,
+                A.bodies[j.body_a].t.data(), A.bodies[j.body_a].q.data());
+        } else {
+            if (j.body_a < 0 || j.body_b < 0) continue;
+            auto* c = new JointCost(MakeJointCost(j));
+            prob.AddResidualBlock(
+                new ceres::AutoDiffCostFunction<JointCost, 6, 3, 4, 3, 4>(c),
+                nullptr,
+                A.bodies[j.body_a].t.data(), A.bodies[j.body_a].q.data(),
+                A.bodies[j.body_b].t.data(), A.bodies[j.body_b].q.data());
+        }
+    }
+    for (auto& b : A.bodies) {
+        if (prob.HasParameterBlock(b.q.data())) {
+            prob.SetManifold(b.q.data(), new ceres::EigenQuaternionManifold);
+        }
+    }
+}
+
 } // namespace
 
 double JointResidualNorm(const Assembly& A, const Joint& j)
@@ -166,32 +217,7 @@ SolveResult Solve(Assembly& A, const SolveOptions& opt)
     }
 
     ceres::Problem prob;
-    for (const auto& j : A.joints) {
-        if (j.grounded) {
-            if (j.body_a < 0) continue;
-            auto* g = new GroundedCost;
-            for (int i = 0; i < 3; ++i) g->tg[i] = j.conn_a.t[i];
-            for (int i = 0; i < 4; ++i) g->qg[i] = j.conn_a.q[i];
-            prob.AddResidualBlock(
-                new ceres::AutoDiffCostFunction<GroundedCost, 6, 3, 4>(g),
-                nullptr,
-                A.bodies[j.body_a].t.data(), A.bodies[j.body_a].q.data());
-        } else {
-            if (j.body_a < 0 || j.body_b < 0) continue;
-            auto* c = new JointCost(MakeJointCost(j));
-            prob.AddResidualBlock(
-                new ceres::AutoDiffCostFunction<JointCost, 6, 3, 4, 3, 4>(c),
-                nullptr,
-                A.bodies[j.body_a].t.data(), A.bodies[j.body_a].q.data(),
-                A.bodies[j.body_b].t.data(), A.bodies[j.body_b].q.data());
-        }
-    }
-    // quaternion blocks live on the unit-quaternion manifold
-    for (auto& b : A.bodies) {
-        if (prob.HasParameterBlock(b.q.data())) {
-            prob.SetManifold(b.q.data(), new ceres::EigenQuaternionManifold);
-        }
-    }
+    BuildProblem(A, prob);
 
     ceres::Solver::Options sopt;
     sopt.linear_solver_type           = ceres::DENSE_QR;
@@ -214,6 +240,65 @@ SolveResult Solve(Assembly& A, const SolveOptions& opt)
     out.converged = (sum.termination_type == ceres::CONVERGENCE) &&
                     (out.final_residual < 1e-4);
     return out;
+}
+
+DofInfo AnalyzeDof(const Assembly& assembly)
+{
+    DofInfo info;
+    Assembly A = assembly;   // local copy: Ceres needs mutable param pointers
+    info.tangent_dofs = 6 * static_cast<int>(A.bodies.size());
+    for (const auto& j : A.joints) info.intended_constraints += ConstraintCount(j);
+
+    // Non-dimensionalize: scale all lengths so translations are O(1),
+    // commensurate with the dimensionless tilt residuals. Without this the
+    // Jacobian's metre-scale translation rows vs O(1) rotation rows are so
+    // ill-scaled that rank-revealing SVD undercounts (mobility inflated).
+    double Lc = 0.0;
+    for (const auto& b : A.bodies)
+        Lc = std::max(Lc, std::sqrt(b.t[0]*b.t[0] + b.t[1]*b.t[1] + b.t[2]*b.t[2]));
+    const double S = (Lc > 1e-9) ? (1.0 / Lc) : 1.0;
+    for (auto& b : A.bodies) for (int k = 0; k < 3; ++k) b.t[k] *= S;
+    for (auto& j : A.joints) {
+        for (int k = 0; k < 3; ++k) { j.conn_a.t[k] *= S; j.conn_b.t[k] *= S; }
+        j.distance *= S;
+        j.radius   *= S;
+    }
+
+    ceres::Problem prob;
+    BuildProblem(A, prob);
+
+    ceres::Problem::EvaluateOptions eopt;
+    ceres::CRSMatrix jac;
+    double cost = 0.0;
+    if (!prob.Evaluate(eopt, &cost, nullptr, nullptr, &jac) ||
+        jac.num_rows == 0 || jac.num_cols == 0) {
+        info.mobility = info.tangent_dofs;   // no constraints resolved
+        return info;
+    }
+
+    // CRS -> dense (the Jacobian is in the manifold tangent space, so
+    // num_cols == tangent_dofs).
+    Eigen::MatrixXd J = Eigen::MatrixXd::Zero(jac.num_rows, jac.num_cols);
+    for (int r = 0; r < jac.num_rows; ++r)
+        for (int idx = jac.rows[r]; idx < jac.rows[r + 1]; ++idx)
+            J(r, jac.cols[idx]) = jac.values[idx];
+
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(J);
+    const auto& sv = svd.singularValues();
+    double tol = (sv.size() ? sv(0) : 0.0) * 1e-6;
+    int rank = 0;
+    for (int i = 0; i < sv.size(); ++i) if (sv(i) > tol) ++rank;
+    if (std::getenv("ASM_DEBUG_DOF")) {
+        std::printf("[dof] %dx%d S=%g..%g tol=%g sv:", jac.num_rows,
+                    jac.num_cols, sv(sv.size()-1), sv(0), tol);
+        for (int i = 0; i < sv.size(); ++i) std::printf(" %.3g", sv(i));
+        std::printf("\n");
+    }
+
+    info.rank       = rank;
+    info.mobility   = info.tangent_dofs - rank;
+    info.redundancy = info.intended_constraints - rank;
+    return info;
 }
 
 } // namespace asmsolver
