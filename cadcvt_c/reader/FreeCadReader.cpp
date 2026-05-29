@@ -5206,6 +5206,16 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 stash_ref("Reference2", "joint_ref2_part", "joint_ref2_elem");
                 stash_pose("Placement1", "joint_p1");
                 stash_pose("Placement2", "joint_p2");
+
+                // Distance joint offset (App::PropertyFloat, in mm ->
+                // scale to IR metres). Consumed by the assembly solver
+                // adapter; harmless metadata for the other joint kinds.
+                if (auto dp = FindProperty(props, "Distance")) {
+                    if (auto fl = dp.child("Float")) {
+                        feat.ext_params["joint_distance"] =
+                            fl.attribute("value").as_double(0.0) * m_unit_scale;
+                    }
+                }
             }
 
             feat.data = std::move(pl);

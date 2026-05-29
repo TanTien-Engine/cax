@@ -522,6 +522,26 @@ if(NOT TARGET spatialdb)
 endif()
 
 ################################################################################
+# asmsolver -- 3D assembly constraint solver (Ceres-backed)
+#
+# Kept as a SEPARATE static library, gated on find_package(Ceres), so the
+# heavy Ceres / glog / SuiteSparse dependency is NOT imposed on the main
+# cax target. Disabled silently when Ceres isn't installed.
+################################################################################
+set(CAX_ASMSOLVER_OK FALSE)
+find_package(Ceres QUIET)
+if(Ceres_FOUND)
+    set(CAX_ASMSOLVER_OK TRUE)
+    add_library(asmsolver STATIC asmsolver_c/AsmSolver.cpp)
+    target_include_directories(asmsolver PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_link_libraries(asmsolver PUBLIC Ceres::ceres)
+    target_compile_features(asmsolver PUBLIC cxx_std_17)
+    message(STATUS "asmsolver: enabled (Ceres ${Ceres_VERSION})")
+else()
+    message(STATUS "asmsolver: disabled (Ceres not found; brew install ceres-solver)")
+endif()
+
+################################################################################
 # Unit tests
 ################################################################################
 option(CAX_BUILD_TESTS "Build unit tests" ON)
@@ -537,6 +557,9 @@ if(CAX_BUILD_TESTS)
     # gate is the same one that compiles the reader into cax.
     if(CADCVT_FREECAD_DEPS_OK)
         add_subdirectory(test/cadcvt_c)
+    endif()
+    if(CAX_ASMSOLVER_OK)
+        add_subdirectory(test/asmsolver_c)
     endif()
 endif()
 
