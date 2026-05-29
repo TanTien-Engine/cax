@@ -64,10 +64,11 @@ Assembly BuildScissorLift()
     A.joints.push_back(J(JointKind::Revolute,    4, 1, C(-78.7,0,4.5),C(0,0,3),    "Revolute001 pin_2-arm_1"));
     A.joints.push_back(J(JointKind::Revolute,    2, 4, C(0,23.6,0),  C(-78.7,0,4.5),"Revolute002 arm_2-pin_2"));
     A.joints.push_back(J(JointKind::Revolute,    5, 2, C(-78.7,0,9.0),C(-50,23.6,3),"Revolute003 pin_3-arm_2"));
-    // Distance001 base.Face6 (plane) <-> pin_3.Face1 (cylinder, r=2mm from BREP)
+    // Distance001 base.Face6 (plane) <-> pin_3.Face1 (cylinder, r=1.5mm from
+    // the BREP); plane sits d=0.25mm outside the surface -> axis at r+d=1.75.
     A.joints.push_back(J(JointKind::Distance,    0, 5,
                          P(-4,-1.75,1.5, -0.70711,0,0,0.70711), C(-78.7,0,4.5),
-                         "Distance001 base-pin_3", 0.25, 2.0));
+                         "Distance001 base-pin_3", 0.25, 1.5));
     return A;
 }
 

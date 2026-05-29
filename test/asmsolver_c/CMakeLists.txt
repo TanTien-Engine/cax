@@ -17,7 +17,11 @@ if(CADCVT_FREECAD_DEPS_OK)
         TKDESTEP TKDE TKXSBase TKXCAF TKLCAF TKCDF
         TKBO TKBool TKFillet TKHLR
     )
-    add_executable(asmsolver_import_test import_solve_test.cpp)
+    # IrAdapterGeom is OCCT-dependent (cylinder-radius resolution), so it is
+    # compiled into this OCCT-linked test rather than the OCCT-free core lib.
+    add_executable(asmsolver_import_test
+        import_solve_test.cpp
+        ${ASM_REPO_ROOT}/asmsolver_c/IrAdapterGeom.cpp)
     target_include_directories(asmsolver_import_test PRIVATE
         ${ASM_REPO_ROOT} ${OpenCASCADE_INCLUDE_DIR})
     target_link_libraries(asmsolver_import_test PRIVATE

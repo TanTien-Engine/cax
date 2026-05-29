@@ -83,7 +83,10 @@ struct JointCost {
             r[0]=t_rel[2]; r[1]=zB[0]; r[2]=zB[1];            break;
         case JointKind::Distance:
             if (radius > 0.0) {                 // plane-to-cylinder
-                r[0]=t_rel[2] - T(radius - distance);
+                // plane sits `distance` outside the cylinder surface, so
+                // plane-to-axis = radius + distance (measured along the
+                // plane normal = connector Z).
+                r[0]=t_rel[2] - T(radius + distance);
                 r[1]=zB[2];                     // axis lies in the plane
             } else {                            // plane-to-plane
                 r[0]=t_rel[2] - T(distance);

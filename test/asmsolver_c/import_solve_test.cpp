@@ -10,6 +10,7 @@
 
 #include "asmsolver_c/AsmSolver.h"
 #include "asmsolver_c/IrAdapter.h"
+#include "asmsolver_c/IrAdapterGeom.h"
 #include "cadcvt_c/reader/FreeCadReader.h"
 #include "cadapp_c/ir/FeatureIR.h"
 
@@ -35,8 +36,10 @@ int main(int argc, char** argv)
     }
 
     asmsolver::ImportResult R = asmsolver::BuildAssembly(doc);
-    std::printf("imported: %zu bodies, %d joints built, %d skipped\n",
-                R.assembly.bodies.size(), R.joints_built, R.joints_skipped);
+    int nrad = asmsolver::ResolveCylinderRadii(R, doc);
+    std::printf("imported: %zu bodies, %d joints built, %d skipped, "
+                "%d cylinder radii resolved\n",
+                R.assembly.bodies.size(), R.joints_built, R.joints_skipped, nrad);
     for (size_t i = 0; i < R.body_names.size(); ++i) {
         const auto& p = R.assembly.bodies[i];
         std::printf("  body[%zu] %-8s t=(%.4f,%.4f,%.4f)\n",
@@ -51,8 +54,12 @@ int main(int argc, char** argv)
         double r = asmsolver::JointResidualNorm(R.assembly, j);
         bool ok = r < kTol;
         if (ok) ++n_ok; else ++n_gap;
-        std::printf("  %-26s |r| = %.3e  %s\n", j.name.c_str(), r,
-                    ok ? "ok" : "<-- radius gap (Inc3)");
+        std::printf("  %-26s |r| = %.3e  %s%s\n", j.name.c_str(), r,
+                    ok ? "ok" : "<-- UNRESOLVED",
+                    (j.kind == asmsolver::JointKind::Distance)
+                        ? (" [d=" + std::to_string(j.distance) +
+                           " radius=" + std::to_string(j.radius) + "]").c_str()
+                        : "");
     }
 
     // perturb non-grounded bodies, re-solve
@@ -76,13 +83,14 @@ int main(int argc, char** argv)
                 sr.termination.c_str(), sr.iterations,
                 sr.initial_residual, sr.final_residual);
 
-    // success: adapter rebuilt the graph (6 bodies, 8 joints, none skipped)
-    // and exactly the documented plane-cylinder Distance is the lone gap.
+    // success: adapter rebuilt the graph (6 bodies, 8 joints, none skipped),
+    // the plane-cylinder radius resolved from OCCT, and EVERY joint is
+    // satisfied at the imported configuration.
     bool pass = (R.assembly.bodies.size() == 6) &&
                 (R.joints_built == 8) && (R.joints_skipped == 0) &&
-                (n_ok == 7) && (n_gap == 1) &&
+                (nrad == 1) && (n_ok == 8) && (n_gap == 0) &&
                 (sr.termination == "CONVERGENCE");
-    std::printf("RESULT: %s  (%d ok / %d gap)\n", pass ? "PASS" : "FAIL",
-                n_ok, n_gap);
+    std::printf("RESULT: %s  (%d ok / %d unresolved, %d radii)\n",
+                pass ? "PASS" : "FAIL", n_ok, n_gap, nrad);
     return pass ? 0 : 1;
 }
