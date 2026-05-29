@@ -4,6 +4,7 @@
 #include "cadapp_c/ir/FeatureIR.h"
 
 #include <cmath>
+#include <unordered_map>
 
 namespace asmsolver {
 namespace {
@@ -66,6 +67,7 @@ ImportResult BuildAssembly(const cadapp::DocumentIR& doc)
         int idx = static_cast<int>(R.assembly.bodies.size());
         R.body_index[name] = idx;
         R.body_names.push_back(name);
+        R.body_tip_feat.push_back(-1);
         R.assembly.bodies.push_back(Pose{});   // identity until a tip sets it
         return idx;
     };
@@ -79,6 +81,7 @@ ImportResult BuildAssembly(const cadapp::DocumentIR& doc)
         int idx = ensure_body(body);
         if (f.ext_params.count("asm_px") || f.ext_params.count("asm_angle")) {
             R.assembly.bodies[idx] = poseFrom(f, "asm");
+            R.body_tip_feat[idx]   = static_cast<int>(f.id);
         }
     }
 
@@ -126,6 +129,43 @@ ImportResult BuildAssembly(const cadapp::DocumentIR& doc)
     }
 
     return R;
+}
+
+int ApplyToDocument(cadapp::DocumentIR& doc, const ImportResult& R)
+{
+    std::unordered_map<uint32_t, cadapp::FeatureIR*> by_id;
+    for (auto& f : doc.features) by_id[f.id] = &f;
+
+    int written = 0;
+    for (size_t i = 0; i < R.assembly.bodies.size() && i < R.body_tip_feat.size(); ++i) {
+        int fid = R.body_tip_feat[i];
+        if (fid < 0) continue;
+        auto it = by_id.find(static_cast<uint32_t>(fid));
+        if (it == by_id.end()) continue;
+        cadapp::FeatureIR& f = *it->second;
+        const Pose& p = R.assembly.bodies[i];
+
+        // quaternion (x,y,z,w) -> axis-angle (the reader/Replayer asm_*
+        // convention); poseFrom() is the exact inverse, so this round-trips.
+        double qw = p.q[3];
+        if (qw >  1.0) qw =  1.0;
+        if (qw < -1.0) qw = -1.0;
+        double angle = 2.0 * std::acos(qw);
+        double s = std::sqrt(1.0 - qw * qw > 0.0 ? 1.0 - qw * qw : 0.0);
+        double ox, oy, oz;
+        if (s < 1e-9) { ox = 0.0; oy = 0.0; oz = 1.0; angle = 0.0; }
+        else          { ox = p.q[0]/s; oy = p.q[1]/s; oz = p.q[2]/s; }
+
+        f.ext_params["asm_px"]    = p.t[0];
+        f.ext_params["asm_py"]    = p.t[1];
+        f.ext_params["asm_pz"]    = p.t[2];
+        f.ext_params["asm_ox"]    = ox;
+        f.ext_params["asm_oy"]    = oy;
+        f.ext_params["asm_oz"]    = oz;
+        f.ext_params["asm_angle"] = angle;
+        ++written;
+    }
+    return written;
 }
 
 } // namespace asmsolver

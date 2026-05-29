@@ -15,6 +15,7 @@
 #include "cadapp_c/ir/FeatureIR.h"
 
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -83,14 +84,36 @@ int main(int argc, char** argv)
                 sr.termination.c_str(), sr.iterations,
                 sr.initial_residual, sr.final_residual);
 
+    // ---- write-back round-trip (the edit loop's persistence step) ----
+    // Persist the re-solved configuration into the document's asm_* (what
+    // the Replayer reads to place each part), then re-import and confirm
+    // the poses survived and still satisfy every joint.
+    int nwritten = asmsolver::ApplyToDocument(doc, R);
+    asmsolver::ImportResult R2 = asmsolver::BuildAssembly(doc);
+    asmsolver::ResolveCylinderRadii(R2, doc);
+    double maxdp = 0.0;
+    for (size_t i = 0; i < R.assembly.bodies.size(); ++i)
+        for (int k = 0; k < 3; ++k)
+            maxdp = std::max(maxdp,
+                std::fabs(R.assembly.bodies[i].t[k] - R2.assembly.bodies[i].t[k]));
+    double r2res = 0.0;
+    for (const auto& j : R2.assembly.joints) {
+        double n = asmsolver::JointResidualNorm(R2.assembly, j);
+        r2res += n * n;
+    }
+    r2res = std::sqrt(r2res);
+    bool ok_wb = (nwritten == 6) && (maxdp < 1e-6) && (r2res < 1e-3);
+    std::printf("write-back: %d poses written; reimport max|dt|=%.2e residual=%.2e -> %s\n",
+                nwritten, maxdp, r2res, ok_wb ? "PASS" : "FAIL");
+
     // success: adapter rebuilt the graph (6 bodies, 8 joints, none skipped),
     // the plane-cylinder radius resolved from OCCT, and EVERY joint is
     // satisfied at the imported configuration.
     bool pass = (R.assembly.bodies.size() == 6) &&
                 (R.joints_built == 8) && (R.joints_skipped == 0) &&
                 (nrad == 1) && (n_ok == 8) && (n_gap == 0) &&
-                (sr.termination == "CONVERGENCE");
-    std::printf("RESULT: %s  (%d ok / %d unresolved, %d radii)\n",
-                pass ? "PASS" : "FAIL", n_ok, n_gap, nrad);
+                (sr.termination == "CONVERGENCE") && ok_wb;
+    std::printf("RESULT: %s  (%d ok / %d unresolved, %d radii, writeback=%s)\n",
+                pass ? "PASS" : "FAIL", n_ok, n_gap, nrad, ok_wb ? "ok" : "no");
     return pass ? 0 : 1;
 }
