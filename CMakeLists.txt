@@ -532,7 +532,9 @@ set(CAX_ASMSOLVER_OK FALSE)
 find_package(Ceres QUIET)
 if(Ceres_FOUND)
     set(CAX_ASMSOLVER_OK TRUE)
-    add_library(asmsolver STATIC asmsolver_c/AsmSolver.cpp)
+    add_library(asmsolver STATIC
+        asmsolver_c/AsmSolver.cpp
+        asmsolver_c/IrAdapter.cpp)
     target_include_directories(asmsolver PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(asmsolver PUBLIC Ceres::ceres)
     target_compile_features(asmsolver PUBLIC cxx_std_17)
