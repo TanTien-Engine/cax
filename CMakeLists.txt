@@ -524,23 +524,47 @@ endif()
 ################################################################################
 # asmsolver -- 3D assembly constraint solver (Ceres-backed)
 #
-# Kept as a SEPARATE static library, gated on find_package(Ceres), so the
-# heavy Ceres / glog / SuiteSparse dependency is NOT imposed on the main
-# cax target. Disabled silently when Ceres isn't installed.
+# Ceres is a git submodule (thirdparty/ceres-solver), built minimally from
+# source so no per-machine install is needed and the version is pinned in
+# tree. Kept a SEPARATE static library so the dependency is NOT imposed on
+# the main cax target. Disabled silently when the submodule is absent.
 ################################################################################
 set(CAX_ASMSOLVER_OK FALSE)
-find_package(Ceres QUIET)
-if(Ceres_FOUND)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ceres-solver/CMakeLists.txt" AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/eigen/CMakeLists.txt")
     set(CAX_ASMSOLVER_OK TRUE)
+
+    # Ceres does find_package(Eigen3 3.3 REQUIRED). Resolve it to the shared
+    # vendored Eigen submodule headers via a shim package (the submodule
+    # tracks Eigen master / 5.x, whose own config would reject the 3.3
+    # request on major version). No system Eigen needed.
+    set(Eigen3_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake/eigen3-shim")
+
+    # Minimal Ceres: bundled miniglog, no gflags / SuiteSparse / CUDA /
+    # LAPACK / tests / examples / benchmarks. DENSE_QR (pure Eigen) is all
+    # asmsolver uses.
+    set(MINIGLOG ON)
+    set(GFLAGS OFF)
+    set(SUITESPARSE OFF)
+    set(USE_CUDA OFF)
+    set(LAPACK OFF)
+    set(BUILD_TESTING OFF)
+    set(BUILD_EXAMPLES OFF)
+    set(BUILD_BENCHMARKS OFF)
+    set(BUILD_DOCUMENTATION OFF)
+    set(PROVIDE_UNINSTALL_TARGET OFF)
+    add_subdirectory(thirdparty/ceres-solver EXCLUDE_FROM_ALL)
+
     add_library(asmsolver STATIC
         asmsolver_c/AsmSolver.cpp
         asmsolver_c/IrAdapter.cpp)
     target_include_directories(asmsolver PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
     target_link_libraries(asmsolver PUBLIC Ceres::ceres)
     target_compile_features(asmsolver PUBLIC cxx_std_17)
-    message(STATUS "asmsolver: enabled (Ceres ${Ceres_VERSION})")
+    message(STATUS "asmsolver: enabled (vendored Ceres submodule)")
 else()
-    message(STATUS "asmsolver: disabled (Ceres not found; brew install ceres-solver)")
+    message(STATUS "asmsolver: disabled (run: git submodule update --init "
+                   "thirdparty/ceres-solver thirdparty/eigen)")
 endif()
 
 ################################################################################
