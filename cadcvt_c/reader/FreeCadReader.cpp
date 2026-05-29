@@ -38,6 +38,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -549,6 +550,17 @@ std::string PathParentDir(const std::string& path)
 // links B, B links A). Stored thread-locally so concurrent Reader
 // invocations on different threads do not interfere.
 thread_local std::unordered_set<std::string> g_link_path_stack;
+
+// Parsed-sub-document cache, keyed by resolved sub_path. An assembly
+// links the same component file once per instance (and nested asms
+// re-link shared parts), so without this the same .FCStd is fully
+// re-parsed dozens of times. Holds the pristine flattened parse in the
+// component's LOCAL frame; each link instance gets a deep copy that the
+// merge below consumes (re-ids + composes that instance's placement),
+// so reuse is exactly equivalent to re-reading. Cleared at the
+// outermost ReadFile. DocumentIR copies share authored_shapes via
+// shared_ptr, so the copy is cheap.
+thread_local std::map<std::string, cadapp::DocumentIR> g_subdoc_cache;
 
 // Remap every feature-id reference that lives INSIDE a FeaturePayload
 // variant or in ext_params (where readers stash auxiliary ids that
@@ -1097,6 +1109,24 @@ bool LoadFileBytes(const std::string& path, std::vector<char>& out)
 } // anonymous namespace
 
 
+// Authored-shape cache. The reader is single-threaded; within one
+// .FCStd every Fillet/Chamfer loads its base + own .brp (and body
+// chains re-reference ancestors), so the same shape was otherwise
+// unzipped + BRepTools::Read dozens of times. Keyed by the in-zip
+// filename; cleared per archive in CloseArchive (which OpenArchive
+// always calls first). TopoDS_Shape is handle-based, so cached copies
+// share the underlying TShape cheaply, and reader use is read-only
+// (centroid / normal / edge sampling), so sharing is safe.
+namespace
+{
+std::map<std::string, TopoDS_Shape>& AuthoredShapeCache()
+{
+    static std::map<std::string, TopoDS_Shape> c;
+    return c;
+}
+} // anonymous namespace
+
+
 bool FreeCadReader::OpenArchive(const std::string& path, std::string* err_msg)
 {
     CloseArchive();
@@ -1128,6 +1158,9 @@ void FreeCadReader::CloseArchive()
         delete zip;
         m_zip = nullptr;
     }
+    // Reset the per-archive authored-shape cache; the next archive may
+    // reuse .brp filenames with different contents.
+    AuthoredShapeCache().clear();
 }
 
 bool FreeCadReader::ExtractDocumentXml(const std::string& path,
@@ -1294,6 +1327,16 @@ bool LoadAuthoredShape(void*               opaque_zip,
     if (!opaque_zip || brep_filename.empty()) {
         return false;
     }
+    // Serve from cache when this .brp was already deserialized for the
+    // current archive (see AuthoredShapeCache comment).
+    auto& cache = AuthoredShapeCache();
+    {
+        auto it = cache.find(brep_filename);
+        if (it != cache.end()) {
+            out = it->second;   // handle copy; shares underlying TShape
+            return !out.IsNull();
+        }
+    }
     auto* zip = static_cast<mz_zip_archive*>(opaque_zip);
 
     int idx = mz_zip_reader_locate_file(zip, brep_filename.c_str(), nullptr, 0);
@@ -1323,6 +1366,7 @@ bool LoadAuthoredShape(void*               opaque_zip,
         return false;
     }
 
+    cache.emplace(brep_filename, shape);
     out = shape;
     return true;
 }
@@ -2455,6 +2499,13 @@ bool FreeCadReader::ReadFile(const std::string& path,
     out          = DocumentIR{};
     out.source   = Name();
     out.doc_path = path;
+
+    // The sub-doc cache is scoped to one top-level conversion: sub_path
+    // keys are resolved relative to the host doc, and a fresh conversion
+    // may target different files. Clear it at the outermost call.
+    if (g_link_path_stack.empty()) {
+        g_subdoc_cache.clear();
+    }
 
     m_name_to_id.clear();
     m_sk_geo_idx_to_id.clear();
@@ -4311,39 +4362,55 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                                      ? linked_file
                                      : (host_dir + "/" + linked_file);
 
-                if (g_link_path_stack.count(sub_path))
-                {
-                    if (err_msg) {
-                        *err_msg = "App::Link cycle: " + sub_path
-                                 + " (host: " + out.doc_path + ")";
-                    }
-                    return false;
-                }
-
-                FreeCadReader sub_reader;
-                sub_reader.SetUnitScale(m_unit_scale);
-                sub_reader.SetStrict(m_strict);
-
                 DocumentIR  sub_doc;
                 std::string sub_err;
 
-                g_link_path_stack.insert(sub_path);
-                bool sub_ok = sub_reader.ReadFile(sub_path,
-                                                  sub_doc,
-                                                  &sub_err);
-                g_link_path_stack.erase(sub_path);
-
-                if (!sub_ok)
+                auto cache_it = g_subdoc_cache.find(sub_path);
+                if (cache_it != g_subdoc_cache.end())
                 {
-                    if (err_msg)
+                    // Reuse the pristine flattened parse. The merge
+                    // below deep-consumes this copy, applying THIS
+                    // instance's re-id + placement -- equivalent to a
+                    // fresh read, minus the unzip/parse/brep cost.
+                    sub_doc = cache_it->second;
+                }
+                else
+                {
+                    if (g_link_path_stack.count(sub_path))
                     {
-                        std::ostringstream oss;
-                        oss << "App::Link " << pending.name
-                            << " sub-doc read failed ("
-                            << sub_path << "): " << sub_err;
-                        *err_msg = oss.str();
+                        if (err_msg) {
+                            *err_msg = "App::Link cycle: " + sub_path
+                                     + " (host: " + out.doc_path + ")";
+                        }
+                        return false;
                     }
-                    return false;
+
+                    FreeCadReader sub_reader;
+                    sub_reader.SetUnitScale(m_unit_scale);
+                    sub_reader.SetStrict(m_strict);
+
+                    g_link_path_stack.insert(sub_path);
+                    bool sub_ok = sub_reader.ReadFile(sub_path,
+                                                      sub_doc,
+                                                      &sub_err);
+                    g_link_path_stack.erase(sub_path);
+
+                    if (!sub_ok)
+                    {
+                        if (err_msg)
+                        {
+                            std::ostringstream oss;
+                            oss << "App::Link " << pending.name
+                                << " sub-doc read failed ("
+                                << sub_path << "): " << sub_err;
+                            *err_msg = oss.str();
+                        }
+                        return false;
+                    }
+
+                    // Cache the pristine parse BEFORE the merge below
+                    // mutates/moves out of sub_doc.
+                    g_subdoc_cache.emplace(sub_path, sub_doc);
                 }
 
                 // Parse the host-side Placement up-front so we can

@@ -146,7 +146,9 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::sha
     // freshly-loaded shape often have no polygonal representation
     // attached and PolygonOfEdge returns null.
     BRepLib::BuildCurves3d(src);
-    BRepMesh_IncrementalMesh algo(src, 0.01, Standard_False, 0.1);
+    // Last arg enables OCCT's per-face parallel meshing (uses its internal
+    // OSD_ThreadPool); tessellation is the dominant cost when re-meshing.
+    BRepMesh_IncrementalMesh algo(src, 0.01, Standard_False, 0.1, Standard_True);
     algo.Perform();
 
     std::vector<Vertex> vertices;
@@ -310,7 +312,9 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
         BRepLib::BuildCurves3d(shape);
 
         BRepTools::Clean(shape);
-        BRepMesh_IncrementalMesh algo(shape, 0.01, Standard_False, 0.1);
+        // Last arg enables OCCT's per-face parallel meshing (uses its internal
+        // OSD_ThreadPool); tessellation is the dominant cost when re-meshing.
+        BRepMesh_IncrementalMesh algo(shape, 0.01, Standard_False, 0.1, Standard_True);
         algo.Perform();
 
         TriangulationFaces(shape, vertices, alpha);
