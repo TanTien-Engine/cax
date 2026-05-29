@@ -953,20 +953,46 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     sketch_face_nodes[p.profile_sketch_id] = face_n;
                 }
 
-                uint32_t spine_id = 0xFFFFFFFF;
-                auto sit = feat.ext_params.find("spine_sketch_id");
-                if (sit != feat.ext_params.end()) {
-                    spine_id = (uint32_t)sit->second;
-                }
-                const SketchIR* spine_sk = FindSketch(doc, spine_id);
-                if (!spine_sk)
+                int wire_n;
+                auto kit = feat.ext_strings.find("spine_kind");
+                if (kit != feat.ext_strings.end() && kit->second == "helix")
                 {
-                    step_ok     = false;
-                    out.err_msg = "missing spine sketch for sweep: " + feat.name;
-                    return;
+                    // Parametric helix spine (FreeCAD Part::Helix behind
+                    // a PartDesign::FeatureBase). The reader couldn't
+                    // map the spine to a sketch, so it stashed the coil
+                    // params; rebuild the spine wire via the helix_wire
+                    // op rather than from a sketch profile.
+                    auto getp = [&](const char* k) -> double {
+                        auto it = feat.ext_params.find(k);
+                        return (it != feat.ext_params.end()) ? it->second : 0.0;
+                    };
+                    int pitch_n  = cg->AddConst(getp("helix_pitch"),  "helix_pitch");
+                    int height_n = cg->AddConst(getp("helix_height"), "helix_height");
+                    int radius_n = cg->AddConst(getp("helix_radius"), "helix_radius");
+                    int angle_n  = cg->AddConst(getp("helix_angle"),  "helix_cone_angle");
+                    int lh_n     = cg->AddConst(getp("helix_left_handed") != 0.0,
+                                                 "helix_left_handed");
+                    wire_n = cg->AddOp("helix_wire",
+                                       {pitch_n, height_n, radius_n, angle_n, lh_n},
+                                       {}, feat.name + ":helix");
                 }
+                else
+                {
+                    uint32_t spine_id = 0xFFFFFFFF;
+                    auto sit = feat.ext_params.find("spine_sketch_id");
+                    if (sit != feat.ext_params.end()) {
+                        spine_id = (uint32_t)sit->second;
+                    }
+                    const SketchIR* spine_sk = FindSketch(doc, spine_id);
+                    if (!spine_sk)
+                    {
+                        step_ok     = false;
+                        out.err_msg = "missing spine sketch for sweep: " + feat.name;
+                        return;
+                    }
 
-                int wire_n   = AddSketchWireNode(*cg, *spine_sk);
+                    wire_n = AddSketchWireNode(*cg, *spine_sk);
+                }
                 int solid_n  = cg->AddConst(true, "is_solid");
                 int tool_n   = cg->AddOp("sweep",
                                           {face_n, wire_n, solid_n},

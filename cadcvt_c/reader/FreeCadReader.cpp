@@ -532,6 +532,34 @@ void QuatToAxisAngle(double qx, double qy, double qz, double qw,
     az = qz / s;
 }
 
+// Read a Part::Helix's parametric properties off its <Properties>
+// node and stash them on the Sweep FeatureIR so the Replayer can
+// rebuild the spine wire (helix_wire op) instead of pulling a sketch
+// wire. Lengths are scaled mm->m; Angle is an App::PropertyAngle in
+// degrees and becomes the cone half-angle in radians. LocalCoord is
+// an enum (0 = right-handed, 1 = left-handed). The Style/Placement
+// are intentionally ignored: a PartDesign::FeatureBase clones the
+// source helix's LOCAL geometry (placement is NOT applied), so we
+// build the coil in the +Z local frame just like FreeCAD does here.
+void ReadHelixSpine(const pugi::xml_node& helix_props,
+                    double                unit_scale,
+                    cadapp::FeatureIR&    feat)
+{
+    constexpr double kPi = 3.14159265358979323846;
+    double pitch  = PropDouble(helix_props, "Pitch",  0.0) * unit_scale;
+    double height = PropDouble(helix_props, "Height", 0.0) * unit_scale;
+    double radius = PropDouble(helix_props, "Radius", 0.0) * unit_scale;
+    double angle  = PropDouble(helix_props, "Angle",  0.0) * (kPi / 180.0);
+    int    local  = PropInt   (helix_props, "LocalCoord", 0);
+
+    feat.ext_strings["spine_kind"]      = "helix";
+    feat.ext_params["helix_pitch"]      = pitch;
+    feat.ext_params["helix_height"]     = height;
+    feat.ext_params["helix_radius"]     = radius;
+    feat.ext_params["helix_angle"]      = angle;
+    feat.ext_params["helix_left_handed"] = (local == 1) ? 1.0 : 0.0;
+}
+
 // Return the parent directory of an absolute or relative file path
 // (everything up to the last '/' or '\\'); empty on no separator.
 std::string PathParentDir(const std::string& path)
@@ -2633,6 +2661,38 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         data_by_name[AttrStr(obj, "name")] = obj;
     }
 
+    // Follow a Sweep Spine link to the underlying Part::Helix, hopping
+    // through a PartDesign::FeatureBase wrapper when present (a Helix
+    // dropped into a Body becomes a FeatureBase whose BaseFeature link
+    // points back at the original Part::Helix; the Spine references the
+    // FeatureBase, not the helix). Returns the helix object's name, or
+    // an empty string when the spine is an ordinary sketch. Used both
+    // to detect a parametric coil spine and to suppress the now-fully-
+    // consumed Helix object from standalone emission.
+    auto resolve_helix_name = [&](const std::string& spine_name) -> std::string
+    {
+        std::string name = spine_name;
+        for (int hop = 0; hop < 8 && !name.empty(); ++hop)
+        {
+            auto bit = by_name.find(name);
+            auto dit = data_by_name.find(name);
+            if (bit == by_name.end() || dit == data_by_name.end()) {
+                return std::string{};
+            }
+            const std::string& type = bit->second->type;
+            if (type == "Part::Helix") {
+                return name;
+            }
+            if (type == "PartDesign::FeatureBase") {
+                name = PropLink(dit->second.child("Properties"),
+                                "BaseFeature").object_name;
+                continue;
+            }
+            return std::string{};  // a sketch spine, not a helix
+        }
+        return std::string{};
+    };
+
     // ---- Map object name -> authored .brp filename ----
     //
     // PartDesign features carry a "Shape" property of type
@@ -2717,6 +2777,35 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
     }
 
+    // ---- Collect helix spines consumed by a Pipe ----
+    //
+    // When an AdditivePipe / SubtractivePipe sweeps along a Part::Helix
+    // (referenced through a PartDesign::FeatureBase), the reader rebuilds
+    // the coil parametrically as the sweep spine. The standalone Helix
+    // object then carries no independent geometry of its own and, left in
+    // the emission list, would surface as an Unknown/opaque feature the
+    // Replayer can only log "skipped unimplemented feature: Helix" for.
+    // Track those helix names so the emission walk skips them; the
+    // FeatureBase wrapper is left alone (it already replays as a clean
+    // node=-1 base reference, no warning).
+    std::unordered_set<std::string> consumed_helix_objs;
+    for (const auto& pending : queue)
+    {
+        if (pending.type != "PartDesign::AdditivePipe" &&
+            pending.type != "PartDesign::SubtractivePipe") {
+            continue;
+        }
+        auto it = data_by_name.find(pending.name);
+        if (it == data_by_name.end()) {
+            continue;
+        }
+        LinkRef spine = PropLink(it->second.child("Properties"), "Spine");
+        std::string helix = resolve_helix_name(spine.object_name);
+        if (!helix.empty()) {
+            consumed_helix_objs.insert(helix);
+        }
+    }
+
     // ---- Compute emission order ----
     //
     // PartDesign::Body containers carry a Group property listing
@@ -2733,6 +2822,12 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     // Children owned by a MultiTransform must never be emitted
     // standalone; the MultiTransform itself encodes their effect.
     for (const auto& n : mt_children) {
+        seen.insert(n);
+    }
+
+    // A Part::Helix that a Pipe consumes as its spine is rebuilt
+    // parametrically inside the sweep; never emit it standalone.
+    for (const auto& n : consumed_helix_objs) {
         seen.insert(n);
     }
 
@@ -2892,6 +2987,21 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
     {
         push_if_unseen(&pending);
     }
+
+    // Resolve a Sweep Spine link to the underlying Part::Helix's
+    // <Properties> node (via resolve_helix_name, which walks any
+    // FeatureBase indirection), or an empty node when the spine is an
+    // ordinary sketch.
+    auto find_helix_props = [&](const std::string& spine_name) -> pugi::xml_node
+    {
+        std::string helix = resolve_helix_name(spine_name);
+        if (helix.empty()) {
+            return pugi::xml_node{};
+        }
+        auto dit = data_by_name.find(helix);
+        return (dit != data_by_name.end()) ? dit->second.child("Properties")
+                                           : pugi::xml_node{};
+    };
 
     // ---- Second pass: build IR per object in emission order ----
     for (const Pending* pending_ptr : emission)
@@ -3403,26 +3513,39 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             LinkRef spine = PropLink(props, "Spine");
             if (!spine.object_name.empty())
             {
-                auto sid = m_name_to_id.find(spine.object_name);
-                if (sid != m_name_to_id.end()) {
-                    feat.ext_params["spine_sketch_id"] =
-                        (double)sid->second;
-                }
-                // Sub-edge selections (Edge1/Edge2/...) are stashed
-                // for diagnostics; the Replayer currently uses the
-                // whole non-construction wire from the spine sketch.
-                if (!spine.sub_names.empty())
+                // A Spine pointing (possibly through a FeatureBase) at
+                // a Part::Helix means a parametric coil: read the helix
+                // params so the Replayer rebuilds the spine via the
+                // helix_wire op. Otherwise the spine is a sketch wire.
+                pugi::xml_node helix_props = find_helix_props(spine.object_name);
+                if (helix_props)
                 {
-                    std::ostringstream oss;
-                    oss << spine.object_name;
-                    for (size_t k = 0; k < spine.sub_names.size(); ++k) {
-                        oss << "," << spine.sub_names[k];
-                    }
-                    feat.ext_strings["spine_ref"] = oss.str();
+                    ReadHelixSpine(helix_props, m_unit_scale, feat);
+                    feat.ext_strings["spine_ref"] = spine.object_name;
                 }
                 else
                 {
-                    feat.ext_strings["spine_ref"] = spine.object_name;
+                    auto sid = m_name_to_id.find(spine.object_name);
+                    if (sid != m_name_to_id.end()) {
+                        feat.ext_params["spine_sketch_id"] =
+                            (double)sid->second;
+                    }
+                    // Sub-edge selections (Edge1/Edge2/...) are stashed
+                    // for diagnostics; the Replayer currently uses the
+                    // whole non-construction wire from the spine sketch.
+                    if (!spine.sub_names.empty())
+                    {
+                        std::ostringstream oss;
+                        oss << spine.object_name;
+                        for (size_t k = 0; k < spine.sub_names.size(); ++k) {
+                            oss << "," << spine.sub_names[k];
+                        }
+                        feat.ext_strings["spine_ref"] = oss.str();
+                    }
+                    else
+                    {
+                        feat.ext_strings["spine_ref"] = spine.object_name;
+                    }
                 }
             }
 

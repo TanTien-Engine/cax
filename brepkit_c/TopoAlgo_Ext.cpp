@@ -24,7 +24,19 @@
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepLib.hxx>
+#include <Geom_CylindricalSurface.hxx>
+#include <Geom_ConicalSurface.hxx>
+#include <Geom2d_Line.hxx>
+#include <gp.hxx>
+#include <gp_Ax2d.hxx>
+#include <gp_Ax3.hxx>
+#include <gp_Dir2d.hxx>
+#include <gp_Lin2d.hxx>
+#include <gp_Pnt2d.hxx>
+#include <Precision.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BOPAlgo_GlueEnum.hxx>
@@ -536,6 +548,117 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::Sweep(
     }
 
     return std::make_shared<TopoShape>(result);
+}
+
+
+// ============================================================
+// HelixWire -helical spine wire (FreeCAD Part::Helix)
+// ============================================================
+
+std::shared_ptr<TopoShape> TopoAlgo_Ext::HelixWire(
+    double pitch,
+    double height,
+    double radius,
+    double cone_angle,
+    bool   left_handed,
+    uint32_t /*op_id*/,
+    const std::shared_ptr<brepgraph::TopoNaming>& /*tn*/)
+{
+    // Guard against the degenerate inputs FreeCAD itself rejects (a
+    // zero/negative pitch never advances, zero height/radius collapses
+    // the curve). Returning null lets the Replayer surface a clean
+    // "missing spine" rather than feeding garbage to the sweep.
+    if (pitch <= Precision::Confusion()
+        || height <= Precision::Confusion()
+        || radius <= Precision::Confusion())
+    {
+        return nullptr;
+    }
+
+    // The helix lives in the local frame: axis = +Z, the curve starts
+    // at (radius, 0, 0). A conical helix needs a half-angle strictly
+    // inside (0, pi/2); at the limit cos(angle) -> 0 the v-advance
+    // blows up, so anything that degenerate (FreeCAD's Page_085 stores
+    // Angle=90 and marks the object Invalid, keeping its last valid
+    // cylindrical shape) falls back to a cylinder.
+    gp_Ax3 ax3(gp_Pnt(0.0, 0.0, 0.0), gp::DZ(), gp::DX());
+    const double abs_angle = std::fabs(cone_angle);
+    const bool   is_cone =
+        abs_angle > Precision::Angular()
+        && abs_angle < (M_PI * 0.5 - Precision::Angular());
+
+    Handle(Geom_Surface) surf;
+    double v_per_turn;   // surface v advanced over one 2*PI turn
+    double v_total;      // surface v reaching the requested height
+    if (is_cone)
+    {
+        surf = new Geom_ConicalSurface(ax3, cone_angle, radius);
+        // On a cone the v parameter runs along the slant line, so an
+        // axial advance of `pitch` per turn costs pitch/cos(angle) in v.
+        const double inv_cos = 1.0 / std::cos(cone_angle);
+        v_per_turn = pitch  * inv_cos;
+        v_total    = height * inv_cos;
+    }
+    else
+    {
+        surf = new Geom_CylindricalSurface(ax3, radius);
+        // On a cylinder v is the axial height directly.
+        v_per_turn = pitch;
+        v_total    = height;
+    }
+
+    // 2D line in (u, v): u winds 2*PI per turn (negated for a
+    // left-handed helix), v advances `v_per_turn` over the same turn.
+    const double du = left_handed ? -2.0 * M_PI : 2.0 * M_PI;
+    gp_Dir2d dir2d(du, v_per_turn);
+    gp_Lin2d lin2d(gp_Pnt2d(0.0, 0.0), dir2d);
+    Handle(Geom2d_Line) line2d = new Geom2d_Line(lin2d);
+
+    // Trim length: the 2D direction is unit, so the parameter that
+    // reaches v_total is v_total / (v-component of the unit dir).
+    const double dir_v = dir2d.Y();
+    if (std::fabs(dir_v) < Precision::Confusion()) {
+        return nullptr;
+    }
+    const double t_end = v_total / dir_v;
+
+    // Building the spine as a SINGLE edge spanning every turn makes the
+    // downstream BRepOffsetAPI_MakePipe approximate the swept surface
+    // with one coarse BSpline whose control poles bulge well outside the
+    // real tube. At metre scale (the cax IR is in metres) OCCT's
+    // absolute tolerances let that pole bloat balloon the pole-based
+    // bounding box ~5x even though the area/volume stay correct.
+    // Splitting the helix into several edges per turn keeps each pipe
+    // segment's BSpline tight, so the swept solid -and its bbox- hugs
+    // the true coil. ~8 edges/turn converges the bbox to the authored
+    // shape; the ceil keeps at least one edge for sub-turn helices.
+    const double turns = std::fabs(v_total / v_per_turn);
+    const int    kSegPerTurn = 8;
+    int n_seg = (int)std::ceil(turns * kSegPerTurn);
+    if (n_seg < 1) {
+        n_seg = 1;
+    }
+
+    BRepBuilderAPI_MakeWire mk_wire;
+    for (int i = 0; i < n_seg; ++i) {
+        const double t0 = t_end * (double)i       / (double)n_seg;
+        const double t1 = t_end * (double)(i + 1) / (double)n_seg;
+        BRepBuilderAPI_MakeEdge mk_edge(line2d, surf, t0, t1);
+        if (!mk_edge.IsDone()) {
+            return nullptr;
+        }
+        mk_wire.Add(mk_edge.Edge());
+    }
+    if (!mk_wire.IsDone()) {
+        return nullptr;
+    }
+    TopoDS_Wire wire = mk_wire.Wire();
+
+    // Lift the parametric (pcurve-only) edge to a real 3D curve so the
+    // sweep can build a trihedron along it.
+    BRepLib::BuildCurves3d(wire);
+
+    return std::make_shared<TopoShape>(wire);
 }
 
 

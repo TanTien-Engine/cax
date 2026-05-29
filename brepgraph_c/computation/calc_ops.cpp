@@ -301,6 +301,24 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		});
 
+	// helix_wire: a parametric helical spine (FreeCAD Part::Helix).
+	// Built in the local frame (axis +Z, starts at (radius,0,0)); the
+	// caller feeds it to `sweep` as the path. cone_angle ~0 (or the
+	// degenerate >= pi/2) yields a cylindrical helix.
+	reg.Define("helix_wire",
+		{"pitch", "height", "radius", "cone_angle", "left_handed"}, {},
+		[](EvalCtx& ctx) -> Val {
+			double pitch      = ctx.Num(0);
+			double height     = ctx.Num(1);
+			double radius     = ctx.Num(2);
+			double cone_angle = ctx.Num(3);
+			bool   left_handed = ctx.Bool(4);
+			auto shp = brepkit::TopoAlgo_Ext::HelixWire(
+				pitch, height, radius, cone_angle, left_handed,
+				ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
 	// loft: BRepOffsetAPI_ThruSections across >= 2 section wires.
 	// Profiles are variadic so the same op handles two-section and
 	// multi-section lofts without bumping op arity. The is_solid flag

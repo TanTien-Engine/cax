@@ -4,6 +4,5 @@ sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000
 feat 11 name=BaseFeature type=Unknown suppressed=0 payload=other
   inputs=[0:base,10:ref]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
-feat 12 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=9 spine_sketch_id=11
+feat 12 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=9 spine=helix pitch=0.017 height=0.050 radius=0.015 cone_angle=1.571 left_handed=0
   inputs=[11:base]
-feat 10 name=Helix type=Unknown suppressed=0 payload=opaque freecad_type=Part::Helix

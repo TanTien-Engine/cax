@@ -93,6 +93,34 @@ public:
         const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
+    // HelixWire (FreeCAD Part::Helix spine)
+    // ========================================================
+    //
+    // Builds a helical wire in the local frame (axis = +Z, the curve
+    // starts at (radius, 0, 0)). Mirrors FreeCAD's TopoShape::
+    // makeLongHelix: a 2D line laid on a cylindrical (or conical)
+    // surface's (u,v) parameter space, lifted to a 3D edge by
+    // BRepLib::BuildCurves3d. The caller positions the wire (the
+    // FreeCAD Part::Helix Placement is applied upstream when needed;
+    // a PartDesign FeatureBase imports the local geometry verbatim).
+    //
+    // pitch:       axial advance per full turn (> 0)
+    // height:      total axial height (> 0)
+    // radius:      helix radius at the base (> 0)
+    // cone_angle:  cone half-angle in radians; ~0 (or degenerate,
+    //              |angle| >= pi/2) yields a cylindrical helix,
+    //              otherwise a conical one
+    // left_handed: reverse the winding sense (LocalCoord left-handed)
+    static std::shared_ptr<TopoShape> HelixWire(
+        double pitch,
+        double height,
+        double radius,
+        double cone_angle,
+        bool   left_handed,
+        uint32_t op_id,
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
+
+    // ========================================================
     // Linear Pattern (SW Linear Pattern)
     // ========================================================
     //

@@ -249,14 +249,30 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadSweep>) {
             // Spine sketch id rides in ext_params (see reader notes);
             // surface it here so the golden line carries both the
-            // profile and the path the sweep follows.
-            uint32_t spine_id = 0xFFFFFFFF;
-            auto sit = feat.ext_params.find("spine_sketch_id");
-            if (sit != feat.ext_params.end()) {
-                spine_id = (uint32_t)sit->second;
+            // profile and the path the sweep follows. A parametric
+            // helix spine has no sketch id -- print its coil params
+            // instead so a regression in any of them shows up.
+            os << "sweep profile_sketch_id=" << p.profile_sketch_id;
+            auto kit = feat.ext_strings.find("spine_kind");
+            if (kit != feat.ext_strings.end() && kit->second == "helix") {
+                auto getp = [&](const char* k) -> double {
+                    auto it = feat.ext_params.find(k);
+                    return (it != feat.ext_params.end()) ? it->second : 0.0;
+                };
+                os << " spine=helix"
+                   << " pitch="       << Num(getp("helix_pitch"),  dec)
+                   << " height="      << Num(getp("helix_height"), dec)
+                   << " radius="      << Num(getp("helix_radius"), dec)
+                   << " cone_angle="  << Num(getp("helix_angle"),  dec)
+                   << " left_handed=" << (getp("helix_left_handed") != 0.0 ? 1 : 0);
+            } else {
+                uint32_t spine_id = 0xFFFFFFFF;
+                auto sit = feat.ext_params.find("spine_sketch_id");
+                if (sit != feat.ext_params.end()) {
+                    spine_id = (uint32_t)sit->second;
+                }
+                os << " spine_sketch_id=" << spine_id;
             }
-            os << "sweep profile_sketch_id=" << p.profile_sketch_id
-               << " spine_sketch_id=" << spine_id;
         }
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadFillet>) {
             os << "fillet radius=" << Num(p.radius, dec)
