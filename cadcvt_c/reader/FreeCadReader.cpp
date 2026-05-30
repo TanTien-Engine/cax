@@ -4848,6 +4848,11 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 // sub_tip, no further transform).
                 bool has_inner_links = false;
 
+                // First out.features index this instance's inlined block
+                // occupies; used below to scope the per-part assembly
+                // placement stamp to just this Link's features.
+                size_t inlined_begin = out.features.size();
+
                 for (auto& sf : sub_doc.features)
                 {
                     uint32_t new_id = m_next_feature_id++;
@@ -4873,11 +4878,32 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     // shape directly into world coordinates without
                     // depending on the outer Link contributing any
                     // further transform.
+                    // Only a GENUINE nested sub-assembly Link (an inner
+                    // App::Link instancing another part) absorbs the
+                    // outer placement and turns the outer Link into a
+                    // no-op. A PartDesign::FeatureBase "Clone" is also a
+                    // FeatType::Link, but it is a body-INTERNAL base
+                    // reference, not a sub-assembly: its source is
+                    // inlined alongside it and, being emitted before that
+                    // source, it replays to no node at all (the Link arm
+                    // finds no feature_nodes entry). Treating such a clone
+                    // as a nested asm would no-op the outer App::Link too,
+                    // leaving the part's real geometry (the inlined
+                    // Part::Feature) stranded at the sub-doc origin -- the
+                    // fastener "scatter" symptom. Exclude clones so the
+                    // outer Link keeps its normal sub_tip placement.
                     if (sf.type == FeatType::Link)
                     {
-                        has_inner_links = true;
-                        auto& sub_pl = std::get<FeatPayloadLink>(sf.data);
-                        ComposeLinkPlacement(outer_pl, sub_pl);
+                        auto ft = sf.ext_strings.find("freecad_type");
+                        bool is_clone =
+                            ft != sf.ext_strings.end()
+                            && ft->second == "PartDesign::FeatureBase";
+                        if (!is_clone)
+                        {
+                            has_inner_links = true;
+                            auto& sub_pl = std::get<FeatPayloadLink>(sf.data);
+                            ComposeLinkPlacement(outer_pl, sub_pl);
+                        }
                     }
 
                     // Tag inlined features with the source so a
@@ -4986,6 +5012,69 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 }
 
                 outer_pl.sub_tip_feature_id = sub_tip_host_id;
+
+                // Multi-part sub-doc: the outer Link's arm transforms only
+                // the single sub_tip node, but a sub-doc can resolve to
+                // MORE than one output part -- an App::Part grouping
+                // several Part::Features (E9232565.FCStd: 7 brackets/bolts)
+                // or simply more than one Body. Those extra parts are
+                // independent output candidates that the outer Link never
+                // touches, so without help they replay at the sub-doc
+                // origin (the bracket "cluster at origin" symptom). An
+                // App::Link places the WHOLE sub-doc rigidly, so stamp this
+                // Link's placement as asm_* on every inlined output part
+                // EXCEPT the sub_tip (which the Link arm already places)
+                // and anything consumed by a sibling feature (body-chain
+                // members, boolean operands). The Replayer applies asm_*
+                // with the same rotate-then-translate as the Link arm, so
+                // each extra part lands in the identical assembly pose.
+                // Single-body sub-docs have exactly one output (= sub_tip),
+                // so nothing extra is stamped and their behaviour is
+                // unchanged.
+                if (!has_inner_links)
+                {
+                    std::unordered_set<uint32_t> consumed;
+                    for (size_t i = inlined_begin; i < out.features.size(); ++i)
+                    {
+                        const auto& f = out.features[i];
+                        for (size_t k = 0; k < f.input_feature_ids.size(); ++k)
+                        {
+                            cadapp::InputRole role =
+                                k < f.input_roles.size()
+                                ? f.input_roles[k]
+                                : cadapp::InputRole::Base;
+                            if (role == cadapp::InputRole::Reference ||
+                                role == cadapp::InputRole::PatternTarget) {
+                                continue;
+                            }
+                            uint32_t iid = f.input_feature_ids[k];
+                            if (iid != 0u && iid != 0xFFFFFFFFu) {
+                                consumed.insert(iid);
+                            }
+                        }
+                    }
+                    for (size_t i = inlined_begin; i < out.features.size(); ++i)
+                    {
+                        auto& f = out.features[i];
+                        if (f.id == sub_tip_host_id) continue;
+                        if (consumed.count(f.id)) continue;
+                        if (f.type == FeatType::Sketch
+                            || f.type == FeatType::Unknown
+                            || f.type == FeatType::AsmConstraint
+                            || f.type == FeatType::Link) {
+                            continue;
+                        }
+                        f.ext_params["asm_px"] = outer_pl.placement_px;
+                        f.ext_params["asm_py"] = outer_pl.placement_py;
+                        f.ext_params["asm_pz"] = outer_pl.placement_pz;
+                        if (std::fabs(outer_pl.placement_angle) > 1e-12) {
+                            f.ext_params["asm_angle"] = outer_pl.placement_angle;
+                            f.ext_params["asm_ox"] = outer_pl.placement_ox;
+                            f.ext_params["asm_oy"] = outer_pl.placement_oy;
+                            f.ext_params["asm_oz"] = outer_pl.placement_oz;
+                        }
+                    }
+                }
 
                 feat.type = FeatType::Link;
                 feat.data = std::move(outer_pl);
