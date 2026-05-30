@@ -4862,9 +4862,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     // FeatPayloadExtrude.sketch_id still points at the
                     // sub-doc's old sketch feature_id, and the
                     // Replayer's sketch_face_nodes lookup misses --
-                    // "missing sketch for feature Pad". The remap
-                    // closure must already be visible to merge passes
-                    // for sketches / authored_shapes below; it is.
+                    // "missing sketch for feature Pad".
                     RemapPayloadFeatureRefs(sf, remap_id);
 
                     // Compose-down: outer Placement -> inner Link
@@ -4926,6 +4924,23 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                 //     order that is the Body's Tip. The outer Link
                 //     arm then rotates+translates that single node
                 //     by our Placement.
+                //
+                //     The LinkedObject's `name` (e.g. "Body") identifies
+                //     WHICH body in the sub-doc the App::Link targets,
+                //     and the sub-reader tags every inlined body feature
+                //     with freecad_body=<that name>. Prefer the latest
+                //     feature carrying that tag so the tip lands on the
+                //     targeted Body's Tip and SKIPS any trailing
+                //     standalone construction Part::Features that follow
+                //     the Body in document order (e.g. E9230301.FCStd's
+                //     six "Wire" objects). Without this preference the
+                //     plain positional walk grabs the last such Wire --
+                //     a 0-solid shape -- as the tip: the Link then places
+                //     an empty wire instead of the extrusion, AND because
+                //     every external PartDesign::Body is named "Body" the
+                //     real (unconsumed) solids all collapse into the
+                //     single freecad_body="Body" output candidate in the
+                //     Replayer, so every instance but the last vanishes.
                 uint32_t sub_tip_host_id = 0;
                 if (!has_inner_links && !sub_id_to_host.empty())
                 {
@@ -4933,19 +4948,40 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
                     for (const auto& kv : sub_id_to_host) {
                         if (kv.second < lo) lo = kv.second;
                     }
-                    for (auto rit = out.features.rbegin();
-                         rit != out.features.rend(); ++rit)
-                    {
-                        if (rit->id < lo) break;
-                        if (rit->type == FeatType::Sketch) continue;
-                        if (rit->type == FeatType::Unknown) continue;
-                        if (rit->type == FeatType::AsmConstraint) continue;
-                        // Inner Link case is already excluded by
-                        // has_inner_links == false above; the check
-                        // here is defensive.
-                        if (rit->type == FeatType::Link) continue;
-                        sub_tip_host_id = rit->id;
-                        break;
+                    auto eligible = [](const cadapp::FeatureIR& f) {
+                        // Inner Link excluded by has_inner_links==false
+                        // above; the type check here is defensive.
+                        return f.type != FeatType::Sketch
+                            && f.type != FeatType::Unknown
+                            && f.type != FeatType::AsmConstraint
+                            && f.type != FeatType::Link;
+                    };
+                    // Pass 1: the Tip of the Body the LinkedObject names.
+                    if (!linked_object.empty()) {
+                        for (auto rit = out.features.rbegin();
+                             rit != out.features.rend(); ++rit)
+                        {
+                            if (rit->id < lo) break;
+                            if (!eligible(*rit)) continue;
+                            auto bit = rit->ext_strings.find("freecad_body");
+                            if (bit != rit->ext_strings.end()
+                                && bit->second == linked_object) {
+                                sub_tip_host_id = rit->id;
+                                break;
+                            }
+                        }
+                    }
+                    // Pass 2 (fallback): latest eligible feature, for
+                    // sub-docs whose tip carries no matching body tag.
+                    if (sub_tip_host_id == 0) {
+                        for (auto rit = out.features.rbegin();
+                             rit != out.features.rend(); ++rit)
+                        {
+                            if (rit->id < lo) break;
+                            if (!eligible(*rit)) continue;
+                            sub_tip_host_id = rit->id;
+                            break;
+                        }
                     }
                 }
 
