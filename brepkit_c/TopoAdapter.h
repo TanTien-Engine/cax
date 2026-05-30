@@ -24,7 +24,10 @@ public:
 	// 1 - MaterialIR.transparency.
 	static std::shared_ptr<ur::VertexArray> BuildMeshFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape, float alpha = 1.0f);
 	static std::shared_ptr<ur::VertexArray> BuildMeshFromShell(const std::shared_ptr<ur::Device>& dev, const TopoShape& shell, float alpha = 1.0f);
-	static std::shared_ptr<ur::VertexArray> BuildEdgesFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape);
+	// alpha is baked into every edge vertex (same attr location 2 as the
+	// surface mesh) so transparent parts can draw their topological edges
+	// at the same opacity as their faces. 1.0 = opaque (default).
+	static std::shared_ptr<ur::VertexArray> BuildEdgesFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape, float alpha = 1.0f);
 	static std::shared_ptr<gs::Line3D> BuildGeoFromEdge(const TopoShape& edge);
 	static std::shared_ptr<gs::Polyline3D> BuildGeoFromWire(const TopoShape& wire);
 

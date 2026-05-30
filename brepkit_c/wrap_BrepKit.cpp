@@ -945,6 +945,31 @@ void w_TopoAdapter_build_edges()
     ves_pop(1);
 }
 
+// 3-arg variant: build_edges(dev, shape, alpha). alpha is baked into
+// every edge vertex so transparent parts draw their edges at the same
+// opacity as their faces. The 2-arg form keeps alpha at 1.0.
+void w_TopoAdapter_build_edges_alpha()
+{
+    auto dev = ((wrapper::Proxy<ur::Device>*)ves_toforeign(1))->obj;
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(2))->obj;
+    float alpha = (float)ves_tonumber(3);
+
+    auto va = brepkit::TopoAdapter::BuildEdgesFromShape(dev, *shape, alpha);
+
+    ves_pop(ves_argnum());
+
+    if (!va) {
+        ves_set_nil(0);
+        return;
+    }
+
+    ves_pushnil();
+    ves_import_class("render", "VertexArray");
+    auto proxy = (wrapper::Proxy<ur::VertexArray>*)ves_set_newforeign(0, 1, sizeof(wrapper::Proxy<ur::VertexArray>));
+    proxy->obj = va;
+    ves_pop(1);
+}
+
 void w_TopoAdapter_build_edge_geo()
 {
     auto edge = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
@@ -1192,6 +1217,7 @@ VesselForeignMethodFn BrepKitBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAdapter.build_mesh(_,_)") == 0) return w_TopoAdapter_build_mesh;
     if (strcmp(signature, "static TopoAdapter.build_mesh(_,_,_)") == 0) return w_TopoAdapter_build_mesh_alpha;
     if (strcmp(signature, "static TopoAdapter.build_edges(_,_)") == 0) return w_TopoAdapter_build_edges;
+    if (strcmp(signature, "static TopoAdapter.build_edges(_,_,_)") == 0) return w_TopoAdapter_build_edges_alpha;
     if (strcmp(signature, "static TopoAdapter.build_edge_geo(_)") == 0) return w_TopoAdapter_build_edge_geo;
     if (strcmp(signature, "static TopoAdapter.build_wire_geo(_)") == 0) return w_TopoAdapter_build_wire_geo;
     if (strcmp(signature, "static TopoAdapter.shape2wire(_)") == 0) return w_TopoAdapter_shape2wire;

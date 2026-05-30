@@ -49,6 +49,12 @@ node7.query_param("disable").value = false
 
 _editor.add_node(node7, 392.18895050427, 420.79090897199)
 
+// Cache for the transparent parts' edges (baked with each part's alpha).
+var node8 = ::blueprint::nodes::cache::Cache()
+node8.query_param("disable").value = false
+
+_editor.add_node(node8, 392.18895050427, 520.79090897199)
+
 // Opaque group -> main surface + edges.
 Blueprint.connect(node4, "shape_opaque", node2, "shape")
 Blueprint.connect(node2, "edges", node5, "var")
@@ -57,9 +63,12 @@ Blueprint.connect(node3, "var", node1, "geos")
 Blueprint.connect(node0, "this", node1, "view_cam")
 Blueprint.connect(node5, "var", node1, "edges")
 
-// Transparent group -> x-ray surface pass (no edges). Each part's
-// alpha (1 - transparency) is zipped into ToMesh and baked per-vertex.
+// Transparent group -> x-ray surface pass + x-ray edge pass. Each
+// part's alpha (1 - transparency) is zipped into ToMesh and baked
+// per-vertex for both the faces (va) and the topological edges.
 Blueprint.connect(node4, "shape_transparent", node6, "shape")
 Blueprint.connect(node4, "transparent_alphas", node6, "alpha")
 Blueprint.connect(node6, "va", node7, "var")
 Blueprint.connect(node7, "var", node1, "geos_transparent")
+Blueprint.connect(node6, "edges", node8, "var")
+Blueprint.connect(node8, "var", node1, "edges_transparent")

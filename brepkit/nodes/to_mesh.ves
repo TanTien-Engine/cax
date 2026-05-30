@@ -39,7 +39,8 @@ class ToMesh is Node
 
 		var items = []
 		if (idx == 1) {
-			this.build_edges(v_shape, items)
+			var v_alpha = Blueprint.calc_input_value(this, 1)   // optional
+			this.build_edges(v_shape, v_alpha, items)
 		} else {
 			var v_alpha = Blueprint.calc_input_value(this, 1)   // optional
 			this.build_meshes(v_shape, v_alpha, items)
@@ -114,18 +115,45 @@ class ToMesh is Node
 		}
 	}
 
-	build_edges(v_shape, edges)
+	// Mirrors build_meshes/build_one: when alpha is an array it is zipped
+	// per shape by index, so each transparent part's edges carry the same
+	// opacity as its faces. nil / scalar alpha applies to every shape.
+	build_edges(v_shape, v_alpha, edges)
+	{
+		if (v_shape.type == VAR_TYPE_ARRAY)
+		{
+			var alpha_arr = nil
+			if (v_alpha and v_alpha.type == VAR_TYPE_ARRAY) {
+				alpha_arr = v_alpha.value
+			}
+			var arr = v_shape.value
+			for (var i = 0; i < arr.count; i = i + 1)
+			{
+				var a = this.scalar_alpha(v_alpha)
+				if (alpha_arr and i < alpha_arr.count) {
+					a = alpha_arr[i]
+				}
+				this.build_edges_one(arr[i], a, edges)
+			}
+		}
+		else
+		{
+			this.build_edges_one(v_shape, this.scalar_alpha(v_alpha), edges)
+		}
+	}
+
+	build_edges_one(v_shape, alpha, edges)
 	{
 		if (v_shape.type == VAR_TYPE_ARRAY)
 		{
 			for (var shape in v_shape.value)
 			{
-				this.build_edges(shape, edges)
+				this.build_edges_one(shape, alpha, edges)
 			}
 		}
 		else if (v_shape.type == VAR_TOPO_SHAPE)
 		{
-			var va = TopoAdapter.build_edges(Device.init(), v_shape.value)
+			var va = TopoAdapter.build_edges(Device.init(), v_shape.value, alpha)
 			if (va) {
 				edges.add(va)
 			}

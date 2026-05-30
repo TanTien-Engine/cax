@@ -137,7 +137,7 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMeshFromShell(const std::shar
     return BuildMesh(dev, shell.GetShape(), alpha);
 }
 
-std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape)
+std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::shared_ptr<ur::Device>& dev, const TopoShape& shape, float alpha)
 {
     const TopoDS_Shape& src = shape.GetShape();
 
@@ -198,9 +198,11 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::sha
             if (have_prev) {
                 // Use a zero normal as a sentinel; the GBuffer shader
                 // can branch on length(normal)==0 to skip lighting on
-                // edge fragments.
-                vertices.push_back(Vertex({ prev, sm::vec3(0, 0, 0) }));
-                vertices.push_back(Vertex({ p,    sm::vec3(0, 0, 0) }));
+                // edge fragments. alpha is baked per vertex so the
+                // transparent edge pass can blend lines at the same
+                // opacity as the part's faces.
+                vertices.push_back(Vertex({ prev, sm::vec3(0, 0, 0), alpha }));
+                vertices.push_back(Vertex({ p,    sm::vec3(0, 0, 0), alpha }));
             }
             prev = p;
             have_prev = true;
@@ -219,14 +221,18 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::sha
     va->SetVertexBuffer(vbuf);
 
     std::vector<std::shared_ptr<ur::VertexInputAttribute>> vbuf_attrs;
-    // Vertex grew to 28 bytes (pos+normal+alpha); edges don't use the
-    // alpha attribute but the stride must still match the struct.
+    // Vertex is { vec3 pos; vec3 normal; float alpha; } = 28 bytes, same
+    // layout as the surface mesh so the transparent edge shader can read
+    // the per-vertex alpha at location 2.
     // pos
     vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
         0, ur::ComponentDataType::Float, 3, 0, 28));
     // normal (zeroed - sentinel meaning "edge, no shading")
     vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
         1, ur::ComponentDataType::Float, 3, 12, 28));
+    // alpha (per-vertex opacity)
+    vbuf_attrs.push_back(std::make_shared<ur::VertexInputAttribute>(
+        2, ur::ComponentDataType::Float, 1, 24, 28));
     va->SetVertexBufferAttrs(vbuf_attrs);
 
     return va;

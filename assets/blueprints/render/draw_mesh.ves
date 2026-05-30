@@ -703,11 +703,111 @@ node74.load_from_file(_editor, "draw_mesh_single_xray.ves")
 
 _editor.add_node(node74, 1256.5201463633, -300)
 
+// --- transparent (x-ray) edge pass ------------------------------
+// edges_transparent: the topological edges of the transparent parts,
+// each baked with the same per-vertex alpha as its faces. Drawn after
+// the x-ray surface pass, still inside the GBuffer pass, with blend on
+// + depth_mask off so the lines blend at the part's opacity and never
+// occlude the interior. depth_test stays on (tested against the OPAQUE
+// depth) so transparent edges behind solid parts are still hidden,
+// while front and back edges of the shell itself show through -- the
+// FreeCAD look. Empty (nil) for models with no transparency.
+var node75 = ::blueprint::nodes::input::Input()
+
+node75.var_name = "edges_transparent"
+node75.var_type = "array"
+
+_editor.add_node(node75, 1056, -450)
+
+var node76 = ::blueprint::nodes::for_each::ForEach()
+
+_editor.add_node(node76, 1250, -450)
+
+var node77 = ::rendergraph::nodes::draw::Draw()
+
+node77.set_prim_type("lines")
+node77.render_state = { "stencil_test" : false, "stencil_func" : "always", "stencil_mask" : 255, "cull" : "disable", "blend" : true, "depth_mask" : false, "stencil_ref" : 0, "depth_test" : true, "depth_func" : "lequal", "clip_plane" : false }
+node77.skip = false
+
+_editor.add_node(node77, 1100, -550)
+
+var node78 = ::rendergraph::nodes::shader::Shader()
+node78.query_param("inc_dir").value = ""
+
+node78.vs = "
+#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+layout (location = 2) in float aAlpha;
+
+out float v_alpha;
+
+uniform UBO
+{
+	mat4 model;
+	mat4 view;
+	mat4 projection;
+};
+
+void main()
+{
+	vec4 clip = projection * view * model * vec4(aPos, 1.0);
+	// pull edges slightly toward the camera in NDC to win the depth
+	// comparison against the face they belong to without z-fighting.
+	clip.z -= 0.0005 * clip.w;
+	gl_Position = clip;
+	v_alpha = aAlpha;
+}
+"
+node78.tcs = ""
+node78.tes = ""
+node78.gs = ""
+node78.fs = "
+#version 330 core
+layout (location = 0) out vec4 gMain;
+layout (location = 1) out vec3 gDepth;
+layout (location = 2) out vec3 gNormal;
+
+in float v_alpha;
+
+float near = 0.01;
+float far = 100.0;
+float LinearizeDepth(float depth)
+{
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
+void main()
+{
+	// Solid black line at the part's own opacity. blend is on, so the
+	// line darkens whatever is behind it by v_alpha -- matching the
+	// translucency of the shell's faces.
+	gMain   = vec4(0.0, 0.0, 0.0, v_alpha);
+	gDepth  = vec3(LinearizeDepth(gl_FragCoord.z) / far);
+	gNormal = vec3(0.0);
+}
+"
+node78.cs = ""
+node78.render_gen()
+
+_editor.add_node(node78, 900, -550)
+
 Blueprint.connect(node50, "next", node70, "prev")
 // Transparent pass runs after the edge for_each (node70), still
 // inside the GBuffer pass (node62). Was: node70.next -> node62.do.
 Blueprint.connect(node70, "next", node74, "prev")
-Blueprint.connect(node74, "next", node62, "do")
+// x-ray surfaces -> x-ray edges -> finish GBuffer pass.
+// Was: node74.next -> node62.do.
+Blueprint.connect(node74, "next", node76, "prev")
+Blueprint.connect(node76, "next", node62, "do")
+Blueprint.connect(node75, "var", node76, "in")
+Blueprint.connect(node76, "out", node77, "va")
+Blueprint.connect(node78, "out", node77, "shader")
+Blueprint.connect(node77, "next", node76, "do")
+Blueprint.connect(node59, "var", node78, "model")
+Blueprint.connect(node3,  "mat", node78, "view")
+Blueprint.connect(node53, "var", node78, "projection")
 Blueprint.connect(node73, "var", node74, "geos")
 Blueprint.connect(node59, "var", node74, "model")
 Blueprint.connect(node3,  "mat", node74, "view")

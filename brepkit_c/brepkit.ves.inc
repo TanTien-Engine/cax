@@ -125,6 +125,9 @@ foreign class TopoAdapter
 	// 3-arg form bakes a per-vertex alpha (per-part transparency).
 	foreign static build_mesh(dev, shape, alpha)
 	foreign static build_edges(dev, shape)
+	// 3-arg form bakes a per-vertex alpha (per-part transparency) so the
+	// transparent edge pass can match the face opacity.
+	foreign static build_edges(dev, shape, alpha)
 
 	foreign static build_edge_geo(edge)
 	foreign static build_wire_geo(wire)

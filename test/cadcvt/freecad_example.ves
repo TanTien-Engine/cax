@@ -27,6 +27,7 @@ _editor.add_node(node3, 392.18895050427, 211.79090897199)
 var node4 = ::cadcvt::nodes::load_freecad::LoadFreecad()
 //node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/100CadExercises/Page_058_Exercise2D-50-sketched_byHannu.fcstd"
 node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/freecad_assembly_test_corpus/Assembly4_examples/asm_Cylinders.FCStd"
+//node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/native_AssemblyWB_official/AssemblyExample.FCStd"
 node4.query_param("unit_scale").value = 0.001
 node4.query_param("strict").value = false
 
@@ -48,6 +49,12 @@ var node7 = ::blueprint::nodes::cache::Cache()
 node7.query_param("disable").value = false
 
 _editor.add_node(node7, 392.18895050427, 420.79090897199)
+
+// Cache for the transparent parts' edges (baked with each part's alpha).
+var node8 = ::blueprint::nodes::cache::Cache()
+node8.query_param("disable").value = false
+
+_editor.add_node(node8, 392.18895050427, 520.79090897199)
 
 // Opaque group -> main surface + edges.
 Blueprint.connect(node4, "shape_opaque", node2, "shape")
