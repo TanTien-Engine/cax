@@ -122,6 +122,27 @@ struct GroundedCost {
     }
 };
 
+// Unary soft drag handle: pull a body-local anchor toward a world target.
+// 3 residuals, scaled by weight (kept low so the hard joints dominate).
+struct HandleCost {
+    double anchor[3], target[3], w;
+    template <typename T>
+    bool operator()(const T* t, const T* q, T* r) const
+    {
+        Eigen::Map<const Eigen::Quaternion<T>> Q(q);
+        Eigen::Map<const Eigen::Matrix<T, 3, 1>> Tt(t);
+        // named temporaries avoid the most-vexing-parse (T(anchor[0]) in a
+        // declaration context would be read as a parameter named anchor)
+        const T ax = T(anchor[0]), ay = T(anchor[1]), az = T(anchor[2]);
+        Eigen::Matrix<T, 3, 1> a(ax, ay, az);
+        Eigen::Matrix<T, 3, 1> world = Q * a + Tt;
+        r[0] = T(w) * (world[0] - T(target[0]));
+        r[1] = T(w) * (world[1] - T(target[1]));
+        r[2] = T(w) * (world[2] - T(target[2]));
+        return true;
+    }
+};
+
 JointCost MakeJointCost(const Joint& j)
 {
     JointCost c;
@@ -149,9 +170,11 @@ int ConstraintCount(const Joint& j)
     return 0;
 }
 
-// Add every joint as a residual block + put each quaternion block on the
-// unit-quaternion manifold. Shared by Solve and AnalyzeDof.
-void BuildProblem(Assembly& A, ceres::Problem& prob)
+// Add every joint as a residual block, plus any soft drag handles, then put
+// each quaternion block on the unit-quaternion manifold. Shared by Solve,
+// SolveWithHandles and AnalyzeDof.
+void BuildProblem(Assembly& A, ceres::Problem& prob,
+                  const std::vector<Handle>& handles = {})
 {
     for (const auto& j : A.joints) {
         if (j.grounded) {
@@ -172,6 +195,17 @@ void BuildProblem(Assembly& A, ceres::Problem& prob)
                 A.bodies[j.body_a].t.data(), A.bodies[j.body_a].q.data(),
                 A.bodies[j.body_b].t.data(), A.bodies[j.body_b].q.data());
         }
+    }
+    for (const auto& h : handles) {
+        if (h.body < 0 || h.body >= static_cast<int>(A.bodies.size())) continue;
+        auto* hc = new HandleCost;
+        for (int i = 0; i < 3; ++i) { hc->anchor[i] = h.anchor_local[i];
+                                      hc->target[i] = h.target_world[i]; }
+        hc->w = h.weight;
+        prob.AddResidualBlock(
+            new ceres::AutoDiffCostFunction<HandleCost, 3, 3, 4>(hc),
+            nullptr,
+            A.bodies[h.body].t.data(), A.bodies[h.body].q.data());
     }
     for (auto& b : A.bodies) {
         if (prob.HasParameterBlock(b.q.data())) {
@@ -202,11 +236,14 @@ double JointResidualNorm(const Assembly& A, const Joint& j)
     return std::sqrt(s);
 }
 
-SolveResult Solve(Assembly& A, const SolveOptions& opt)
+namespace {
+
+SolveResult SolveImpl(Assembly& A, const std::vector<Handle>& handles,
+                      const SolveOptions& opt)
 {
     SolveResult out;
 
-    // initial residual
+    // initial residual (joints only -- handles are not constraints)
     {
         double s = 0;
         for (const auto& j : A.joints) {
@@ -217,12 +254,33 @@ SolveResult Solve(Assembly& A, const SolveOptions& opt)
     }
 
     ceres::Problem prob;
-    BuildProblem(A, prob);
+    BuildProblem(A, prob, handles);
+
+    // Grounded bodies are TRULY fixed during the solve: pin them at their
+    // grounding pose and freeze the parameter blocks. The GroundedCost
+    // residual alone is only a soft penalty, so a soft drag handle could
+    // otherwise tug the base by a fraction of a millimetre; freezing the
+    // block makes the ground immovable regardless of handle strength.
+    // (AnalyzeDof keeps the soft model -- it calls BuildProblem directly --
+    // so its mobility/rank counting is unchanged.)
+    for (const auto& j : A.joints) {
+        if (!j.grounded || j.body_a < 0) continue;
+        A.bodies[j.body_a].t = j.conn_a.t;
+        A.bodies[j.body_a].q = j.conn_a.q;
+        if (prob.HasParameterBlock(A.bodies[j.body_a].t.data()))
+            prob.SetParameterBlockConstant(A.bodies[j.body_a].t.data());
+        if (prob.HasParameterBlock(A.bodies[j.body_a].q.data()))
+            prob.SetParameterBlockConstant(A.bodies[j.body_a].q.data());
+    }
 
     ceres::Solver::Options sopt;
     sopt.linear_solver_type           = ceres::DENSE_QR;
     sopt.max_num_iterations           = opt.max_iterations;
     sopt.minimizer_progress_to_stdout = opt.verbose;
+    // Silence Ceres' per-iteration glog spam unless explicitly asked --
+    // this runs once per interactive drag frame.
+    sopt.logging_type = opt.verbose ? ceres::PER_MINIMIZER_ITERATION
+                                    : ceres::SILENT;
     ceres::Solver::Summary sum;
     ceres::Solve(sopt, &prob, &sum);
 
@@ -240,6 +298,19 @@ SolveResult Solve(Assembly& A, const SolveOptions& opt)
     out.converged = (sum.termination_type == ceres::CONVERGENCE) &&
                     (out.final_residual < 1e-4);
     return out;
+}
+
+} // namespace
+
+SolveResult Solve(Assembly& A, const SolveOptions& opt)
+{
+    return SolveImpl(A, {}, opt);
+}
+
+SolveResult SolveWithHandles(Assembly& A, const std::vector<Handle>& handles,
+                             const SolveOptions& opt)
+{
+    return SolveImpl(A, handles, opt);
 }
 
 DofInfo AnalyzeDof(const Assembly& assembly)

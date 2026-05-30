@@ -58,6 +58,17 @@ struct Assembly {
     std::vector<Joint> joints;
 };
 
+// A soft drag handle: pulls a point fixed in body `body` (anchor_local, in
+// that body's local frame) toward a world target. Added as a low-weight
+// residual so the hard joints dominate -- the handle only selects which
+// point on the constraint manifold the solver lands on (interactive drag).
+struct Handle {
+    int                 body   = -1;
+    std::array<double,3> anchor_local{{0, 0, 0}};
+    std::array<double,3> target_world{{0, 0, 0}};
+    double              weight = 1.0;
+};
+
 struct SolveOptions {
     int  max_iterations = 200;
     bool verbose        = false;   // stream Ceres progress to stdout
@@ -87,6 +98,15 @@ struct DofInfo {
 // Adjust assembly.bodies[] so every joint residual -> 0. bodies[] is read
 // as the initial guess and overwritten with the result.
 SolveResult Solve(Assembly& assembly, const SolveOptions& opts = {});
+
+// Like Solve, but with extra soft drag handles (interactive editing): the
+// hard joints are still satisfied while each handle pulls its body toward a
+// world target. bodies[] is updated in place. The reported residuals are
+// still the per-joint residuals (handles are not counted), so converged /
+// final_residual measure whether the constraints stayed satisfied.
+SolveResult SolveWithHandles(Assembly& assembly,
+                             const std::vector<Handle>& handles,
+                             const SolveOptions& opts = {});
 
 // Analyse mobility / over-constraint without moving the assembly.
 DofInfo AnalyzeDof(const Assembly& assembly);
