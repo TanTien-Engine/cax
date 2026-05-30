@@ -1,0 +1,4 @@
+doc source=freecad
+feat 10 name=BaseFeature type=Unknown suppressed=0 payload=other
+  inputs=[0:base,1:ref]
+feat 1 name=Part__Feature type=Unknown suppressed=0 payload=other

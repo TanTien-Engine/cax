@@ -1,0 +1,25 @@
+Larger FreeCAD assembly test corpus (open hardware, native FCStd)
+
+theta-8020-3dof_cockpit_Assembly4/   3-DOF sim-racing cockpit, 80/20 T-slot extrusion
+   source : github.com/opensimcraft/theta-8020-3dof   (CERN-OHL-S license)
+   tool   : FreeCAD + Assembly4 (App::Link + LCS + ExpressionEngine)
+   Multi-file, CROSS-DIRECTORY links (../ relative paths). Three sub-assemblies:
+     cockpit-bottom/Subassembly_Cockpit_Bottom.FCStd   19 links -> 7 ext files
+                                                        (extrusions + fasteners,
+                                                         across folders) << hardest
+     cockpit-rear/Subassembly_Cockpit_Rear.FCStd        5 links -> 3 ext files
+     bottom-mount-pedal-frame/Subassembly_Bottom_Mount_Pedal_Frame.FCStd
+                                                        6 links -> 3 ext files
+   The E92xxxxx files are extrusion sub-parts; extrusion-profile-10x0-S.FCStd are
+   the base profiles linked across directories; F92xxxxx are fasteners/brackets.
+   CockpitChassis-BOM.ods is the full bill of materials.
+   KEEP THE FOLDER LAYOUT INTACT or the cross-directory links will break.
+
+native_AssemblyWB_official/AssemblyExample.FCStd
+   source : github.com/FreeCAD/FreeCAD  data/examples/  (LGPL)
+   FreeCAD 1.0+ built-in Assembly workbench, 13 solid parts + 13 joints,
+   single-file (self-contained).
+
+_optional_mesh_stress_1652objs/sc230_theta_large_screen-from-dae.FCStd
+   A monitor model imported from Collada (.dae): ~1652 Mesh objects, NO links.
+   Not a parametric assembly -- use only to stress object-graph / memory handling.
