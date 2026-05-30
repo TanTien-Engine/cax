@@ -553,6 +553,20 @@ void w_AsmSession_drag_rot()
 #endif
 }
 
+void w_AsmSession_drive()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_number(0, -1.0); return; }
+    int    body  = (int)ves_tonumber(1);
+    double ax = ves_tonumber(2), ay = ves_tonumber(3), az = ves_tonumber(4);
+    double value = ves_tonumber(5), w = ves_tonumber(6);
+    ves_set_number(0, st->session.Drive(body, ax, ay, az, value, w));
+#else
+    ves_set_number(0, -1.0);
+#endif
+}
+
 void w_AsmSession_snap()
 {
 #ifdef CAX_ASMSOLVER_OK
@@ -656,6 +670,9 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "AsmSession.drag_rot(_,_,_,_,_,_)") == 0) {
         return w_AsmSession_drag_rot;
+    }
+    if (std::strcmp(signature, "AsmSession.drive(_,_,_,_,_,_)") == 0) {
+        return w_AsmSession_drive;
     }
     if (std::strcmp(signature, "AsmSession.snap()") == 0) {
         return w_AsmSession_snap;

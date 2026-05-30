@@ -81,6 +81,7 @@ foreign class AsmSession
     foreign hit()
     foreign drag(body, tx, ty, tz, w)
     foreign drag_rot(body, ax, ay, az, angle, w)  // rotate about grab point
+    foreign drive(body, ax, ay, az, value, w)     // drive a DOF along an axis
     foreign snap()               // release-snap: handle-free re-solve -> residual
 
     // ---- write-back ----

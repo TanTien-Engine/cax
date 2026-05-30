@@ -56,6 +56,16 @@ public:
     // post-solve joint residual L2 norm (small = constraints still satisfied).
     double Drag(int body, double tx, double ty, double tz, double weight);
 
+    // Drive a DOF: pull `body`'s origin to its IMPORTED position plus
+    // `value` along the world axis (ax,ay,az), and re-solve -- so a slider
+    // value smoothly drives the mechanism (e.g. value along +Z lifts a
+    // scissor platform and the linkage follows). value is absolute from the
+    // imported baseline (value 0 -> back to the loaded configuration). If
+    // `body` < 0, the highest body (max imported Z) is driven. Returns the
+    // post-solve joint residual L2 norm.
+    double Drive(int body, double ax, double ay, double az,
+                 double value, double weight);
+
     // Rotate `body` by `angle` (radians) about the world axis (ax,ay,az),
     // composed onto its grab-time orientation, while pinning the grabbed point
     // -- so the body spins about the pick point and the joints follow. Returns

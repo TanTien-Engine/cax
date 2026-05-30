@@ -45,6 +45,14 @@ var node5 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node5, 360.0, 360.0)
 
+// DOF slider: a Number node feeds AssemblyDrag.drive. Drag its value to lift
+// the mechanism's free DOF (the highest body, along +Z) -- the linkage plays
+// back. 0 = the loaded configuration; e.g. 0.01 lifts ~10 mm.
+var node6 = ::blueprint::nodes::number::Number()
+node6.value = 0.0
+
+_editor.add_node(node6, 60.0, 360.0)
+
 // Per-body shapes -> mesh -> deferred draw. The camera drives both the
 // renderer and the drag node's pick rays.
 Blueprint.connect(node4, "shapes", node2, "shape")
@@ -54,3 +62,4 @@ Blueprint.connect(node4, "picked_shape", node5, "shape")
 Blueprint.connect(node5, "va",    node1, "selected")
 Blueprint.connect(node0, "this",  node1, "view_cam")
 Blueprint.connect(node0, "this",  node4, "view_cam")
+Blueprint.connect(node6, "v",     node4, "drive")

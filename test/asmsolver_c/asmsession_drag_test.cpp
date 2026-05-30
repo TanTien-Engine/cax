@@ -219,6 +219,39 @@ int main()
         std::printf("FAIL: poses did not persist through SaveBack\n"); return 1;
     }
 
+    // (h) DOF drive: a slider value lifts the highest body monotonically along
+    // +Z (the linkage follows) and returns to baseline at value 0.
+    cadcvt::AsmSession dv;
+    if (!dv.Load(ASM_SCISSOR_FCSTD, 0.001, false)) {
+        std::printf("FAIL: load for drive test: %s\n", dv.last_error().c_str()); return 1;
+    }
+    int dn = dv.body_count(), dtop = -1;
+    std::vector<Vec3> dc(dn);
+    for (int i = 0; i < dn; ++i) {
+        if (!center_of(dv, i, dc[i])) { std::printf("FAIL: drive body %d\n", i); return 1; }
+        if (dtop < 0 || dc[i].z > dc[dtop].z) dtop = i;
+    }
+    Vec3 z0, z5, z10, zb;
+    dv.Drive(dtop, 0.0, 0.0, 1.0, 0.000, 0.5); center_of(dv, dtop, z0);
+    dv.Drive(dtop, 0.0, 0.0, 1.0, 0.005, 0.5); center_of(dv, dtop, z5);
+    dv.Drive(dtop, 0.0, 0.0, 1.0, 0.010, 0.5); center_of(dv, dtop, z10);
+    double dres = dv.Drive(dtop, 0.0, 0.0, 1.0, 0.000, 0.5); center_of(dv, dtop, zb);
+    std::printf("drive: top z0=%.4f z5=%.4f z10=%.4f z(back)=%.4f back_resid=%.2e\n",
+                z0.z, z5.z, z10.z, zb.z, dres);
+    if (!(z5.z > z0.z + 5e-4 && z10.z > z5.z + 5e-4)) {
+        std::printf("FAIL: drive did not lift monotonically\n"); return 1;
+    }
+    if (!(std::abs(zb.z - z0.z) < 5e-4)) {
+        std::printf("FAIL: drive value 0 did not return to baseline\n"); return 1;
+    }
+    if (!(dres < 1e-3)) {
+        std::printf("FAIL: drive-to-baseline left a large residual (%.2e)\n", dres); return 1;
+    }
+    // auto-pick (body < 0) drives the same highest body.
+    if (dv.Drive(-1, 0.0, 0.0, 1.0, 0.005, 0.5) < 0.0) {
+        std::printf("FAIL: drive auto-pick errored\n"); return 1;
+    }
+
     std::printf("PASS: dragged dz=%.4f, movers=%d, max=%.4f, min=%.6f, drag_resid=%.2e, "
                 "snap_resid=%.2e, snap_top_dz=%.4f\n",
                 dragged_dz, movers, max_disp, min_disp, resid, snap_resid, snap_top_dz);

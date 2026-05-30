@@ -299,6 +299,38 @@ double AsmSession::DragRot(int body, double ax, double ay, double az,
     return r.final_residual;
 }
 
+double AsmSession::Drive(int body, double ax, double ay, double az,
+                         double value, double weight)
+{
+    Impl& s = *m_impl;
+    if (s.import.assembly.bodies.empty()) return -1.0;
+
+    if (body < 0) {                       // auto: the highest body (max Z)
+        body = 0;
+        for (int i = 1; i < s.nbodies(); ++i)
+            if (s.imported[i].t[2] > s.imported[body].t[2]) body = i;
+    }
+    if (body >= s.nbodies()) return -1.0;
+
+    double n = std::sqrt(ax*ax + ay*ay + az*az);
+    if (n < 1e-12) return -1.0;
+    ax /= n; ay /= n; az /= n;
+
+    const asmsolver::Pose& base = s.imported[body];
+    asmsolver::Handle h;
+    h.body         = body;
+    h.anchor_local = {{ 0, 0, 0 }};       // pull the body origin
+    h.target_world = {{ base.t[0] + value * ax,
+                        base.t[1] + value * ay,
+                        base.t[2] + value * az }};
+    h.weight       = weight;
+
+    std::vector<asmsolver::Handle> handles{ h };
+    asmsolver::SolveResult r = asmsolver::SolveWithHandles(s.import.assembly, handles);
+    s.grab_body = -1;
+    return r.final_residual;
+}
+
 double AsmSession::Snap()
 {
     Impl& s = *m_impl;
