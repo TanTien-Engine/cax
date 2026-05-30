@@ -351,6 +351,8 @@ if(CADCVT_FREECAD_DEPS_OK)
     set(cadcvt__reader_freecad
         "cadcvt_c/reader/FreeCadReader.cpp"
         "cadcvt_c/reader/FreeCadReader.h"
+        "cadcvt_c/reader/FreeCadWriter.cpp"
+        "cadcvt_c/reader/FreeCadWriter.h"
         # miniz upstream is split into core (miniz.c) + deflate
         # (miniz_tdef.c) + inflate (miniz_tinfl.c) + zip reader/writer
         # (miniz_zip.c). FreeCadReader's ExtractDocumentXml uses the

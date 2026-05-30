@@ -255,4 +255,24 @@ class AssemblyDrag is Node
 		this.picked = -1
 		this.mark_dirty()
 	}
+
+	// Press "s" while this node is selected to write the current solved poses
+	// back into the source .FCStd (overwrites in place, after backing the
+	// original up to <file>.bak). Only poses change; geometry is untouched.
+	on_key_pressed(key)
+	{
+		if (key != "s") {
+			return
+		}
+		if (!this.ensure_loaded()) {
+			return
+		}
+		var ok = this.session.save_back()
+		if (ok) {
+			var path = NodeHelper.calc_prop_value(this, "path")
+			System.print("AssemblyDrag: saved poses -> %(path) (backup at %(path).bak)")
+		} else {
+			System.print("AssemblyDrag: SAVE FAILED: %(this.session.last_error())")
+		}
+	}
 }

@@ -71,6 +71,14 @@ public:
     // Returns the post-snap joint residual L2 norm (~0 on success).
     double Snap();
 
+    // Write the current solved body poses back into a .FCStd. Save() writes a
+    // copy to out_path (the loaded source is untouched). SaveBack() overwrites
+    // the loaded source in place after backing it up to <source>.bak. Both
+    // return false + set last_error() on failure (and never corrupt the source
+    // -- the write goes to a temp file renamed into place only on success).
+    bool Save(const std::string& out_path);
+    bool SaveBack();
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

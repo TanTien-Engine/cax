@@ -82,6 +82,12 @@ foreign class AsmSession
     foreign drag(body, tx, ty, tz, w)
     foreign drag_rot(body, ax, ay, az, angle, w)  // rotate about grab point
     foreign snap()               // release-snap: handle-free re-solve -> residual
+
+    // ---- write-back ----
+    //   save(out_path) -> bool  : write solved poses to a copy at out_path
+    //   save_back()     -> bool : overwrite the source in place (+ .bak backup)
+    foreign save(out_path)
+    foreign save_back()
 }
 
 );

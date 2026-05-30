@@ -564,6 +564,29 @@ void w_AsmSession_snap()
 #endif
 }
 
+void w_AsmSession_save_back()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_boolean(0, false); return; }
+    ves_set_boolean(0, st->session.SaveBack());
+#else
+    ves_set_boolean(0, false);
+#endif
+}
+
+void w_AsmSession_save()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_boolean(0, false); return; }
+    const char* p = ves_tostring(1);
+    ves_set_boolean(0, p ? st->session.Save(p) : false);
+#else
+    ves_set_boolean(0, false);
+#endif
+}
+
 } // anonymous namespace
 
 
@@ -636,6 +659,12 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "AsmSession.snap()") == 0) {
         return w_AsmSession_snap;
+    }
+    if (std::strcmp(signature, "AsmSession.save_back()") == 0) {
+        return w_AsmSession_save_back;
+    }
+    if (std::strcmp(signature, "AsmSession.save(_)") == 0) {
+        return w_AsmSession_save;
     }
     return nullptr;
 }

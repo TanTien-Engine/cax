@@ -19,11 +19,23 @@
 
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <string>
 #include <vector>
 
 namespace {
 
 struct Vec3 { double x = 0, y = 0, z = 0; };
+
+bool copy_file(const std::string& from, const std::string& to)
+{
+    std::ifstream in(from, std::ios::binary);
+    if (!in) return false;
+    std::ofstream out(to, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << in.rdbuf();
+    return out.good();
+}
 
 bool center_of(const cadcvt::AsmSession& s, int body, Vec3& out)
 {
@@ -154,6 +166,54 @@ int main()
     if (!(snap2 < 1e-6)) {
         std::printf("FAIL: snap after rotate did not settle (%.3e)\n", snap2);
         return 1;
+    }
+
+    // (g) write-back round trip -- operate on a COPY so the fixture is never
+    // modified. Drag a fresh session, SaveBack (overwrite copy + .bak), reload
+    // the saved file, and confirm the dragged poses persisted.
+    const std::string copy = "/tmp/asm_save_test.FCStd";
+    if (!copy_file(ASM_SCISSOR_FCSTD, copy)) {
+        std::printf("FAIL: could not copy fixture for write test\n"); return 1;
+    }
+    cadcvt::AsmSession w;
+    if (!w.Load(copy, 0.001, false)) {
+        std::printf("FAIL: load copy: %s\n", w.last_error().c_str()); return 1;
+    }
+    int wn = w.body_count();
+    std::vector<Vec3> wc0(wn);
+    int wtop = -1;
+    for (int i = 0; i < wn; ++i) {
+        if (!center_of(w, i, wc0[i])) { std::printf("FAIL: copy body %d\n", i); return 1; }
+        if (wtop < 0 || wc0[i].z > wc0[wtop].z) wtop = i;
+    }
+    if (w.Pick(wc0[wtop].x, wc0[wtop].y, wc0[wtop].z + 1.0, 0.0, 0.0, -1.0) < 0) {
+        std::printf("FAIL: write-test pick missed\n"); return 1;
+    }
+    w.Drag(wtop, wc0[wtop].x, wc0[wtop].y, wc0[wtop].z + 0.006, 0.5);
+    w.Snap();
+    std::vector<Vec3> wdrag(wn);
+    for (int i = 0; i < wn; ++i) center_of(w, i, wdrag[i]);
+
+    if (!w.SaveBack()) {
+        std::printf("FAIL: SaveBack: %s\n", w.last_error().c_str()); return 1;
+    }
+    { std::ifstream bak(copy + ".bak", std::ios::binary);
+      if (!bak) { std::printf("FAIL: backup .bak not created\n"); return 1; } }
+
+    cadcvt::AsmSession w2;
+    if (!w2.Load(copy, 0.001, false)) {
+        std::printf("FAIL: reload saved: %s\n", w2.last_error().c_str()); return 1;
+    }
+    if (w2.body_count() != wn) { std::printf("FAIL: body count changed by save\n"); return 1; }
+    double maxe = 0.0;
+    for (int i = 0; i < wn; ++i) {
+        Vec3 c; center_of(w2, i, c);
+        double e = dist(c, wdrag[i]);
+        if (e > maxe) maxe = e;
+    }
+    std::printf("write round-trip: max center error after save+reload = %.3e\n", maxe);
+    if (!(maxe < 1e-6)) {
+        std::printf("FAIL: poses did not persist through SaveBack\n"); return 1;
     }
 
     std::printf("PASS: dragged dz=%.4f, movers=%d, max=%.4f, min=%.6f, drag_resid=%.2e, "

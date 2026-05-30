@@ -1,6 +1,7 @@
 #include "cadcvt_c/AsmSession.h"
 
 #include "cadcvt_c/reader/FreeCadReader.h"
+#include "cadcvt_c/reader/FreeCadWriter.h"
 #include "cadapp_c/emitter/Replayer.h"
 #include "cadapp_c/ir/FeatureIR.h"
 
@@ -54,6 +55,9 @@ struct AsmSession::Impl {
     cadapp::DocumentIR       doc;
     asmsolver::ImportResult  import;
 
+    std::string src_path;            // file Load()ed from (for write-back)
+    double      unit_scale = 0.001;  // FreeCAD mm -> project metres
+
     // Per-part replayed WORLD-frame shapes at the IMPORTED pose, with feat_id.
     std::vector<cadapp::ReplayPart> parts;
     // Snapshot of body poses at import time (the base for the pose delta).
@@ -70,6 +74,19 @@ struct AsmSession::Impl {
 
     int   nbodies() const {
         return static_cast<int>(import.assembly.bodies.size());
+    }
+
+    // Body name -> current solved world pose, for the FCStd writer.
+    std::map<std::string, BodyPlacement> placements() const {
+        std::map<std::string, BodyPlacement> m;
+        for (int i = 0; i < nbodies(); ++i) {
+            const asmsolver::Pose& p = import.assembly.bodies[i];
+            BodyPlacement bp;
+            bp.px = p.t[0]; bp.py = p.t[1]; bp.pz = p.t[2];
+            bp.qx = p.q[0]; bp.qy = p.q[1]; bp.qz = p.q[2]; bp.qw = p.q[3];
+            m[import.body_names[i]] = bp;
+        }
+        return m;
     }
 
     // Current placed shape for a body (base transformed by solved*imported^-1).
@@ -101,6 +118,8 @@ bool AsmSession::Load(const std::string& path, double unit_scale, bool strict)
 
     s.reader.SetUnitScale(unit_scale);
     s.reader.SetStrict(strict);
+    s.src_path   = path;
+    s.unit_scale = unit_scale;
 
     std::string err;
     s.doc = cadapp::DocumentIR{};
@@ -285,6 +304,33 @@ double AsmSession::Snap()
     asmsolver::SolveResult r = asmsolver::Solve(s.import.assembly);
     s.grab_body = -1;   // grab is consumed on release
     return r.final_residual;
+}
+
+bool AsmSession::Save(const std::string& out_path)
+{
+    Impl& s = *m_impl;
+    if (s.src_path.empty()) { m_err = "Save: nothing loaded"; return false; }
+    std::string err;
+    if (!WriteFreeCadPlacements(s.src_path, out_path, s.placements(),
+                                s.unit_scale, /*backup*/ "", nullptr, &err)) {
+        m_err = err;
+        return false;
+    }
+    return true;
+}
+
+bool AsmSession::SaveBack()
+{
+    Impl& s = *m_impl;
+    if (s.src_path.empty()) { m_err = "SaveBack: nothing loaded"; return false; }
+    std::string err;
+    // Overwrite the source in place, backing it up to <src>.bak first.
+    if (!WriteFreeCadPlacements(s.src_path, s.src_path, s.placements(),
+                                s.unit_scale, s.src_path + ".bak", nullptr, &err)) {
+        m_err = err;
+        return false;
+    }
+    return true;
 }
 
 } // namespace cadcvt
