@@ -5,6 +5,10 @@
 #include "brepkit_c/TransHelper.h"
 #include "brepkit_c/TopoShape.h"
 
+#ifdef CAX_ASMSOLVER_OK
+#include "cadcvt_c/AsmSession.h"
+#endif
+
 #include <wrapper/Proxy.h>
 
 #include <BRep_Builder.hxx>
@@ -381,6 +385,160 @@ void w_FreeCadLoader_last_error()
     ves_set_lstring(0, st->last_error.data(), st->last_error.size());
 }
 
+
+// ============================================================
+// AsmSession foreign class -- interactive pick + drag editing
+// ============================================================
+//
+// Stateful: load() builds the constraint graph once, then pick()/drag()
+// move parts and the host re-meshes body_shape(i). Only poses change; the
+// source file is never written. When the asmsolver (Ceres submodule) is not
+// built, the class still binds but every call reports a not-built error, so
+// the .ves node degrades gracefully instead of failing to instantiate.
+
+struct AsmSessionState
+{
+#ifdef CAX_ASMSOLVER_OK
+    cadcvt::AsmSession session;
+#endif
+    std::string err = "asmsolver not built (Ceres submodule absent)";
+};
+
+void w_AsmSession_allocate()
+{
+    auto* proxy = (wrapper::Proxy<AsmSessionState>*)ves_set_newforeign(
+        0, 0, sizeof(wrapper::Proxy<AsmSessionState>));
+    proxy->obj = std::make_shared<AsmSessionState>();
+}
+
+int w_AsmSession_finalize(void* data)
+{
+    auto* proxy = (wrapper::Proxy<AsmSessionState>*)data;
+    proxy->~Proxy();
+    return sizeof(wrapper::Proxy<AsmSessionState>);
+}
+
+AsmSessionState* GetAsmState(int slot)
+{
+    auto* proxy = (wrapper::Proxy<AsmSessionState>*)ves_toforeign(slot);
+    return proxy ? proxy->obj.get() : nullptr;
+}
+
+// load(path, unit_scale, strict) -> bool
+void w_AsmSession_load()
+{
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_boolean(0, false); return; }
+#ifdef CAX_ASMSOLVER_OK
+    const char* path = ves_tostring(1);
+    double      us   = ves_tonumber(2);
+    bool        strict = ves_toboolean(3);
+    bool ok = st->session.Load(path ? path : "", us, strict);
+    if (!ok) st->err = st->session.last_error();
+    ves_set_boolean(0, ok);
+#else
+    ves_set_boolean(0, false);
+#endif
+}
+
+void w_AsmSession_last_error()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    std::string e = st ? st->session.last_error() : std::string{};
+    if (e.empty()) { ves_set_nil(0); return; }
+    ves_set_lstring(0, e.data(), e.size());
+#else
+    auto* st = GetAsmState(0);
+    if (st) ves_set_lstring(0, st->err.data(), st->err.size());
+    else    ves_set_nil(0);
+#endif
+}
+
+void w_AsmSession_body_count()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    ves_set_number(0, st ? (double)st->session.body_count() : 0.0);
+#else
+    ves_set_number(0, 0.0);
+#endif
+}
+
+void w_AsmSession_body_name()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    int i = (int)ves_tonumber(1);
+    std::string n = st ? st->session.body_name(i) : std::string{};
+    ves_set_lstring(0, n.data(), n.size());
+#else
+    ves_set_nil(0);
+#endif
+}
+
+// body_shape(i) -> TopoShape at the current solved pose (nil on bad index).
+void w_AsmSession_body_shape()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_nil(0); return; }
+    int i = (int)ves_tonumber(1);
+    auto sh = st->session.body_shape(i);
+    if (!sh) { ves_set_nil(0); return; }
+    brepkit::return_topo_shape(sh);
+#else
+    ves_set_nil(0);
+#endif
+}
+
+// pick(ox,oy,oz, dx,dy,dz) -> body index (-1 on miss). Stores the hit point
+// for hit() and the grab anchor for the next drag().
+void w_AsmSession_pick()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_number(0, -1.0); return; }
+    double ox = ves_tonumber(1), oy = ves_tonumber(2), oz = ves_tonumber(3);
+    double dx = ves_tonumber(4), dy = ves_tonumber(5), dz = ves_tonumber(6);
+    ves_set_number(0, (double)st->session.Pick(ox, oy, oz, dx, dy, dz));
+#else
+    ves_set_number(0, -1.0);
+#endif
+}
+
+// hit() -> [x,y,z] world hit point of the last pick.
+void w_AsmSession_hit()
+{
+    double h[3] = {0, 0, 0};
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (st) st->session.last_hit(h);
+#endif
+    ves_pop(ves_argnum());
+    ves_newlist(3);
+    for (int i = 0; i < 3; ++i) {
+        ves_pushnumber(h[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
+// drag(body, tx,ty,tz, weight) -> post-solve joint residual.
+void w_AsmSession_drag()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_number(0, -1.0); return; }
+    int    body = (int)ves_tonumber(1);
+    double tx = ves_tonumber(2), ty = ves_tonumber(3), tz = ves_tonumber(4);
+    double w  = ves_tonumber(5);
+    ves_set_number(0, st->session.Drag(body, tx, ty, tz, w));
+#else
+    ves_set_number(0, -1.0);
+#endif
+}
+
 } // anonymous namespace
 
 
@@ -423,6 +581,31 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     if (std::strcmp(signature, "FreeCadLoader.transparent_alphas()") == 0) {
         return w_FreeCadLoader_transparent_alphas;
     }
+
+    if (std::strcmp(signature, "AsmSession.load(_,_,_)") == 0) {
+        return w_AsmSession_load;
+    }
+    if (std::strcmp(signature, "AsmSession.last_error()") == 0) {
+        return w_AsmSession_last_error;
+    }
+    if (std::strcmp(signature, "AsmSession.body_count()") == 0) {
+        return w_AsmSession_body_count;
+    }
+    if (std::strcmp(signature, "AsmSession.body_name(_)") == 0) {
+        return w_AsmSession_body_name;
+    }
+    if (std::strcmp(signature, "AsmSession.body_shape(_)") == 0) {
+        return w_AsmSession_body_shape;
+    }
+    if (std::strcmp(signature, "AsmSession.pick(_,_,_,_,_,_)") == 0) {
+        return w_AsmSession_pick;
+    }
+    if (std::strcmp(signature, "AsmSession.hit()") == 0) {
+        return w_AsmSession_hit;
+    }
+    if (std::strcmp(signature, "AsmSession.drag(_,_,_,_,_)") == 0) {
+        return w_AsmSession_drag;
+    }
     return nullptr;
 }
 
@@ -432,6 +615,12 @@ void CadCvtBindClass(const char* class_name, VesselForeignClassMethods* methods)
     {
         methods->allocate = w_FreeCadLoader_allocate;
         methods->finalize = w_FreeCadLoader_finalize;
+        return;
+    }
+    if (std::strcmp(class_name, "AsmSession") == 0)
+    {
+        methods->allocate = w_AsmSession_allocate;
+        methods->finalize = w_AsmSession_finalize;
         return;
     }
 }

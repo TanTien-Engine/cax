@@ -574,6 +574,20 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/ceres-solver/CMakeLists.txt" A
     target_link_libraries(asmsolver PUBLIC Ceres::ceres)
     target_compile_features(asmsolver PUBLIC cxx_std_17)
     message(STATUS "asmsolver: enabled (vendored Ceres submodule)")
+
+    # Wire the interactive assembly session (pick + drag) into the cax lib:
+    # the OCCT-dependent IrAdapterGeom (cylinder-radius resolution) + the
+    # AsmSession class, linking the Ceres-backed asmsolver core. Added here
+    # (not in the cax source lists above) so a build WITHOUT the Ceres
+    # submodule still compiles -- the AsmSession bindings in wrap_CadCvt.cpp
+    # are #ifdef'd on CAX_ASMSOLVER_OK. PUBLIC propagation makes the host
+    # editor (which links cax) pull asmsolver + Ceres transitively.
+    target_sources(${PROJECT_NAME} PRIVATE
+        asmsolver_c/IrAdapterGeom.cpp
+        cadcvt_c/AsmSession.cpp
+        cadcvt_c/AsmSession.h)
+    target_link_libraries(${PROJECT_NAME} PUBLIC asmsolver)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC CAX_ASMSOLVER_OK)
 else()
     message(STATUS "asmsolver: disabled (run: git submodule update --init "
                    "thirdparty/ceres-solver thirdparty/eigen)")

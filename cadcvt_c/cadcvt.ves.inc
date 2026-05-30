@@ -48,4 +48,38 @@ foreign class FreeCadLoader
     foreign transparent_alphas()
 }
 
+// =========================================================
+// AsmSession -- interactive assembly editing (pick + drag).
+//
+// load() reads a FreeCAD native-AssemblyWB file and builds the
+// constraint graph once. Then the host pick()s a part by world
+// ray, drag()s it toward a target (re-solving the joints), and
+// re-meshes body_shape(i). Only poses change -- the source file
+// is never written. Requires the asmsolver (Ceres) build; without
+// it every call reports last_error() and does nothing.
+// =========================================================
+
+foreign class AsmSession
+{
+    init() {}
+
+    // load(path, unit_scale, strict) -> bool (false on failure;
+    // see last_error()). unit_scale: 0.001 = FreeCAD mm -> metres.
+    foreign load(path, unit_scale, strict)
+    foreign last_error()
+
+    // ---- bodies (valid after a successful load) ----
+    foreign body_count()
+    foreign body_name(i)
+    foreign body_shape(i)        // TopoShape at the current solved pose
+
+    // ---- interaction ----
+    //   pick(ox,oy,oz, dx,dy,dz) -> body index (-1 on miss)
+    //   hit()                    -> [x,y,z] world hit point of last pick
+    //   drag(body, tx,ty,tz, w)  -> post-solve joint residual
+    foreign pick(ox, oy, oz, dx, dy, dz)
+    foreign hit()
+    foreign drag(body, tx, ty, tz, w)
+}
+
 );
