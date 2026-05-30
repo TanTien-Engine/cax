@@ -238,4 +238,15 @@ double AsmSession::Drag(int body, double tx, double ty, double tz, double weight
     return r.final_residual;
 }
 
+double AsmSession::Snap()
+{
+    Impl& s = *m_impl;
+    if (s.import.assembly.bodies.empty()) return -1.0;
+    // Handle-free solve from the current poses: drops the soft-handle residual
+    // while keeping the dragged configuration (grounded bodies stay pinned).
+    asmsolver::SolveResult r = asmsolver::Solve(s.import.assembly);
+    s.grab_body = -1;   // grab is consumed on release
+    return r.final_residual;
+}
+
 } // namespace cadcvt

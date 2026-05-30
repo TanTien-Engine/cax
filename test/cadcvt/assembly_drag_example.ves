@@ -39,10 +39,18 @@ node4.query_param("weight").value = 0.5
 
 _editor.add_node(node4, 60.0, 135.0)
 
+// Highlight path: the grabbed body's shape -> its own ToMesh -> draw_mesh's
+// `selected` input, so the part under the drag renders highlighted.
+var node5 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node5, 360.0, 360.0)
+
 // Per-body shapes -> mesh -> deferred draw. The camera drives both the
 // renderer and the drag node's pick rays.
 Blueprint.connect(node4, "shapes", node2, "shape")
 Blueprint.connect(node2, "va",    node1, "geos")
 Blueprint.connect(node2, "edges", node1, "edges")
+Blueprint.connect(node4, "picked_shape", node5, "shape")
+Blueprint.connect(node5, "va",    node1, "selected")
 Blueprint.connect(node0, "this",  node1, "view_cam")
 Blueprint.connect(node0, "this",  node4, "view_cam")

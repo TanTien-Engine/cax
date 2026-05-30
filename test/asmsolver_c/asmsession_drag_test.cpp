@@ -112,7 +112,34 @@ int main()
         return 1;
     }
 
-    std::printf("PASS: dragged dz=%.4f, movers=%d, max=%.4f, min=%.6f, residual=%.2e\n",
-                dragged_dz, movers, max_disp, min_disp, resid);
+    // (e) release-snap: a handle-free re-solve drops the soft-handle residual
+    // to ~0 while preserving the dragged (lifted) configuration.
+    double snap_resid = s.Snap();
+    std::printf("snap residual = %.3e\n", snap_resid);
+    if (!(snap_resid < 1e-6)) {
+        std::printf("FAIL: snap did not settle onto the manifold (%.3e)\n", snap_resid);
+        return 1;
+    }
+    // The lift must survive the snap (snap settles, it must NOT collapse back).
+    std::vector<Vec3> c2(n);
+    if (!center_of(s, top, c2[top])) { std::printf("FAIL: no top shape post-snap\n"); return 1; }
+    double snap_top_dz = c2[top].z - c0[top].z;
+    double snap_shift  = dist(c1[top], c2[top]);
+    std::printf("post-snap: top dz=%.5f (was %.5f), shift=%.5f\n",
+                snap_top_dz, dragged_dz, snap_shift);
+    if (!(snap_top_dz > 5e-4)) {
+        std::printf("FAIL: snap collapsed the lift (dz=%.5f)\n", snap_top_dz);
+        return 1;
+    }
+    // The grounded base stays put across the snap too.
+    Vec3 base2;
+    if (center_of(s, 0, base2) && dist(c0[0], base2) > 1e-4) {
+        std::printf("FAIL: snap moved the grounded base (disp=%.5f)\n", dist(c0[0], base2));
+        return 1;
+    }
+
+    std::printf("PASS: dragged dz=%.4f, movers=%d, max=%.4f, min=%.6f, drag_resid=%.2e, "
+                "snap_resid=%.2e, snap_top_dz=%.4f\n",
+                dragged_dz, movers, max_disp, min_disp, resid, snap_resid, snap_top_dz);
     return 0;
 }

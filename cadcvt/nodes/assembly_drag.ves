@@ -48,7 +48,11 @@ class AssemblyDrag is Node
 			Pin(this, "view_cam", VAR_TYPE_NODE),
 		]
 		this.exports = [
-			Pin(this, "shapes", VAR_TYPE_ARRAY),
+			// shapes       : every body at its current solved pose
+			// picked_shape : just the grabbed body (or empty) -- feed into
+			//                draw_mesh's `selected` input to highlight it
+			Pin(this, "shapes",       VAR_TYPE_ARRAY),
+			Pin(this, "picked_shape", VAR_TYPE_ARRAY),
 		]
 
 		this.params.add(NodeParam("path", ""))
@@ -123,10 +127,33 @@ class AssemblyDrag is Node
 		return cam.screen2dir(Vector2(cx, cy))
 	}
 
+	// Mark every output dirty so ToMesh + draw_mesh re-run (re-mesh the moved
+	// parts and refresh the highlight).
+	mark_dirty()
+	{
+		for (var pin in this.exports) {
+			Blueprint.send_pin_dirty_root(pin, DIRTY_EDITOR)
+		}
+	}
+
 	calc_value(idx)
 	{
 		this.ensure_loaded()
 
+		// idx 1 = picked_shape: just the grabbed body (empty when nothing is
+		// grabbed) -> draw_mesh `selected` highlight pass.
+		if (idx == 1) {
+			var hl = []
+			if (this.picked >= 0) {
+				var psh = this.session.body_shape(this.picked)
+				if (psh) {
+					hl.add(Variant(VAR_TOPO_SHAPE, psh))
+				}
+			}
+			return Variant(VAR_TYPE_ARRAY, hl)
+		}
+
+		// idx 0 = shapes: every body at its current solved pose.
 		var arr = []
 		for (var i = 0; i < this.body_count; i = i + 1) {
 			var sh = this.session.body_shape(i)
@@ -152,6 +179,7 @@ class AssemblyDrag is Node
 		var body = this.session.pick(o.x, o.y, o.z, dir.x, dir.y, dir.z)
 		this.picked = body
 		System.print("AssemblyDrag: pick -> body %(body)")
+		this.mark_dirty()   // refresh the highlight (show grabbed body, or clear)
 		if (body < 0) {
 			return
 		}
@@ -197,13 +225,19 @@ class AssemblyDrag is Node
 		this.session.drag(this.picked, tx, ty, tz, weight)
 
 		// Push the new solved poses downstream (ToMesh -> render).
-		for (var pin in this.exports) {
-			Blueprint.send_pin_dirty_root(pin, DIRTY_EDITOR)
-		}
+		this.mark_dirty()
 	}
 
 	on_mouse_released(x, y, btn)
 	{
+		// Release-snap: settle exactly onto the constraint manifold (clears the
+		// small soft-handle residual left mid-drag), then drop the grab and
+		// clear the highlight.
+		if (this.picked >= 0) {
+			var r = this.session.snap()
+			System.print("AssemblyDrag: release snap residual %(r)")
+		}
 		this.picked = -1
+		this.mark_dirty()
 	}
 }

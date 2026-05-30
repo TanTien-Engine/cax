@@ -56,6 +56,14 @@ public:
     // post-solve joint residual L2 norm (small = constraints still satisfied).
     double Drag(int body, double tx, double ty, double tz, double weight);
 
+    // Release-snap: re-solve with NO drag handle, from the current (dragged)
+    // poses, so the assembly settles exactly onto the constraint manifold --
+    // the soft handle leaves a small mid-drag residual, this cleans it. The
+    // dragged configuration is preserved (Solve converges to the nearest exact
+    // config, it has no memory of the imported pose). Call on mouse release.
+    // Returns the post-snap joint residual L2 norm (~0 on success).
+    double Snap();
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;

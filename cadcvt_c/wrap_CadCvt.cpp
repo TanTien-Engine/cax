@@ -539,6 +539,17 @@ void w_AsmSession_drag()
 #endif
 }
 
+void w_AsmSession_snap()
+{
+#ifdef CAX_ASMSOLVER_OK
+    auto* st = GetAsmState(0);
+    if (!st) { ves_set_number(0, -1.0); return; }
+    ves_set_number(0, st->session.Snap());
+#else
+    ves_set_number(0, -1.0);
+#endif
+}
+
 } // anonymous namespace
 
 
@@ -605,6 +616,9 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "AsmSession.drag(_,_,_,_,_)") == 0) {
         return w_AsmSession_drag;
+    }
+    if (std::strcmp(signature, "AsmSession.snap()") == 0) {
+        return w_AsmSession_snap;
     }
     return nullptr;
 }
