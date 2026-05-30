@@ -56,6 +56,26 @@
 #  include <excpt.h>
 #endif
 
+// Verbose geometry-eval diagnostics ([FILLET] / [CHAMFER] / [SPLIT_BODY]
+// / [face_picks] / [edge_diff] traces) are OFF by default. They fire per
+// edge / per op during eval; on the parallel per-part load path N worker
+// threads then contend on the single stderr lock (and a Windows console
+// flushes each line synchronously), which serialises the otherwise
+// independent replays and dominates load time on big assemblies. Set
+// CAX_GEO_LOG=1 to re-enable them for debugging (same switch gates the
+// reader's [edge_diff]/[face_picks] traces). The env is read once
+// (function-local static -> thread-safe init), so the steady-state cost
+// when off is a single predictable branch per call site.
+static bool ta_log_on()
+{
+    static const bool on = [] {
+        const char* e = std::getenv("CAX_GEO_LOG");
+        return e && e[0] && e[0] != '0';
+    }();
+    return on;
+}
+#define TA_LOG(...) do { if (ta_log_on()) std::fprintf(stderr, __VA_ARGS__); } while (0)
+
 // Wrap one OCCT Build() call in Win32 SEH so a ChFi3d access
 // violation (Page_045_Exercise2D-37_byHannu's chamfer hits one
 // in ChFi3d_IsInFront on vertex-corner stripes) becomes a "Build
@@ -417,7 +437,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
             }
         }
         if (uniq.size() != leaf_edges.size()) {
-            std::fprintf(stderr,
+            TA_LOG(
                 "[FILLET] op_id=%u dedup'd leaf_edges %zu -> %zu\n",
                 op_id, leaf_edges.size(), uniq.size());
         }
@@ -431,7 +451,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         // worth the breadcrumb -- silently filleting nothing reads
         // as "fillet did nothing" downstream and you spend an hour
         // looking in the wrong place.
-        std::fprintf(stderr,
+        TA_LOG(
             "[FILLET] op_id=%u SKIPPED -- no leaf edges to fillet\n",
             op_id);
         return shape;
@@ -551,7 +571,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         result = UnwrapSingleSolid(result);
         if (!batch_result_sane(result))
         {
-            std::fprintf(stderr,
+            TA_LOG(
                 "[FILLET] op_id=%u batch built corrupt blend "
                 "(input extent=%.4f m, result extent=%.4f m); "
                 "retrying on unified-domain input\n",
@@ -642,7 +662,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
                 }
             }
 
-            std::fprintf(stderr,
+            TA_LOG(
                 "[FILLET] op_id=%u refined-input remap: "
                 "%zu/%zu edges survived\n",
                 op_id, refined_edges.size(), leaf_edges.size());
@@ -669,7 +689,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
                     try_refined(ChFi3d_QuasiAngular))
                 {
                     refined_ok = true;
-                    std::fprintf(stderr,
+                    TA_LOG(
                         "[FILLET] op_id=%u refined-input batch OK "
                         "(extent=%.4f m)\n", op_id, bbox_extent(result));
                 }
@@ -705,7 +725,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     // N MakeFillet instances correctly is non-trivial, and the user
     // is checking visual geometry here, not ref stability across
     // saves.
-    std::fprintf(stderr,
+    TA_LOG(
         "[FILLET] op_id=%u batch failed, retrying %zu edges singly\n",
         op_id, leaf_edges.size());
 
@@ -878,13 +898,13 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         {
             running = result;
             ++ok_count;
-            std::fprintf(stderr, "[FILLET]   edge[%zu] ok (%s) %s\n",
+            TA_LOG( "[FILLET]   edge[%zu] ok (%s) %s\n",
                          i, mode, geom.c_str());
         }
         else
         {
             failed.push_back(i);
-            std::fprintf(stderr,
+            TA_LOG(
                 "[FILLET]   edge[%zu] failed first pass %s\n",
                 i, geom.c_str());
         }
@@ -919,7 +939,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
             if (!find_surviving_edge(running, pt0, tan0, len0, live)) {
                 ++chain_consumed;
                 if (chain_consumed_log < 8) {
-                    std::fprintf(stderr,
+                    TA_LOG(
                         "[FILLET]   edge[%zu] consumed by prior chain "
                         "(no live match on running body)\n", i);
                     ++chain_consumed_log;
@@ -935,7 +955,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
                 running = result;
                 ++ok_count;
                 ++round_ok;
-                std::fprintf(stderr,
+                TA_LOG(
                     "[FILLET]   edge[%zu] ok (%s, retry round %d, rematched) %s\n",
                     i, mode, retry_round, geom.c_str());
             }
@@ -953,7 +973,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
             for (size_t i : still_failed)
             {
                 std::string geom = edge_geom_str(leaf_edges[i]);
-                std::fprintf(stderr,
+                TA_LOG(
                     "[FILLET]   edge[%zu] FAILED both modes after %d retries %s\n",
                     i, retry_round, geom.c_str());
             }
@@ -967,7 +987,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     // several tangent edges into one contour, so "Add ok" undercounts
     // coverage; the new-surface delta is the honest measure.
     const int new_surface_count = count_faces(running) - base_face_count;
-    std::fprintf(stderr,
+    TA_LOG(
         "[FILLET] op_id=%u per-edge: %d Add() ok + %d chain-consumed, "
         "%d new fillet surfaces / %zu edges (%d retry rounds)\n",
         op_id, ok_count, chain_consumed, new_surface_count,
@@ -1001,7 +1021,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
     // Build-stamp probe: if the user sees this line in stderr, the
     // editor.exe really did pick up the SEH-wrapped Chamfer. If the
     // line is missing, the binary is stale (relink editor.vcxproj).
-    std::fprintf(stderr,
+    TA_LOG(
         "[CHAMFER] op_id=%u entry, build=" __DATE__ " " __TIME__
         ", dist=%.6f, edges=%zu (BREPKIT_CHAMFER_FORCE_SINGLE=%s)\n",
         op_id, dist, edges.size(),
@@ -1030,7 +1050,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
             if (seen.Add(e)) uniq.push_back(e);
         }
         if (uniq.size() != leaf_edges.size()) {
-            std::fprintf(stderr,
+            TA_LOG(
                 "[CHAMFER] op_id=%u dedup'd leaf_edges %zu -> %zu\n",
                 op_id, leaf_edges.size(), uniq.size());
         }
@@ -1038,7 +1058,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
     }
 
     if (leaf_edges.empty()) {
-        std::fprintf(stderr,
+        TA_LOG(
             "[CHAMFER] op_id=%u SKIPPED -- no leaf edges to chamfer\n",
             op_id);
         return shape;
@@ -1051,7 +1071,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         for (const auto& e : leaf_edges) {
             out->Add(dist, e);
         }
-        std::fprintf(stderr,
+        TA_LOG(
             "[CHAMFER] op_id=%u about to seh_safe_build batch\n", op_id);
         std::fflush(stderr);
         int r = -1;
@@ -1064,7 +1084,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         } catch (...) {
             r = -1;
         }
-        std::fprintf(stderr,
+        TA_LOG(
             "[CHAMFER] op_id=%u batch seh_safe_build returned r=%d (%s)\n",
             op_id, r, seh_safe_build_label(r));
         if (r == 1) {
@@ -1097,7 +1117,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
     // through TopoNaming correctly is non-trivial, so the fallback
     // bypasses naming. Acceptable here because the user is verifying
     // geometry, not ref stability across saves.
-    std::fprintf(stderr,
+    TA_LOG(
         "[CHAMFER] op_id=%u batch failed, retrying %zu edges singly\n",
         op_id, leaf_edges.size());
 
@@ -1226,11 +1246,11 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         if (try_one(running, leaf_edges[i], res)) {
             running = res;
             ++ok_count;
-            std::fprintf(stderr, "[CHAMFER]   edge[%zu] ok %s\n",
+            TA_LOG( "[CHAMFER]   edge[%zu] ok %s\n",
                          i, geom.c_str());
         } else {
             failed.push_back(i);
-            std::fprintf(stderr,
+            TA_LOG(
                 "[CHAMFER]   edge[%zu] failed first pass %s\n",
                 i, geom.c_str());
         }
@@ -1253,7 +1273,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
             if (!find_surviving_edge(running, pt0, tan0, len0, live)) {
                 ++chain_consumed;
                 if (chain_consumed_log < 8) {
-                    std::fprintf(stderr,
+                    TA_LOG(
                         "[CHAMFER]   edge[%zu] consumed by prior chain "
                         "(no live match on running body)\n", i);
                     ++chain_consumed_log;
@@ -1266,7 +1286,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
                 running = res;
                 ++ok_count;
                 ++round_ok;
-                std::fprintf(stderr,
+                TA_LOG(
                     "[CHAMFER]   edge[%zu] ok (retry round %d, rematched) %s\n",
                     i, retry_round, geom.c_str());
             } else {
@@ -1276,7 +1296,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         if (round_ok == 0) {
             for (size_t i : still_failed) {
                 std::string geom = edge_geom_str(leaf_edges[i]);
-                std::fprintf(stderr,
+                TA_LOG(
                     "[CHAMFER]   edge[%zu] FAILED after %d retries %s\n",
                     i, retry_round, geom.c_str());
             }
@@ -1286,7 +1306,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
     }
 
     const int new_surface_count = count_faces(running) - base_face_count;
-    std::fprintf(stderr,
+    TA_LOG(
         "[CHAMFER] op_id=%u per-edge: %d Add() ok + %d chain-consumed, "
         "%d new chamfer surfaces / %zu edges (%d retry rounds)\n",
         op_id, ok_count, chain_consumed, new_surface_count,
@@ -1652,7 +1672,7 @@ std::shared_ptr<TopoShape> TopoAlgo::SplitBodyAtPoints(
     }
 
     if (tools.empty()) {
-        std::fprintf(stderr,
+        TA_LOG(
             "[SPLIT_BODY] op_id=%u no usable hints (all off-body "
             "or at existing vertices); body unchanged\n", op_id);
         return shape;
@@ -1672,20 +1692,20 @@ std::shared_ptr<TopoShape> TopoAlgo::SplitBodyAtPoints(
     try {
         splitter.Perform();
     } catch (...) {
-        std::fprintf(stderr,
+        TA_LOG(
             "[SPLIT_BODY] op_id=%u splitter threw; body unchanged\n",
             op_id);
         return shape;
     }
     if (splitter.HasErrors()) {
-        std::fprintf(stderr,
+        TA_LOG(
             "[SPLIT_BODY] op_id=%u splitter reported errors; body "
             "unchanged\n", op_id);
         return shape;
     }
 
     TopoDS_Shape result = splitter.Shape();
-    std::fprintf(stderr,
+    TA_LOG(
         "[SPLIT_BODY] op_id=%u applied %zu split point(s)\n",
         op_id, tools.size());
 
@@ -1844,7 +1864,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         // degenerates into a plain offset of the entire solid, which
         // looks like an intact shape rather than a shelled one --
         // almost always a resolver miss upstream, not user intent.
-        std::fprintf(stderr,
+        TA_LOG(
                      "[TopoAlgo::ThickSolid] no closing faces "
                      "(upstream face resolution likely missed); "
                      "offset=%g faces_in=%zu\n",
@@ -1932,7 +1952,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         // Every closing face disappeared during unification. The
         // user-intended face is gone, so refuse to fall through into
         // the empty-list degenerate path.
-        std::fprintf(stderr,
+        TA_LOG(
                      "[TopoAlgo::ThickSolid] all closing faces "
                      "vanished during UnifySameDomain pre-pass\n");
         return nullptr;
@@ -1981,7 +2001,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
     BRepOffsetAPI_MakeThickSolid by_simple;
     if (degenerate)
     {
-        std::fprintf(stderr,
+        TA_LOG(
                      "[TopoAlgo::ThickSolid] ByJoin degenerate "
                      "(out=%d, in=%d); retry BySimple\n",
                      join_faces, in_faces);
@@ -1993,7 +2013,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
 
     if (!thick_solid.IsDone())
     {
-        std::fprintf(stderr,
+        TA_LOG(
                      "[TopoAlgo::ThickSolid] not done: offset=%g tol=%g "
                      "faces=%zu\n", (double)offset, tol, faces.size());
         return nullptr;
@@ -2053,7 +2073,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThickSolid(const std::shared_ptr<TopoShape>
         int seh = 0;
 #endif
         if (seh < 0 || !ctx.ok) {
-            std::fprintf(stderr,
+            TA_LOG(
                          "[TopoAlgo::ThickSolid] BRepTools_History "
                          "construction faulted (seh=%d ok=%d); "
                          "treating op as failed\n",
@@ -2101,7 +2121,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
         }
         thru_sections.Build();
         if (!thru_sections.IsDone() || thru_sections.Shape().IsNull()) {
-            std::fprintf(stderr,
+            TA_LOG(
                          "[TopoAlgo::ThruSections] loft did not build "
                          "(%zu section wires, is_solid=%d); treating op "
                          "as failed\n",
@@ -2122,7 +2142,7 @@ std::shared_ptr<TopoShape> TopoAlgo::ThruSections(const std::vector<std::shared_
         return dst;
     }
     catch (const Standard_Failure& e) {
-        std::fprintf(stderr,
+        TA_LOG(
                      "[TopoAlgo::ThruSections] OCCT failure: %s; treating "
                      "op as failed\n",
                      e.GetMessageString());

@@ -63,6 +63,22 @@ namespace cadcvt
 // the existing unqualified usages keep compiling.
 using namespace cadapp;
 
+// Verbose dressup-resolution diagnostics ([edge_diff] / [face_picks]
+// traces) are OFF by default -- they fire per fillet/chamfer edge & face
+// during ReadFile and only matter when debugging a mis-resolved dressup.
+// Gated by the same CAX_GEO_LOG switch as brepkit's eval-time traces, so
+// one env re-enables all CAD-conversion geometry logging. Read once
+// (function-local static -> thread-safe init).
+static bool cvt_log_on()
+{
+    static const bool on = [] {
+        const char* e = std::getenv("CAX_GEO_LOG");
+        return e && e[0] && e[0] != '0';
+    }();
+    return on;
+}
+#define CVT_LOG(...) do { if (cvt_log_on()) std::fprintf(stderr, __VA_ARGS__); } while (0)
+
 // ============================================================
 // Section A: utilities
 // ============================================================
@@ -2172,7 +2188,7 @@ size_t StashFilletRefsByEdgeDiff(
 
             if (run_lo > kEndTailMax ||
                 run_hi < kSampleCount - 1 - kEndTailMax) {
-                std::fprintf(stderr,
+                CVT_LOG(
                     "[edge_diff]   skip one-sided base_idx=%d "
                     "run=%d..%d/%d (tail_lo=%d tail_hi=%d max=%d)\n",
                     i, run_lo, run_hi, kSampleCount - 1,
@@ -2273,7 +2289,7 @@ size_t StashFilletRefsByEdgeDiff(
             if (!shadowed) {
                 filtered.push_back(c);
             } else {
-                std::fprintf(stderr,
+                CVT_LOG(
                     "[edge_diff]   skip shadowed base_idx=%d "
                     "edge_len_mm=%.3f (<= 1.5*d=%.3f and shares "
                     "endpoint with a >= 2x longer candidate)\n",
@@ -2312,7 +2328,7 @@ size_t StashFilletRefsByEdgeDiff(
         // `out_split_hints` is left untouched.
         (void)out_split_hints;
 
-        std::fprintf(stderr,
+        CVT_LOG(
             "[edge_diff]   #%zu base_idx=%d run=%d..%d/%d "
             "mid=(%.3f,%.3f,%.3f) tan=(%.3f,%.3f,%.3f) "
             "run_len_mm=%.3f edge_len_mm=%.3f\n",
@@ -2334,7 +2350,7 @@ size_t StashFilletRefsByEdgeDiff(
     // MakeFillet auto-chains them back on the cax side). `splits`
     // is the number of pre-fillet split_body_at_points anchors the
     // Replayer will drop on cax's running body before resolve.
-    std::fprintf(stderr,
+    CVT_LOG(
         "[edge_diff] dressup=%s base=%s r_mm=%.3f base_edges=%d "
         "kept=%zu degen=%zu emitted=%zu splits=%zu (authored=%zu)\n",
         own_object.c_str(), base_object.c_str(), dressup_size_mm,
@@ -2517,7 +2533,7 @@ size_t StashFilletRefsFromFacePicks(
         }
     }
 
-    std::fprintf(stderr,
+    CVT_LOG(
         "[face_picks] dressup=%s base=%s authored_faces=%zu "
         "skipped_idx=%zu emitted=%zu split_hints=%zu\n",
         own_object.c_str(), base_object.c_str(),
