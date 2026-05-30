@@ -132,7 +132,11 @@ bool AsmSession::Load(const std::string& path, double unit_scale, bool strict)
     opt.write_back_resolved = false;
     opt.commit_versions     = false;
     cadapp::ReplayResult res;
-    if (!s.replayer.ReplayParts(s.doc, opt, res, /*parallel*/ true)) {
+    // Serial replay: deterministic part order -> stable part<->body mapping.
+    // (Parallel ReplayParts occasionally permutes parts, which would scramble
+    // body_shape() lookups in an interactive session. The part count in an
+    // editable assembly is small, so the lost parallelism is negligible.)
+    if (!s.replayer.ReplayParts(s.doc, opt, res, /*parallel*/ false)) {
         m_err = res.err_msg.empty() ? "Replay failed" : res.err_msg;
         return false;
     }
