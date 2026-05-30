@@ -138,6 +138,24 @@ int main()
         return 1;
     }
 
+    // (f) rotation path: re-pick the top body and rotate it about world Y via
+    // the session DragRot binding. The scissor platform is orientation-
+    // constrained, so this just checks the path runs and stays solvable (the
+    // rotation math is proven decisively by scissor_test ok4). Snap recovers.
+    int rep = s.Pick(c2[top].x, c2[top].y, c2[top].z + 1.0, 0.0, 0.0, -1.0);
+    if (rep < 0) { std::printf("FAIL: re-pick for rotate missed\n"); return 1; }
+    double rot_resid = s.DragRot(rep, 0.0, 1.0, 0.0, 0.3, 0.5);   // 0.3 rad about Y
+    std::printf("rotate(session): re-pick body %d, residual=%.3e\n", rep, rot_resid);
+    if (!(rot_resid >= 0.0 && rot_resid < 1e-1)) {
+        std::printf("FAIL: DragRot path errored or diverged (%.3e)\n", rot_resid);
+        return 1;
+    }
+    double snap2 = s.Snap();
+    if (!(snap2 < 1e-6)) {
+        std::printf("FAIL: snap after rotate did not settle (%.3e)\n", snap2);
+        return 1;
+    }
+
     std::printf("PASS: dragged dz=%.4f, movers=%d, max=%.4f, min=%.6f, drag_resid=%.2e, "
                 "snap_resid=%.2e, snap_top_dz=%.4f\n",
                 dragged_dz, movers, max_disp, min_disp, resid, snap_resid, snap_top_dz);

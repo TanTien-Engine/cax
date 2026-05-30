@@ -142,7 +142,54 @@ int main()
     std::printf("    %s (mobility 4 = 1 lift + 3 idle pin spins; 3 redundant)\n\n",
                 ok3 ? "PASS" : "FAIL");
 
-    bool pass = ok1 && ok2 && ok3;
+    // ---- (4) rotation handle (HandleRotCost) ----
+    // Self-contained: drives a body's orientation toward a target quaternion.
+    const double PI = 3.14159265358979323846;
+    const double s45 = std::sin(PI / 4), c45 = std::cos(PI / 4);  // 90deg
+    bool ok4a = false, ok4b = false;
+
+    // (a) free body + pure rotation handle -> orientation snaps to target.
+    {
+        asmsolver::Assembly R;
+        R.bodies.resize(1);                       // identity pose
+        asmsolver::Handle h;
+        h.body = 0; h.weight = 0.0;               // no translation pull
+        h.has_rot = true; h.rot_weight = 1.0;
+        h.target_quat = {{0, 0, s45, c45}};       // 90deg about Z
+        asmsolver::SolveWithHandles(R, {h});
+        const auto& q = R.bodies[0].q;
+        double dot = q[0]*0 + q[1]*0 + q[2]*s45 + q[3]*c45;
+        ok4a = std::abs(dot) > 0.999999;          // same rotation (q ~ +/-target)
+        std::printf("(4a) pure rotation handle: q.target dot=%.8f -> %s\n",
+                    dot, ok4a ? "PASS" : "FAIL");
+    }
+
+    // (b) rotation about an off-origin anchor -> body spins about the pinned
+    // point: q -> target AND pose*anchor stays at the anchor's world position.
+    {
+        asmsolver::Assembly R;
+        R.bodies.resize(1);
+        asmsolver::Handle h;
+        h.body = 0; h.weight = 1.0;               // pin the anchor
+        h.anchor_local = {{1, 0, 0}};
+        h.target_world = {{1, 0, 0}};
+        h.has_rot = true; h.rot_weight = 1.0;
+        h.target_quat = {{0, 0, s45, c45}};
+        asmsolver::SolveWithHandles(R, {h});
+        const auto& q = R.bodies[0].q;
+        const auto& t = R.bodies[0].t;
+        Eigen::Quaterniond Q(q[3], q[0], q[1], q[2]);
+        Eigen::Vector3d a(1, 0, 0);
+        Eigen::Vector3d world = Q * a + Eigen::Vector3d(t[0], t[1], t[2]);
+        double pin_err = (world - Eigen::Vector3d(1, 0, 0)).norm();
+        double dot = q[2]*s45 + q[3]*c45;
+        ok4b = std::abs(dot) > 0.999999 && pin_err < 1e-5;
+        std::printf("(4b) rotate about anchor: dot=%.8f pin_err=%.2e -> %s\n",
+                    dot, pin_err, ok4b ? "PASS" : "FAIL");
+    }
+    bool ok4 = ok4a && ok4b;
+
+    bool pass = ok1 && ok2 && ok3 && ok4;
     std::printf("RESULT: %s\n", pass ? "PASS" : "FAIL");
     return pass ? 0 : 1;
 }

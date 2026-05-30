@@ -9,6 +9,7 @@ import "brepkit.variant" for VAR_TOPO_SHAPE
 import "cadcvt" for AsmSession
 import "maths.vector" for Vector2
 import "graphics" for Graphics
+import "gui" for MOUSE_RIGHT
 
 // ============================================================
 // cadcvt::nodes::assembly_drag::AssemblyDrag
@@ -72,6 +73,7 @@ class AssemblyDrag is Node
 		this.picked   = -1
 		this.plane_pt = nil   // [x,y,z] world point the drag plane passes through
 		this.plane_n  = nil   // [x,y,z] drag-plane normal (camera front)
+		this.press_x  = 0     // cursor x at press, for right-drag rotation angle
 	}
 
 	// (Re)load the session when path / options change.
@@ -178,6 +180,7 @@ class AssemblyDrag is Node
 		var o   = cam.position
 		var body = this.session.pick(o.x, o.y, o.z, dir.x, dir.y, dir.z)
 		this.picked = body
+		this.press_x = x
 		System.print("AssemblyDrag: pick -> body %(body)")
 		this.mark_dirty()   // refresh the highlight (show grabbed body, or clear)
 		if (body < 0) {
@@ -202,7 +205,20 @@ class AssemblyDrag is Node
 			return
 		}
 
-		// Intersect the cursor ray with the drag plane.
+		var weight = NodeHelper.calc_prop_value(this, "weight")
+
+		// Right button = rotate the grabbed part about the view axis, by an
+		// angle proportional to the horizontal drag from the press point. The
+		// part spins about the grabbed point and the joints follow.
+		if (btn == MOUSE_RIGHT) {
+			var angle = (x - this.press_x) * 0.01
+			var f = cam.front
+			this.session.drag_rot(this.picked, f.x, f.y, f.z, angle, weight)
+			this.mark_dirty()
+			return
+		}
+
+		// Left button = translate: intersect the cursor ray with the drag plane.
 		var dir = this.screen_dir(cam, x, y)
 		var o   = cam.position
 		var nx = this.plane_n[0]
@@ -221,7 +237,6 @@ class AssemblyDrag is Node
 		var ty = o.y + t * dir.y
 		var tz = o.z + t * dir.z
 
-		var weight = NodeHelper.calc_prop_value(this, "weight")
 		this.session.drag(this.picked, tx, ty, tz, weight)
 
 		// Push the new solved poses downstream (ToMesh -> render).

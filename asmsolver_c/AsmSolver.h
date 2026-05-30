@@ -67,6 +67,14 @@ struct Handle {
     std::array<double,3> anchor_local{{0, 0, 0}};
     std::array<double,3> target_world{{0, 0, 0}};
     double              weight = 1.0;
+
+    // Optional orientation pull. When has_rot, the body's quaternion is also
+    // driven toward target_quat (x,y,z,w) with rot_weight. Combined with the
+    // translation pin above (anchor->target), this rotates the body about the
+    // anchor point. Leave has_rot false for a pure translation drag.
+    bool                 has_rot    = false;
+    std::array<double,4> target_quat{{0, 0, 0, 1}};
+    double               rot_weight = 0.0;
 };
 
 struct SolveOptions {

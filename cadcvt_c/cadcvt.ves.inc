@@ -80,6 +80,7 @@ foreign class AsmSession
     foreign pick(ox, oy, oz, dx, dy, dz)
     foreign hit()
     foreign drag(body, tx, ty, tz, w)
+    foreign drag_rot(body, ax, ay, az, angle, w)  // rotate about grab point
     foreign snap()               // release-snap: handle-free re-solve -> residual
 }
 

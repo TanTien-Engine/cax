@@ -66,6 +66,7 @@ struct AsmSession::Impl {
     int    grab_body          = -1;
     double grab_world[3]      = {0, 0, 0};
     double grab_anchor[3]     = {0, 0, 0};   // grab point in body-local frame
+    double grab_q[4]          = {0, 0, 0, 1}; // grabbed body orientation (xyzw)
 
     int   nbodies() const {
         return static_cast<int>(import.assembly.bodies.size());
@@ -201,11 +202,12 @@ int AsmSession::Pick(double ox, double oy, double oz,
 
     // Grab point in the picked body's local frame, so pose*anchor tracks the
     // grabbed feature as the body moves.
-    gp_Pnt local = best_pnt.Transformed(
-        TrsfOf(s.import.assembly.bodies[best_body]).Inverted());
+    const asmsolver::Pose& bp = s.import.assembly.bodies[best_body];
+    gp_Pnt local = best_pnt.Transformed(TrsfOf(bp).Inverted());
     s.grab_anchor[0] = local.X();
     s.grab_anchor[1] = local.Y();
     s.grab_anchor[2] = local.Z();
+    for (int i = 0; i < 4; ++i) s.grab_q[i] = bp.q[i];   // for DragRot
     return best_body;
 }
 
@@ -231,6 +233,42 @@ double AsmSession::Drag(int body, double tx, double ty, double tz, double weight
         h.anchor_local = {{ s.grab_anchor[0], s.grab_anchor[1], s.grab_anchor[2] }};
     } else {
         h.anchor_local = {{ 0, 0, 0 }};
+    }
+
+    std::vector<asmsolver::Handle> handles{ h };
+    asmsolver::SolveResult r = asmsolver::SolveWithHandles(s.import.assembly, handles);
+    return r.final_residual;
+}
+
+double AsmSession::DragRot(int body, double ax, double ay, double az,
+                           double angle, double weight)
+{
+    Impl& s = *m_impl;
+    if (body < 0 || body >= s.nbodies()) return -1.0;
+
+    gp_Vec axv(ax, ay, az);
+    if (axv.Magnitude() < 1e-12) return -1.0;
+
+    // target orientation = (rotation `angle` about world axis) composed onto
+    // the body's orientation at grab time -> a world-frame rotation.
+    gp_Quaternion dq(gp_Vec(axv.Normalized()), angle);
+    gp_Quaternion gq(s.grab_q[0], s.grab_q[1], s.grab_q[2], s.grab_q[3]);
+    gp_Quaternion tq = dq * gq;
+
+    asmsolver::Handle h;
+    h.body       = body;
+    h.weight     = weight;          // translation pin holds the pivot in place
+    h.has_rot    = true;
+    h.rot_weight = weight;
+    h.target_quat = {{ tq.X(), tq.Y(), tq.Z(), tq.W() }};
+    if (body == s.grab_body) {
+        // pin the grabbed point -> the body rotates about it
+        h.anchor_local = {{ s.grab_anchor[0], s.grab_anchor[1], s.grab_anchor[2] }};
+        h.target_world = {{ s.grab_world[0],  s.grab_world[1],  s.grab_world[2] }};
+    } else {
+        const asmsolver::Pose& cur = s.import.assembly.bodies[body];
+        h.anchor_local = {{ 0, 0, 0 }};
+        h.target_world = {{ cur.t[0], cur.t[1], cur.t[2] }};
     }
 
     std::vector<asmsolver::Handle> handles{ h };

@@ -143,6 +143,28 @@ struct HandleCost {
     }
 };
 
+// Unary soft orientation handle: pull a body's quaternion toward a target
+// world orientation. 3 residuals = the vector part of the relative rotation
+// (target^-1 * Q), ~the rotation vector for small angles, scaled by weight.
+struct HandleRotCost {
+    double target_q[4];   // x,y,z,w
+    double w;
+    template <typename T>
+    bool operator()(const T* q, T* r) const
+    {
+        Eigen::Map<const Eigen::Quaternion<T>> Q(q);
+        // Eigen's quaternion ctor takes (w,x,y,z); target is stored x,y,z,w.
+        const T tx = T(target_q[0]), ty = T(target_q[1]),
+                tz = T(target_q[2]), tw = T(target_q[3]);
+        Eigen::Quaternion<T> Tq(tw, tx, ty, tz);
+        Eigen::Quaternion<T> e = Tq.conjugate() * Q;
+        r[0] = T(2) * T(w) * e.x();
+        r[1] = T(2) * T(w) * e.y();
+        r[2] = T(2) * T(w) * e.z();
+        return true;
+    }
+};
+
 JointCost MakeJointCost(const Joint& j)
 {
     JointCost c;
@@ -206,6 +228,16 @@ void BuildProblem(Assembly& A, ceres::Problem& prob,
             new ceres::AutoDiffCostFunction<HandleCost, 3, 3, 4>(hc),
             nullptr,
             A.bodies[h.body].t.data(), A.bodies[h.body].q.data());
+
+        if (h.has_rot) {
+            auto* rc = new HandleRotCost;
+            for (int i = 0; i < 4; ++i) rc->target_q[i] = h.target_quat[i];
+            rc->w = h.rot_weight;
+            prob.AddResidualBlock(
+                new ceres::AutoDiffCostFunction<HandleRotCost, 3, 4>(rc),
+                nullptr,
+                A.bodies[h.body].q.data());
+        }
     }
     for (auto& b : A.bodies) {
         if (prob.HasParameterBlock(b.q.data())) {

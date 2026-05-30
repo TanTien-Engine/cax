@@ -56,6 +56,13 @@ public:
     // post-solve joint residual L2 norm (small = constraints still satisfied).
     double Drag(int body, double tx, double ty, double tz, double weight);
 
+    // Rotate `body` by `angle` (radians) about the world axis (ax,ay,az),
+    // composed onto its grab-time orientation, while pinning the grabbed point
+    // -- so the body spins about the pick point and the joints follow. Returns
+    // the post-solve joint residual L2 norm.
+    double DragRot(int body, double ax, double ay, double az,
+                   double angle, double weight);
+
     // Release-snap: re-solve with NO drag handle, from the current (dragged)
     // poses, so the assembly settles exactly onto the constraint manifold --
     // the soft handle leaves a small mid-drag residual, this cleans it. The
