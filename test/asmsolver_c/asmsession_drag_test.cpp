@@ -172,6 +172,9 @@ int main()
     // modified. Drag a fresh session, SaveBack (overwrite copy + .bak), reload
     // the saved file, and confirm the dragged poses persisted.
     const std::string copy = "/tmp/asm_save_test.FCStd";
+    std::remove(copy.c_str());                 // clean slate: no stale artifacts
+    std::remove((copy + ".bak").c_str());
+    std::remove((copy + ".tmp").c_str());
     if (!copy_file(ASM_SCISSOR_FCSTD, copy)) {
         std::printf("FAIL: could not copy fixture for write test\n"); return 1;
     }

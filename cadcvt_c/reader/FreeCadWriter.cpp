@@ -157,10 +157,17 @@ bool WriteFreeCadPlacements(const std::string& src_path,
               [](const Edit& a, const Edit& b) { return a.lt > b.lt; });
     for (const Edit& e : edits) xml.replace(e.lt, e.end - e.lt, e.repl);
 
-    // ---- backup before any destructive write ----
-    if (!backup_path.empty() && !CopyFile(src_path, backup_path)) {
-        mz_zip_reader_end(&zr);
-        return fail("backup failed: " + backup_path);
+    // ---- backup before any destructive write. NEVER overwrite an existing
+    //      backup: the first one is the pristine original, and later saves
+    //      must not clobber it with an already-edited file. ----
+    if (!backup_path.empty()) {
+        std::ifstream have(backup_path, std::ios::binary);
+        bool exists = have.good();
+        have.close();
+        if (!exists && !CopyFile(src_path, backup_path)) {
+            mz_zip_reader_end(&zr);
+            return fail("backup failed: " + backup_path);
+        }
     }
 
     // ---- re-zip: substitute Document.xml, copy every other entry verbatim ----
