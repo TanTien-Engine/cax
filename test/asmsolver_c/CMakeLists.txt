@@ -17,11 +17,12 @@ if(CADCVT_FREECAD_DEPS_OK)
         TKDESTEP TKDE TKXSBase TKXCAF TKLCAF TKCDF
         TKBO TKBool TKFillet TKHLR
     )
-    # IrAdapterGeom is OCCT-dependent (cylinder-radius resolution), so it is
-    # compiled into this OCCT-linked test rather than the OCCT-free core lib.
+    # IrAdapterGeom (OCCT-dependent cylinder-radius resolution) + AsmSession
+    # are compiled into the cax lib when CAX_ASMSOLVER_OK, so this test gets
+    # them by linking cax -- do NOT compile IrAdapterGeom here too or clang
+    # flags a duplicate symbol (only MSVC tolerated it via /FORCE:MULTIPLE).
     add_executable(asmsolver_import_test
-        import_solve_test.cpp
-        ${ASM_REPO_ROOT}/asmsolver_c/IrAdapterGeom.cpp)
+        import_solve_test.cpp)
     target_include_directories(asmsolver_import_test PRIVATE
         ${ASM_REPO_ROOT} ${OpenCASCADE_INCLUDE_DIR})
     target_link_libraries(asmsolver_import_test PRIVATE
@@ -33,4 +34,19 @@ if(CADCVT_FREECAD_DEPS_OK)
         target_link_options(asmsolver_import_test PRIVATE /FORCE:MULTIPLE /IGNORE:4006)
     endif()
     add_test(NAME asmsolver_import COMMAND asmsolver_import_test)
+
+    # Interactive pick + drag via cadcvt::AsmSession (Increment 6). Same link
+    # surface (cax provides AsmSession + IrAdapterGeom; OCCT for bbox checks).
+    add_executable(asmsession_drag_test asmsession_drag_test.cpp)
+    target_include_directories(asmsession_drag_test PRIVATE
+        ${ASM_REPO_ROOT} ${OpenCASCADE_INCLUDE_DIR})
+    target_link_libraries(asmsession_drag_test PRIVATE
+        asmsolver cax OGDF Ceres::ceres ${OCCT_ASM_LIBS})
+    target_compile_features(asmsession_drag_test PRIVATE cxx_std_17)
+    target_compile_definitions(asmsession_drag_test PRIVATE
+        ASM_SCISSOR_FCSTD="${ASM_REPO_ROOT}/test/cadcvt_c/golden/fixtures/examples/freecad_assembly_test_corpus/native_AssemblyWB/scissor_lift.FCStd")
+    if(MSVC)
+        target_link_options(asmsession_drag_test PRIVATE /FORCE:MULTIPLE /IGNORE:4006)
+    endif()
+    add_test(NAME asmsession_drag COMMAND asmsession_drag_test)
 endif()
