@@ -1,0 +1,44 @@
+doc source=freecad
+feat 2 name=Shape001 type=Unknown suppressed=0 payload=other
+feat 3 name=Shape012 type=Unknown suppressed=0 payload=other
+feat 4 name=Shape013 type=Unknown suppressed=0 payload=other
+feat 5 name=Shape014 type=Unknown suppressed=0 payload=other
+feat 6 name=Shape015 type=Unknown suppressed=0 payload=other
+feat 7 name=Shape016 type=Unknown suppressed=0 payload=other
+feat 8 name=Shape017 type=Unknown suppressed=0 payload=other
+feat 9 name=Shape018 type=Unknown suppressed=0 payload=other
+feat 10 name=Shape019 type=Unknown suppressed=0 payload=other
+feat 11 name=Shape020 type=Unknown suppressed=0 payload=other
+feat 12 name=Shape021 type=Unknown suppressed=0 payload=other
+feat 13 name=Shape022 type=Unknown suppressed=0 payload=other
+feat 14 name=Shape type=Unknown suppressed=0 payload=other
+feat 24 name=BasePin type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 25 name=Base type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 26 name=Boom type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 27 name=Stick type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 28 name=Bucket type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 29 name=BucketLink2 type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 30 name=BucketLink1 type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 31 name=BoomCylinderOuter type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 32 name=BoomCylinderInner type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 33 name=StickCylinderInner type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 34 name=StickCylinderOuter type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 35 name=BucketCylinderInner type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 36 name=BucketCylinderOuter type=Unknown suppressed=0 payload=opaque freecad_type=App::Link
+feat 37 name=GroundedJoint type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 38 name=Revolute type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 39 name=Revolute001 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 40 name=Revolute002 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 41 name=Slider type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 42 name=Cylindrical type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 43 name=Revolute003 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 44 name=Slider001 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 45 name=Revolute004 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 46 name=Cylindrical001 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 47 name=Revolute005 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 48 name=Slider002 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 49 name=Revolute006 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 50 name=Revolute007 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 51 name=Revolute008 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 52 name=Cylindrical002 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython
+feat 53 name=Cylindrical003 type=Joint suppressed=0 payload=opaque freecad_type=App::FeaturePython

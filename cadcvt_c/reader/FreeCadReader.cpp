@@ -4625,14 +4625,119 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
 
             if (linked_file.empty())
             {
-                // Internal-only Link (LinkedObject points within the
-                // same document via "value=" instead of XLink "file=").
-                // Not used by Assembly4; fall back to Opaque so the
-                // doc still loads. A later pass can recognise the
-                // intra-doc case if needed.
+                // ---- Intra-document App::Link (native Assembly WB) ----
+                //
+                // FreeCAD 1.0's native Assembly WB instances in-doc parts
+                // via an App::Link whose LinkedObject XLink has an EMPTY
+                // file= and a name= naming a sibling object in THIS same
+                // document -- typically a Part::Feature carrying the
+                // STEP-imported geometry at identity placement (or a
+                // PartDesign::Body). The geometry is authored once at its
+                // local origin, and the App::Link is the assembly
+                // COMPONENT: its name is the body identity the joints
+                // reference (joint_ref*_part / joint_ground_part = the
+                // Sub prefix "Boom.Face1" -> "Boom"), and its Placement
+                // is the assembly-solved world pose (LinkTransform=false,
+                // so Placement IS the final pose of the local shape).
+                //
+                // Reuse the native-Assembly body machinery rather than
+                // emitting a separate Link solid: stamp the linked target
+                // feature so it BECOMES the body --
+                //   freecad_body = this App::Link's name  (body identity
+                //                  the asmsolver creates a Body for and
+                //                  the joints match by name; also what
+                //                  AsmSession uses to map a replayed part
+                //                  back to its body for placed_shape)
+                //   asm_*        = this App::Link's Placement (the body's
+                //                  imported world pose; the Replayer
+                //                  layers rotate+translate onto the part
+                //                  output, the asmsolver uses the same
+                //                  pose as the imported drag baseline)
+                // The App::Link itself then carries no geometry. This is
+                // the SAME representation PartDesign::Body parts get in
+                // scissor_lift, so the whole replay/asmsolver/AsmSession
+                // pipeline already handles it.
+                //
+                // (Emitting a standalone Link solid instead would give
+                // res.parts a feat_id of the Link, which carries no
+                // freecad_body tag -- AsmSession then matches it to no
+                // body and placed_shape() returns null, rendering the
+                // whole assembly invisible. Stamping the target keeps the
+                // part's own feat_id, which IS the body.)
+                //
+                // Resolve the target name to a geometry-bearing host
+                // feature: a Body resolves to its TIP feature (the Body
+                // object itself is a skipped container), otherwise the
+                // named object's own feature id (Part::Feature). All host
+                // pendings are registered in m_name_to_id up front, and
+                // the target precedes this App::Link in document order, so
+                // it is already in out.features.
+                uint32_t tgt_id = 0;
+                auto bt = body_tip_id.find(linked_object);
+                if (bt != body_tip_id.end()) {
+                    tgt_id = bt->second;
+                } else {
+                    auto nit = m_name_to_id.find(linked_object);
+                    if (nit != m_name_to_id.end()) {
+                        tgt_id = nit->second;
+                    }
+                }
+
+                cadapp::FeatureIR* tgt = nullptr;
+                if (tgt_id != 0) {
+                    for (auto& tf : out.features) {
+                        if (tf.id == tgt_id) { tgt = &tf; break; }
+                    }
+                }
+
+                if (tgt && tgt->ext_strings.find("freecad_body")
+                               == tgt->ext_strings.end())
+                {
+                    // First (and, for native Assembly WB, only) App::Link
+                    // to this part: it becomes the body.
+                    tgt->ext_strings["freecad_body"] = pending.name;
+
+                    auto place_prop = FindProperty(props, "Placement");
+                    if (place_prop)
+                    {
+                        auto place = place_prop.child("PropertyPlacement");
+                        double ox, oy, oz, angle;
+                        double qx = AttrDouble(place, "Q0", 0.0);
+                        double qy = AttrDouble(place, "Q1", 0.0);
+                        double qz = AttrDouble(place, "Q2", 0.0);
+                        double qw = AttrDouble(place, "Q3", 1.0);
+                        QuatToAxisAngle(qx, qy, qz, qw, ox, oy, oz, angle);
+                        tgt->ext_params["asm_px"] =
+                            AttrDouble(place, "Px", 0.0) * m_unit_scale;
+                        tgt->ext_params["asm_py"] =
+                            AttrDouble(place, "Py", 0.0) * m_unit_scale;
+                        tgt->ext_params["asm_pz"] =
+                            AttrDouble(place, "Pz", 0.0) * m_unit_scale;
+                        tgt->ext_params["asm_ox"]    = ox;
+                        tgt->ext_params["asm_oy"]    = oy;
+                        tgt->ext_params["asm_oz"]    = oz;
+                        tgt->ext_params["asm_angle"] = angle;
+                    }
+                }
+                else if (tgt)
+                {
+                    // The target already became a body for an earlier
+                    // App::Link: this is part reuse (the same part
+                    // instanced twice). The asm_*/freecad_body channel
+                    // holds a single pose per part, so the extra instance
+                    // cannot be represented this way -- record a
+                    // diagnostic rather than silently overwriting the
+                    // first instance's pose.
+                    CVT_LOG("intra-doc App::Link %s reuses part %s already "
+                            "bound to a body; extra instance not placed\n",
+                            pending.name.c_str(), linked_object.c_str());
+                }
+
+                // The App::Link carries no geometry of its own; the pose
+                // and shape now live on the target body.
                 FeatPayloadOpaque pl;
-                pl.strings["freecad_type"]            = pending.type;
-                pl.strings["link_internal_target"]    = linked_object;
+                pl.strings["freecad_type"]         = pending.type;
+                pl.strings["link_internal_target"] = linked_object;
                 feat.type = FeatType::Unknown;
                 feat.data = std::move(pl);
             }
