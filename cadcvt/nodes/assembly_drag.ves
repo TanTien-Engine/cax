@@ -69,6 +69,10 @@ class AssemblyDrag is Node
 		this.params.add(NodeParam("weight", 0.5))
 		// which body the `drive` slider lifts; -1 = auto (highest body)
 		this.params.add(NodeParam("drive_body", -1))
+		// metres of lift per unit of `drive` slider value. The slider ranges
+		// ~[-1,1]; the model is in metres (scissor ~5cm), so a small scale keeps
+		// the drive in range -- 0.02 => slider 1.0 lifts ~20mm.
+		this.params.add(NodeParam("drive_scale", 0.02))
 
 		this.layout()
 
@@ -165,9 +169,13 @@ class AssemblyDrag is Node
 			return
 		}
 		this.last_drive = val
-		var body   = NodeHelper.calc_prop_value(this, "drive_body")
-		var weight = NodeHelper.calc_prop_value(this, "weight")
-		this.session.drive(body, 0, 0, 1, val, weight)
+		var body  = NodeHelper.calc_prop_value(this, "drive_body")
+		var scale = NodeHelper.calc_prop_value(this, "drive_scale")
+		// metres = slider * scale. Use a GENTLE handle weight (0.05): along the
+		// free DOF the motion is weight-independent, but a low weight makes an
+		// out-of-range slider value just saturate the DOF instead of
+		// overpowering the joints and scattering the parts.
+		this.session.drive(body, 0, 0, 1, val * scale, 0.05)
 	}
 
 	calc_value(idx)

@@ -47,7 +47,9 @@ _editor.add_node(node5, 360.0, 360.0)
 
 // DOF slider: a Number node feeds AssemblyDrag.drive. Drag its value to lift
 // the mechanism's free DOF (the highest body, along +Z) -- the linkage plays
-// back. 0 = the loaded configuration; e.g. 0.01 lifts ~10 mm.
+// back. 0 = the loaded configuration. The node scales it by `drive_scale`
+// (default 0.02 m per unit), so slider ~0.5 lifts ~10 mm; an over-large value
+// just saturates the lift (a gentle handle keeps the parts from scattering).
 var node6 = ::blueprint::nodes::number::Number()
 node6.value = 0.0
 

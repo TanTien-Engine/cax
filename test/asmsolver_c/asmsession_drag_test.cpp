@@ -251,6 +251,15 @@ int main()
     if (dv.Drive(-1, 0.0, 0.0, 1.0, 0.005, 0.5) < 0.0) {
         std::printf("FAIL: drive auto-pick errored\n"); return 1;
     }
+    // robustness: a far, out-of-range target at the node's gentle drive weight
+    // (0.05) must SATURATE the DOF, not scatter -- weight 0.5 here breaks the
+    // joints (residual ~0.1); weight 0.05 keeps them bounded.
+    double far_resid = dv.Drive(dtop, 0.0, 0.0, 1.0, 0.5, 0.05);   // +0.5 m
+    std::printf("drive robustness: +0.5m @ weight 0.05 -> residual %.3e\n", far_resid);
+    if (!(far_resid < 5e-3)) {
+        std::printf("FAIL: out-of-range drive scattered the assembly (%.3e)\n", far_resid);
+        return 1;
+    }
 
     std::printf("PASS: dragged dz=%.4f, movers=%d, max=%.4f, min=%.6f, drag_resid=%.2e, "
                 "snap_resid=%.2e, snap_top_dz=%.4f\n",
