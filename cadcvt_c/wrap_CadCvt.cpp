@@ -11,9 +11,13 @@
 #include <TopoDS_Compound.hxx>
 #include <TopoDS_Shape.hxx>
 
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 // ============================================================
@@ -119,6 +123,13 @@ void w_FreeCadLoader_load()
         return;
     }
 
+    // Optional one-shot load timing (CAX_TIME env). Prints the
+    // ReadFile vs ReplayParts split once so a "still slow" report can be
+    // localised to parsing, replay, or (if both are fast) host-side
+    // meshing / rendering downstream of load().
+    const bool t_on = std::getenv("CAX_TIME") != nullptr;
+    auto t_read0 = std::chrono::steady_clock::now();
+
     // Step 1: read FreeCAD document into DocumentIR.
     cadapp::DocumentIR doc;
     std::string err;
@@ -128,6 +139,7 @@ void w_FreeCadLoader_load()
         ves_set_nil(0);
         return;
     }
+    auto t_read1 = std::chrono::steady_clock::now();
 
     // Step 2: replay onto OCCT via brepkit.
     cadapp::ReplayOptions opt;
@@ -143,12 +155,29 @@ void w_FreeCadLoader_load()
     // are not independent (patterns / clones that cross-reference). Safe
     // here precisely because write_back / commit are off: per-part naming
     // is transient and never persisted.
+    // CAX_REPLAY_SERIAL=1 forces the whole-document serial path (no
+    // thread pool) so a "parallel isn't helping" hunch can be A/B'd on
+    // platforms where it underperforms (low VM core count, or heap-lock
+    // contention serialising concurrent OCCT allocation on Windows).
+    const bool parallel = std::getenv("CAX_REPLAY_SERIAL") == nullptr;
     cadapp::ReplayResult res;
-    if (!st->replayer.ReplayParts(doc, opt, res, /*parallel*/ true))
+    if (!st->replayer.ReplayParts(doc, opt, res, parallel))
     {
         st->last_error = res.err_msg.empty() ? "Replay failed" : res.err_msg;
         ves_set_nil(0);
         return;
+    }
+    if (t_on) {
+        auto t_replay1 = std::chrono::steady_clock::now();
+        auto ms = [](auto a, auto b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
+        std::fprintf(stderr,
+                     "[CAX_TIME] FreeCadLoader.load: ReadFile=%.1fms "
+                     "ReplayParts=%.1fms parts=%zu parallel=%d cores=%u\n",
+                     ms(t_read0, t_read1), ms(t_read1, t_replay1),
+                     res.parts.size(), parallel ? 1 : 0,
+                     std::thread::hardware_concurrency());
     }
 
     // Some features may have been skipped (Replayer keeps going and
