@@ -17,11 +17,14 @@ import "gui" for MOUSE_RIGHT
 // Interactive pick + drag editing of a FreeCAD native-AssemblyWB
 // assembly. load()s the file once into an AsmSession (which builds
 // the constraint graph), then:
-//   - on_mouse_pressed : ray-pick the part under the cursor
-//   - on_mouse_dragged : drag it on a screen-parallel plane, re-solve
-//                        the joints, mark the output dirty -> re-render
-//   - on_mouse_released : drop the grab
-// Only body POSES change; the source .FCStd is never written.
+//   - on_mouse_pressed  : ray-pick the part under the cursor (highlight)
+//   - on_mouse_dragged  : LEFT drag = translate the part on a screen-
+//                         parallel plane; RIGHT drag = rotate it about the
+//                         view axis. Either way the joints re-solve and the
+//                         linked parts follow; the output is marked dirty.
+//   - on_mouse_released : release-snap onto the constraint manifold, drop grab
+// RENDER-ONLY: only body POSES change, the geometry and the source .FCStd are
+// never written (see the note on write-back at the bottom of the class).
 //
 // Mouse events reach a node only while it is SELECTED (see
 // blueprint.node_op), so selecting this node grabs the mouse for
@@ -256,23 +259,13 @@ class AssemblyDrag is Node
 		this.mark_dirty()
 	}
 
-	// Press "s" while this node is selected to write the current solved poses
-	// back into the source .FCStd (overwrites in place, after backing the
-	// original up to <file>.bak). Only poses change; geometry is untouched.
-	on_key_pressed(key)
-	{
-		if (key != "s") {
-			return
-		}
-		if (!this.ensure_loaded()) {
-			return
-		}
-		var ok = this.session.save_back()
-		if (ok) {
-			var path = NodeHelper.calc_prop_value(this, "path")
-			System.print("AssemblyDrag: saved poses -> %(path) (backup at %(path).bak)")
-		} else {
-			System.print("AssemblyDrag: SAVE FAILED: %(this.session.last_error())")
-		}
-	}
+	// NOTE: write-back to the source .FCStd is intentionally NOT wired to a key.
+	// For a FreeCAD native Assembly, Body.Placement is an OUTPUT of FreeCAD's
+	// joint solver: on document recompute FreeCAD re-solves from the joints, so
+	// externally-written placements are rejected ("failed to recompute") -- even
+	// when the .FCStd is byte-identical except those placements. Persisting an
+	// edit would also require updating each joint's DOF state (Rotation/Offset/
+	// Distance), which is future work. The AsmSession.save / save_back bindings
+	// still exist for that, and for non-assembly single-Body docs where plain
+	// placement write-back IS valid. Until then this node is render-only.
 }
