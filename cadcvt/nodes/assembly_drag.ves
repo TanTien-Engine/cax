@@ -8,6 +8,7 @@ import "blueprint.dirty_types" for DIRTY_EDITOR
 import "brepkit.variant" for VAR_TOPO_SHAPE
 import "cadcvt" for AsmSession
 import "maths.vector" for Vector2
+import "graphics" for Graphics
 
 // ============================================================
 // cadcvt::nodes::assembly_drag::AssemblyDrag
@@ -111,6 +112,17 @@ class AssemblyDrag is Node
 		return v.value.cam
 	}
 
+	// World-space ray direction through the cursor. on_mouse_* delivers raw
+	// top-left pixel (x,y); the 1-arg Camera3D.screen2dir expects CENTRE-origin
+	// Y-up coords, so recentre + flip Y exactly like scenegraph/nodes/pick.ves.
+	// (Passing raw pixels makes the ray miss everything -> nothing picks.)
+	screen_dir(cam, x, y)
+	{
+		var cx = x - Graphics.get_width() * 0.5
+		var cy = Graphics.get_height() * 0.5 - y
+		return cam.screen2dir(Vector2(cx, cy))
+	}
+
 	calc_value(idx)
 	{
 		this.ensure_loaded()
@@ -135,10 +147,11 @@ class AssemblyDrag is Node
 			return
 		}
 
-		var dir = cam.screen2dir(Vector2(x, y))
+		var dir = this.screen_dir(cam, x, y)
 		var o   = cam.position
 		var body = this.session.pick(o.x, o.y, o.z, dir.x, dir.y, dir.z)
 		this.picked = body
+		System.print("AssemblyDrag: pick -> body %(body)")
 		if (body < 0) {
 			return
 		}
@@ -162,7 +175,7 @@ class AssemblyDrag is Node
 		}
 
 		// Intersect the cursor ray with the drag plane.
-		var dir = cam.screen2dir(Vector2(x, y))
+		var dir = this.screen_dir(cam, x, y)
 		var o   = cam.position
 		var nx = this.plane_n[0]
 		var ny = this.plane_n[1]
