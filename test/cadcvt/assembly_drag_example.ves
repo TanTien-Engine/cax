@@ -1,0 +1,48 @@
+// Interactive assembly pick + drag demo (asmsolver Increment 6).
+//
+// Loads scissor_lift.FCStd through an AssemblyDrag node (which builds the
+// asmsolver constraint graph), meshes the per-body shapes, and renders them.
+//
+// Usage in the editor:
+//   - SELECT the AssemblyDrag node (node4), then left-drag a part: it is
+//     ray-picked and dragged on a screen-parallel plane while the joints are
+//     re-solved, so the linked parts follow. The grounded base stays put.
+//   - SELECT the Camera3d node (node0) to orbit / zoom / WASD the view.
+// Only poses change; the .FCStd is never written.
+
+var node0 = ::blueprint::nodes::camera3d::Camera3d()
+
+node0.cam.position.set(-0.040873728433421, -0.16559463604746, 0.13522943870175)
+node0.cam.yaw = -90.8
+node0.cam.pitch = 49.5
+node0.cam.zoom = 45
+node0.cam.update_vectors()
+node0.speed = 0.005
+
+_editor.add_node(node0, 537.95018571588, -33.65814028784)
+
+var node1 = ::blueprint::nodes::subgraph::Subgraph()
+node1.load_from_file(_editor, "../../assets/blueprints/render/draw_mesh.ves")
+node1.set_prop_value("no_bg", false)
+
+_editor.add_node(node1, 749.52599052345, 149.08054285977)
+
+var node2 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node2, 360.0, 170.0)
+
+var node4 = ::cadcvt::nodes::assembly_drag::AssemblyDrag()
+node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/freecad_assembly_test_corpus/native_AssemblyWB/scissor_lift.FCStd"
+node4.query_param("unit_scale").value = 0.001
+node4.query_param("strict").value = false
+node4.query_param("weight").value = 0.5
+
+_editor.add_node(node4, 60.0, 135.0)
+
+// Per-body shapes -> mesh -> deferred draw. The camera drives both the
+// renderer and the drag node's pick rays.
+Blueprint.connect(node4, "shapes", node2, "shape")
+Blueprint.connect(node2, "va",    node1, "geos")
+Blueprint.connect(node2, "edges", node1, "edges")
+Blueprint.connect(node0, "this",  node1, "view_cam")
+Blueprint.connect(node0, "this",  node4, "view_cam")
