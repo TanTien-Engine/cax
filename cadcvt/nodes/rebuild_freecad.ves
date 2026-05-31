@@ -1,0 +1,101 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for VAR_TYPE_ANY
+import "logger.logger" for Logger
+import "editor.node_cache" for NODE_CACHE
+import "cadcvt.freecad_graph_builder" for FreeCadGraphBuilder
+
+// ============================================================
+// cadcvt::nodes::rebuild_freecad::RebuildFreecad
+//
+// Wire a LoadFreecad output into `loader`, then toggle the `rebuild`
+// param to DECOMPILE the import's construction calc graph into a live,
+// editable brepkit blueprint -- one node per construction step, params
+// filled in from the graph, wired up. After that, tweak the generated
+// nodes' params or add / delete nodes to keep editing the imported
+// model natively.
+//
+// Single-part files reconstruct their full construction history
+// (sketch is frozen as a baked face for now; the extrude / fillet /
+// boolean / ... downstream is fully editable). Multi-part assemblies
+// keep no merged construction graph, so there is nothing to rebuild.
+//
+// Inputs:
+//   loader   ANY  - wire from LoadFreecad (its shape output is fine)
+// Params:
+//   rebuild  bool - toggle true to (re)build; auto-resets to false
+//   origin_x number - top-left X to lay the generated nodes out from
+//   origin_y number - top-left Y to lay the generated nodes out from
+// ============================================================
+class RebuildFreecad is Node
+{
+    init()
+    {
+        super.init()
+
+        this.imports = [
+            Pin(this, "loader", VAR_TYPE_ANY),
+        ]
+        this.exports = []
+
+        this.params.add(NodeParam("rebuild", false))
+        this.params.add(NodeParam("origin_x", -800.0))
+        this.params.add(NodeParam("origin_y", -250.0))
+
+        this.layout()
+
+        // Guards re-entrancy: resetting `rebuild` below fires on_param_dirty
+        // again, which must not kick off a second build.
+        this.building = false
+    }
+
+    on_param_dirty()
+    {
+        super.on_param_dirty()
+
+        if (this.building) {
+            return
+        }
+        var p = this.query_param("rebuild")
+        if (p and p.value) {
+            this.building = true
+            this.do_rebuild()
+            p.value = false
+            this.building = false
+        }
+    }
+
+    do_rebuild()
+    {
+        var src = Blueprint.get_input_node(this, 0)
+        if (!src) {
+            Logger.error("RebuildFreecad: nothing wired to `loader`")
+            return
+        }
+        if (!src.has_method("get_calc_graph()")) {
+            Logger.error("RebuildFreecad: `loader` input is not a LoadFreecad node")
+            return
+        }
+        var graph = src.get_calc_graph()
+        if (!graph) {
+            Logger.error("RebuildFreecad: loader kept no construction graph (multi-part assembly?)")
+            return
+        }
+        var editor = NODE_CACHE.editor
+        if (!editor) {
+            Logger.error("RebuildFreecad: no active editor")
+            return
+        }
+
+        var ox = this.query_param("origin_x").value
+        var oy = this.query_param("origin_y").value
+        var count = FreeCadGraphBuilder.build(graph, editor, ox, oy)
+
+        // Make the editor pick up the freshly added nodes / connections.
+        editor.scene_stack.bp_dirty = true
+
+        Logger.info("RebuildFreecad: created %(count) editable nodes")
+    }
+}

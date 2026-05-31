@@ -1,0 +1,50 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.variant" for Variant
+import "brepkit.variant" for VAR_TOPO_SHAPE
+
+// ============================================================
+// cadcvt::nodes::baked_shape::BakedShape
+//
+// A frozen TopoShape snapshot. The FreeCAD-graph rebuild
+// (cadcvt.freecad_graph_builder) emits one of these for every
+// construction step that has no editable brepkit-node equivalent
+// yet -- sketch_face / sketch_wire and the resolve_edge_ref /
+// resolve_face_ref dress-up references -- plus any op the rebuild
+// does not map. It simply outputs the shape the import's
+// construction graph evaluated for that step, so the editable nodes
+// downstream of it (extrude / fillet / boolean / ...) still work.
+//
+// NOTE: the held shape is NOT serialised -- saving a scene will not
+// round-trip a baked shape. This is a known limitation until sketches
+// get a real editable node (the planned FreeCadSketch node).
+// ============================================================
+class BakedShape is Node
+{
+    init()
+    {
+        super.init()
+
+        this.imports = []
+        this.exports = [
+            Pin(this, "shape", VAR_TOPO_SHAPE),
+        ]
+
+        this.layout()
+
+        this.shape = nil
+    }
+
+    set_shape(shape)
+    {
+        this.shape = shape
+    }
+
+    calc_value(idx)
+    {
+        if (!this.shape) {
+            return nil
+        }
+        return Variant(VAR_TOPO_SHAPE, this.shape)
+    }
+}

@@ -1,0 +1,269 @@
+import "blueprint.blueprint" for Blueprint
+import "brepkitnodes" for BREP_KIT_NODES
+import "cadcvt.nodes.baked_shape" for BakedShape
+import "maths.vector" for Vector3
+import "logger.logger" for Logger
+
+// const-step op names in a CalcGraph: immediate values that become a
+// consumer node's params rather than nodes of their own.
+var CONST_OPS = ["$num", "$int", "$bool", "$vec3", "$shape", "$sketch", "$toporef"]
+
+// Emitter ops we can faithfully rebuild as an editable brepkit node by a
+// positional mapping (shape inputs first, then params) derived from the
+// node's calc_info. Anything else is frozen as a BakedShape snapshot so
+// the rest of the graph stays editable. The positional map is only valid
+// when the brepkit node's calc_info signature lines up with the op's
+// registered signature -- hence the explicit whitelist rather than
+// trusting every auto-discovered op.
+//
+// fillet / chamfer / shell are deliberately NOT here yet: their edge /
+// face inputs come from resolve_*_ref steps (geometric refs into the live
+// body) that have no editable selector form yet, and a brepkit dressup
+// takes its refs as ONE array pin (Blueprint.connect would overwrite, not
+// append, multiple of them). Until selector reconstruction lands (the
+// same Stage C as the sketch node) we bake the whole dressup result, so
+// everything UPSTREAM of it (the extrude / booleans / transforms) stays
+// editable instead of being half-wired to frozen edge refs.
+var SUPPORTED_OPS = [
+    "box", "cylinder", "cone", "sphere", "torus",
+    "cut", "fuse", "common",
+    "translate", "rotate", "scale", "mirror", "offset",
+    "linear_pattern", "circular_pattern",
+    "revolve", "prism",
+]
+
+// ============================================================
+// cadcvt::freecad_graph_builder::FreeCadGraphBuilder
+//
+// Reverse-derives an editable brepkit blueprint from a FreeCAD import's
+// construction CalcGraph (LoadFreecad.get_calc_graph()). Each non-const
+// op step becomes a brepkit node with its params filled in from the
+// graph's const inputs and its shape inputs wired to the upstream nodes,
+// so the user can re-parametrise and add / remove nodes to keep editing
+// the imported model natively. Steps with no editable equivalent (yet)
+// are frozen as BakedShape snapshots.
+// ============================================================
+class FreeCadGraphBuilder
+{
+    // Rebuild `graph` as a live brepkit blueprint inside `editor`, laid
+    // out from (ox, oy). Returns the number of op nodes created.
+    static build(graph, editor, ox, oy)
+    {
+        if (!graph or !editor) {
+            return 0
+        }
+
+        var op2class = FreeCadGraphBuilder.op_registry()
+        var n = graph.get_history_size()
+
+        // Step ids are dense (0 .. n-1) and a step's inputs are always
+        // earlier steps, so index these by step with plain lists -- ves
+        // maps do not accept number keys. Columns also stay in 0 .. n-1.
+        var step2node = []    // step id -> created brepkit node (nil if none)
+        var depth     = []    // step id -> layout column        (nil if none)
+        var col_rows  = []    // column  -> next free row
+        for (var i = 0; i < n; i = i + 1) {
+            step2node.add(nil)
+            depth.add(nil)
+            col_rows.add(0)
+        }
+        var created = 0
+
+        // Pass 1: create a node per non-const step and fill its params.
+        for (var step = 0; step < n; step = step + 1) {
+            var op = graph.get_step_op_name(step)
+            if (CONST_OPS.contains(op)) {
+                continue
+            }
+
+            var node = FreeCadGraphBuilder.make_node(graph, step, op, op2class)
+            if (!node) {
+                continue
+            }
+            step2node[step] = node
+            created = created + 1
+
+            // column = 1 + max column of the shape-input producers, so a
+            // producer always sits to the left of its consumer; rows just
+            // stack within a column.
+            var col = FreeCadGraphBuilder.column_of(graph, step, depth)
+            depth[step] = col
+            var row = col_rows[col]
+            col_rows[col] = row + 1
+
+            editor.add_node(node, ox + col * 200, oy + row * 110)
+        }
+
+        // Pass 2: wire shape + variadic inputs now that every node exists.
+        for (var step = 0; step < n; step = step + 1) {
+            var node = step2node[step]
+            if (node) {
+                FreeCadGraphBuilder.wire_node(graph, step, node, step2node)
+            }
+        }
+
+        Logger.info("FreeCadGraphBuilder: rebuilt %(created) nodes from %(n) steps")
+        return created
+    }
+
+    // op name -> brepkit node class, auto-discovered from each node's
+    // calc_info. prism (one-sided extrude) has no node of its own, but
+    // Extrude (op "extrude": 1 face input + 1 number3 dist param) is
+    // positionally compatible with prism {face, direction}.
+    static op_registry()
+    {
+        var map = {}
+        for (var cls in BREP_KIT_NODES) {
+            var inst = cls()
+            var ci = inst["calc_info"]
+            if (ci) {
+                map[ci["op"]] = cls
+            }
+        }
+        if (map["extrude"]) {
+            map["prism"] = map["extrude"]
+        }
+        return map
+    }
+
+    static make_node(graph, step, op, op2class)
+    {
+        if (SUPPORTED_OPS.contains(op) and op2class[op]) {
+            var cls = op2class[op]
+            var node = cls()
+            FreeCadGraphBuilder.fill_params(graph, step, node)
+            return node
+        }
+        // sketch / resolve-ref / unmapped op -> frozen snapshot
+        return FreeCadGraphBuilder.make_baked(graph, step)
+    }
+
+    static make_baked(graph, step)
+    {
+        var shape = graph.eval(step)
+        if (!shape) {
+            return nil
+        }
+        var node = BakedShape()
+        node.set_shape(shape)
+        return node
+    }
+
+    // Fill node params from the const input steps. Op inputs are ordered
+    // [shape inputs..., param consts..., variadic...]; the params slice
+    // sits right after the node's declared shape inputs.
+    static fill_params(graph, step, node)
+    {
+        var ci = node["calc_info"]
+        if (!ci or !ci.containsKey("params")) {
+            return
+        }
+        var inputs = graph.get_step_inputs(step)
+        var n_shape = 0
+        if (ci.containsKey("inputs")) {
+            n_shape = ci["inputs"].count
+        }
+        var params = ci["params"]
+        for (var i = 0; i < params.count; i = i + 1) {
+            var pos = n_shape + i
+            if (pos >= inputs.count) {
+                break    // node declares more params than the op supplied
+            }
+            var p = params[i]
+            var val = graph.eval(inputs[pos])
+            FreeCadGraphBuilder.set_param(node, p["name"], p["type"], val)
+        }
+    }
+
+    static set_param(node, name, type, val)
+    {
+        if (val == nil) {
+            return
+        }
+        var param = node.query_param(name)
+        if (!param) {
+            return
+        }
+        if (type == "number3") {
+            // eval returns a [x, y, z] list for a $vec3 const. The graph
+            // stores number3 params swapped as (x, z, y) (see the brepkit
+            // nodes' add_number3_node / TopoAlgo calls), so invert that
+            // swap to recover the editor-space Vector3.
+            if (val is List and val.count >= 3) {
+                param.value = Vector3(val[0], val[2], val[1])
+            }
+        } else {
+            param.value = val
+        }
+    }
+
+    // column = 1 + max column among the step's input producers (const
+    // steps are absent from `depth`, so they contribute nothing).
+    static column_of(graph, step, depth)
+    {
+        var inputs = graph.get_step_inputs(step)
+        var maxc = -1
+        for (var s in inputs) {
+            if (s >= 0 and s < depth.count) {
+                var d = depth[s]
+                if (d != nil and d > maxc) {
+                    maxc = d
+                }
+            }
+        }
+        return maxc + 1
+    }
+
+    static wire_node(graph, step, node, step2node)
+    {
+        var ci = node["calc_info"]
+        if (!ci) {
+            return    // a baked snapshot has no inputs to wire
+        }
+        var inputs = graph.get_step_inputs(step)
+
+        var shape_pins = []
+        if (ci.containsKey("inputs")) {
+            shape_pins = ci["inputs"]
+        }
+        var n_shape = shape_pins.count
+        var n_param = 0
+        if (ci.containsKey("params")) {
+            n_param = ci["params"].count
+        }
+
+        // fixed shape inputs -> their declared pins
+        for (var i = 0; i < n_shape; i = i + 1) {
+            if (i >= inputs.count) {
+                break
+            }
+            var src = FreeCadGraphBuilder.node_at(step2node, inputs[i])
+            if (src) {
+                Blueprint.connect(src, 0, node, shape_pins[i])
+            }
+        }
+
+        // variadic inputs (e.g. fillet / chamfer edges, shell faces) all
+        // land on the single array pin declared in var_inputs.
+        if (ci.containsKey("var_inputs") and !ci["var_inputs"].isEmpty) {
+            var var_pin = ci["var_inputs"][0]
+            var vstart  = n_shape + n_param
+            for (var j = vstart; j < inputs.count; j = j + 1) {
+                var src = FreeCadGraphBuilder.node_at(step2node, inputs[j])
+                if (src) {
+                    Blueprint.connect(src, 0, node, var_pin)
+                }
+            }
+        }
+    }
+
+    // step2node[id] with bounds-checking (a const input step is a valid
+    // id but was never assigned a node, so it reads back as nil).
+    static node_at(step2node, id)
+    {
+        if (id >= 0 and id < step2node.count) {
+            return step2node[id]
+        }
+        return nil
+    }
+}
