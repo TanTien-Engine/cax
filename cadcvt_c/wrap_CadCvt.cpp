@@ -2,6 +2,7 @@
 #include "cadcvt_c/reader/FreeCadReader.h"
 #include "cadapp_c/emitter/Replayer.h"
 #include "cadapp_c/ir/SketchIR.h"
+#include "cadapp_c/ops/sketch_ops.h"
 
 #include "brepkit_c/TransHelper.h"
 #include "brepkit_c/TopoShape.h"
@@ -481,41 +482,121 @@ void w_FreeCadLoader_sketch_plane_at()
     }
 }
 
-// Number of 2D geometries in the sketch const at `step` (0 if not a sketch).
+// Number of NON-construction 2D geometries in the sketch const at `step`
+// (0 if not a sketch). Construction geometry (reference lines / aux circles)
+// is skipped -- it is never part of the profile face the rebuilt sketch
+// produces, and including it would break the wire/face assembly.
 void w_FreeCadLoader_sketch_geo_count_at()
 {
     auto* st = GetState(0);
     int step = (int)ves_tonumber(1);
     const cadapp::SketchIR* sk = SketchAtStep(st, step);
-    ves_set_number(0, sk ? (double)sk->geos.size() : 0.0);
+    int cnt = 0;
+    if (sk) {
+        for (const auto& g : sk->geos) {
+            if (!g.construction) ++cnt;
+        }
+    }
+    ves_set_number(0, (double)cnt);
 }
 
-// The gi-th geometry of the sketch const at `step` as [type, params...],
-// where type is the SkGeoType code (1=Point 2=Line 3=Arc 4=Circle
-// 5=Ellipse 6=Spline) and params follow SkGeoIR's per-type layout. nil on
-// a bad index.
+// The gi-th NON-construction geometry of the sketch const at `step` as
+// [type, params...], where type is the SkGeoType code (1=Point 2=Line 3=Arc
+// 4=Circle 5=Ellipse 6=Spline) and params follow SkGeoIR's per-type layout.
+// nil on a bad index. (Indexes over non-construction geos to match
+// sketch_geo_count_at.)
 void w_FreeCadLoader_sketch_geo_at()
 {
     auto* st = GetState(0);
     int step = (int)ves_tonumber(1);
     int gi   = (int)ves_tonumber(2);
     const cadapp::SketchIR* sk = SketchAtStep(st, step);
-    if (!sk || gi < 0 || gi >= (int)sk->geos.size()) {
+    const cadapp::SkGeoIR* g = nullptr;
+    if (sk && gi >= 0) {
+        int k = 0;
+        for (const auto& cand : sk->geos) {
+            if (cand.construction) continue;
+            if (k == gi) { g = &cand; break; }
+            ++k;
+        }
+    }
+    if (!g) {
         ves_set_nil(0);
         return;
     }
-    const cadapp::SkGeoIR& g = sk->geos[gi];
-    int n = (int)g.params.size();
+    int n = (int)g->params.size();
     ves_pop(ves_argnum());
     ves_newlist(n + 1);
-    ves_pushnumber((double)(int)g.type);
+    ves_pushnumber((double)(int)g->type);
     ves_seti(-2, 0);
     ves_pop(1);
     for (int i = 0; i < n; ++i) {
-        ves_pushnumber(g.params[i]);
+        ves_pushnumber(g->params[i]);
         ves_seti(-2, i + 1);
         ves_pop(1);
     }
+}
+
+// Build a B-rep face from a flat list of 2D sketch geometry on a plane,
+// reusing the proven sketch_face machinery (solver + ConnectEdgesToWires +
+// hole-nesting fill). This is what a reconstructed, EDITABLE sketch sub-graph
+// feeds through so the face survives holes / multiple loops / arbitrary edge
+// order -- things the host-side single-wire build cannot handle.
+//
+//   geos   : flat [type, nparams, p0, p1, ..., type, nparams, ...] where
+//            type is the SkGeoType code and the params follow SkGeoIR layout
+//            (Line=[x0,y0,x1,y1] Arc=[cx,cy,r,sa,ea] Circle=[cx,cy,r]).
+//   origin / x_dir / normal : the sketch plane, each a [x,y,z] list.
+// Returns a TopoShape (face/compound) or nil. Stateless (ignores receiver).
+void w_FreeCadLoader_face_from_geos()
+{
+    std::vector<double> flat;
+    int len = ves_len(1);
+    flat.reserve(len);
+    for (int i = 0; i < len; ++i) {
+        ves_geti(1, i);
+        flat.push_back(ves_tonumber(-1));
+        ves_pop(1);
+    }
+
+    double origin[3], x_dir[3], normal[3];
+    double* vecs[3] = { origin, x_dir, normal };
+    for (int v = 0; v < 3; ++v) {
+        for (int i = 0; i < 3; ++i) {
+            ves_geti(2 + v, i);
+            vecs[v][i] = ves_tonumber(-1);
+            ves_pop(1);
+        }
+    }
+
+    cadapp::SketchIR sk;
+    for (int i = 0; i < 3; ++i) {
+        sk.plane_origin[i] = origin[i];
+        sk.plane_x_dir[i]  = x_dir[i];
+        sk.plane_normal[i] = normal[i];
+    }
+
+    uint32_t next_id = 1;
+    size_t i = 0;
+    while (i + 1 < flat.size()) {
+        int type = (int)flat[i];
+        int np   = (int)flat[i + 1];
+        i += 2;
+        if (i + (size_t)np > flat.size()) break;
+        cadapp::SkGeoIR g;
+        g.id   = next_id++;
+        g.type = (cadapp::SkGeoType)type;
+        g.params.assign(flat.begin() + i, flat.begin() + i + np);
+        sk.geos.push_back(std::move(g));
+        i += np;
+    }
+
+    auto face = cadapp::BuildSketchFace(sk, origin, x_dir, normal);
+    if (!face) {
+        ves_set_nil(0);
+        return;
+    }
+    brepkit::return_topo_shape(face);
 }
 
 
@@ -787,6 +868,9 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "FreeCadLoader.sketch_geo_at(_,_)") == 0) {
         return w_FreeCadLoader_sketch_geo_at;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.face_from_geos(_,_,_,_)") == 0) {
+        return w_FreeCadLoader_face_from_geos;
     }
 
     if (std::strcmp(signature, "AsmSession.load(_,_,_)") == 0) {

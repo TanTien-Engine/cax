@@ -65,6 +65,16 @@ foreign class FreeCadLoader
     foreign sketch_plane_at(step)
     foreign sketch_geo_count_at(step)
     foreign sketch_geo_at(step, g)
+
+    // Build a B-rep face from a flat list of 2D geometry on a plane, reusing
+    // the robust sketch_face machinery (solver + ConnectEdgesToWires + hole
+    // fill). Stateless. A reconstructed editable sketch sub-graph feeds its
+    // (edited) geometry through here so the face survives holes / multiple
+    // loops / arbitrary edge order.
+    //   geos   : flat [type, nparams, p..., type, nparams, p..., ...]
+    //   origin / x_dir / normal : the sketch plane, each [x, y, z]
+    //   -> TopoShape (face/compound) or nil
+    foreign face_from_geos(geos, origin, x_dir, normal)
 }
 
 // =========================================================

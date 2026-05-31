@@ -315,6 +315,24 @@ std::shared_ptr<brepkit::TopoShape> WiresToFace(
 
 } // anonymous namespace
 
+std::shared_ptr<brepkit::TopoShape> BuildSketchFace(
+	const SketchIR& sk,
+	const double*   origin,
+	const double*   x_dir,
+	const double*   normal)
+{
+	sketchlib::Scene                scene;
+	cadapp::SketchBridge::GeoShapes solved;
+	if (!cadapp::SketchBridge::ImportToScene(sk, scene, solved)) return nullptr;
+	if (solved.empty()) return nullptr;
+	scene.Solve(solved);
+
+	auto wires = BuildWiresFromSolved(solved, origin, x_dir, normal);
+	if (wires.IsNull() || wires->IsEmpty()) return nullptr;
+
+	return WiresToFace(wires, origin, normal);
+}
+
 void RegisterSketchOps(brepgraph::OpRegistry& reg)
 {
 	// sketch_face: pulls the SketchIR back out of the type-erased
@@ -332,18 +350,8 @@ void RegisterSketchOps(brepgraph::OpRegistry& reg)
 			Vec3 x_dir_v  = ctx.GetVec3(2);
 			Vec3 normal_v = ctx.GetVec3(3);
 
-			sketchlib::Scene                 scene;
-			cadapp::SketchBridge::GeoShapes  solved;
-			if (!cadapp::SketchBridge::ImportToScene(*sk, scene, solved)) return {};
-			if (solved.empty()) return {};
-			scene.Solve(solved);
-
-			auto wires = BuildWiresFromSolved(
-				solved, origin_v.data(), x_dir_v.data(), normal_v.data());
-			if (wires.IsNull() || wires->IsEmpty()) return {};
-
-			auto face = WiresToFace(
-				wires, origin_v.data(), normal_v.data());
+			auto face = BuildSketchFace(
+				*sk, origin_v.data(), x_dir_v.data(), normal_v.data());
 			if (!face) return {};
 
 			return MakeShapeVal(face);
