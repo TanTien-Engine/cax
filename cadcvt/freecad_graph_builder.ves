@@ -237,6 +237,7 @@ class FreeCadGraphBuilder
         editor.add_node(sub, x, y)
 
         var stf = SketchToFace()
+        stf.set_loader(loader)
         var plane = loader.sketch_plane_at(sk_step)
         if (plane and plane.count >= 9) {
             stf.query_param("origin").value.set(plane[0], plane[1], plane[2])
