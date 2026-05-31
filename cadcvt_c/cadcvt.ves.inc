@@ -46,6 +46,12 @@ foreign class FreeCadLoader
     // of per-part alpha (1 - transparency). Zip them when building meshes.
     foreign transparent_parts()
     foreign transparent_alphas()
+
+    // Construction calc graph built by the replayer for the last load()
+    // (sketch / pad / pocket / fillet / ... ops). Returns a CalcGraph, or
+    // nil when none was kept (parallel multi-part assembly path). Feed it
+    // to a CalcGraph node to draw the model's real construction history.
+    foreign calc_graph()
 }
 
 // =========================================================

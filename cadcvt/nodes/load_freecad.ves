@@ -5,6 +5,7 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for Variant, VAR_TYPE_STRING, VAR_TYPE_NUMBER, VAR_TYPE_BOOLEAN, VAR_TYPE_ARRAY
 import "blueprint.node_helper" for NodeHelper
 import "brepkit.variant" for VAR_TOPO_SHAPE
+import "brepkit" for GlobalConfig
 import "cadcvt" for FreeCadLoader
 
 // ============================================================
@@ -71,6 +72,17 @@ class LoadFreecad is Node
         this.cached_key   = nil
         this.cached_shape = nil
         this.last_error   = nil
+
+        // Calc-graph source. When a downstream CalcGraph node walks
+        // upstream (brepgraph.compiler.Compiler.register_graph), it finds
+        // this node and calls register_calc_source() below, which publishes
+        // the loaded body as a const leaf in the GLOBAL calc graph.
+        // calc_step_id is that leaf's id -- it makes this node a valid
+        // "comp source" so the CalcGraph view can root its IR here (and
+        // downstream brepkit ops can chain onto the imported FreeCAD body).
+        // -1 = not yet published.
+        this.calc_step_id   = -1
+        this.calc_graph_ref = nil
     }
 
     // Ensure the heavy load ran for the current (path, unit_scale,
@@ -112,6 +124,57 @@ class LoadFreecad is Node
         }
 
         return shape
+    }
+
+    // The construction calc graph the replayer built for the loaded model
+    // (sketch / pad / pocket / fillet / ... ops) -- the model's REAL
+    // construction history. A downstream CalcGraph node draws THIS in
+    // preference to the single-leaf fallback below. Returns nil when the
+    // load kept no graph (the parallel multi-part assembly path), and the
+    // CalcGraph node then falls back to register_calc_source()'s leaf.
+    get_calc_graph()
+    {
+        if (!this.ensure_loaded()) {
+            return nil
+        }
+        return this.loader.calc_graph()
+    }
+
+    // Fallback for when there is no replay construction graph (multi-part
+    // assemblies): publish the loaded merged body as a single const leaf in
+    // the global calc graph so a connected CalcGraph node can still draw /
+    // build on it. Invoked from the compiler's upstream walk -- mirrors how
+    // selector nodes self-register, because the load result is a runtime
+    // shape that no calc_info / op params could reproduce. Idempotent: the
+    // leaf is added once; later path / option changes refresh it in place
+    // via on_param_dirty().
+    register_calc_source()
+    {
+        if (this.calc_step_id and this.calc_step_id >= 0) {
+            return
+        }
+        var shape = this.ensure_loaded()
+        if (!shape) {
+            return
+        }
+        var cg = GlobalConfig.get_calc_graph()
+        this.calc_step_id   = cg.add_shape_node(shape, "load_freecad")
+        this.calc_graph_ref = cg
+    }
+
+    on_param_dirty()
+    {
+        super.on_param_dirty()
+
+        // Already published to a calc graph? Refresh the leaf's shape in
+        // place so a connected CalcGraph view re-evaluates from the new
+        // file / unit_scale / strict instead of holding the stale body.
+        if (this.calc_graph_ref and this.calc_step_id and this.calc_step_id >= 0) {
+            var shape = this.ensure_loaded()
+            if (shape) {
+                this.calc_graph_ref.update_shape_node(this.calc_step_id, shape)
+            }
+        }
     }
 
     calc_value(idx)

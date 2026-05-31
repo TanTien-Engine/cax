@@ -47,17 +47,40 @@ class CalcGraph is Node
 
 	calc_value(idx)
 	{
-		this.graph = GlobalConfig.get_calc_graph()
-
 		var t_node = Blueprint.get_input_node(this, 0)
+
+		// A source node may carry its OWN pre-built construction graph -- e.g.
+		// a FreeCAD import, whose replayer already built the sketch / pad /
+		// pocket / fillet / ... op history. Draw + eval that whole graph in
+		// preference to the global incremental one, so the model shows up as
+		// its real construction history rather than a single opaque leaf.
+		var src = nil
 		if (t_node) {
-			if (this.graph.has_preloaded_history()) {
-				Compiler.reconnect_graph(t_node)
-			}
-			Compiler.register_graph(t_node)
-			var step_id = Compiler.find_comp_source(t_node)
-			if (step_id >= 0) {
-				this.node_idx = step_id
+			src = Compiler.find_modeling_node(t_node)
+		}
+
+		var ext_graph = nil
+		if (src and src.has_method("get_calc_graph()")) {
+			ext_graph = src.get_calc_graph()
+		}
+
+		if (ext_graph) {
+			this.graph = ext_graph
+			// Recompute the root below against this (possibly rebuilt-on-reload)
+			// graph rather than trusting a persisted index from a prior frame.
+			this.node_idx = -1
+		} else {
+			this.graph = GlobalConfig.get_calc_graph()
+
+			if (t_node) {
+				if (this.graph.has_preloaded_history()) {
+					Compiler.reconnect_graph(t_node)
+				}
+				Compiler.register_graph(t_node)
+				var step_id = Compiler.find_comp_source(t_node)
+				if (step_id >= 0) {
+					this.node_idx = step_id
+				}
 			}
 		}
 

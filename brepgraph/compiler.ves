@@ -60,6 +60,11 @@ class Compiler
 					curr.register_selector(uid)
 				}
 			}
+		} else if (curr.has_method("register_calc_source()")) {
+			// Source nodes (e.g. cadcvt LoadFreecad) carry no calc_info --
+			// they cannot be rebuilt from params. They publish their already
+			// computed shape as a const leaf themselves; we just ask them to.
+			curr.register_calc_source()
 		}
 	}
 

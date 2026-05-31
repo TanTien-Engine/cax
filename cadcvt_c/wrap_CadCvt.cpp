@@ -5,6 +5,8 @@
 #include "brepkit_c/TransHelper.h"
 #include "brepkit_c/TopoShape.h"
 
+#include "brepgraph_c/computation/CalcGraph.h"
+
 #ifdef CAX_ASMSOLVER_OK
 #include "cadcvt_c/AsmSession.h"
 #endif
@@ -63,6 +65,15 @@ struct FreeCadLoaderState
     // back-compat; part_count / part_shape / part_transparency
     // expose this vector.
     std::vector<cadapp::ReplayPart> parts;
+
+    // Construction calc graph the replayer built for the last load()
+    // (sketch / pad / pocket / fillet / ... ops). Lets a CalcGraph node
+    // draw the model's real construction history instead of one opaque
+    // const-shape leaf. Only populated when the load took the serial
+    // Replay path (single-part docs, which is where ReplayParts falls
+    // back to it); nullptr for the parallel multi-part assembly path,
+    // whose per-part graphs are isolated and never merged.
+    std::shared_ptr<brepgraph::CalcGraph> calc_graph;
 };
 
 
@@ -118,6 +129,10 @@ void w_FreeCadLoader_load()
         ves_set_nil(0);
         return;
     }
+
+    // Drop the previous load's construction graph up front so a failed
+    // reload can't leave a CalcGraph node drawing a stale graph.
+    st->calc_graph.reset();
 
     const char* path = ves_tostring(1);
     if (!path || !*path)
@@ -197,6 +212,10 @@ void w_FreeCadLoader_load()
     // Stash the per-part split so part_count / part_shape /
     // part_transparency can serve it after this load returns.
     st->parts = std::move(res.parts);
+
+    // Keep the construction graph (if the serial Replay path built one)
+    // so calc_graph() can hand it to a CalcGraph node for drawing.
+    st->calc_graph = res.calc_graph;
 
     brepkit::return_topo_shape(res.shape);
 }
@@ -383,6 +402,28 @@ void w_FreeCadLoader_last_error()
         return;
     }
     ves_set_lstring(0, st->last_error.data(), st->last_error.size());
+}
+
+// Construction calc graph from the last load() (nil when none was kept
+// -- e.g. the parallel multi-part assembly path). The host wraps it in a
+// CalcGraph foreign and a CalcGraph node draws its full op history.
+void w_FreeCadLoader_calc_graph()
+{
+    auto* st = GetState(0);
+    if (!st || !st->calc_graph)
+    {
+        ves_set_nil(0);
+        return;
+    }
+
+    ves_pop(ves_argnum());
+
+    ves_pushnil();
+    ves_import_class("brepgraph", "CalcGraph");
+    auto proxy = (wrapper::Proxy<brepgraph::CalcGraph>*)ves_set_newforeign(
+        0, 1, sizeof(wrapper::Proxy<brepgraph::CalcGraph>));
+    proxy->obj = st->calc_graph;
+    ves_pop(1);
 }
 
 
@@ -642,6 +683,9 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "FreeCadLoader.transparent_alphas()") == 0) {
         return w_FreeCadLoader_transparent_alphas;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.calc_graph()") == 0) {
+        return w_FreeCadLoader_calc_graph;
     }
 
     if (std::strcmp(signature, "AsmSession.load(_,_,_)") == 0) {

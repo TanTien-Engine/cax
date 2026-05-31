@@ -1,11 +1,11 @@
 var node0 = ::blueprint::nodes::camera3d::Camera3d()
 
-node0.cam.position.set(-0.040873728433421, -0.16559463604746, 0.13522943870175)
-node0.cam.yaw = -90.8
-node0.cam.pitch = 49.5
+node0.cam.position.set(-0.0075282635157367, -0.12356134829351, 0.17046421328588)
+node0.cam.yaw = -94
+node0.cam.pitch = 36.9
 node0.cam.zoom = 45
 node0.cam.update_vectors()
-node0.speed = 0.005
+node0.speed = 0.02
 
 _editor.add_node(node0, 537.95018571588, -33.65814028784)
 
@@ -25,22 +25,17 @@ node3.query_param("disable").value = false
 _editor.add_node(node3, 392.18895050427, 211.79090897199)
 
 var node4 = ::cadcvt::nodes::load_freecad::LoadFreecad()
-//node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/100CadExercises/Page_058_Exercise2D-50-sketched_byHannu.fcstd"
-node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/freecad_assembly_test_corpus/Assembly4_examples/asm_Cylinders.FCStd"
-//node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/native_AssemblyWB_official/AssemblyExample.FCStd"
+node4.query_param("path").value = "thirdparty/cax/test/cadcvt_c/golden/fixtures/examples/100CadExercises/Page_009_Exercise2D-01_byHannu.fcstd"
 node4.query_param("unit_scale").value = 0.001
 node4.query_param("strict").value = false
 
-_editor.add_node(node4, 29.22809917355, 135.62727272727)
+_editor.add_node(node4, 11.70340419948, 166.12024198215)
 
 var node5 = ::blueprint::nodes::cache::Cache()
 node5.query_param("disable").value = false
 
 _editor.add_node(node5, 397.97407447121, 120.3305785124)
 
-// Transparent group: second ToMesh + cache for parts with
-// MaterialIR.transparency > 0 (cylinder shells etc.), fed into
-// draw_mesh's geos_transparent so they render in the blend pass.
 var node6 = ::brepkit::nodes::to_mesh::ToMesh()
 
 _editor.add_node(node6, 210.13432009961, 380.93279498784)
@@ -50,23 +45,34 @@ node7.query_param("disable").value = false
 
 _editor.add_node(node7, 392.18895050427, 420.79090897199)
 
-// Cache for the transparent parts' edges (baked with each part's alpha).
 var node8 = ::blueprint::nodes::cache::Cache()
 node8.query_param("disable").value = false
 
-_editor.add_node(node8, 392.18895050427, 520.79090897199)
+_editor.add_node(node8, 414.29322618389, 303.44650326015)
 
-// Opaque group -> main surface + edges.
-Blueprint.connect(node4, "shape_opaque", node2, "shape")
-Blueprint.connect(node2, "edges", node5, "var")
-Blueprint.connect(node2, "va", node3, "var")
-Blueprint.connect(node3, "var", node1, "geos")
-Blueprint.connect(node0, "this", node1, "view_cam")
-Blueprint.connect(node5, "var", node1, "edges")
+var node9 = ::brepgraph::nodes::calc_graph::CalcGraph()
 
-// Transparent group -> x-ray surface pass (no edges). Each part's
-// alpha (1 - transparency) is zipped into ToMesh and baked per-vertex.
+_editor.add_node(node9, 236.5266060791, 253.52612597656)
+
+var node10 = ::blueprint::nodes::print::Print()
+
+_editor.add_node(node10, 636.07696704224, 360.90154001649)
+
+var node11 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node11, 338.51811557288, 503.5607557769)
+
+Blueprint.connect(node4, "shape", node9, "val")
+Blueprint.connect(node9, "val", node11, "shape")
+Blueprint.connect(node11, "va", node8, "var")
+Blueprint.connect(node8, "var", node10, "value")
 Blueprint.connect(node4, "shape_transparent", node6, "shape")
 Blueprint.connect(node4, "transparent_alphas", node6, "alpha")
 Blueprint.connect(node6, "va", node7, "var")
+Blueprint.connect(node4, "shape_opaque", node2, "shape")
+Blueprint.connect(node2, "edges", node5, "var")
+Blueprint.connect(node2, "va", node3, "var")
+Blueprint.connect(node8, "var", node1, "geos")
+Blueprint.connect(node0, "this", node1, "view_cam")
+Blueprint.connect(node5, "var", node1, "edges")
 Blueprint.connect(node7, "var", node1, "geos_transparent")
