@@ -58,13 +58,23 @@ foreign class FreeCadLoader
     // Read the raw 2D geometry of the $sketch const at `step` (the sketch
     // input of a sketch_face / sketch_wire step in calc_graph()), so the
     // host can rebuild it as an editable sketchgraph sub-graph.
-    //   sketch_plane_at(step)     -> [ox,oy,oz, xx,xy,xz, nx,ny,nz] or nil
-    //   sketch_geo_count_at(step) -> number
-    //   sketch_geo_at(step, g)    -> [type, params...] (SkGeoType code +
-    //                                per-type params) or nil
+    //   sketch_plane_at(step)      -> [ox,oy,oz, xx,xy,xz, nx,ny,nz] or nil
+    //   sketch_geo_count_at(step)  -> number
+    //   sketch_geo_at(step, g)     -> [type, params...] (SkGeoType code +
+    //                                 per-type params) or nil
+    //   sketch_cons_count_at(step) -> number
+    //   sketch_cons_at(step, i)    -> [cons_type, a_geo, a_pos, b_geo, b_pos,
+    //                                 value, driving] or nil. a_geo / b_geo are
+    //                                 indices into the NON-construction geometry
+    //                                 (same order as sketch_geo_at), or -1 when
+    //                                 the ref is an axis / origin / construction
+    //                                 geo; a_pos / b_pos are SkPointPos (0 none,
+    //                                 1 start, 2 mid, 3 end); driving is 1 / 0.
     foreign sketch_plane_at(step)
     foreign sketch_geo_count_at(step)
     foreign sketch_geo_at(step, g)
+    foreign sketch_cons_count_at(step)
+    foreign sketch_cons_at(step, i)
 
     // Build a B-rep face from a flat list of 2D geometry on a plane, reusing
     // the robust sketch_face machinery (solver + ConnectEdgesToWires + hole

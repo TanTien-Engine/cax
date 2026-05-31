@@ -537,6 +537,78 @@ void w_FreeCadLoader_sketch_geo_at()
     }
 }
 
+// Map a constraint's geo reference (SkGeoIR id) to the index it has among
+// the sketch's NON-construction geometry -- the same indexing sketch_geo_at
+// and the rebuilt geo nodes use. Returns -1 when the ref is unset (axis /
+// origin -> geo_id 0xFFFFFFFF) or points at construction geometry (which the
+// rebuilt sub-graph does not materialise), so the host can skip any
+// constraint it cannot wire.
+static int SketchNonConstrIndexOf(const cadapp::SketchIR* sk, uint32_t geo_id)
+{
+    if (geo_id == 0xFFFFFFFFu) {
+        return -1;
+    }
+    int k = 0;
+    for (const auto& g : sk->geos) {
+        if (g.construction) {
+            continue;
+        }
+        if (g.id == geo_id) {
+            return k;
+        }
+        ++k;
+    }
+    return -1;
+}
+
+// Number of constraints on the sketch const at `step` (0 if not a sketch).
+// Every entry is one the reader recognised (SkConsType != None); the host
+// still drops those it cannot wire (see sketch_cons_at).
+void w_FreeCadLoader_sketch_cons_count_at()
+{
+    auto* st = GetState(0);
+    int step = (int)ves_tonumber(1);
+    const cadapp::SketchIR* sk = SketchAtStep(st, step);
+    int cnt = sk ? (int)sk->cons.size() : 0;
+    ves_set_number(0, (double)cnt);
+}
+
+// The i-th constraint of the sketch const at `step` as a flat list
+//   [cons_type, a_geo, a_pos, b_geo, b_pos, value, driving]
+// cons_type is the SkConsType code; a_geo / b_geo index the sketch's
+// NON-construction geometry (matching sketch_geo_at) or -1 when the
+// reference is an axis / origin / construction geo; a_pos / b_pos are
+// SkPointPos (0 none, 1 start, 2 mid, 3 end); driving is 1 / 0. nil on a
+// bad index.
+void w_FreeCadLoader_sketch_cons_at()
+{
+    auto* st = GetState(0);
+    int step = (int)ves_tonumber(1);
+    int ci   = (int)ves_tonumber(2);
+    const cadapp::SketchIR* sk = SketchAtStep(st, step);
+    if (!sk || ci < 0 || ci >= (int)sk->cons.size()) {
+        ves_set_nil(0);
+        return;
+    }
+    const cadapp::SkConsIR& c = sk->cons[(size_t)ci];
+    double v[7] = {
+        (double)(int)c.type,
+        (double)SketchNonConstrIndexOf(sk, c.a.geo_id),
+        (double)(int)c.a.point_pos,
+        (double)SketchNonConstrIndexOf(sk, c.b.geo_id),
+        (double)(int)c.b.point_pos,
+        c.value,
+        c.driving ? 1.0 : 0.0,
+    };
+    ves_pop(ves_argnum());
+    ves_newlist(7);
+    for (int i = 0; i < 7; ++i) {
+        ves_pushnumber(v[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
 // Build a B-rep face from a flat list of 2D sketch geometry on a plane,
 // reusing the proven sketch_face machinery (solver + ConnectEdgesToWires +
 // hole-nesting fill). This is what a reconstructed, EDITABLE sketch sub-graph
@@ -868,6 +940,12 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "FreeCadLoader.sketch_geo_at(_,_)") == 0) {
         return w_FreeCadLoader_sketch_geo_at;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.sketch_cons_count_at(_)") == 0) {
+        return w_FreeCadLoader_sketch_cons_count_at;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.sketch_cons_at(_,_)") == 0) {
+        return w_FreeCadLoader_sketch_cons_at;
     }
     if (std::strcmp(signature, "FreeCadLoader.face_from_geos(_,_,_,_)") == 0) {
         return w_FreeCadLoader_face_from_geos;

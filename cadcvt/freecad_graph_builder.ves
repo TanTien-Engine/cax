@@ -8,6 +8,9 @@ import "cadcvt.nodes.sketch_to_face" for SketchToFace
 import "sketchgraph.nodes.line" for Line as SkLineNode
 import "sketchgraph.nodes.arc" for Arc as SkArcNode
 import "sketchgraph.nodes.circle" for Circle as SkCircleNode
+import "sketchgraph.nodes.geo_point" for GeoPoint
+import "sketchgraph.nodes.solver" for Solver as SkSolverNode
+import "sketchgraph.nodes.cons_nodes" for Distance, DistanceX, DistanceY, Angle, Parallel, Perpendicular, Coincident, Horizontal, Vertical, Equal, PointOnLine, Tangent, CircleRadius, CircleDiameter, ArcRadius, ArcDiameter
 import "cadcvt.nodes.sketch_draw" for SketchDraw
 import "maths.vector" for Vector3
 import "logger.logger" for Logger
@@ -200,9 +203,16 @@ class FreeCadGraphBuilder
         // scientific notation do not parse).
         var sub = Subgraph()
 
-        var geo_nodes = []
+        // Geo nodes, kept BOTH as a compact merge list and as a slot array
+        // indexed by the non-construction geo index (with nil holes for the
+        // geos make_geo_node skips, e.g. ellipse / spline). The slot array is
+        // what constraint refs resolve against -- they index over every
+        // non-construction geo, matching sketch_geo_at / sketch_cons_at.
+        var geo_nodes  = []
+        var geo_by_idx = []
         for (var g = 0; g < ng; g = g + 1) {
             var node = FreeCadGraphBuilder.make_geo_node(loader.sketch_geo_at(sk_step, g))
+            geo_by_idx.add(node)
             if (node) {
                 sub.add_node(node, -300, geo_nodes.count * 70)
                 geo_nodes.add(node)
@@ -218,6 +228,45 @@ class FreeCadGraphBuilder
             Blueprint.connect(geo_nodes[i], "geo", mg, "in%(i)")
         }
 
+        // Rebuild the sketch's constraints as editable constraint nodes wired
+        // onto the geometry they reference. When any survive, route the geometry
+        // through a Solver (geo[] + cons[] -> solved geo[]) so editing a geo or a
+        // constraint value re-solves the sketch -- a real parametric sketch, not
+        // a frozen profile. Constraints whose refs land on geometry we do not
+        // materialise (axis / origin / construction) are dropped.
+        var cons_nodes = []
+        var nc = loader.sketch_cons_count_at(sk_step)
+        if (nc and nc > 0) {
+            for (var c = 0; c < nc; c = c + 1) {
+                var desc = loader.sketch_cons_at(sk_step, c)
+                var cn = FreeCadGraphBuilder.make_cons_node(sub, desc, geo_by_idx, c)
+                if (cn) {
+                    cons_nodes.add(cn)
+                }
+            }
+            if (nc > cons_nodes.count) {
+                Logger.info("sketch rebuild: kept %(cons_nodes.count) of %(nc) constraints (rest reference axis / origin / construction geo)")
+            }
+        }
+
+        // The node + export pin the 2D profile flows out of: the bare geo merge,
+        // or the Solver's solved output when constraints were rebuilt.
+        var geo_src     = mg
+        var geo_src_pin = "list"
+        if (!cons_nodes.isEmpty) {
+            var cmg = Merge()
+            sub.add_node(cmg, 0, 240)
+            for (var i = 0; i < cons_nodes.count; i = i + 1) {
+                Blueprint.connect(cons_nodes[i], "cons", cmg, "in%(i)")
+            }
+            var solver = SkSolverNode()
+            sub.add_node(solver, 150, 60)
+            Blueprint.connect(mg,  "list", solver, "geo")
+            Blueprint.connect(cmg, "list", solver, "cons")
+            geo_src     = solver
+            geo_src_pin = "geo"
+        }
+
         // Render the 2D profile inside the sub-editor so editing is WYSIWYG:
         // double-click the sketch node and you see the geometry drawn (and
         // each geo node's own drag handles edit it in place). SketchDraw
@@ -225,13 +274,13 @@ class FreeCadGraphBuilder
         // entered sub-graph, where the root-scene drawlist never reaches.
         var draw = SketchDraw()
         sub.add_node(draw, 0, -160)
-        Blueprint.connect(mg, "list", draw, "geo")
+        Blueprint.connect(geo_src, geo_src_pin, draw, "geo")
 
         var out = Output()
         out.var_name = "geos"
         out.var_type = "array"
-        sub.add_node(out, 250, 0)
-        Blueprint.connect(mg, "list", out, "var")
+        sub.add_node(out, 350, 0)
+        Blueprint.connect(geo_src, geo_src_pin, out, "var")
 
         sub.rebuild_sub()
         editor.add_node(sub, x, y)
@@ -281,6 +330,108 @@ class FreeCadGraphBuilder
             n.query_param("radius").value = geo[3]
             return n
         }
+        return nil
+    }
+
+    // One constraint descriptor [cons_type, a_geo, a_pos, b_geo, b_pos, value,
+    // driving] (from FreeCadLoader.sketch_cons_at) rebuilt as a wired-up
+    // sketchgraph constraint node, added to `sub`. Returns nil when the type
+    // is unsupported, or a required geometry reference cannot be resolved (it
+    // is an axis / origin / construction geo the sub-graph does not build).
+    // `slot` only drives node layout.
+    static make_cons_node(sub, desc, geo_by_idx, slot)
+    {
+        if (!desc or desc.count < 7) {
+            return nil
+        }
+        var spec = FreeCadGraphBuilder.new_cons_node(desc[0])
+        if (!spec) {
+            return nil
+        }
+        var node = spec["node"]
+        var ay = 320 + slot * 80
+
+        var a = FreeCadGraphBuilder.resolve_ref(sub, desc[1], desc[2], geo_by_idx, -180, ay)
+        if (!a) {
+            return nil
+        }
+
+        if (spec["kind"] == "unary") {
+            Blueprint.connect(a[0], a[1], node, "geo")
+        } else {
+            var b = FreeCadGraphBuilder.resolve_ref(sub, desc[3], desc[4], geo_by_idx, -180, ay + 36)
+            // Horizontal / Vertical can be a single-line constraint (no second
+            // ref); every other binary constraint needs both refs resolved.
+            if (!b and desc[0] != 8 and desc[0] != 9) {
+                return nil
+            }
+            Blueprint.connect(a[0], a[1], node, "a")
+            if (b) {
+                Blueprint.connect(b[0], b[1], node, "b")
+            }
+        }
+
+        if (spec["val"]) {
+            node.query_param(spec["val"]).value = desc[5]
+        }
+        node.query_param("driving").value = desc[6] > 0.5
+
+        sub.add_node(node, -40, ay)
+        return node
+    }
+
+    // Resolve a constraint geometry reference (non-construction geo index +
+    // SkPointPos) to a [node, export_pin] the constraint wires from. The whole
+    // geo (pos 0 = None) wires straight off the geo node's "geo"; an endpoint
+    // (1 start / 2 mid / 3 end) goes through a GeoPoint splitter. nil when the
+    // index is unset (-1) or lands on a geo slot we did not build.
+    static resolve_ref(sub, idx, pos, geo_by_idx, gx, gy)
+    {
+        if (idx < 0 or idx >= geo_by_idx.count) {
+            return nil
+        }
+        var gnode = geo_by_idx[idx]
+        if (!gnode) {
+            return nil
+        }
+        if (pos == 0) {
+            return [gnode, "geo"]
+        }
+        var gp = GeoPoint()
+        sub.add_node(gp, gx, gy)
+        Blueprint.connect(gnode, "geo", gp, "geo")
+        var pin = "start"        // SkPointPos Start (1)
+        if (pos == 2) {          // SkPointPos Mid
+            pin = "middle"
+        } else if (pos == 3) {   // SkPointPos End
+            pin = "end"
+        }
+        return [gp, pin]
+    }
+
+    // SkConsType code -> a fresh constraint node plus how to wire it:
+    //   kind : "unary" (geo + value) or "binary" (a / b)
+    //   val  : value param name to seed from the constraint value, or nil
+    // Codes the FreeCAD reader never emits, or that sketchlib has no node for
+    // (e.g. Symmetric), return nil and are skipped.
+    static new_cons_node(t)
+    {
+        if (t == 1)  { return { "node": Distance(),       "kind": "binary", "val": "dist"  } }
+        if (t == 2)  { return { "node": DistanceX(),      "kind": "binary", "val": "dist"  } }
+        if (t == 3)  { return { "node": DistanceY(),      "kind": "binary", "val": "dist"  } }
+        if (t == 4)  { return { "node": Angle(),          "kind": "binary", "val": "angle" } }
+        if (t == 5)  { return { "node": Parallel(),       "kind": "binary", "val": nil     } }
+        if (t == 6)  { return { "node": Perpendicular(),  "kind": "binary", "val": nil     } }
+        if (t == 7)  { return { "node": Coincident(),     "kind": "binary", "val": nil     } }
+        if (t == 8)  { return { "node": Horizontal(),     "kind": "binary", "val": nil     } }
+        if (t == 9)  { return { "node": Vertical(),       "kind": "binary", "val": nil     } }
+        if (t == 10) { return { "node": Equal(),          "kind": "binary", "val": nil     } }
+        if (t == 11) { return { "node": PointOnLine(),    "kind": "binary", "val": nil     } }
+        if (t == 17) { return { "node": Tangent(),        "kind": "binary", "val": nil     } }
+        if (t == 19) { return { "node": CircleRadius(),   "kind": "unary",  "val": "r"     } }
+        if (t == 20) { return { "node": CircleDiameter(), "kind": "unary",  "val": "d"     } }
+        if (t == 21) { return { "node": ArcRadius(),      "kind": "unary",  "val": "r"     } }
+        if (t == 22) { return { "node": ArcDiameter(),    "kind": "unary",  "val": "d"     } }
         return nil
     }
 
