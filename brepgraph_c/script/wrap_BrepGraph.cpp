@@ -262,6 +262,17 @@ void w_CalcGraph_eval()
         } else {
             ves_set_nil(0);
         }
+    } else if (auto* v = std::get_if<brepgraph::Vec3>(&result)) {
+        // Vec3 const -> [x, y, z] number list, so a host can read a
+        // number3 param back off the graph. ($sketch / $toporef stay nil:
+        // they are opaque handles with no script representation.)
+        ves_pop(ves_argnum());
+        ves_newlist(3);
+        for (int i = 0; i < 3; ++i) {
+            ves_pushnumber((*v)[i]);
+            ves_seti(-2, i);
+            ves_pop(1);
+        }
     } else {
         ves_set_nil(0);
     }
