@@ -1818,8 +1818,11 @@ SkGeoIR ParseSketchGeometry(const pugi::xml_node& geo_node,
     return result;
 }
 
-// ConstraintList walker. FreeCAD wrote "Constrait" (typo) in older
-// versions and "Constraint" in newer; accept both.
+// ConstraintList walker. FreeCAD's constraint element is literally
+// <Constrain> -- no trailing 't'. That is a long-standing quirk of
+// Sketcher's serializer (Constraint::Save writes "<Constrain "), true
+// across every version in our corpus. "Constraint" is kept only as a
+// defensive fallback; it is not produced by any known FreeCAD build.
 //
 // unit_scale converts FreeCAD's internal millimetres to project
 // metres for length-bearing constraints (Distance / Radius / ...);
@@ -1876,8 +1879,8 @@ void ParseSketchConstraints(const pugi::xml_node&                cons_list_node,
         }
     };
 
-    walk("Constraint");
-    walk("Constrait");   // legacy typo
+    walk("Constrain");    // FreeCAD's real element name (no trailing 't')
+    walk("Constraint");   // defensive fallback; unseen in practice
 }
 
 } // anonymous namespace
