@@ -1,0 +1,141 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for VAR_TYPE_ARRAY
+import "blueprint.variant_helper" for VariantHelper
+import "sketchgraph.variant" for VAR_TYPE_GEOMETRY
+import "graphics" for Painter, Graphics
+import "geometry" for Point, Line, Circle, Arc, Ellipse, Polyline
+import "maths" for Matrix44
+
+// ============================================================
+// cadcvt::nodes::sketch_draw::SketchDraw
+//
+// Like sketchgraph's Draw node, but renders the 2D profile from its
+// draw(mt, cam_mt) override instead of render_run(). render_run() is
+// driven by the editor drawlist, which is ALWAYS built from the ROOT
+// scene (editor.ves check_and_rebuild_list -> scene_stack.root()), so a
+// sketchgraph Draw node never fires inside an entered sub-graph. draw()
+// IS called for every node of the current (entered) scene by
+// editor.draw_scene, so a FreeCAD sketch reconstructed into a Subgraph
+// shows up when you double-click into it.
+//
+// The profile is auto-fit: FreeCAD sketch coords are in metres (~0.05),
+// so the fixed sketchgraph DRAW_SCALE (100) would draw only a few pixels.
+// We scale so the sketch spans ~`TARGET` world units regardless of unit.
+// ============================================================
+
+var TARGET = 200.0
+
+class SketchDraw is Node
+{
+    init()
+    {
+        super.init()
+
+        this.imports = [
+            Pin(this, "geo", [ VAR_TYPE_ARRAY, VAR_TYPE_GEOMETRY ]),
+        ]
+        this.exports = []
+
+        this.layout()
+    }
+
+    draw(mt, cam_mt)
+    {
+        super.draw(mt, cam_mt)
+
+        var v_geo = Blueprint.calc_input_value(this, 0)
+        if (!v_geo) {
+            return
+        }
+        var geos = VariantHelper.flatten_values(v_geo, VAR_TYPE_GEOMETRY)
+        if (geos.isEmpty) {
+            return
+        }
+
+        var ext = this.extent(geos)
+        var scale = 100.0
+        if (ext > 0.000001) {
+            scale = TARGET / ext
+        }
+
+        var mat = Matrix44.init()
+        mat.scale(scale, scale, scale)
+
+        var pt = Painter.init()
+        for (var g in geos) {
+            this.draw_geo(mat, pt, g, scale)
+        }
+        Graphics.draw_painter(pt)
+    }
+
+    // Largest absolute coordinate (plus radius) over all geos, for auto-fit.
+    extent(geos)
+    {
+        var m = 0.0
+        for (var g in geos) {
+            var shape = g.shape
+            if (shape is Line) {
+                var p = shape.get()
+                m = this.max4(m, p[0], p[1], p[2], p[3])
+            } else if (shape is Circle) {
+                var p = shape.get()
+                m = this.max4(m, p[0] + p[2], p[0] - p[2], p[1] + p[2], p[1] - p[2])
+            } else if (shape is Arc) {
+                var p = shape.get()
+                m = this.max4(m, p[0] + p[2], p[0] - p[2], p[1] + p[2], p[1] - p[2])
+            } else if (shape is Ellipse) {
+                var p = shape.get()
+                m = this.max4(m, p[0] + p[2], p[0] - p[2], p[1] + p[3], p[1] - p[3])
+            }
+        }
+        return m
+    }
+
+    max4(m, a, b, c, d)
+    {
+        if (this.abs(a) > m) { m = this.abs(a) }
+        if (this.abs(b) > m) { m = this.abs(b) }
+        if (this.abs(c) > m) { m = this.abs(c) }
+        if (this.abs(d) > m) { m = this.abs(d) }
+        return m
+    }
+
+    abs(x)
+    {
+        if (x < 0) {
+            return -x
+        }
+        return x
+    }
+
+    draw_geo(mat, pt, geo, scale)
+    {
+        var col = geo.color
+        var shape = geo.shape
+        if (shape is Point) {
+            var pos = shape.get()
+            pt.add_circle_filled(mat, pos[0], pos[1], 5.0, col, 32)
+        } else if (shape is Line) {
+            var line = shape.get()
+            pt.add_line(mat, line, col, 2)
+        } else if (shape is Circle) {
+            var circle = shape.get()
+            pt.add_circle(mat, circle[0], circle[1], circle[2] * scale, col, 2.0, 24)
+        } else if (shape is Arc) {
+            var verts = shape.get_vertices()
+            pt.add_polyline(mat, verts, col, 2.0)
+        } else if (shape is Ellipse) {
+            var verts = shape.get_vertices()
+            pt.add_polygon(mat, verts, col, 2.0)
+        } else if (shape is Polyline) {
+            var verts = shape.get_vertices()
+            if (shape.get_closed()) {
+                verts.add(verts[0])
+                verts.add(verts[1])
+            }
+            pt.add_polyline(mat, verts, col, 2.0)
+        }
+    }
+}

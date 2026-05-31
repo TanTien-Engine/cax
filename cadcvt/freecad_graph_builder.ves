@@ -1,6 +1,14 @@
 import "blueprint.blueprint" for Blueprint
+import "blueprint.nodes.subgraph" for Subgraph
+import "blueprint.nodes.merge" for Merge
+import "blueprint.nodes.output" for Output
 import "brepkitnodes" for BREP_KIT_NODES
 import "cadcvt.nodes.baked_shape" for BakedShape
+import "cadcvt.nodes.sketch_to_face" for SketchToFace
+import "sketchgraph.nodes.line" for Line as SkLineNode
+import "sketchgraph.nodes.arc" for Arc as SkArcNode
+import "sketchgraph.nodes.circle" for Circle as SkCircleNode
+import "cadcvt.nodes.sketch_draw" for SketchDraw
 import "maths.vector" for Vector3
 import "logger.logger" for Logger
 
@@ -46,8 +54,10 @@ var SUPPORTED_OPS = [
 class FreeCadGraphBuilder
 {
     // Rebuild `graph` as a live brepkit blueprint inside `editor`, laid
-    // out from (ox, oy). Returns the number of op nodes created.
-    static build(graph, editor, ox, oy)
+    // out from (ox, oy). `loader` is the FreeCadLoader (for sketch geometry
+    // exposure); may be nil, in which case sketches stay baked. Returns the
+    // number of op nodes created.
+    static build(graph, loader, editor, ox, oy)
     {
         if (!graph or !editor) {
             return 0
@@ -76,22 +86,34 @@ class FreeCadGraphBuilder
                 continue
             }
 
-            var node = FreeCadGraphBuilder.make_node(graph, step, op, op2class)
-            if (!node) {
-                continue
-            }
-            step2node[step] = node
-            created = created + 1
-
             // column = 1 + max column of the shape-input producers, so a
             // producer always sits to the left of its consumer; rows just
             // stack within a column.
             var col = FreeCadGraphBuilder.column_of(graph, step, depth)
-            depth[step] = col
             var row = col_rows[col]
-            col_rows[col] = row + 1
+            var nx = ox + col * 200
+            var ny = oy + row * 110
 
-            editor.add_node(node, ox + col * 200, oy + row * 110)
+            var node = nil
+            if (op == "sketch_face" or op == "sketch_wire") {
+                // Reconstruct an editable sketch: a Subgraph holding the 2D
+                // geometry (double-click to edit) feeding a SketchToFace that
+                // caps it into the B-rep face downstream ops consume.
+                node = FreeCadGraphBuilder.make_sketch(graph, step, loader, editor, nx, ny)
+            } else {
+                node = FreeCadGraphBuilder.make_node(graph, step, op, op2class)
+                if (node) {
+                    editor.add_node(node, nx, ny)
+                }
+            }
+            if (!node) {
+                continue
+            }
+
+            step2node[step] = node
+            depth[step] = col
+            col_rows[col] = row + 1
+            created = created + 1
         }
 
         // Pass 2: wire shape + variadic inputs now that every node exists.
@@ -146,6 +168,129 @@ class FreeCadGraphBuilder
         }
         var node = BakedShape()
         node.set_shape(shape)
+        return node
+    }
+
+    // Reconstruct an editable sketch for a sketch_face / sketch_wire step:
+    //   [Subgraph: 2D geos]  --geos-->  [SketchToFace: +plane]  --face-->
+    // The Subgraph holds the 2D geometry nodes (double-click it to edit);
+    // SketchToFace lifts them onto the sketch plane and caps a B-rep face
+    // for the downstream extrude / revolve. Returns the SketchToFace node
+    // (what consumers wire to), or nil to fall back to a baked snapshot.
+    static make_sketch(graph, step, loader, editor, x, y)
+    {
+        if (!loader) {
+            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+        }
+        var inputs = graph.get_step_inputs(step)
+        if (inputs.count < 1) {
+            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+        }
+        var sk_step = inputs[0]   // the $sketch const feeding sketch_face
+
+        var ng = loader.sketch_geo_count_at(sk_step)
+        if (!ng or ng < 1) {
+            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+        }
+
+        // Build the editable sketch sub-graph programmatically (geo nodes ->
+        // Merge -> Output("geos")). Done with real node objects rather than a
+        // generated source string so 2D coords go in as actual numbers (a
+        // generated script would re-lex them, and tiny FP values printed in
+        // scientific notation do not parse).
+        var sub = Subgraph()
+
+        var geo_nodes = []
+        for (var g = 0; g < ng; g = g + 1) {
+            var node = FreeCadGraphBuilder.make_geo_node(loader.sketch_geo_at(sk_step, g))
+            if (node) {
+                sub.add_node(node, -300, geo_nodes.count * 70)
+                geo_nodes.add(node)
+            }
+        }
+        if (geo_nodes.isEmpty) {
+            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+        }
+
+        var mg = Merge()
+        sub.add_node(mg, 0, 0)
+        for (var i = 0; i < geo_nodes.count; i = i + 1) {
+            Blueprint.connect(geo_nodes[i], "geo", mg, "in%(i)")
+        }
+
+        // Render the 2D profile inside the sub-editor so editing is WYSIWYG:
+        // double-click the sketch node and you see the geometry drawn (and
+        // each geo node's own drag handles edit it in place). SketchDraw
+        // renders from draw() (not render_run) so it works inside the
+        // entered sub-graph, where the root-scene drawlist never reaches.
+        var draw = SketchDraw()
+        sub.add_node(draw, 0, -160)
+        Blueprint.connect(mg, "list", draw, "geo")
+
+        var out = Output()
+        out.var_name = "geos"
+        out.var_type = "array"
+        sub.add_node(out, 250, 0)
+        Blueprint.connect(mg, "list", out, "var")
+
+        sub.rebuild_sub()
+        editor.add_node(sub, x, y)
+
+        var stf = SketchToFace()
+        var plane = loader.sketch_plane_at(sk_step)
+        if (plane and plane.count >= 9) {
+            stf.query_param("origin").value.set(plane[0], plane[1], plane[2])
+            stf.query_param("x_dir").value.set(plane[3], plane[4], plane[5])
+            stf.query_param("normal").value.set(plane[6], plane[7], plane[8])
+        }
+        editor.add_node(stf, x + 120, y)
+
+        Blueprint.connect(sub, "geos", stf, "geos")
+
+        return stf
+    }
+
+    // One sketchgraph geometry node from a [type, params...] geo descriptor
+    // (SkGeoType code: 2=Line 3=Arc 4=Circle). Only the primitives
+    // SketchToFace lifts are built; others return nil (skipped).
+    static make_geo_node(geo)
+    {
+        if (!geo or geo.count < 1) {
+            return nil
+        }
+        var t = geo[0]
+        if (t == 2 and geo.count >= 5) {
+            // Line [x0, y0, x1, y1]
+            var n = SkLineNode()
+            n.query_param("p1").value.set(geo[1], geo[2])
+            n.query_param("p2").value.set(geo[3], geo[4])
+            return n
+        } else if (t == 3 and geo.count >= 6) {
+            // Arc [cx, cy, r, start, end]
+            var n = SkArcNode()
+            n.query_param("center").value.set(geo[1], geo[2])
+            n.query_param("radius").value = geo[3]
+            n.query_param("start_angle").value = geo[4]
+            n.query_param("end_angle").value = geo[5]
+            return n
+        } else if (t == 4 and geo.count >= 4) {
+            // Circle [cx, cy, r]
+            var n = SkCircleNode()
+            n.query_param("center").value.set(geo[1], geo[2])
+            n.query_param("radius").value = geo[3]
+            return n
+        }
+        return nil
+    }
+
+    // make_baked but also adds the node to the editor (the sketch path owns
+    // its own placement, unlike pass 1's mapped-node branch).
+    static make_baked_at(graph, step, editor, x, y)
+    {
+        var node = FreeCadGraphBuilder.make_baked(graph, step)
+        if (node) {
+            editor.add_node(node, x, y)
+        }
         return node
     }
 

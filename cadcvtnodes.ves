@@ -4,4 +4,5 @@ var CAD_CVT_NODES = [
 LoadFreecad,
 AssemblyDrag,
 RebuildFreecad,
+SketchToFace,
 ]

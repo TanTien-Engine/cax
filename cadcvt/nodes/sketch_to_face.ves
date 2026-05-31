@@ -1,0 +1,192 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_ARRAY
+import "blueprint.variant_helper" for VariantHelper
+import "blueprint.node_helper" for NodeHelper
+import "brepkit.variant" for VAR_TOPO_FACE
+import "brepkit" for ShapeBuilder, WireBuilder
+import "sketchgraph.variant" for VAR_TYPE_SKETCH, VAR_TYPE_GEOMETRY
+import "geometry" for Line, Arc, Circle, Line3D, Arc3D
+import "maths.vector" for Vector3
+import "math" for Math
+
+// ============================================================
+// cadcvt::nodes::sketch_to_face::SketchToFace
+//
+// Bridge from the (mesh-free) sketchgraph 2D sketch world into a
+// brepkit OCCT B-rep face, so an editable sketchgraph sketch can feed
+// a brepkit extrude / revolve.
+//
+// The sketchgraph stack (sketch -> solidgraph) only ever produces a
+// tessellated mesh; brepkit needs a real B-rep face. This node reads the
+// sketch's 2D geometry directly (a FreeCAD import is already solved, and
+// running SkSolver would pull in sketchlib, which is not linked here),
+// lifts every 2D curve onto the sketch's 3D plane (origin / x_dir /
+// normal) and rebuilds it as an OCCT edge via the same ShapeBuilder the
+// Edge node uses, stitches the edges into a wire (WireBuilder) and caps
+// it into a face (ShapeBuilder.make_face).
+//
+// Inputs:
+//   sketch  VAR_TYPE_SKETCH - a sketchgraph sketch (e.g. from a
+//                             reconstructed FreeCAD sketch sub-graph)
+// Params (the sketch plane, set by the FreeCAD rebuilder):
+//   origin  number3 - plane origin
+//   x_dir   number3 - plane local X axis
+//   normal  number3 - plane normal (local Y = normal x x_dir)
+// Outputs:
+//   face    VAR_TOPO_FACE
+//
+// v1 handles Line / Arc / Circle (the common sketch primitives) and a
+// single outer loop. Ellipse / spline and inner loops (holes) are a
+// follow-up -- the C++ sketch_face op handles those, but reusing it
+// would need the SketchIR round-trip we are deliberately avoiding here.
+// ============================================================
+
+class SketchToFace is Node
+{
+    init()
+    {
+        super.init()
+
+        this.imports = [
+            // Either a sketchgraph sketch (its .geos are read) or a plain
+            // array / single 2D geometry (e.g. the merged geos out of a
+            // reconstructed sketch sub-graph).
+            Pin(this, "geos", [ VAR_TYPE_ARRAY, VAR_TYPE_SKETCH, VAR_TYPE_GEOMETRY ]),
+        ]
+        this.exports = [
+            Pin(this, "face", VAR_TOPO_FACE),
+        ]
+
+        this.params.add(NodeParam("origin", Vector3(0, 0, 0)))
+        this.params.add(NodeParam("x_dir",  Vector3(1, 0, 0)))
+        this.params.add(NodeParam("normal", Vector3(0, 0, 1)))
+
+        this.layout()
+    }
+
+    calc_value(idx)
+    {
+        var v_in = Blueprint.calc_input_value(this, 0)
+        if (!v_in) {
+            return nil
+        }
+
+        // A FreeCAD sketch is already solved (final coordinates), so read its
+        // geometry directly -- no constraint solve, which would pull in
+        // sketchlib (not linked in this editor) via SkSolver. Accept either a
+        // sketch (read its .geos) or a geometry array straight off a Merge.
+        var src = v_in
+        if (v_in.type == VAR_TYPE_SKETCH) {
+            src = v_in.value.geos
+            if (!src) {
+                return nil
+            }
+        }
+
+        var origin = NodeHelper.calc_prop_value(this, "origin")
+        var x_dir  = NodeHelper.calc_prop_value(this, "x_dir")
+        var normal = NodeHelper.calc_prop_value(this, "normal")
+        // local Y = normal x x_dir
+        var yx = normal.y * x_dir.z - normal.z * x_dir.y
+        var yy = normal.z * x_dir.x - normal.x * x_dir.z
+        var yz = normal.x * x_dir.y - normal.y * x_dir.x
+        var y_dir = Vector3(yx, yy, yz)
+
+        var builder = WireBuilder.init()
+        var added = 0
+
+        var geos = VariantHelper.flatten_values(src, VAR_TYPE_GEOMETRY)
+        for (var g in geos)
+        {
+            var shape = g.shape
+            if (this.add_edges(builder, shape, origin, x_dir, y_dir)) {
+                added = added + 1
+            }
+        }
+
+        if (added == 0) {
+            return nil
+        }
+
+        var wire = builder.gen_wire()
+        if (!wire) {
+            return nil
+        }
+
+        var face = ShapeBuilder.make_face(wire)
+        if (!face) {
+            return nil
+        }
+        return Variant(VAR_TOPO_FACE, face)
+    }
+
+    // Lift one solved 2D shape onto the plane and add its OCCT edge(s)
+    // to the wire builder. Returns true if anything was added.
+    add_edges(builder, shape, origin, x_dir, y_dir)
+    {
+        if (shape is Line)
+        {
+            var p = shape.get()           // [x0, y0, x1, y1]
+            var a = this.lift(p[0], p[1], origin, x_dir, y_dir)
+            var b = this.lift(p[2], p[3], origin, x_dir, y_dir)
+            var e = ShapeBuilder.make_edge_from_line(Line3D.init(a, b))
+            if (e) {
+                builder.add_edge(e)
+                return true
+            }
+        }
+        else if (shape is Arc)
+        {
+            var p = shape.get()           // [cx, cy, r, start, end]
+            var e = this.arc_edge(p[0], p[1], p[2], p[3], p[4], origin, x_dir, y_dir)
+            if (e) {
+                builder.add_edge(e)
+                return true
+            }
+        }
+        else if (shape is Circle)
+        {
+            var p = shape.get()           // [cx, cy, r]
+            // A full circle has no 3-point arc form, so split into two
+            // half arcs (0..pi, pi..2pi).
+            var half = Math.pi()
+            var e0 = this.arc_edge(p[0], p[1], p[2], 0, half, origin, x_dir, y_dir)
+            var e1 = this.arc_edge(p[0], p[1], p[2], half, half + half, origin, x_dir, y_dir)
+            var ok = false
+            if (e0) {
+                builder.add_edge(e0)
+                ok = true
+            }
+            if (e1) {
+                builder.add_edge(e1)
+                ok = true
+            }
+            return ok
+        }
+        return false
+    }
+
+    // OCCT arc edge through (start, mid, end) sample points lifted to 3D.
+    arc_edge(cx, cy, r, sa, ea, origin, x_dir, y_dir)
+    {
+        var ma = (sa + ea) * 0.5
+        var p0 = this.lift(cx + r * Math.cos(sa), cy + r * Math.sin(sa), origin, x_dir, y_dir)
+        var p1 = this.lift(cx + r * Math.cos(ma), cy + r * Math.sin(ma), origin, x_dir, y_dir)
+        var p2 = this.lift(cx + r * Math.cos(ea), cy + r * Math.sin(ea), origin, x_dir, y_dir)
+        return ShapeBuilder.make_edge_from_arc(Arc3D.init(p0, p1, p2))
+    }
+
+    // 2D sketch point (x, y) -> 3D point on the plane, as an [x, y, z] list
+    // (Line3D / Arc3D's set_p* go through wrapper::list_to_vec3, which wants
+    // a 3-number list, not a Vector3).
+    lift(x, y, o, xd, yd)
+    {
+        var px = o.x + xd.x * x + yd.x * y
+        var py = o.y + xd.y * x + yd.y * y
+        var pz = o.z + xd.z * x + yd.z * y
+        return [px, py, pz]
+    }
+}
