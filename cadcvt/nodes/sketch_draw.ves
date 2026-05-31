@@ -39,6 +39,12 @@ class SketchDraw is Node
         this.exports = []
 
         this.layout()
+
+        // Fixed once the geometry is first seen. Recomputing the fit every
+        // frame would rescale the whole view as you drag a single geo, making
+        // the other geos appear to move (they do not -- the camera-to-sketch
+        // scale was changing under them).
+        this.fit_scale = nil
     }
 
     draw(mt, cam_mt)
@@ -54,10 +60,15 @@ class SketchDraw is Node
             return
         }
 
-        var ext = this.extent(geos)
-        var scale = 100.0
-        if (ext > 0.000001) {
-            scale = TARGET / ext
+        var scale = this.fit_scale
+        if (!scale) {
+            var ext = this.extent(geos)
+            if (ext > 0.000001) {
+                scale = TARGET / ext
+                this.fit_scale = scale    // lock it in once geometry is ready
+            } else {
+                scale = 100.0             // geos not ready yet; do not cache
+            }
         }
 
         var mat = Matrix44.init()
