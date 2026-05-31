@@ -1,6 +1,7 @@
 #include "cadcvt_c/wrap_CadCvt.h"
 #include "cadcvt_c/reader/FreeCadReader.h"
 #include "cadapp_c/emitter/Replayer.h"
+#include "cadapp_c/ir/SketchIR.h"
 
 #include "brepkit_c/TransHelper.h"
 #include "brepkit_c/TopoShape.h"
@@ -427,6 +428,97 @@ void w_FreeCadLoader_calc_graph()
 }
 
 
+// ---- sketch geometry exposure (for rebuilding editable sketches) ----
+//
+// A FreeCAD sketch lives in the construction calc graph as a $sketch const
+// (an opaque SketchIR handle) feeding a sketch_face / sketch_wire op. To
+// rebuild it as an editable sketchgraph sub-graph, the host needs the raw
+// 2D geometry. These read it straight off the const at `step` (the sketch
+// input of a sketch_face step), so there is no fragile sketch<->step
+// mapping. cadcvt_c can include both brepgraph (CalcGraph) and cadapp
+// (SketchIR) without inverting the module dependency, which brepgraph_c
+// could not.
+
+const cadapp::SketchIR* SketchAtStep(FreeCadLoaderState* st, int step)
+{
+    if (!st || !st->calc_graph) {
+        return nullptr;
+    }
+    const brepgraph::OpStep* s = st->calc_graph->GetHistory().Get(step);
+    if (!s || s->op_name != "$sketch") {
+        return nullptr;
+    }
+    const auto* sv = std::get_if<brepgraph::SketchVal>(&s->imm);
+    if (!sv || !sv->handle) {
+        return nullptr;
+    }
+    return static_cast<const cadapp::SketchIR*>(sv->handle.get());
+}
+
+// Plane of the sketch const at `step` as a flat 9-number list:
+// [ox,oy,oz, xx,xy,xz, nx,ny,nz] (origin, x_dir, normal). nil if `step`
+// is not a sketch const.
+void w_FreeCadLoader_sketch_plane_at()
+{
+    auto* st = GetState(0);
+    int step = (int)ves_tonumber(1);
+    const cadapp::SketchIR* sk = SketchAtStep(st, step);
+    if (!sk) {
+        ves_set_nil(0);
+        return;
+    }
+    double v[9] = {
+        sk->plane_origin[0], sk->plane_origin[1], sk->plane_origin[2],
+        sk->plane_x_dir[0],  sk->plane_x_dir[1],  sk->plane_x_dir[2],
+        sk->plane_normal[0], sk->plane_normal[1], sk->plane_normal[2],
+    };
+    ves_pop(ves_argnum());
+    ves_newlist(9);
+    for (int i = 0; i < 9; ++i) {
+        ves_pushnumber(v[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
+// Number of 2D geometries in the sketch const at `step` (0 if not a sketch).
+void w_FreeCadLoader_sketch_geo_count_at()
+{
+    auto* st = GetState(0);
+    int step = (int)ves_tonumber(1);
+    const cadapp::SketchIR* sk = SketchAtStep(st, step);
+    ves_set_number(0, sk ? (double)sk->geos.size() : 0.0);
+}
+
+// The gi-th geometry of the sketch const at `step` as [type, params...],
+// where type is the SkGeoType code (1=Point 2=Line 3=Arc 4=Circle
+// 5=Ellipse 6=Spline) and params follow SkGeoIR's per-type layout. nil on
+// a bad index.
+void w_FreeCadLoader_sketch_geo_at()
+{
+    auto* st = GetState(0);
+    int step = (int)ves_tonumber(1);
+    int gi   = (int)ves_tonumber(2);
+    const cadapp::SketchIR* sk = SketchAtStep(st, step);
+    if (!sk || gi < 0 || gi >= (int)sk->geos.size()) {
+        ves_set_nil(0);
+        return;
+    }
+    const cadapp::SkGeoIR& g = sk->geos[gi];
+    int n = (int)g.params.size();
+    ves_pop(ves_argnum());
+    ves_newlist(n + 1);
+    ves_pushnumber((double)(int)g.type);
+    ves_seti(-2, 0);
+    ves_pop(1);
+    for (int i = 0; i < n; ++i) {
+        ves_pushnumber(g.params[i]);
+        ves_seti(-2, i + 1);
+        ves_pop(1);
+    }
+}
+
+
 // ============================================================
 // AsmSession foreign class -- interactive pick + drag editing
 // ============================================================
@@ -686,6 +778,15 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
     }
     if (std::strcmp(signature, "FreeCadLoader.calc_graph()") == 0) {
         return w_FreeCadLoader_calc_graph;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.sketch_plane_at(_)") == 0) {
+        return w_FreeCadLoader_sketch_plane_at;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.sketch_geo_count_at(_)") == 0) {
+        return w_FreeCadLoader_sketch_geo_count_at;
+    }
+    if (std::strcmp(signature, "FreeCadLoader.sketch_geo_at(_,_)") == 0) {
+        return w_FreeCadLoader_sketch_geo_at;
     }
 
     if (std::strcmp(signature, "AsmSession.load(_,_,_)") == 0) {

@@ -52,6 +52,19 @@ foreign class FreeCadLoader
     // nil when none was kept (parallel multi-part assembly path). Feed it
     // to a CalcGraph node to draw the model's real construction history.
     foreign calc_graph()
+
+    // ---- sketch geometry exposure (for rebuilding editable sketches) ----
+    //
+    // Read the raw 2D geometry of the $sketch const at `step` (the sketch
+    // input of a sketch_face / sketch_wire step in calc_graph()), so the
+    // host can rebuild it as an editable sketchgraph sub-graph.
+    //   sketch_plane_at(step)     -> [ox,oy,oz, xx,xy,xz, nx,ny,nz] or nil
+    //   sketch_geo_count_at(step) -> number
+    //   sketch_geo_at(step, g)    -> [type, params...] (SkGeoType code +
+    //                                per-type params) or nil
+    foreign sketch_plane_at(step)
+    foreign sketch_geo_count_at(step)
+    foreign sketch_geo_at(step, g)
 }
 
 // =========================================================
