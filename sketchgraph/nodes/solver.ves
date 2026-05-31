@@ -27,9 +27,16 @@ class Solver is Node
 		this.results = nil
 	}
 
-	on_pin_dirty(pin)
+	// NOTE: must be the 3-arg (pin, type, msg) form. Vessel dispatches methods
+	// by name AND arity (Wren-style: the signature string encodes the param
+	// count), and the framework fires dirty via on_pin_dirty(pin, type, msg).
+	// A 1-arg on_pin_dirty(pin) override is a DIFFERENT method symbol that the
+	// framework never calls -- so the result cache below would never clear and
+	// edits (geo move / constraint value change) would silently produce no
+	// update because resolve() keeps returning the stale cached solution.
+	on_pin_dirty(pin, type, msg)
 	{
-		super.on_pin_dirty(pin)
+		super.on_pin_dirty(pin, type, msg)
 
 		this.solver = nil
 		this.results = nil
