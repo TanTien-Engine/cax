@@ -381,6 +381,52 @@ else()
 endif()
 
 
+# ---- cadcvt: SolidWorks reader (COM automation) ----
+#
+# Unlike FreeCAD (.FCStd = zip + XML parsed offline), SolidWorks files
+# are a proprietary OLE binary; the only way to read the parametric
+# feature tree is to drive an installed SolidWorks through its COM API.
+# So this reader is Windows + MSVC only and needs the SolidWorks type
+# libraries present at configure time (it uses #import). CAX_SW_TLB_DIR
+# points at the install dir holding sldworks.tlb; the default matches a
+# stock SOLIDWORKS 2026 install. When the libs are absent SwReader.cpp
+# compiles to a stub (its body is #ifdef CAX_SW_OK) and ReadFile returns
+# a clean "not built" error -- so the file is always in the build, but
+# only the CAX_SW_OK define + generated-import include are gated.
+set(CAX_SW_TLB_DIR "D:/Program Files/SOLIDWORKS Corp/SOLIDWORKS"
+    CACHE PATH "SolidWorks install dir containing sldworks.tlb / swconst.tlb")
+set(CADCVT_SW_DEPS_OK FALSE)
+if(WIN32 AND MSVC AND
+   EXISTS "${CAX_SW_TLB_DIR}/sldworks.tlb" AND
+   EXISTS "${CAX_SW_TLB_DIR}/swconst.tlb")
+    set(CADCVT_SW_DEPS_OK TRUE)
+endif()
+
+set(cadcvt__reader_sw
+    "cadcvt_c/reader/SwReader.cpp"
+    "cadcvt_c/reader/SwReader.h"
+)
+source_group("cadcvt\\reader\\sw" FILES ${cadcvt__reader_sw})
+
+if(CADCVT_SW_DEPS_OK)
+    # #import takes a literal path (it does not expand preprocessor
+    # macros), so emit a header carrying the absolute .tlb paths, the
+    # same trick as the miniz_export.h stub above. Dependencies first
+    # (swconst / swpublished) so sldworks.tlb's importlib references
+    # resolve to already-generated .tlh.
+    set(CADCVT_SW_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/cadcvt_generated")
+    file(WRITE "${CADCVT_SW_GEN_DIR}/SwImports.h"
+"#pragma once\n"
+"#import \"${CAX_SW_TLB_DIR}/swconst.tlb\" no_namespace, named_guids\n"
+"#import \"${CAX_SW_TLB_DIR}/swpublished.tlb\" no_namespace, named_guids\n"
+"#import \"${CAX_SW_TLB_DIR}/sldworks.tlb\" no_namespace, named_guids\n")
+    message(STATUS "cadcvt: SwReader enabled (${CAX_SW_TLB_DIR})")
+else()
+    set(CADCVT_SW_GEN_DIR "")
+    message(STATUS "cadcvt: SwReader disabled (set CAX_SW_TLB_DIR to a SolidWorks install dir with sldworks.tlb)")
+endif()
+
+
 set(ALL_FILES
     ${brepgraph}
     ${brepgraph__common}
@@ -414,6 +460,7 @@ set(ALL_FILES
     ${cadcvt__reader}
     ${cadcvt__script}
     ${cadcvt__reader_freecad}
+    ${cadcvt__reader_sw}
 )
 
 ################################################################################
@@ -510,6 +557,10 @@ if(CADCVT_FREECAD_DEPS_OK)
         thirdparty/miniz
         thirdparty/pugixml/src
         "${CADCVT_MINIZ_EXPORT_DIR}")
+endif()
+if(CADCVT_SW_DEPS_OK)
+    target_include_directories(${PROJECT_NAME} PRIVATE "${CADCVT_SW_GEN_DIR}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE CAX_SW_OK)
 endif()
 if(TARGET Eigen3::Eigen)
     target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)

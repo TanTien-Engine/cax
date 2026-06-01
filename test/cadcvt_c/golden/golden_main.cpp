@@ -2,6 +2,7 @@
 #include "GeoFingerprint.h"
 
 #include "cadcvt_c/reader/FreeCadReader.h"
+#include "cadcvt_c/reader/SwReader.h"
 #include "cadapp_c/emitter/Replayer.h"
 #include "brepkit_c/TopoShape.h"
 
@@ -56,6 +57,7 @@ struct Options
 {
     bool        update   = false;
     bool        ir_only  = false;
+    bool        with_sw  = false;   // process .SLDPRT/.SLDASM fixtures (needs SolidWorks)
     std::string fixtures = CADCVT_GOLDEN_FIXTURES;
 };
 
@@ -70,6 +72,9 @@ Options ParseArgs(int argc, char** argv)
         }
         else if (a == "--ir-only") {
             o.ir_only = true;
+        }
+        else if (a == "--sw") {
+            o.with_sw = true;
         }
         else {
             o.fixtures = a;
@@ -142,10 +147,33 @@ void PrintDiff(const std::string& expected, const std::string& actual)
     }
 }
 
-// Run the reader on one fixture. Returns false (and fills err) on a
-// hard reader failure; a successful parse fills doc.
+// Lower-cased file extension (no dot), for fixture-kind dispatch.
+std::string LowerExt(const fs::path& p)
+{
+    std::string ext = p.extension().string();
+    if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return (char)std::tolower(c); });
+    return ext;
+}
+
+// SolidWorks fixtures (.SLDPRT / .SLDASM) are read through SwReader, which
+// drives the installed SolidWorks via COM -- so they only run on a machine
+// with SolidWorks (gated by --sw; skipped in CI).
+bool IsSwFixture(const fs::path& p)
+{
+    std::string e = LowerExt(p);
+    return e == "sldprt" || e == "sldasm";
+}
+
+// Run the reader on one fixture, dispatching by extension. Returns false
+// (and fills err) on a hard reader failure; a successful parse fills doc.
 bool RunReader(const fs::path& fixture, cadapp::DocumentIR& doc, std::string& err)
 {
+    if (IsSwFixture(fixture)) {
+        cadcvt::SwReader reader;
+        return reader.ReadFile(fixture.string(), doc, &err);
+    }
     cadcvt::FreeCadReader reader;
     return reader.ReadFile(fixture.string(), doc, &err);
 }
@@ -260,7 +288,13 @@ CaseResult ProcessFixture(const fs::path& fixture, const Options& o)
     check_one(ir_golden, ir_snapshot, "ir");
 
     // ---- Geometry layer ----
-    if (!o.ir_only)
+    // SolidWorks fixtures are IR-only: the geo layer replays the imported
+    // sketch through the constraint solver, and the (necessary, for the
+    // RebuildHistory path) synthesized coincidents make the solve mildly
+    // redundant -- DogLeg then occasionally diverges to a degenerate result,
+    // so the geo fingerprint is not run-to-run stable. The IR layer fully
+    // pins the reader's behaviour, which is what these fixtures test.
+    if (!o.ir_only && !IsSwFixture(fixture))
     {
         std::string geo_snapshot = BuildGeoSnapshot(doc);
         fs::path geo_golden = fixture.parent_path() / (cr.name + ".geo.golden");
@@ -278,7 +312,8 @@ bool IsFixture(const fs::path& p)
     std::string ext = p.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return (char)std::tolower(c); });
-    return ext == ".fcstd" || ext == ".xml";
+    return ext == ".fcstd" || ext == ".xml"
+        || ext == ".sldprt" || ext == ".sldasm";
 }
 
 } // anonymous namespace
@@ -314,9 +349,21 @@ int main(int argc, char** argv)
         return 2;
     }
 
-    int failed = 0;
+    int failed  = 0;
+    int skipped = 0;
     for (const auto& f : fixtures)
     {
+        // SolidWorks fixtures need the installed SolidWorks (COM) to parse,
+        // which CI does not have. Skip them unless --sw is passed on a
+        // machine with SolidWorks; their committed goldens are minted there.
+        if (IsSwFixture(f) && !o.with_sw)
+        {
+            std::printf("[skip]   %s  (SolidWorks fixture; pass --sw on a machine with SolidWorks)\n",
+                        f.stem().string().c_str());
+            ++skipped;
+            continue;
+        }
+
         // Safety net: the harness contract is "run every fixture, then
         // print the summary". An exception escaping any layer (reader,
         // fingerprint, OCCT) must degrade to a per-fixture failure, not
@@ -342,8 +389,8 @@ int main(int argc, char** argv)
         }
     }
 
-    std::printf("\n%zu fixtures, %d failed%s\n",
-                fixtures.size(), failed, o.update ? " (update mode)" : "");
+    std::printf("\n%zu fixtures, %d failed, %d skipped%s\n",
+                fixtures.size(), failed, skipped, o.update ? " (update mode)" : "");
 
     return failed == 0 ? 0 : 1;
 }

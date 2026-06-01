@@ -1,9 +1,37 @@
-# FreeCAD reader golden tests
+# cadcvt reader golden tests
 
-This harness pins the behaviour of `cadcvt::FreeCadReader` (and the
-`cadapp::Replayer` step) against a set of FreeCAD fixtures, so any
-change to the reader, the IR, or the replay path shows up as a
+This harness pins the behaviour of `cadcvt::FreeCadReader` / `cadcvt::SwReader`
+(and the `cadapp::Replayer` step) against a set of fixtures, so any
+change to a reader, the IR, or the replay path shows up as a
 reviewable diff instead of a silent regression.
+
+## SolidWorks fixtures (`.SLDPRT` / `.SLDASM`)
+
+SolidWorks parts live under `fixtures/sw/`. Unlike FreeCAD (parsed
+offline), `SwReader` drives the *installed* SolidWorks over COM, so
+these fixtures can only be parsed on a machine with SolidWorks. They
+are therefore **gated behind `--sw`** and skipped otherwise (CI has no
+SolidWorks, so CI stays green):
+
+```
+cadcvt_golden --sw            # run SW fixtures too (needs SolidWorks)
+cadcvt_golden --sw --update   # (re)mint SW goldens; first eval launches SLDWORKS.exe (slow)
+cadcvt_golden                 # CI default: SW fixtures print [skip], exit 0
+```
+
+SW fixtures are **IR-only** (no `.geo.golden`): the geo layer would replay
+the imported sketch back through the constraint solver, and the coincidents
+the reader synthesizes for connected geometry (needed so RebuildHistory can
+re-edit the sketch) make that solve mildly redundant -- DogLeg then
+occasionally diverges, so the geo fingerprint is not run-to-run stable. The
+`.ir.golden` fully pins the reader's behaviour, which is what these fixtures
+test; spot-check geometry by opening the part in the editor (`test/cadcvt/sw.ves`).
+
+The committed `sw/*.ir.golden` are minted on an SW-equipped machine and
+reviewed like any other golden. Authoring a SW fixture is easiest done
+interactively in SolidWorks (save the part into `fixtures/sw/`) or by
+copying one of the bundled samples (`…\SOLIDWORKS\samples\tutorial\`);
+scripted creation via the COM API is brittle.
 
 ## Layout
 

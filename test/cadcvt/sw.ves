@@ -1,0 +1,90 @@
+// SolidWorks load test scene. Mirrors freecad.ves but feeds a
+// LoadSw node (cadcvt::SwReader, COM automation of the installed
+// SolidWorks) instead of LoadFreecad. Open in the editor to replay
+// the .SLDPRT into a 3D body via the same ToMesh / draw_mesh path.
+//
+// NOTE: the first evaluation launches SLDWORKS.exe, so the initial
+// load can take tens of seconds; it is cached afterwards.
+
+var node0 = ::blueprint::nodes::camera3d::Camera3d()
+
+// Framed for the ~50 x 30 x 20 mm test box centred on the origin.
+node0.cam.position.set(-0.02, -0.09, 0.07)
+node0.cam.yaw = -90.8
+node0.cam.pitch = 45
+node0.cam.zoom = 45
+node0.cam.update_vectors()
+node0.speed = 0.005
+
+_editor.add_node(node0, 537.95018571588, -34.75814028784)
+
+var node1 = ::blueprint::nodes::subgraph::Subgraph()
+node1.load_from_file(_editor, "../../assets/blueprints/render/draw_mesh.ves")
+node1.set_prop_value("no_bg", false)
+
+_editor.add_node(node1, 749.52599052345, 149.08054285977)
+
+var node2 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node2, 210.13432009961, 170.93279498784)
+
+var node3 = ::blueprint::nodes::cache::Cache()
+node3.query_param("disable").value = false
+
+_editor.add_node(node3, 392.18895050427, 211.79090897199)
+
+var node4 = ::cadcvt::nodes::load_sw::LoadSw()
+node4.query_param("path").value = "D:/projects/tantien-cad/thirdparty/cax/test/cadcvt_c/golden/fixtures/sw/sw_pad_box.SLDPRT"
+node4.query_param("unit_scale").value = 1.0
+node4.query_param("strict").value = false
+
+_editor.add_node(node4, 29.22809917355, 135.62727272727)
+
+var node5 = ::blueprint::nodes::cache::Cache()
+node5.query_param("disable").value = false
+
+_editor.add_node(node5, 397.97407447121, 120.3305785124)
+
+// Transparent group: a second ToMesh + cache for parts whose
+// MaterialIR.transparency > 0. SW v1 authors no transparency, so
+// these branches stay empty -- kept for parity with freecad.ves.
+var node6 = ::brepkit::nodes::to_mesh::ToMesh()
+
+_editor.add_node(node6, 210.13432009961, 380.93279498784)
+
+var node7 = ::blueprint::nodes::cache::Cache()
+node7.query_param("disable").value = false
+
+_editor.add_node(node7, 392.18895050427, 420.79090897199)
+
+var node8 = ::blueprint::nodes::cache::Cache()
+node8.query_param("disable").value = false
+
+_editor.add_node(node8, 392.18895050427, 520.79090897199)
+
+// History-tree rebuild: wire LoadSw into RebuildHistory, then toggle its
+// `rebuild` param to true in the editor to decompile the SW import into
+// editable sketch / extrude / cut nodes laid out from (origin_x, origin_y).
+var node9 = ::cadcvt::nodes::rebuild_history::RebuildHistory()
+node9.query_param("origin_x").value = -800.0
+node9.query_param("origin_y").value = -250.0
+
+_editor.add_node(node9, 29.22809917355, 360.0)
+
+Blueprint.connect(node4, "shape", node9, "loader")
+
+// Opaque group -> main surface + edges.
+Blueprint.connect(node4, "shape_opaque", node2, "shape")
+Blueprint.connect(node2, "edges", node5, "var")
+Blueprint.connect(node2, "va", node3, "var")
+Blueprint.connect(node3, "var", node1, "geos")
+Blueprint.connect(node0, "this", node1, "view_cam")
+Blueprint.connect(node5, "var", node1, "edges")
+
+// Transparent group -> x-ray surface + edge passes.
+Blueprint.connect(node4, "shape_transparent", node6, "shape")
+Blueprint.connect(node4, "transparent_alphas", node6, "alpha")
+Blueprint.connect(node6, "va", node7, "var")
+Blueprint.connect(node7, "var", node1, "geos_transparent")
+Blueprint.connect(node6, "edges", node8, "var")
+Blueprint.connect(node8, "var", node1, "edges_transparent")

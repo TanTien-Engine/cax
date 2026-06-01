@@ -355,6 +355,10 @@ void EmitPayload(std::ostringstream& os, const cadapp::FeatureIR& feat, const Fi
             if (it != p.strings.end()) {
                 os << " freecad_type=" << it->second;
             }
+            auto sw = p.strings.find("sw_type");
+            if (sw != p.strings.end()) {
+                os << " sw_type=" << sw->second;
+            }
         }
         else if constexpr (std::is_same_v<T, cadapp::FeatPayloadBoolean>) {
             // Payload is empty as of P3.3.B; operands appear on the

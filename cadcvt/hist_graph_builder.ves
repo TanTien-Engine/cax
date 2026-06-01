@@ -44,7 +44,7 @@ var SUPPORTED_OPS = [
 ]
 
 // ============================================================
-// cadcvt::freecad_graph_builder::FreeCadGraphBuilder
+// cadcvt::hist_graph_builder::HistGraphBuilder
 //
 // Reverse-derives an editable brepkit blueprint from a FreeCAD import's
 // construction CalcGraph (LoadFreecad.get_calc_graph()). Each non-const
@@ -54,7 +54,7 @@ var SUPPORTED_OPS = [
 // the imported model natively. Steps with no editable equivalent (yet)
 // are frozen as BakedShape snapshots.
 // ============================================================
-class FreeCadGraphBuilder
+class HistGraphBuilder
 {
     // Rebuild `graph` as a live brepkit blueprint inside `editor`, laid
     // out from (ox, oy). `loader` is the FreeCadLoader (for sketch geometry
@@ -66,7 +66,7 @@ class FreeCadGraphBuilder
             return 0
         }
 
-        var op2class = FreeCadGraphBuilder.op_registry()
+        var op2class = HistGraphBuilder.op_registry()
         var n = graph.get_history_size()
 
         // Step ids are dense (0 .. n-1) and a step's inputs are always
@@ -92,7 +92,7 @@ class FreeCadGraphBuilder
             // column = 1 + max column of the shape-input producers, so a
             // producer always sits to the left of its consumer; rows just
             // stack within a column.
-            var col = FreeCadGraphBuilder.column_of(graph, step, depth)
+            var col = HistGraphBuilder.column_of(graph, step, depth)
             var row = col_rows[col]
             var nx = ox + col * 200
             var ny = oy + row * 110
@@ -102,9 +102,9 @@ class FreeCadGraphBuilder
                 // Reconstruct an editable sketch: a Subgraph holding the 2D
                 // geometry (double-click to edit) feeding a SketchToFace that
                 // caps it into the B-rep face downstream ops consume.
-                node = FreeCadGraphBuilder.make_sketch(graph, step, loader, editor, nx, ny)
+                node = HistGraphBuilder.make_sketch(graph, step, loader, editor, nx, ny)
             } else {
-                node = FreeCadGraphBuilder.make_node(graph, step, op, op2class)
+                node = HistGraphBuilder.make_node(graph, step, op, op2class)
                 if (node) {
                     editor.add_node(node, nx, ny)
                 }
@@ -123,11 +123,10 @@ class FreeCadGraphBuilder
         for (var step = 0; step < n; step = step + 1) {
             var node = step2node[step]
             if (node) {
-                FreeCadGraphBuilder.wire_node(graph, step, node, step2node)
+                HistGraphBuilder.wire_node(graph, step, node, step2node)
             }
         }
 
-        Logger.info("FreeCadGraphBuilder: rebuilt %(created) nodes from %(n) steps")
         return created
     }
 
@@ -156,11 +155,11 @@ class FreeCadGraphBuilder
         if (SUPPORTED_OPS.contains(op) and op2class[op]) {
             var cls = op2class[op]
             var node = cls()
-            FreeCadGraphBuilder.fill_params(graph, step, node)
+            HistGraphBuilder.fill_params(graph, step, node)
             return node
         }
         // sketch / resolve-ref / unmapped op -> frozen snapshot
-        return FreeCadGraphBuilder.make_baked(graph, step)
+        return HistGraphBuilder.make_baked(graph, step)
     }
 
     static make_baked(graph, step)
@@ -183,17 +182,17 @@ class FreeCadGraphBuilder
     static make_sketch(graph, step, loader, editor, x, y)
     {
         if (!loader) {
-            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+            return HistGraphBuilder.make_baked_at(graph, step, editor, x, y)
         }
         var inputs = graph.get_step_inputs(step)
         if (inputs.count < 1) {
-            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+            return HistGraphBuilder.make_baked_at(graph, step, editor, x, y)
         }
         var sk_step = inputs[0]   // the $sketch const feeding sketch_face
 
         var ng = loader.sketch_geo_count_at(sk_step)
         if (!ng or ng < 1) {
-            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+            return HistGraphBuilder.make_baked_at(graph, step, editor, x, y)
         }
 
         // Build the editable sketch sub-graph programmatically (geo nodes ->
@@ -211,7 +210,7 @@ class FreeCadGraphBuilder
         var geo_nodes  = []
         var geo_by_idx = []
         for (var g = 0; g < ng; g = g + 1) {
-            var node = FreeCadGraphBuilder.make_geo_node(loader.sketch_geo_at(sk_step, g))
+            var node = HistGraphBuilder.make_geo_node(loader.sketch_geo_at(sk_step, g))
             geo_by_idx.add(node)
             if (node) {
                 sub.add_node(node, -300, geo_nodes.count * 70)
@@ -219,7 +218,7 @@ class FreeCadGraphBuilder
             }
         }
         if (geo_nodes.isEmpty) {
-            return FreeCadGraphBuilder.make_baked_at(graph, step, editor, x, y)
+            return HistGraphBuilder.make_baked_at(graph, step, editor, x, y)
         }
 
         var mg = Merge()
@@ -239,7 +238,7 @@ class FreeCadGraphBuilder
         if (nc and nc > 0) {
             for (var c = 0; c < nc; c = c + 1) {
                 var desc = loader.sketch_cons_at(sk_step, c)
-                var cn = FreeCadGraphBuilder.make_cons_node(sub, desc, geo_by_idx, c)
+                var cn = HistGraphBuilder.make_cons_node(sub, desc, geo_by_idx, c)
                 if (cn) {
                     cons_nodes.add(cn)
                 }
@@ -344,14 +343,14 @@ class FreeCadGraphBuilder
         if (!desc or desc.count < 7) {
             return nil
         }
-        var spec = FreeCadGraphBuilder.new_cons_node(desc[0])
+        var spec = HistGraphBuilder.new_cons_node(desc[0])
         if (!spec) {
             return nil
         }
         var node = spec["node"]
         var ay = 320 + slot * 80
 
-        var a = FreeCadGraphBuilder.resolve_ref(sub, desc[1], desc[2], geo_by_idx, -180, ay)
+        var a = HistGraphBuilder.resolve_ref(sub, desc[1], desc[2], geo_by_idx, -180, ay)
         if (!a) {
             return nil
         }
@@ -359,7 +358,7 @@ class FreeCadGraphBuilder
         if (spec["kind"] == "unary") {
             Blueprint.connect(a[0], a[1], node, "geo")
         } else {
-            var b = FreeCadGraphBuilder.resolve_ref(sub, desc[3], desc[4], geo_by_idx, -180, ay + 36)
+            var b = HistGraphBuilder.resolve_ref(sub, desc[3], desc[4], geo_by_idx, -180, ay + 36)
             // Horizontal / Vertical can be a single-line constraint (no second
             // ref); every other binary constraint needs both refs resolved.
             if (!b and desc[0] != 8 and desc[0] != 9) {
@@ -439,7 +438,7 @@ class FreeCadGraphBuilder
     // its own placement, unlike pass 1's mapped-node branch).
     static make_baked_at(graph, step, editor, x, y)
     {
-        var node = FreeCadGraphBuilder.make_baked(graph, step)
+        var node = HistGraphBuilder.make_baked(graph, step)
         if (node) {
             editor.add_node(node, x, y)
         }
@@ -468,7 +467,7 @@ class FreeCadGraphBuilder
             }
             var p = params[i]
             var val = graph.eval(inputs[pos])
-            FreeCadGraphBuilder.set_param(node, p["name"], p["type"], val)
+            HistGraphBuilder.set_param(node, p["name"], p["type"], val)
         }
     }
 
@@ -534,7 +533,7 @@ class FreeCadGraphBuilder
             if (i >= inputs.count) {
                 break
             }
-            var src = FreeCadGraphBuilder.node_at(step2node, inputs[i])
+            var src = HistGraphBuilder.node_at(step2node, inputs[i])
             if (src) {
                 Blueprint.connect(src, 0, node, shape_pins[i])
             }
@@ -546,7 +545,7 @@ class FreeCadGraphBuilder
             var var_pin = ci["var_inputs"][0]
             var vstart  = n_shape + n_param
             for (var j = vstart; j < inputs.count; j = j + 1) {
-                var src = FreeCadGraphBuilder.node_at(step2node, inputs[j])
+                var src = HistGraphBuilder.node_at(step2node, inputs[j])
                 if (src) {
                     Blueprint.connect(src, 0, node, var_pin)
                 }

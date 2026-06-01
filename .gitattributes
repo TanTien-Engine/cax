@@ -6,3 +6,9 @@
 # textconv diff attempts (which would be noise), and merges.
 *.FCStd binary
 *.fcstd binary
+
+# SolidWorks parts/assemblies are OLE compound binaries; same rationale.
+*.sldprt binary
+*.SLDPRT binary
+*.sldasm binary
+*.SLDASM binary

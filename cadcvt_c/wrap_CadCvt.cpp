@@ -1,5 +1,6 @@
 #include "cadcvt_c/wrap_CadCvt.h"
 #include "cadcvt_c/reader/FreeCadReader.h"
+#include "cadcvt_c/reader/SwReader.h"
 #include "cadapp_c/emitter/Replayer.h"
 #include "cadapp_c/ir/SketchIR.h"
 #include "cadapp_c/ops/sketch_ops.h"
@@ -673,6 +674,337 @@ void w_FreeCadLoader_face_from_geos()
 
 
 // ============================================================
+// SwLoader foreign class -- SolidWorks .SLDPRT / .SLDASM
+// ============================================================
+//
+// Same shape as FreeCadLoader: a (SwReader + Replayer) pair kept alive
+// across calls so options set before load() stick, plus the per-part
+// split for two-pass transparent rendering. The load() body is the
+// FreeCadLoader load() with the reader swapped -- ReplayParts is
+// reader-agnostic, it consumes the DocumentIR either reader emits.
+//
+// Note: SwReader.ReadFile drives the installed SolidWorks via COM, so
+// the first load() launches SLDWORKS.exe (slow); later loads reuse it.
+
+struct SwLoaderState
+{
+    cadcvt::SwReader              reader;       // unit scale defaults to 1.0
+    cadapp::Replayer             replayer;
+    std::string                  last_error;
+    std::vector<cadapp::ReplayPart> parts;
+    // Construction graph kept from the last load() (single-part serial
+    // Replay path), so calc_graph() can hand it to a CalcGraph node and the
+    // history-tree rebuild can decompile it -- same as FreeCadLoaderState.
+    std::shared_ptr<brepgraph::CalcGraph> calc_graph;
+};
+
+void w_SwLoader_allocate()
+{
+    auto* proxy = (wrapper::Proxy<SwLoaderState>*)ves_set_newforeign(0, 0, sizeof(wrapper::Proxy<SwLoaderState>));
+    proxy->obj = std::make_shared<SwLoaderState>();
+}
+
+int w_SwLoader_finalize(void* data)
+{
+    auto* proxy = (wrapper::Proxy<SwLoaderState>*)data;
+    proxy->~Proxy();
+    return sizeof(wrapper::Proxy<SwLoaderState>);
+}
+
+SwLoaderState* GetSwState(int slot)
+{
+    auto* p = (wrapper::Proxy<SwLoaderState>*)ves_toforeign(slot);
+    return p ? p->obj.get() : nullptr;
+}
+
+void w_SwLoader_set_unit_scale()
+{
+    auto* st = GetSwState(0);
+    if (st) st->reader.SetUnitScale(ves_tonumber(1));
+}
+
+void w_SwLoader_set_strict()
+{
+    auto* st = GetSwState(0);
+    if (st) st->reader.SetStrict(ves_toboolean(1));
+}
+
+void w_SwLoader_load()
+{
+    auto* st = GetSwState(0);
+    if (!st) { ves_set_nil(0); return; }
+
+    // Drop the previous load's construction graph so a failed reload can't
+    // leave a stale graph behind the rebuild / CalcGraph path.
+    st->calc_graph.reset();
+
+    const char* path = ves_tostring(1);
+    if (!path || !*path) {
+        st->last_error = "SwLoader.load: empty path";
+        ves_set_nil(0);
+        return;
+    }
+
+    cadapp::DocumentIR doc;
+    std::string err;
+    if (!st->reader.ReadFile(path, doc, &err)) {
+        st->last_error = err.empty() ? "ReadFile failed" : err;
+        ves_set_nil(0);
+        return;
+    }
+
+    cadapp::ReplayOptions opt;
+    opt.write_back_resolved = false;
+    opt.commit_versions     = false;
+
+    const bool parallel = std::getenv("CAX_REPLAY_SERIAL") == nullptr;
+    cadapp::ReplayResult res;
+    if (!st->replayer.ReplayParts(doc, opt, res, parallel)) {
+        st->last_error = res.err_msg.empty() ? "Replay failed" : res.err_msg;
+        ves_set_nil(0);
+        return;
+    }
+
+    st->last_error = res.err_msg;   // diagnostics, even on success
+    st->parts      = std::move(res.parts);
+    st->calc_graph = res.calc_graph;  // kept by the single-part serial path
+    brepkit::return_topo_shape(res.shape);
+}
+
+void w_SwLoader_last_error()
+{
+    auto* st = GetSwState(0);
+    if (!st || st->last_error.empty()) { ves_set_nil(0); return; }
+    ves_set_lstring(0, st->last_error.data(), st->last_error.size());
+}
+
+void w_SwLoader_part_count()
+{
+    auto* st = GetSwState(0);
+    ves_set_number(0, st ? (double)st->parts.size() : 0.0);
+}
+
+void w_SwLoader_part_shape()
+{
+    auto* st = GetSwState(0);
+    if (!st) { ves_set_nil(0); return; }
+    int i = (int)ves_tonumber(1);
+    if (i < 0 || i >= (int)st->parts.size() || !st->parts[i].shape) {
+        ves_set_nil(0);
+        return;
+    }
+    brepkit::return_topo_shape(st->parts[i].shape);
+}
+
+void w_SwLoader_part_transparency()
+{
+    auto* st = GetSwState(0);
+    if (!st) { ves_set_number(0, 0.0); return; }
+    int i = (int)ves_tonumber(1);
+    double t = (i >= 0 && i < (int)st->parts.size()) ? st->parts[i].transparency : 0.0;
+    ves_set_number(0, t);
+}
+
+void w_SwLoader_merged_opaque()
+{
+    auto* st = GetSwState(0);
+    if (!st) { ves_set_nil(0); return; }
+    auto sh = MergePartsSubset(st->parts, /*want_transparent*/ false);
+    if (!sh) { ves_set_nil(0); return; }
+    brepkit::return_topo_shape(sh);
+}
+
+// ---- construction-graph + sketch exposure (history-tree rebuild) -------
+//
+// Mirror of the FreeCadLoader.calc_graph() / sketch_*_at() family but
+// reading SwLoaderState. The construction CalcGraph is reader-agnostic
+// (the Replayer builds it from either reader's DocumentIR), so the same
+// HistGraphBuilder decompiles an SW import into editable nodes once
+// these expose the graph + raw sketch geometry. See the FreeCadLoader
+// versions above for the per-function contract.
+
+const cadapp::SketchIR* SketchAtStepSw(SwLoaderState* st, int step)
+{
+    if (!st || !st->calc_graph) {
+        return nullptr;
+    }
+    const brepgraph::OpStep* s = st->calc_graph->GetHistory().Get(step);
+    if (!s || s->op_name != "$sketch") {
+        return nullptr;
+    }
+    const auto* sv = std::get_if<brepgraph::SketchVal>(&s->imm);
+    if (!sv || !sv->handle) {
+        return nullptr;
+    }
+    return static_cast<const cadapp::SketchIR*>(sv->handle.get());
+}
+
+void w_SwLoader_calc_graph()
+{
+    auto* st = GetSwState(0);
+    if (!st || !st->calc_graph) {
+        ves_set_nil(0);
+        return;
+    }
+    ves_pop(ves_argnum());
+    ves_pushnil();
+    ves_import_class("brepgraph", "CalcGraph");
+    auto proxy = (wrapper::Proxy<brepgraph::CalcGraph>*)ves_set_newforeign(
+        0, 1, sizeof(wrapper::Proxy<brepgraph::CalcGraph>));
+    proxy->obj = st->calc_graph;
+    ves_pop(1);
+}
+
+void w_SwLoader_sketch_plane_at()
+{
+    auto* st = GetSwState(0);
+    int step = (int)ves_tonumber(1);
+    const cadapp::SketchIR* sk = SketchAtStepSw(st, step);
+    if (!sk) {
+        ves_set_nil(0);
+        return;
+    }
+    double v[9] = {
+        sk->plane_origin[0], sk->plane_origin[1], sk->plane_origin[2],
+        sk->plane_x_dir[0],  sk->plane_x_dir[1],  sk->plane_x_dir[2],
+        sk->plane_normal[0], sk->plane_normal[1], sk->plane_normal[2],
+    };
+    ves_pop(ves_argnum());
+    ves_newlist(9);
+    for (int i = 0; i < 9; ++i) {
+        ves_pushnumber(v[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
+void w_SwLoader_sketch_geo_count_at()
+{
+    auto* st = GetSwState(0);
+    int step = (int)ves_tonumber(1);
+    const cadapp::SketchIR* sk = SketchAtStepSw(st, step);
+    int cnt = 0;
+    if (sk) {
+        for (const auto& g : sk->geos) {
+            if (!g.construction) ++cnt;
+        }
+    }
+    ves_set_number(0, (double)cnt);
+}
+
+void w_SwLoader_sketch_geo_at()
+{
+    auto* st = GetSwState(0);
+    int step = (int)ves_tonumber(1);
+    int gi   = (int)ves_tonumber(2);
+    const cadapp::SketchIR* sk = SketchAtStepSw(st, step);
+    const cadapp::SkGeoIR* g = nullptr;
+    if (sk && gi >= 0) {
+        int k = 0;
+        for (const auto& cand : sk->geos) {
+            if (cand.construction) continue;
+            if (k == gi) { g = &cand; break; }
+            ++k;
+        }
+    }
+    if (!g) {
+        ves_set_nil(0);
+        return;
+    }
+    int n = (int)g->params.size();
+    ves_pop(ves_argnum());
+    ves_newlist(n + 1);
+    ves_pushnumber((double)(int)g->type);
+    ves_seti(-2, 0);
+    ves_pop(1);
+    for (int i = 0; i < n; ++i) {
+        ves_pushnumber(g->params[i]);
+        ves_seti(-2, i + 1);
+        ves_pop(1);
+    }
+}
+
+void w_SwLoader_sketch_cons_count_at()
+{
+    auto* st = GetSwState(0);
+    int step = (int)ves_tonumber(1);
+    const cadapp::SketchIR* sk = SketchAtStepSw(st, step);
+    int cnt = sk ? (int)sk->cons.size() : 0;
+    ves_set_number(0, (double)cnt);
+}
+
+void w_SwLoader_sketch_cons_at()
+{
+    auto* st = GetSwState(0);
+    int step = (int)ves_tonumber(1);
+    int ci   = (int)ves_tonumber(2);
+    const cadapp::SketchIR* sk = SketchAtStepSw(st, step);
+    if (!sk || ci < 0 || ci >= (int)sk->cons.size()) {
+        ves_set_nil(0);
+        return;
+    }
+    const cadapp::SkConsIR& c = sk->cons[(size_t)ci];
+    double v[7] = {
+        (double)(int)c.type,
+        (double)SketchNonConstrIndexOf(sk, c.a.geo_id),
+        (double)(int)c.a.point_pos,
+        (double)SketchNonConstrIndexOf(sk, c.b.geo_id),
+        (double)(int)c.b.point_pos,
+        c.value,
+        c.driving ? 1.0 : 0.0,
+    };
+    ves_pop(ves_argnum());
+    ves_newlist(7);
+    for (int i = 0; i < 7; ++i) {
+        ves_pushnumber(v[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
+void w_SwLoader_merged_transparent()
+{
+    auto* st = GetSwState(0);
+    if (!st) { ves_set_nil(0); return; }
+    auto sh = MergePartsSubset(st->parts, /*want_transparent*/ true);
+    if (!sh) { ves_set_nil(0); return; }
+    brepkit::return_topo_shape(sh);
+}
+
+void w_SwLoader_transparent_parts()
+{
+    const double k_eps = 1e-6;
+    std::vector<std::shared_ptr<brepkit::TopoShape>> list;
+    auto* st = GetSwState(0);
+    if (st) {
+        for (const auto& p : st->parts) {
+            if (p.transparency > k_eps && p.shape) list.push_back(p.shape);
+        }
+    }
+    brepkit::return_topo_shape_list(list);
+}
+
+void w_SwLoader_transparent_alphas()
+{
+    const double k_eps = 1e-6;
+    std::vector<double> alphas;
+    auto* st = GetSwState(0);
+    if (st) {
+        for (const auto& p : st->parts) {
+            if (p.transparency > k_eps && p.shape) alphas.push_back(1.0 - p.transparency);
+        }
+    }
+    ves_pop(ves_argnum());
+    ves_newlist((int)alphas.size());
+    for (int i = 0; i < (int)alphas.size(); ++i) {
+        ves_pushnumber(alphas[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
+
+// ============================================================
 // AsmSession foreign class -- interactive pick + drag editing
 // ============================================================
 //
@@ -951,6 +1283,61 @@ VesselForeignMethodFn CadCvtBindMethod(const char* signature)
         return w_FreeCadLoader_face_from_geos;
     }
 
+    if (std::strcmp(signature, "SwLoader.set_unit_scale(_)") == 0) {
+        return w_SwLoader_set_unit_scale;
+    }
+    if (std::strcmp(signature, "SwLoader.set_strict(_)") == 0) {
+        return w_SwLoader_set_strict;
+    }
+    if (std::strcmp(signature, "SwLoader.load(_)") == 0) {
+        return w_SwLoader_load;
+    }
+    if (std::strcmp(signature, "SwLoader.last_error()") == 0) {
+        return w_SwLoader_last_error;
+    }
+    if (std::strcmp(signature, "SwLoader.part_count()") == 0) {
+        return w_SwLoader_part_count;
+    }
+    if (std::strcmp(signature, "SwLoader.part_shape(_)") == 0) {
+        return w_SwLoader_part_shape;
+    }
+    if (std::strcmp(signature, "SwLoader.part_transparency(_)") == 0) {
+        return w_SwLoader_part_transparency;
+    }
+    if (std::strcmp(signature, "SwLoader.merged_opaque()") == 0) {
+        return w_SwLoader_merged_opaque;
+    }
+    if (std::strcmp(signature, "SwLoader.merged_transparent()") == 0) {
+        return w_SwLoader_merged_transparent;
+    }
+    if (std::strcmp(signature, "SwLoader.transparent_parts()") == 0) {
+        return w_SwLoader_transparent_parts;
+    }
+    if (std::strcmp(signature, "SwLoader.transparent_alphas()") == 0) {
+        return w_SwLoader_transparent_alphas;
+    }
+    if (std::strcmp(signature, "SwLoader.calc_graph()") == 0) {
+        return w_SwLoader_calc_graph;
+    }
+    if (std::strcmp(signature, "SwLoader.sketch_plane_at(_)") == 0) {
+        return w_SwLoader_sketch_plane_at;
+    }
+    if (std::strcmp(signature, "SwLoader.sketch_geo_count_at(_)") == 0) {
+        return w_SwLoader_sketch_geo_count_at;
+    }
+    if (std::strcmp(signature, "SwLoader.sketch_geo_at(_,_)") == 0) {
+        return w_SwLoader_sketch_geo_at;
+    }
+    if (std::strcmp(signature, "SwLoader.sketch_cons_count_at(_)") == 0) {
+        return w_SwLoader_sketch_cons_count_at;
+    }
+    if (std::strcmp(signature, "SwLoader.sketch_cons_at(_,_)") == 0) {
+        return w_SwLoader_sketch_cons_at;
+    }
+    if (std::strcmp(signature, "SwLoader.face_from_geos(_,_,_,_)") == 0) {
+        return w_FreeCadLoader_face_from_geos;  // stateless, ignores receiver
+    }
+
     if (std::strcmp(signature, "AsmSession.load(_,_,_)") == 0) {
         return w_AsmSession_load;
     }
@@ -999,6 +1386,12 @@ void CadCvtBindClass(const char* class_name, VesselForeignClassMethods* methods)
     {
         methods->allocate = w_FreeCadLoader_allocate;
         methods->finalize = w_FreeCadLoader_finalize;
+        return;
+    }
+    if (std::strcmp(class_name, "SwLoader") == 0)
+    {
+        methods->allocate = w_SwLoader_allocate;
+        methods->finalize = w_SwLoader_finalize;
         return;
     }
     if (std::strcmp(class_name, "AsmSession") == 0)

@@ -2,7 +2,8 @@ import "cadcvt.nodes.*"
 
 var CAD_CVT_NODES = [
 LoadFreecad,
+LoadSw,
 AssemblyDrag,
-RebuildFreecad,
+RebuildHistory,
 SketchToFace,
 ]

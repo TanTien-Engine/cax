@@ -7,7 +7,7 @@ import "brepkit.variant" for VAR_TOPO_SHAPE
 // cadcvt::nodes::baked_shape::BakedShape
 //
 // A frozen TopoShape snapshot. The FreeCAD-graph rebuild
-// (cadcvt.freecad_graph_builder) emits one of these for every
+// (cadcvt.hist_graph_builder) emits one of these for every
 // construction step that has no editable brepkit-node equivalent
 // yet -- sketch_face / sketch_wire and the resolve_edge_ref /
 // resolve_face_ref dress-up references -- plus any op the rebuild

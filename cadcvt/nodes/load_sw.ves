@@ -1,0 +1,143 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_STRING, VAR_TYPE_NUMBER, VAR_TYPE_BOOLEAN, VAR_TYPE_ARRAY
+import "blueprint.node_helper" for NodeHelper
+import "brepkit.variant" for VAR_TOPO_SHAPE
+import "cadcvt" for SwLoader
+
+// ============================================================
+// cadcvt::nodes::load_sw::LoadSw
+//
+// Pulls a SolidWorks .SLDPRT / .SLDASM through cadcvt::SwReader
+// (COM automation of the installed SolidWorks) + Replayer and
+// exposes the resulting OCCT shape as a TopoShape output. Mirrors
+// LoadFreecad; the replay / per-part rendering path is identical.
+//
+// The first load launches SLDWORKS.exe, so it can take tens of
+// seconds; results are cached on (path, unit_scale, strict).
+//
+// Inputs:
+//   path       string  - file path (.SLDPRT / .SLDASM)
+//   unit_scale number  - length multiplier (1.0: SW reports metres)
+//   strict     boolean - fail on unknown SolidWorks feature types
+//
+// Outputs:
+//   shape              TopoShape (merged body; nil on failure)
+//   shape_opaque       merged parts with transparency ~ 0
+//   shape_transparent  ARRAY of transparent parts (un-merged)
+//   transparent_alphas ARRAY of per-part alpha, zipped with the above
+// ============================================================
+
+class LoadSw is Node
+{
+    init()
+    {
+        super.init()
+
+        this.imports = [
+            Pin(this, "path",       VAR_TYPE_STRING),
+            Pin(this, "unit_scale", VAR_TYPE_NUMBER),
+            Pin(this, "strict",     VAR_TYPE_BOOLEAN),
+        ]
+        this.exports = [
+            Pin(this, "shape",              VAR_TOPO_SHAPE),
+            Pin(this, "shape_opaque",       VAR_TOPO_SHAPE),
+            Pin(this, "shape_transparent",  VAR_TYPE_ARRAY),
+            Pin(this, "transparent_alphas", VAR_TYPE_ARRAY),
+        ]
+
+        this.params.add(NodeParam("path", ""))
+        this.params.add(NodeParam("unit_scale", 1.0))
+        this.params.add(NodeParam("strict", false))
+
+        this.layout()
+
+        this.loader = SwLoader.init()
+
+        this.cached_key   = nil
+        this.cached_shape = nil
+        this.last_error   = nil
+    }
+
+    // Ensure the heavy load ran for the current (path, unit_scale,
+    // strict) key. Caches the merged shape; the loader keeps the
+    // per-part split internally for merged_opaque/merged_transparent.
+    ensure_loaded()
+    {
+        var path       = NodeHelper.calc_prop_value(this, "path")
+        var unit_scale = NodeHelper.calc_prop_value(this, "unit_scale")
+        var strict     = NodeHelper.calc_prop_value(this, "strict")
+
+        if (!path or path == "") {
+            this.last_error = "path is empty"
+            return nil
+        }
+
+        var key = "%(path)|%(unit_scale)|%(strict)"
+        if (key == this.cached_key) {
+            return this.cached_shape
+        }
+
+        this.loader.set_unit_scale(unit_scale)
+        this.loader.set_strict(strict)
+
+        var shape = this.loader.load(path)
+        this.cached_key   = key
+        this.cached_shape = shape
+        this.last_error   = this.loader.last_error()
+
+        if (!shape) {
+            if (this.last_error) {
+                System.print("LoadSw ERROR: %(this.last_error)")
+            }
+        } else if (this.last_error) {
+            System.print("LoadSw WARN: %(this.last_error)")
+        }
+
+        return shape
+    }
+
+    // Construction CalcGraph from the last load (nil when none was kept,
+    // e.g. the multi-part parallel path). RebuildHistory calls this
+    // (duck-typed) to decompile the import into an editable history tree;
+    // the graph builder is reader-agnostic.
+    get_calc_graph()
+    {
+        if (!this.ensure_loaded()) {
+            return nil
+        }
+        return this.loader.calc_graph()
+    }
+
+    calc_value(idx)
+    {
+        var shape = this.ensure_loaded()
+        if (!shape) {
+            return nil
+        }
+
+        // idx maps to exports: 0 shape, 1 shape_opaque,
+        // 2 shape_transparent, 3 transparent_alphas
+        if (idx == 1) {
+            var op = this.loader.merged_opaque()
+            if (!op) {
+                return nil
+            }
+            return Variant(VAR_TOPO_SHAPE, op)
+        }
+        if (idx == 2) {
+            var parts = this.loader.transparent_parts()
+            var wrapped = []
+            for (var p in parts) {
+                wrapped.add(Variant(VAR_TOPO_SHAPE, p))
+            }
+            return Variant(VAR_TYPE_ARRAY, wrapped)
+        }
+        if (idx == 3) {
+            return Variant(VAR_TYPE_ARRAY, this.loader.transparent_alphas())
+        }
+        return Variant(VAR_TOPO_SHAPE, shape)
+    }
+}

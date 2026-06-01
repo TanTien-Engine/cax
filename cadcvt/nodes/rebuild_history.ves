@@ -5,31 +5,39 @@ import "blueprint.node_param" for NodeParam
 import "blueprint.variant" for VAR_TYPE_ANY
 import "logger.logger" for Logger
 import "editor.node_cache" for NODE_CACHE
-import "cadcvt.freecad_graph_builder" for FreeCadGraphBuilder
+import "cadcvt.hist_graph_builder" for HistGraphBuilder
 
 // ============================================================
-// cadcvt::nodes::rebuild_freecad::RebuildFreecad
+// cadcvt::nodes::rebuild_history::RebuildHistory
 //
-// Wire a LoadFreecad output into `loader`, then toggle the `rebuild`
-// param to DECOMPILE the import's construction calc graph into a live,
-// editable brepkit blueprint -- one node per construction step, params
-// filled in from the graph, wired up. After that, tweak the generated
-// nodes' params or add / delete nodes to keep editing the imported
-// model natively.
+// Wire any CAD loader output (LoadFreecad, LoadSw, ...) into `loader`,
+// then toggle the `rebuild` param to DECOMPILE the import's construction
+// calc graph into a live, editable brepkit blueprint -- one node per
+// construction step (sketch / extrude / cut / fillet / boolean / ...),
+// params filled in from the graph and wired up. After that, tweak the
+// generated nodes' params or add / delete nodes to keep editing the
+// imported model natively.
 //
-// Single-part files reconstruct their full construction history
-// (sketch is frozen as a baked face for now; the extrude / fillet /
-// boolean / ... downstream is fully editable). Multi-part assemblies
-// keep no merged construction graph, so there is nothing to rebuild.
+// Format-AGNOSTIC: it works purely off the generic replay CalcGraph
+// (loader.get_calc_graph()) plus the loader's raw sketch exposure, both
+// of which every cadcvt loader provides identically. It is duck-typed on
+// `get_calc_graph()`, so it does not care which reader produced the
+// import. (The underlying HistGraphBuilder keeps its name only for
+// historical reasons; nothing in it is FreeCAD-specific.)
+//
+// Single-part files reconstruct their full construction history (sketch
+// is rebuilt as editable geometry; the extrude / fillet / boolean / ...
+// downstream is fully editable). Multi-part assemblies keep no merged
+// construction graph, so there is nothing to rebuild.
 //
 // Inputs:
-//   loader   ANY  - wire from LoadFreecad (its shape output is fine)
+//   loader   ANY  - wire from a load node (its shape output is fine)
 // Params:
 //   rebuild  bool - toggle true to (re)build; auto-resets to false
 //   origin_x number - top-left X to lay the generated nodes out from
 //   origin_y number - top-left Y to lay the generated nodes out from
 // ============================================================
-class RebuildFreecad is Node
+class RebuildHistory is Node
 {
     init()
     {
@@ -71,31 +79,29 @@ class RebuildFreecad is Node
     {
         var src = Blueprint.get_input_node(this, 0)
         if (!src) {
-            Logger.error("RebuildFreecad: nothing wired to `loader`")
+            Logger.error("RebuildHistory: nothing wired to `loader`")
             return
         }
         if (!src.has_method("get_calc_graph()")) {
-            Logger.error("RebuildFreecad: `loader` input is not a LoadFreecad node")
+            Logger.error("RebuildHistory: `loader` input is not a CAD load node")
             return
         }
         var graph = src.get_calc_graph()
         if (!graph) {
-            Logger.error("RebuildFreecad: loader kept no construction graph (multi-part assembly?)")
+            Logger.error("RebuildHistory: loader kept no construction graph (multi-part assembly?)")
             return
         }
         var editor = NODE_CACHE.editor
         if (!editor) {
-            Logger.error("RebuildFreecad: no active editor")
+            Logger.error("RebuildHistory: no active editor")
             return
         }
 
         var ox = this.query_param("origin_x").value
         var oy = this.query_param("origin_y").value
-        var count = FreeCadGraphBuilder.build(graph, src.loader, editor, ox, oy)
+        HistGraphBuilder.build(graph, src.loader, editor, ox, oy)
 
         // Make the editor pick up the freshly added nodes / connections.
         editor.scene_stack.bp_dirty = true
-
-        Logger.info("RebuildFreecad: created %(count) editable nodes")
     }
 }
