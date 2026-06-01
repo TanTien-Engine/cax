@@ -20,6 +20,9 @@
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepOffsetAPI_MakePipe.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <BRepAdaptor_Curve.hxx>
+#include <GCPnts_AbscissaPoint.hxx>
+#include <GeomAbs_CurveType.hxx>
 #include <GeomFill_Trihedron.hxx>
 #include <BRepOffsetAPI_MakeOffset.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
@@ -538,8 +541,34 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::Sweep(
     // true Frenet keeps a non-symmetric profile radially oriented along a
     // helix (FreeCAD Part::Sweep Frenet=true), while the default corrected
     // Frenet minimizes twist (what the circular PartDesign Pipe expects).
-    GeomFill_Trihedron mode = frenet ? GeomFill_IsFrenet
-                                     : GeomFill_IsCorrectedFrenet;
+    double spine_len = 0.0;
+    bool   spine_is_linear = true;
+    for (TopExp_Explorer ex(path_wire, TopAbs_EDGE); ex.More(); ex.Next()) {
+        BRepAdaptor_Curve c(TopoDS::Edge(ex.Current()));
+        spine_len += GCPnts_AbscissaPoint::Length(c);
+        if (c.GetType() != GeomAbs_Line) {
+            spine_is_linear = false;
+        }
+    }
+
+    // A spine that collapsed to (near) zero length -- e.g. a spine sketch
+    // the constraint solver could not fully pin, leaving a zero-radius arc
+    // -- cannot be swept. Feeding it to MakePipe sends GeomFill_Frenet into
+    // unbounded recursion (an uncatchable stack-overflow SIGSEGV), so bail
+    // out: the Replayer falls back to the FreeCAD-authored brep on null.
+    if (spine_len < Precision::Confusion()) {
+        return nullptr;
+    }
+
+    // Both Frenet modes evaluate the spine's Frenet frame, which is also
+    // singular on a (non-degenerate) straight spine: zero curvature -> the
+    // normal is undefined, and OCCT then recurses to the same stack
+    // overflow. A piecewise-linear spine carries no curvature to follow
+    // anyway, so route it through the discrete trihedron -- well-defined on
+    // straight / polyline spines and non-recursing.
+    GeomFill_Trihedron mode =
+        spine_is_linear ? GeomFill_IsDiscreteTrihedron
+                        : (frenet ? GeomFill_IsFrenet : GeomFill_IsCorrectedFrenet);
     BRepOffsetAPI_MakePipe pipe(path_wire, profile->GetShape(),
                                 mode, Standard_False);
     pipe.Build();
