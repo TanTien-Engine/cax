@@ -61,6 +61,13 @@ namespace sketchlib
 Scene::Scene()
 {
 	m_gcs = std::make_shared<GCS::System>();
+	// PlaneGCS defaults to Minimal, which prints the redundant-solving
+	// trace ("Sketcher::RedundantSolving-...", "Sketcher Redundant
+	// solving: N redundants") to the console whenever an over-constrained
+	// sketch is diagnosed. These imported FreeCAD exercise sketches are
+	// routinely over-dimensioned, and we never surface the conflicting/
+	// redundant diagnosis -- so the output is pure noise.
+	m_gcs->debugMode = GCS::NoDebug;
 }
 
 Scene::~Scene()
@@ -97,6 +104,7 @@ void Scene::AddGeometry(GeoID id, const std::shared_ptr<gs::Shape2D>& shape)
     }
 
     m_geoid2index[id] = idx;
+    m_needs_diagnose = true;
 }
 
 void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& geo2, double val, bool driving)
@@ -114,6 +122,7 @@ void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& 
     size_t idx = m_cons.size();
     m_cons.push_back(cons);
     m_consid2index[id] = idx;
+    m_needs_diagnose = true;
 
     double* cons_val = &m_cons.back().value;
 
@@ -334,6 +343,7 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<Geo, Geo>& g
     size_t idx = m_cons2.size();
     m_cons2.push_back(cons);
     m_cons2id2index[id] = idx;
+    m_needs_diagnose = true;
 
     double* cons_val = &m_cons2.back().value;
 
@@ -364,6 +374,11 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<Geo, Geo>& g
     
 bool Scene::Solve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos)
 {
+    if (m_needs_diagnose) {
+        ResetSolver();
+        m_needs_diagnose = false;
+    }
+
     BeforeSolve(geos);
 
     int status = m_gcs->solve();
@@ -400,6 +415,8 @@ void Scene::Clear()
     m_conflicting.clear();
     m_redundant.clear();
     m_partially_redundant.clear();
+
+    m_needs_diagnose = true;
 }
 
 int Scene::GetDOF() const
@@ -640,8 +657,6 @@ void Scene::AddP2PDistanceCons(ConsID id, int geo1, PointPos pos1, int geo2, Poi
     assert(p1 < m_points.size() && p2 < m_points.size());
 
     m_gcs->addConstraintP2PDistance(m_points[p1], m_points[p2], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddP2LDistanceCons(ConsID id, int pt_geo, PointPos pt_pos, int line, double* value, bool driving)
@@ -651,8 +666,6 @@ void Scene::AddP2LDistanceCons(ConsID id, int pt_geo, PointPos pt_pos, int line,
     assert(p < m_points.size());
 
     m_gcs->addConstraintP2LDistance(m_points[p], m_lines[m_geos[line].index], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddDistanceXCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving)
@@ -663,8 +676,6 @@ void Scene::AddDistanceXCons(ConsID id, int geo1, PointPos pos1, int geo2, Point
     assert(p1 < m_points.size() && p2 < m_points.size());
 
     m_gcs->addConstraintDifference(m_points[p1].x, m_points[p2].x, value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddDistanceYCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving)
@@ -675,8 +686,6 @@ void Scene::AddDistanceYCons(ConsID id, int geo1, PointPos pos1, int geo2, Point
     assert(p1 < m_points.size() && p2 < m_points.size());
 
     m_gcs->addConstraintDifference(m_points[p1].y, m_points[p2].y, value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddCoordinateXCons(ConsID id, int geo, PointPos pos, double* value, bool driving)
@@ -686,8 +695,6 @@ void Scene::AddCoordinateXCons(ConsID id, int geo, PointPos pos, double* value, 
     assert(p < m_points.size());
 
     m_gcs->addConstraintCoordinateX(m_points[p], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddCoordinateYCons(ConsID id, int geo, PointPos pos, double* value, bool driving)
@@ -697,8 +704,6 @@ void Scene::AddCoordinateYCons(ConsID id, int geo, PointPos pos, double* value, 
     assert(p < m_points.size());
 
     m_gcs->addConstraintCoordinateY(m_points[p], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, double* value, bool driving)
@@ -709,8 +714,6 @@ void Scene::AddP2PAngleCons(ConsID id, int geo1, PointPos pos1, int geo2, PointP
     assert(p1 < m_points.size() && p2 < m_points.size());
 
     m_gcs->addConstraintP2PAngle(m_points[p1], m_points[p2], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddParallelCons(ConsID id, int line1, int line2, bool driving)
@@ -718,8 +721,6 @@ void Scene::AddParallelCons(ConsID id, int line1, int line2, bool driving)
     assert(line1 < m_geos.size() && line2 < m_geos.size());
 
     m_gcs->addConstraintParallel(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddParallelCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bool driving)
@@ -729,8 +730,6 @@ void Scene::AddParallelCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bool 
 
     m_gcs->addConstraintParallel(m_points[m_geos[pt1].index], m_points[m_geos[pt2].index],
         m_points[m_geos[pt3].index], m_points[m_geos[pt4].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddPerpendicularCons(ConsID id, int line1, int line2, bool driving)
@@ -738,8 +737,6 @@ void Scene::AddPerpendicularCons(ConsID id, int line1, int line2, bool driving)
     assert(line1 < m_geos.size() && line2 < m_geos.size());
 
     m_gcs->addConstraintPerpendicular(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving)
@@ -750,8 +747,6 @@ void Scene::AddP2PCoincidentCons(ConsID id, int geo1, PointPos pos1, int geo2, P
     assert(p1 < m_points.size() && p2 < m_points.size());
 
     m_gcs->addConstraintP2PCoincident(m_points[p1], m_points[p2], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving)
@@ -762,8 +757,6 @@ void Scene::AddHorizontalCons(ConsID id, int geo1, PointPos pos1, int geo2, Poin
     assert(p1 < m_points.size() && p2 < m_points.size());
 
     m_gcs->addConstraintHorizontal(m_points[p1], m_points[p2], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointPos pos2, bool driving)
@@ -774,8 +767,6 @@ void Scene::AddVerticalCons(ConsID id, int geo1, PointPos pos1, int geo2, PointP
     assert(p1 < m_points.size() && p2 < m_points.size());
 
     m_gcs->addConstraintVertical(m_points[p1], m_points[p2], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddPointOnLineCons(ConsID id, int pt_geo, PointPos pt_pos, int line, bool driving)
@@ -785,8 +776,6 @@ void Scene::AddPointOnLineCons(ConsID id, int pt_geo, PointPos pt_pos, int line,
     assert(p < m_points.size());
 
     m_gcs->addConstraintPointOnLine(m_points[p], m_lines[m_geos[line].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddPointOnCircleCons(ConsID id, int pt_geo, PointPos pt_pos, int circle, bool driving)
@@ -796,8 +785,6 @@ void Scene::AddPointOnCircleCons(ConsID id, int pt_geo, PointPos pt_pos, int cir
     assert(p < m_points.size());
 
     m_gcs->addConstraintPointOnCircle(m_points[p], m_circles[m_geos[circle].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddPointOnArcCons(ConsID id, int pt_geo, PointPos pt_pos, int arc, bool driving)
@@ -807,8 +794,6 @@ void Scene::AddPointOnArcCons(ConsID id, int pt_geo, PointPos pt_pos, int arc, b
     assert(p < m_points.size());
 
     m_gcs->addConstraintPointOnArc(m_points[p], m_arcs[m_geos[arc].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddPointOnEllipseCons(ConsID id, int pt_geo, PointPos pt_pos, int ellipse, bool driving)
@@ -818,8 +803,6 @@ void Scene::AddPointOnEllipseCons(ConsID id, int pt_geo, PointPos pt_pos, int el
     assert(p < m_points.size());
 
     m_gcs->addConstraintPointOnEllipse(m_points[p], m_ellipses[m_geos[ellipse].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddPointOnPerpBisectorCons(ConsID id, int pt_geo, PointPos pt_pos, int line, bool driving)
@@ -829,8 +812,6 @@ void Scene::AddPointOnPerpBisectorCons(ConsID id, int pt_geo, PointPos pt_pos, i
     assert(p < m_points.size());
 
     m_gcs->addConstraintPointOnPerpBisector(m_points[p], m_lines[m_geos[line].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddMidpointOnLineCons(ConsID id, int line1, int line2, bool driving)
@@ -838,8 +819,6 @@ void Scene::AddMidpointOnLineCons(ConsID id, int line1, int line2, bool driving)
     assert(line1 < m_geos.size() && line2 < m_geos.size());
 
     m_gcs->addConstraintMidpointOnLine(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddL2CTangentCons(ConsID id, int line, int circle, bool driving)
@@ -847,8 +826,6 @@ void Scene::AddL2CTangentCons(ConsID id, int line, int circle, bool driving)
     assert(line < m_geos.size() && circle < m_geos.size());
 
     m_gcs->addConstraintTangent(m_lines[m_geos[line].index], m_circles[m_geos[circle].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddC2CTangentCons(ConsID id, int circle1, int circle2, bool driving)
@@ -856,8 +833,6 @@ void Scene::AddC2CTangentCons(ConsID id, int circle1, int circle2, bool driving)
     assert(circle1 < m_geos.size() && circle2 < m_geos.size());
 
     m_gcs->addConstraintTangent(m_circles[m_geos[circle1].index], m_circles[m_geos[circle2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddL2ATangentCons(ConsID id, int line, int arc, bool driving)
@@ -866,8 +841,6 @@ void Scene::AddL2ATangentCons(ConsID id, int line, int arc, bool driving)
 
     auto& l = m_lines[m_geos[line].index];
     m_gcs->addConstraintPerpendicularLine2Arc(l.p1, l.p2, m_arcs[m_geos[arc].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddA2LTangentCons(ConsID id, int arc, int line, bool driving)
@@ -876,8 +849,6 @@ void Scene::AddA2LTangentCons(ConsID id, int arc, int line, bool driving)
 
     auto& l = m_lines[m_geos[line].index];
     m_gcs->addConstraintPerpendicularArc2Line(m_arcs[m_geos[arc].index], l.p1, l.p2, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddC2ATangentCons(ConsID id, int circle, int arc, bool driving)
@@ -886,8 +857,6 @@ void Scene::AddC2ATangentCons(ConsID id, int circle, int arc, bool driving)
 
     auto& c = m_circles[m_geos[circle].index];
     m_gcs->addConstraintPerpendicularCircle2Arc(c.center, c.rad, m_arcs[m_geos[arc].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddA2CTangentCons(ConsID id, int arc, int circle, bool driving)
@@ -896,8 +865,6 @@ void Scene::AddA2CTangentCons(ConsID id, int arc, int circle, bool driving)
 
     auto& c = m_circles[m_geos[circle].index];
     m_gcs->addConstraintPerpendicularArc2Circle(m_arcs[m_geos[arc].index], c.center, c.rad, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddA2ATangentCons(ConsID id, int arc1, int arc2, bool driving)
@@ -905,8 +872,6 @@ void Scene::AddA2ATangentCons(ConsID id, int arc1, int arc2, bool driving)
     assert(arc1 < m_geos.size() && arc2 < m_geos.size());
 
     m_gcs->addConstraintPerpendicularArc2Arc(m_arcs[m_geos[arc1].index], false, m_arcs[m_geos[arc2].index], false, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddTangentCircumfCons(ConsID id, int circle1, int circle2, bool driving)
@@ -915,8 +880,6 @@ void Scene::AddTangentCircumfCons(ConsID id, int circle1, int circle2, bool driv
 
     m_gcs->addConstraintTangentCircumf(m_points[m_geos[circle1].mid_pt_idx], m_points[m_geos[circle2].mid_pt_idx], 
         m_circles[m_geos[circle1].index].rad, m_circles[m_geos[circle2].index].rad, false, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddCircleRadiusCons(ConsID id, int circle, double* value, bool driving)
@@ -924,8 +887,6 @@ void Scene::AddCircleRadiusCons(ConsID id, int circle, double* value, bool drivi
     assert(circle < m_geos.size());
 
     m_gcs->addConstraintCircleRadius(m_circles[m_geos[circle].index], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddCircleDiameterCons(ConsID id, int circle, double* value, bool driving)
@@ -933,9 +894,6 @@ void Scene::AddCircleDiameterCons(ConsID id, int circle, double* value, bool dri
     assert(circle < m_geos.size());
 
     m_gcs->addConstraintCircleDiameter(m_circles[m_geos[circle].index], value, id, driving);
-
-    ResetSolver();
-
 }
 
 void Scene::AddArcRadiusCons(ConsID id, int arc, double* value, bool driving)
@@ -943,8 +901,6 @@ void Scene::AddArcRadiusCons(ConsID id, int arc, double* value, bool driving)
     assert(arc < m_geos.size());
 
     m_gcs->addConstraintArcRadius(m_arcs[m_geos[arc].index], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddArcDiameterCons(ConsID id, int arc, double* value, bool driving)
@@ -952,8 +908,6 @@ void Scene::AddArcDiameterCons(ConsID id, int arc, double* value, bool driving)
     assert(arc < m_geos.size());
 
     m_gcs->addConstraintArcDiameter(m_arcs[m_geos[arc].index], value, id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddEqualLengthCons(ConsID id, int line1, int line2, bool driving)
@@ -961,8 +915,6 @@ void Scene::AddEqualLengthCons(ConsID id, int line1, int line2, bool driving)
     assert(line1 < m_geos.size() && line2 < m_geos.size());
 
     m_gcs->addConstraintEqualLength(m_lines[m_geos[line1].index], m_lines[m_geos[line2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddEqualLengthCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bool driving)
@@ -972,8 +924,6 @@ void Scene::AddEqualLengthCons(ConsID id, int pt1, int pt2, int pt3, int pt4, bo
 
     m_gcs->addConstraintEqualLength(m_points[m_geos[pt1].index], m_points[m_geos[pt2].index], 
         m_points[m_geos[pt3].index], m_points[m_geos[pt4].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddC2CEqualRadiusCons(ConsID id, int circle1, int circle2, bool driving)
@@ -981,8 +931,6 @@ void Scene::AddC2CEqualRadiusCons(ConsID id, int circle1, int circle2, bool driv
     assert(circle1 < m_geos.size() && circle2 < m_geos.size());
 
     m_gcs->addConstraintEqualRadius(m_circles[m_geos[circle1].index], m_circles[m_geos[circle2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddA2AEqualRadiusCons(ConsID id, int arc1, int arc2, bool driving)
@@ -990,8 +938,6 @@ void Scene::AddA2AEqualRadiusCons(ConsID id, int arc1, int arc2, bool driving)
     assert(arc1 < m_geos.size() && arc2 < m_geos.size());
 
     m_gcs->addConstraintEqualRadius(m_arcs[m_geos[arc1].index], m_arcs[m_geos[arc2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddC2AEqualRadiusCons(ConsID id, int circle, int arc, bool driving)
@@ -999,8 +945,6 @@ void Scene::AddC2AEqualRadiusCons(ConsID id, int circle, int arc, bool driving)
     assert(circle < m_geos.size() && arc < m_geos.size());
 
     m_gcs->addConstraintEqualRadius(m_circles[m_geos[circle].index], m_arcs[m_geos[arc].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::AddEqualRadiiCons(ConsID id, int ellipse1, int ellipse2, bool driving)
@@ -1008,8 +952,6 @@ void Scene::AddEqualRadiiCons(ConsID id, int ellipse1, int ellipse2, bool drivin
     assert(ellipse1 < m_geos.size() && ellipse2 < m_geos.size());
 
     m_gcs->addConstraintEqualRadii(m_ellipses[m_geos[ellipse1].index], m_ellipses[m_geos[ellipse2].index], id, driving);
-
-    ResetSolver();
 }
 
 void Scene::BeforeSolve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D>>>& geos)

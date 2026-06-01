@@ -110,6 +110,13 @@ private:
 	GCS::Algorithm m_default_solver = GCS::DogLeg;
 	GCS::Algorithm m_default_solver_redundant = GCS::DogLeg;
 
+	// Constraints only change the system topology while being added.
+	// initSolution() (which runs the expensive redundant-constraint
+	// diagnose) therefore needs to run once, before the solve -- not
+	// once per added constraint. This flag defers it: it is set when a
+	// constraint is registered and consumed by the next Solve().
+	bool m_needs_diagnose = true;
+
 	std::vector<GCS::Point>   m_points;
 	std::vector<GCS::Line>    m_lines;
 	std::vector<GCS::Circle>  m_circles;
