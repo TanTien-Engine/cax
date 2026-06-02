@@ -43,3 +43,6 @@
 [submodule "thirdparty/ceres-solver"]
 	path = thirdparty/ceres-solver
 	url = git@github.com:ceres-solver/ceres-solver.git
+[submodule "thirdparty/nlohmann"]
+	path = thirdparty/nlohmann
+	url = git@github.com:nlohmann/json.git

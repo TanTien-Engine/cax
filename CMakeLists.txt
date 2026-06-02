@@ -427,6 +427,36 @@ else()
 endif()
 
 
+# ---- cadcvt: ZW3D reader (neutral .cax.json intermediate) ----
+#
+# ZW3D has no out-of-process automation server (unlike SolidWorks' COM),
+# so the feature-tree walk runs INSIDE ZW3D in a separate plugin DLL
+# (plugins/zw_export, its own standalone CMake) that emits a neutral
+# JSON snapshot. THIS reader only parses that JSON into DocumentIR, so
+# its sole dependency is the header-only nlohmann/json (thirdparty
+# submodule). When the header is absent ZwReader.cpp compiles to a stub
+# (its body is #ifdef CAX_ZW_OK) returning a clean "not built" error --
+# the same shape as SwReader without the SolidWorks libs. The wire
+# format shared with the plugin is interop/CaxIntermediateSchema.h.
+set(CADCVT_ZW_DEPS_OK FALSE)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nlohmann/single_include/nlohmann/json.hpp")
+    set(CADCVT_ZW_DEPS_OK TRUE)
+endif()
+
+set(cadcvt__reader_zw
+    "cadcvt_c/reader/ZwReader.cpp"
+    "cadcvt_c/reader/ZwReader.h"
+    "interop/CaxIntermediateSchema.h"
+)
+source_group("cadcvt\\reader\\zw" FILES ${cadcvt__reader_zw})
+
+if(CADCVT_ZW_DEPS_OK)
+    message(STATUS "cadcvt: ZwReader enabled")
+else()
+    message(STATUS "cadcvt: ZwReader disabled (run: git submodule update --init thirdparty/nlohmann)")
+endif()
+
+
 set(ALL_FILES
     ${brepgraph}
     ${brepgraph__common}
@@ -461,6 +491,7 @@ set(ALL_FILES
     ${cadcvt__script}
     ${cadcvt__reader_freecad}
     ${cadcvt__reader_sw}
+    ${cadcvt__reader_zw}
 )
 
 ################################################################################
@@ -561,6 +592,10 @@ endif()
 if(CADCVT_SW_DEPS_OK)
     target_include_directories(${PROJECT_NAME} PRIVATE "${CADCVT_SW_GEN_DIR}")
     target_compile_definitions(${PROJECT_NAME} PRIVATE CAX_SW_OK)
+endif()
+if(CADCVT_ZW_DEPS_OK)
+    target_include_directories(${PROJECT_NAME} PRIVATE thirdparty/nlohmann/single_include)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE CAX_ZW_OK)
 endif()
 if(TARGET Eigen3::Eigen)
     target_link_libraries(${PROJECT_NAME} PRIVATE Eigen3::Eigen)
