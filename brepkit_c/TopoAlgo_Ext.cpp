@@ -245,6 +245,17 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
     dir_y /= len;
     dir_z /= len;
 
+    // Captured from whichever primary build below actually runs, so the
+    // topo-naming history prism is reconstructed from the SAME base and
+    // vector that produced s1 -- not from (shape, dir*dist1), which is
+    // wrong for ThroughAll/UpToFirst (those use a bounding-box distance,
+    // and dist1 is usually 0 -> a zero-length vector that makes
+    // BRepPrimAPI_MakePrism throw and aborts the whole replay) and for
+    // MidPlane (which prisms a shifted copy of the base).
+    TopoDS_Shape hist_base;
+    gp_Vec       hist_vec;
+    bool         have_hist = false;
+
     auto build_one = [&](double dist, ExtrudeEndType end, bool reverse) -> TopoDS_Shape {
         if (dist < 1e-15 && end == ExtrudeEndType::Blind) {
             return TopoDS_Shape();
@@ -282,6 +293,15 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
         }
 
         TopoDS_Shape result = prism.Shape();
+
+        // Remember the base/vector that built the primary solid so the
+        // topo-naming history below reconstructs an equivalent prism
+        // (post-trim steps aren't captured -- naming here is best-effort).
+        if (!reverse) {
+            hist_base = shape->GetShape();
+            hist_vec  = vec;
+            have_hist = true;
+        }
 
         // For UpToSurface, trim against the reference surface
         if (end == ExtrudeEndType::UpToSurface && ref) {
@@ -406,6 +426,9 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
             prism.Build();
             if (prism.IsDone()) {
                 s1 = prism.Shape();
+                hist_base = shifter.Shape();
+                hist_vec  = gp_Vec(dir_x * dist1, dir_y * dist1, dir_z * dist1);
+                have_hist = true;
             }
         }
         break;
@@ -449,16 +472,20 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::ExtrudeEx(
     auto result = std::make_shared<TopoShape>(final_shape);
 
     // Update TopoNaming
-    if (tn) {
-        // Use the prism builder's history for the primary direction
-        // This is simplified; full impl should chain history through fuse too
-        BRepPrimAPI_MakePrism prism_for_history(
-            shape->GetShape(),
-            gp_Vec(dir_x * dist1, dir_y * dist1, dir_z * dist1),
-            Standard_True);
-        prism_for_history.Build();
-        if (prism_for_history.IsDone()) {
-            tn->Update(prism_for_history, final_shape, shape->GetShape(), op_id);
+    // Use the prism builder's history for the primary direction. This is
+    // simplified; full impl should chain history through fuse too. Skip
+    // it on a degenerate vector and swallow OCCT failures -- a naming
+    // gap must not abort the extrude when final_shape is already valid.
+    if (tn && have_hist && hist_vec.Magnitude() > 1e-15) {
+        try {
+            BRepPrimAPI_MakePrism prism_for_history(
+                hist_base, hist_vec, Standard_True);
+            prism_for_history.Build();
+            if (prism_for_history.IsDone()) {
+                tn->Update(prism_for_history, final_shape, hist_base, op_id);
+            }
+        } catch (...) {
+            // Best-effort naming only -- geometry is unaffected.
         }
     }
 
