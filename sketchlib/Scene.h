@@ -5,6 +5,7 @@
 
 #include <PlaneGCS/GCS.h>
 
+#include <deque>
 #include <memory>
 
 namespace gs { class Shape2D; class Point2D; class Line2D; class Circle; class Arc; class Ellipse; }
@@ -102,9 +103,18 @@ private:
 	std::map<GeoID, size_t> m_geoid2index;
 
 	// cons
-	std::vector<Constraint>  m_cons;
+	//
+	// Dimension constraints hand the GCS a raw pointer into the
+	// constraint's `value` field (see Scene.cpp: &m_cons.back().value).
+	// That pointer must stay valid for the lifetime of the solver, so
+	// these are std::deque, not std::vector: deque::push_back never
+	// invalidates references to already-stored elements, whereas a
+	// vector reallocation would leave every previously-registered value
+	// pointer dangling -- which crashes the solver's Jacobian/diagnose
+	// pass on any sketch large enough to trigger a reallocation.
+	std::deque<Constraint>   m_cons;
 	std::map<ConsID, size_t> m_consid2index;
-	std::vector<Constraint2> m_cons2;
+	std::deque<Constraint2>  m_cons2;
 	std::map<ConsID, size_t> m_cons2id2index;
 
 	GCS::Algorithm m_default_solver = GCS::DogLeg;
