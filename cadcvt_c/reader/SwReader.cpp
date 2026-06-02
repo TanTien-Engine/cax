@@ -758,6 +758,20 @@ bool SwReader::ReadFile(const std::string& path,
                 pl.end_type       = MapEndCond(ed->GetEndCondition(VARIANT_TRUE));
                 pl.flip_direction = (ed->ReverseDirection == VARIANT_TRUE);
 
+                // A SolidWorks Cut-Extrude defaults to cutting INTO the
+                // material -- opposite the sketch normal -- while a Boss
+                // extrudes along it (the same split as a FreeCAD Pocket vs
+                // Pad). The Replayer derives the world direction from the
+                // sketch normal and only sees this flip flag, so invert it
+                // for cuts to land the tool body on the material side of the
+                // sketch plane. Without this the cut prism sits entirely on
+                // the far side of the plane (e.g. tutor2's counterbore +
+                // through-hole, sketched on the top face) and removes
+                // nothing, so the holes go missing.
+                if (!boss_ext) {
+                    pl.flip_direction = !pl.flip_direction;
+                }
+
                 if (ed->BothDirections == VARIANT_TRUE) {
                     pl.distance2 = ed->GetDepth(VARIANT_FALSE) * m_unit_scale;
                     pl.end_type2 = MapEndCond(ed->GetEndCondition(VARIANT_FALSE));
