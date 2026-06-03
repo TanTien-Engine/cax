@@ -38,6 +38,19 @@
 #include <unordered_map>
 #include <vector>
 
+// For opening a UTF-8 path on Windows (the .cax.json may sit under a
+// Chinese directory / part name). std::ifstream(const std::string&) goes
+// through the narrow CRT (ANSI/GBK code page) there and fails to open it.
+#ifdef _WIN32
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#endif
+
 namespace cadcvt
 {
 namespace
@@ -45,6 +58,46 @@ namespace
 
 using json = nlohmann::json;
 namespace sc = cax_schema;
+
+// Open a UTF-8 file path for binary reading. On Windows a non-ASCII path
+// (e.g. a Chinese part name) won't open through std::ifstream's narrow
+// constructor, which uses the ANSI code page -- the read-side mirror of
+// the std::fopen trap the zw_export plugin hit writing the JSON. Convert
+// UTF-8 -> UTF-16 and use the wide-path ifstream overload (MSVC
+// extension). Mirrors SwReader's Widen(); elsewhere std::ifstream is fine.
+std::ifstream OpenInputBinary(const std::string& path)
+{
+#ifdef _WIN32
+    auto widen = [](const std::string& p, UINT cp, DWORD flags) -> std::wstring
+    {
+        int n = ::MultiByteToWideChar(cp, flags, p.data(), (int)p.size(),
+                                      nullptr, 0);
+        if (n <= 0) {
+            return std::wstring();
+        }
+        std::wstring w((size_t)n, L'\0');
+        ::MultiByteToWideChar(cp, flags, p.data(), (int)p.size(), w.data(), n);
+        return w;
+    };
+    if (!path.empty())
+    {
+        // Prefer UTF-8 (the .ves scene files are UTF-8); fall back to the
+        // system ANSI code page if the bytes aren't valid UTF-8 (a GBK path
+        // -- ZW3D's own file API hands names back in the ANSI code page).
+        std::wstring w = widen(path, CP_UTF8, MB_ERR_INVALID_CHARS);
+        if (w.empty()) {
+            w = widen(path, CP_ACP, 0);
+        }
+        if (!w.empty()) {
+            std::ifstream in(w.c_str(), std::ios::binary);
+            if (in) {
+                return in;
+            }
+        }
+    }
+#endif
+    return std::ifstream(path, std::ios::binary);
+}
 
 // ---- small JSON accessors ----------------------------------------------
 
@@ -423,7 +476,7 @@ bool ZwReader::ReadFile(const std::string& path,
         return false;
     };
 
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in = OpenInputBinary(path);
     if (!in) {
         return fail("ZwReader: cannot open " + path);
     }
