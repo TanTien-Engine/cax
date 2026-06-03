@@ -465,17 +465,28 @@ bool ZwReader::ReadFile(const std::string& path,
                 cadapp::FeatPayloadOpaque pl;
                 pl.strings["zw_type"] = zt;
 
-                // Generic scalar params the plugin dumped (keyed by the
-                // stable ZW3D field id). Kept raw -- they are not geometry
-                // the Replayer consumes, just visibility for binding a
-                // typed reader later.
-                auto pit = jf.find("params");
-                if (pit != jf.end() && pit->is_object())
+                // Full field dump (keyed by stable ZW3D field id). Scalars
+                // land in params; field labels in strings. The richer parts
+                // (points, entity signatures) stay in the JSON for now --
+                // they feed the reconstruction phase, not the opaque IR.
+                auto fit = jf.find("fields");
+                if (fit != jf.end() && fit->is_array())
                 {
-                    for (auto it = pit->begin(); it != pit->end(); ++it)
+                    for (const auto& fd : *fit)
                     {
-                        if (it->is_number()) {
-                            pl.params[it.key()] = it->get<double>();
+                        auto idit = fd.find("id");
+                        if (idit == fd.end() || !idit->is_number()) {
+                            continue;
+                        }
+                        const std::string key = std::to_string(idit->get<int>());
+
+                        auto vit = fd.find("value");
+                        if (vit != fd.end() && vit->is_number()) {
+                            pl.params[key] = vit->get<double>();
+                        }
+                        auto nm = fd.find("name");
+                        if (nm != fd.end() && nm->is_string()) {
+                            pl.strings["fld." + key] = nm->get<std::string>();
                         }
                     }
                 }
@@ -486,18 +497,6 @@ bool ZwReader::ReadFile(const std::string& path,
                 f.name = name;
                 f.data = std::move(pl);
                 f.ext_strings["zw_type"] = zt;
-
-                // Field labels (may be empty / localized) as a human hint.
-                auto nit = jf.find("param_names");
-                if (nit != jf.end() && nit->is_object())
-                {
-                    for (auto it = nit->begin(); it != nit->end(); ++it)
-                    {
-                        if (it->is_string()) {
-                            f.ext_strings["zw_param." + it.key()] = it->get<std::string>();
-                        }
-                    }
-                }
 
                 out.features.push_back(std::move(f));
             }

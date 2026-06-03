@@ -217,14 +217,62 @@ struct BoxData
     bool   has_place = false;
 };
 
-// One scalar parameter of a feature, read generically from ZW3D's
-// feature-data container. fld_id is the STABLE field index to dispatch
-// on (fld_name may be empty or localized -- human hint only).
-struct FtrParam
+// Geometric signature of a referenced entity (face / edge / ...), used
+// later for reference resolution by GEOMETRIC MATCHING in OCCT: a
+// representative point (on-face point for faces, bbox centre otherwise)
+// plus a normal for faces. ZW3D's topological ids don't survive into the
+// OCCT rebuild, so the geometry is what we match on.
+struct EntSig
 {
-    int         id    = 0;
+    std::string kind;                       // "face" / "edge" / "ent"
+    double      anchor[3] = { 0.0, 0.0, 0.0 };
+    double      normal[3] = { 0.0, 0.0, 0.0 };
+    bool        has_normal = false;
+};
+
+// One field of a feature's data container, read generically. fld_id is
+// the STABLE key (fld_name may be empty / localized). The value shape
+// depends on the field type: scalar, point, text, or a list of entity
+// references (each carrying a geometric signature).
+struct FieldDump
+{
+    int         id   = 0;
     std::string name;
-    double      value = 0.0;
+    std::string type;                       // number/distance/angle/point/entity/text/list/other
+    bool        has_num  = false; double num = 0.0;
+    bool        has_pt   = false; double pt[3] = { 0.0, 0.0, 0.0 };
+    bool        has_text = false; std::string text;
+    std::vector<EntSig> ents;
+};
+
+// Typed data of an external-geometry-copy feature (ZW3D "CdGeomCopy").
+// Its data is NOT in the generic field container -- it needs the
+// dedicated ZwExternalGeometryCopyDataGet inquiry. Carries WHERE the
+// geometry was copied from (external file + root, or local entities).
+struct GeomCopyData
+{
+    bool        ok = false;
+    std::string source;            // "external" / "local"
+    std::string file;              // external source file (external only)
+    std::string root;              // root name within the source file
+    int         entity_count = 0;  // number of copied entities
+    int         associative  = 0;  // ezwAssociativeCopyType
+    int         idxfer_rc    = -999;  // ZwEntityIdTransfer return (diag)
+    int         get_rc       = -999;  // ZwExternalGeometryCopyDataGet return (diag)
+};
+
+// The geometry a feature PRODUCED (its associated entities), read via
+// cvxPartInqFtrEnts. This is the fallback for features that don't expose
+// editable parameters to the API (e.g. CdGeomCopy, a geometry-import):
+// their value is the geometry they inject, not parameters. Counts let us
+// see what a feature emits; sigs carry the geometry for downstream use.
+struct ResultEnts
+{
+    int n_shape = 0;   // solids / facesets
+    int n_face  = 0;
+    int n_curve = 0;   // wireframe curves (profile geometry)
+    std::vector<EntSig> shapes;
+    std::vector<EntSig> curves;
 };
 
 // One walked feature in history order.
@@ -260,10 +308,16 @@ struct FeatNode
 
 #include "zwapi_part_history.h"            // cvxPartInqFtrList / cvxPartInqFtrTemplate / cvxPartInqFtrData / cvxPartInqFtrEnts
 #include "zwapi_memory.h"                  // cvxMemFree
-#include "zwapi_util.h"                    // vxName, evxErrors, ZW_API_NO_ERROR, svxBndBox, VX_ENT_SHAPE
-#include "zwapi_general_ent.h"             // cvxEntBndBox
-#include "zwapi_cmd_paramdefine_param.h"   // cvxDataGetAll / cvxDataGetNum / cvxFldDataFree / cvxDataFree;
-                                           // svxFldData, evxFldType (VX_FLD_NUM / DST / ANG)
+#include "zwapi_util.h"                    // vxName, evxErrors, ZW_API_NO_ERROR, svxBndBox, svxPoint/Vector, VX_ENT_*
+#include "zwapi_general_ent.h"             // cvxEntBndBox / cvxEntExists
+#include "zwapi_brep_face.h"               // cvxFaceParam / cvxFaceEval (face normal for matching signatures)
+#include "zwapi_file.h"                    // cvxFileExportInit / cvxFileExport (STEP truth geometry)
+#include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle)
+#include "zwapi_dataexchange.h"            // ZwExternalGeometryCopyDataGet/Free, szwExternalGeometryCopyData (CdGeomCopy)
+#include "zwapi_part_opts.h"               // cvxPartHistScrollTo (roll the history bar to read a feature in context)
+#include "zwapi_cmd_paramdefine_param.h"   // cvxDataGetAll / cvxDataGetNum / cvxDataGetPnt / cvxDataGetEnts /
+                                           // cvxDataGetText / cvxFldDataFree / cvxDataFree;
+                                           // svxFldData, evxFldType (VX_FLD_NUM / DST / ANG / PNT / ENT / TXT / DATA)
 // Pending the per-feature reads (bind when wiring ReadSketch/ReadExtrude):
 //   #include "zwapi_sk_data.h"        // sketch geometry entities
 //   #include "zwapi_sk_cons.h"        // sketch constraints
@@ -300,6 +354,47 @@ std::vector<int> HistoryFeatures()
     out.assign(ids, ids + count);
     cvxMemFree(reinterpret_cast<void**>(&ids));
     return out;
+}
+
+// Scroll the history rollback bar to a feature so its data re-evaluates
+// in the model state where it executed. cvxPartInqFtrData otherwise
+// re-evaluates against the CURRENT (final) state -- the documented reason
+// an early feature (e.g. the leading CdGeomCopy) reads back empty. This
+// MUTATES the live document; the export restores the bar to the end when
+// done.
+int ScrollHistoryTo(int idFtr)
+{
+    return static_cast<int>(cvxPartHistScrollTo(idFtr));
+}
+
+// Diagnostic probe: report the return codes of the data-access path for a
+// feature, so an empty export tells us WHERE it failed instead of leaving
+// us to guess. data_rc is cvxPartInqFtrData's return (0 = ok, -1 = data
+// undefined, other = error enum); field_count is how many fields the
+// container yielded.
+struct FtrProbe
+{
+    int data_rc     = -999;
+    int field_count = -1;
+};
+
+FtrProbe ProbeFeature(int idFtr)
+{
+    FtrProbe p;
+    int idData = 0;
+    p.data_rc = cvxPartInqFtrData(idFtr, 0, &idData);
+    if (p.data_rc == ZW_API_NO_ERROR)
+    {
+        int         n = 0;
+        svxFldData* f = nullptr;
+        if (cvxDataGetAll(idData, &n, &f) == ZW_API_NO_ERROR)
+        {
+            p.field_count = n;
+            cvxFldDataFree(n, &f);
+        }
+        cvxDataFree(idData);
+    }
+    return p;
 }
 
 // Stable, language-independent feature type token: the feature's command
@@ -432,17 +527,54 @@ void ReadBox(int idFtr, BoxData& out)
     out.has_place = ReadShapeMinCorner(idFtr, out.place);
 }
 
-// Generic scalar parameters of a feature, read straight from its data
-// container -- no per-feature struct knowledge required. This is what
-// makes an as-yet-unrecognised feature legible: its real numbers (e.g. a
-// box's length/width/height) ride along on the opaque node, keyed by the
-// stable ZW3D field id, so the exact fields to bind in a typed reader can
-// be read off the emitted JSON instead of guessed. Only scalar numeric
-// fields (number / distance-mm / angle-rad) are collected; points,
-// entity picks and text are skipped here.
-std::vector<FtrParam> ReadParams(int idFtr)
+// Geometric signature of a referenced entity, for later matching in OCCT.
+// Faces get an on-surface point (evaluated at mid-UV) + normal; anything
+// else gets its bounding-box centre. The ZW3D entity id is NOT recorded
+// -- it is meaningless once the part is rebuilt in OCCT; only geometry
+// survives a cross-kernel rebuild.
+EntSig EntitySig(int idEnt)
 {
-    std::vector<FtrParam> out;
+    EntSig s;
+    if (cvxEntExists(idEnt, VX_ENT_FACE)) { s.kind = "face"; }
+    else if (cvxEntExists(idEnt, VX_ENT_EDGE)) { s.kind = "edge"; }
+    else { s.kind = "ent"; }
+
+    svxBndBox box;
+    if (cvxEntBndBox(idEnt, &box) == ZW_API_NO_ERROR)
+    {
+        s.anchor[0] = 0.5 * (box.X.min + box.X.max);
+        s.anchor[1] = 0.5 * (box.Y.min + box.Y.max);
+        s.anchor[2] = 0.5 * (box.Z.min + box.Z.max);
+    }
+
+    if (s.kind == "face")
+    {
+        svxLimit U, V;
+        if (cvxFaceParam(idEnt, &U, &V) == ZW_API_NO_ERROR)
+        {
+            svxPoint  p;
+            svxVector n;
+            if (cvxFaceEval(idEnt, 0.5 * (U.min + U.max), 0.5 * (V.min + V.max),
+                            &p, &n) == ZW_API_NO_ERROR)
+            {
+                s.anchor[0] = p.x; s.anchor[1] = p.y; s.anchor[2] = p.z;
+                s.normal[0] = n.x; s.normal[1] = n.y; s.normal[2] = n.z;
+                s.has_normal = true;
+            }
+        }
+    }
+    return s;
+}
+
+// Full dump of a feature's data container: EVERY field, by type. Unlike
+// the earlier scalar-only dump, this also captures points, text, and
+// (crucially) entity references with a geometric signature -- so a
+// reference-driven feature's real inputs (which face/edge it operates on,
+// where) are visible, instead of just secondary scalars. This is what a
+// part like dkba80218026 needs to even judge reconstructability.
+std::vector<FieldDump> DumpFields(int idFtr)
+{
+    std::vector<FieldDump> out;
 
     int idData = 0;
     if (cvxPartInqFtrData(idFtr, 0, &idData) != ZW_API_NO_ERROR) {
@@ -456,26 +588,202 @@ std::vector<FtrParam> ReadParams(int idFtr)
         for (int i = 0; i < numFld; ++i)
         {
             const svxFldData& f = fldData[i];
-            if (f.fld_type != VX_FLD_NUM &&
-                f.fld_type != VX_FLD_DST &&
-                f.fld_type != VX_FLD_ANG) {
-                continue;
+
+            FieldDump d;
+            d.id   = f.fld_id;
+            d.name = f.fld_name;   // may be empty / localized
+
+            if (f.fld_type == VX_FLD_NUM ||
+                f.fld_type == VX_FLD_DST ||
+                f.fld_type == VX_FLD_ANG)
+            {
+                d.type = (f.fld_type == VX_FLD_NUM) ? "number"
+                       : (f.fld_type == VX_FLD_DST) ? "distance" : "angle";
+                double v = 0.0;
+                if (cvxDataGetNum(idData, f.fld_id, &v) == ZW_API_NO_ERROR) {
+                    d.num = v;
+                    d.has_num = true;
+                }
             }
-            double v = 0.0;
-            if (cvxDataGetNum(idData, f.fld_id, &v) != ZW_API_NO_ERROR) {
-                continue;
+            else if (f.fld_type == VX_FLD_PNT)
+            {
+                d.type = "point";
+                svxPoint p;
+                if (cvxDataGetPnt(idData, f.fld_id, &p) == ZW_API_NO_ERROR) {
+                    d.pt[0] = p.x; d.pt[1] = p.y; d.pt[2] = p.z;
+                    d.has_pt = true;
+                }
             }
-            FtrParam p;
-            p.id    = f.fld_id;
-            p.name  = f.fld_name;   // may be empty / localized
-            p.value = v;
-            out.push_back(std::move(p));
+            else if (f.fld_type == VX_FLD_ENT)
+            {
+                d.type = "entity";
+                int  cnt = 0;
+                int* ids = nullptr;
+                if (cvxDataGetEnts(idData, f.fld_id, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr)
+                {
+                    for (int k = 0; k < cnt; ++k) {
+                        if (ids[k] > 0) {
+                            d.ents.push_back(EntitySig(ids[k]));
+                        }
+                    }
+                    cvxMemFree(reinterpret_cast<void**>(&ids));
+                }
+            }
+            else if (f.fld_type == VX_FLD_TXT)
+            {
+                d.type = "text";
+                char buf[512];
+                buf[0] = '\0';
+                if (cvxDataGetText(idData, f.fld_id, static_cast<int>(sizeof(buf)), buf) == ZW_API_NO_ERROR) {
+                    d.text = buf;
+                    d.has_text = true;
+                }
+            }
+            else if (f.fld_type == VX_FLD_DATA)
+            {
+                d.type = "list";   // nested container; deep dump is future work
+            }
+            else
+            {
+                d.type = "other";
+            }
+
+            out.push_back(std::move(d));
         }
         cvxFldDataFree(numFld, &fldData);
     }
 
     cvxDataFree(idData);
     return out;
+}
+
+// Export the active part's final solid to a STEP file. This is the
+// universal geometry baseline (correct for ALL features regardless of
+// whether we parametrise them) and the "truth" geometry used downstream
+// for match anchoring / boolean compensation. Whole-part, all objects.
+struct StepExportResult
+{
+    bool ok = false;
+    int  init_rc   = -999;
+    int  export_rc = -999;
+};
+
+StepExportResult ExportPartStep(const std::string& path)
+{
+    StepExportResult r;
+    svxSTEPData data;
+    r.init_rc = static_cast<int>(cvxFileExportInit(VX_EXPORT_TYPE_STEP, 0, &data));
+    if (r.init_rc != ZW_API_NO_ERROR) {
+        return r;
+    }
+    data.ExportType = 0;   // 0 = all objects
+    r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, path.c_str(), &data));
+    r.ok = (r.export_rc == ZW_API_NO_ERROR);
+    return r;
+}
+
+// Export ONLY the b-rep shapes a feature produced (svxSTEPData's
+// "specified entities" mode). This is the per-feature authored geometry:
+// e.g. CdGeomCopy's imported base body, captured on its own so the
+// downstream parametric features (extrude/fillet) can be replayed on top
+// of it -- as opposed to the whole-part STEP, which bakes everything in.
+// Assumes the history is rolled to this feature (the caller's loop does
+// that), so the shapes are the feature's own result.
+StepExportResult ExportFeatureShapesStep(int idFtr, const std::string& path)
+{
+    StepExportResult r;
+
+    int  cnt  = 0;
+    int* ents = nullptr;
+    if (cvxPartInqFtrEnts(idFtr, VX_ENT_SHAPE, &cnt, &ents) != ZW_API_NO_ERROR ||
+        ents == nullptr || cnt < 1)
+    {
+        if (ents != nullptr) {
+            cvxMemFree(reinterpret_cast<void**>(&ents));
+        }
+        return r;   // nothing to export
+    }
+
+    svxSTEPData data;
+    r.init_rc = static_cast<int>(cvxFileExportInit(VX_EXPORT_TYPE_STEP, 0, &data));
+    if (r.init_rc == ZW_API_NO_ERROR)
+    {
+        data.ExportType = 1;        // specified entities
+        data.EntCnt     = cnt;
+        data.EntList    = ents;     // the feature's result shape ids
+        r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, path.c_str(), &data));
+        r.ok = (r.export_rc == ZW_API_NO_ERROR);
+    }
+
+    cvxMemFree(reinterpret_cast<void**>(&ents));
+    return r;
+}
+
+// Read an external-geometry-copy feature (CdGeomCopy) via its dedicated
+// typed inquiry -- its source reference lives there, not in the generic
+// field container. Bridges the Vx int feature id to the new-API
+// szwEntityHandle with ZwEntityIdTransfer.
+void ReadGeomCopy(int idFtr, GeomCopyData& out)
+{
+    szwEntityHandle handle;
+    out.idxfer_rc = static_cast<int>(ZwEntityIdTransfer(1, &idFtr, &handle));
+    if (out.idxfer_rc != ZW_API_NO_ERROR) {
+        return;
+    }
+
+    szwExternalGeometryCopyData data;
+    out.get_rc = static_cast<int>(ZwExternalGeometryCopyDataGet(handle, &data));
+    if (out.get_rc == ZW_API_NO_ERROR)
+    {
+        out.ok          = true;
+        out.associative = static_cast<int>(data.associativeCopyType);
+        if (data.copyType == ZW_GEOMETRY_COPY_FROM_EXTERNAL_FILE)
+        {
+            out.source       = "external";
+            out.file         = data.copyData.externalData.fileName;
+            out.root         = data.copyData.externalData.rootName;
+            out.entity_count = data.copyData.externalData.entityCount;
+        }
+        else
+        {
+            out.source       = "local";
+            out.entity_count = data.copyData.localData.entityCount;
+        }
+        ZwExternalGeometryCopyDataFree(&data);
+    }
+
+    ZwEntityHandleFree(&handle);
+}
+
+// Entities a feature produced, by type, with geometric signatures. The
+// fallback for features whose parameters the API won't give us: read what
+// they emitted instead. Curves are the interesting case (extrude profiles
+// brought in by a geometry copy); shapes carry a bbox-centre signature.
+ResultEnts FeatureResultEnts(int idFtr)
+{
+    ResultEnts r;
+
+    auto collect = [&](evxEntType type, int& counter, std::vector<EntSig>* sink)
+    {
+        int  cnt  = 0;
+        int* ents = nullptr;
+        if (cvxPartInqFtrEnts(idFtr, type, &cnt, &ents) == ZW_API_NO_ERROR && ents != nullptr)
+        {
+            counter = cnt;
+            if (sink != nullptr) {
+                for (int i = 0; i < cnt; ++i) {
+                    sink->push_back(EntitySig(ents[i]));
+                }
+            }
+            cvxMemFree(reinterpret_cast<void**>(&ents));
+        }
+    };
+
+    collect(VX_ENT_SHAPE, r.n_shape, &r.shapes);
+    collect(VX_ENT_FACE,  r.n_face,  nullptr);   // count only -- faces can be many
+    collect(VX_ENT_WIRE,  r.n_curve, &r.curves); // wireframe = profile curves
+
+    return r;
 }
 
 } // namespace zwapi
@@ -686,6 +994,108 @@ json ExtrudeToJson(const ExtrudeData& ex, uint32_t prev_solid_id)
     return j;
 }
 
+json EntSigToJson(const EntSig& e)
+{
+    json j;
+    j["kind"]   = e.kind;
+    j["anchor"] = json::array({ e.anchor[0], e.anchor[1], e.anchor[2] });
+    if (e.has_normal) {
+        j["normal"] = json::array({ e.normal[0], e.normal[1], e.normal[2] });
+    }
+    return j;
+}
+
+// One field -> JSON, keyed by stable fld id, carrying whatever the field
+// holds (scalar / point / text / entity signatures).
+json FieldsToJson(const std::vector<FieldDump>& fields)
+{
+    json arr = json::array();
+    for (const auto& d : fields)
+    {
+        json j;
+        j["id"]   = d.id;
+        if (!d.name.empty()) {
+            j["name"] = d.name;
+        }
+        j["type"] = d.type;
+        if (d.has_num) {
+            j["value"] = d.num;
+        }
+        if (d.has_pt) {
+            j["pt"] = json::array({ d.pt[0], d.pt[1], d.pt[2] });
+        }
+        if (d.has_text) {
+            j["text"] = d.text;
+        }
+        if (!d.ents.empty())
+        {
+            json es = json::array();
+            for (const auto& e : d.ents) {
+                es.push_back(EntSigToJson(e));
+            }
+            j["ents"] = std::move(es);
+        }
+        arr.push_back(std::move(j));
+    }
+    return arr;
+}
+
+json ResultEntsToJson(const ResultEnts& r)
+{
+    json j;
+    j["n_shape"] = r.n_shape;
+    j["n_face"]  = r.n_face;
+    j["n_curve"] = r.n_curve;
+    if (!r.shapes.empty())
+    {
+        json a = json::array();
+        for (const auto& e : r.shapes) { a.push_back(EntSigToJson(e)); }
+        j["shapes"] = std::move(a);
+    }
+    if (!r.curves.empty())
+    {
+        json a = json::array();
+        for (const auto& e : r.curves) { a.push_back(EntSigToJson(e)); }
+        j["curves"] = std::move(a);
+    }
+    return j;
+}
+
+json GeomCopyToJson(const GeomCopyData& gc)
+{
+    json j;
+    j["source"]       = gc.source;
+    j["entity_count"] = gc.entity_count;
+    j["associative"]  = gc.associative;
+    if (!gc.file.empty()) {
+        j["file"] = gc.file;
+    }
+    if (!gc.root.empty()) {
+        j["root"] = gc.root;
+    }
+    return j;
+}
+
+// Trailing path component of p (handles both / and \ separators).
+std::string BaseName(const std::string& p)
+{
+    const auto s = p.find_last_of("/\\");
+    return (s == std::string::npos) ? p : p.substr(s + 1);
+}
+
+// Sibling path for a feature's own STEP: "<out without .json>.feat<id>.step".
+std::string FeatStepPath(const std::string& out_path, uint32_t id)
+{
+    std::string p = out_path;
+    const std::string js = ".json";
+    if (p.size() >= js.size() &&
+        p.compare(p.size() - js.size(), js.size(), js) == 0)
+    {
+        p = p.substr(0, p.size() - js.size());
+    }
+    return p + ".feat" + std::to_string(id) + ".step";
+}
+
 } // namespace
 
 // ============================================================
@@ -716,6 +1126,11 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
     for (size_t i = 0; i < feats.size(); ++i)
     {
         int fid = feats[i];
+
+        // Roll the history bar to this feature so its data reads in the
+        // state where it executed (see ScrollHistoryTo). Restored to the
+        // end after the loop.
+        int scroll_rc = zwapi::ScrollHistoryTo(fid);
 
         FeatNode node;
         node.id   = static_cast<uint32_t>(i + 1);
@@ -758,39 +1173,112 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         }
         else
         {
-            // Unrecognised (everything, until MapFeatKind learns the real
-            // tokens): keep the feature visible and carry its true ZW3D
-            // template token so the first run documents the vocabulary.
-            // Also dump its scalar parameters (keyed by stable field id)
-            // so the actual numbers are visible for binding a typed reader.
+            // Unrecognised: keep the feature visible with its true ZW3D
+            // template token, plus a FULL dump of its data container --
+            // every field by type, including points, text, and entity
+            // references with geometric signatures. That exposes what the
+            // feature actually operates on (which faces/edges, where), not
+            // just secondary scalars.
             jf["kind"]    = sc::kind::Opaque;
             jf["zw_type"] = type;
 
-            std::vector<FtrParam> params = zwapi::ReadParams(fid);
-            if (!params.empty())
-            {
-                json jp = json::object();
-                json jn = json::object();
-                for (const auto& p : params)
-                {
-                    const std::string key = std::to_string(p.id);
-                    jp[key] = p.value;
-                    if (!p.name.empty()) {
-                        jn[key] = p.name;
-                    }
-                }
-                jf["params"] = std::move(jp);
-                if (!jn.empty()) {
-                    jf["param_names"] = std::move(jn);
-                }
+            // Diagnostic: report the data-access return codes so an empty
+            // export tells us WHERE it failed (scroll / data re-eval /
+            // field count) instead of leaving us to guess. ZW_API_NO_ERROR
+            // is 0; -1 from data_rc means "feature data undefined".
+            zwapi::FtrProbe probe = zwapi::ProbeFeature(fid);
+            json diag;
+            diag["scroll_rc"]   = scroll_rc;
+            diag["data_rc"]     = probe.data_rc;
+            diag["field_count"] = probe.field_count;
+
+            std::vector<FieldDump> fields = zwapi::DumpFields(fid);
+            if (!fields.empty()) {
+                jf["fields"] = FieldsToJson(fields);
             }
+
+            // CdGeomCopy keeps its source reference outside the generic
+            // field container -- pull it via the dedicated typed inquiry.
+            if (type == "CdGeomCopy")
+            {
+                GeomCopyData gc;
+                zwapi::ReadGeomCopy(fid, gc);
+                if (gc.ok) {
+                    jf["geom_copy"] = GeomCopyToJson(gc);
+                }
+                diag["idxfer_rc"]  = gc.idxfer_rc;
+                diag["geomcopy_rc"] = gc.get_rc;
+            }
+
+            // What geometry did this feature actually produce? For features
+            // whose parameters the API won't give us (CdGeomCopy general-
+            // errors above), this is where the real content is.
+            ResultEnts re = zwapi::FeatureResultEnts(fid);
+            if (re.n_shape > 0 || re.n_face > 0 || re.n_curve > 0) {
+                jf["result_ents"] = ResultEntsToJson(re);
+            }
+            diag["n_shape"] = re.n_shape;
+            diag["n_face"]  = re.n_face;
+            diag["n_curve"] = re.n_curve;
+
+            // A shape-producing feature whose parameters the API won't give
+            // us (e.g. CdGeomCopy, an imported base) needs its OWN geometry
+            // as authored input -- export just its result shapes to a
+            // per-feature STEP. The history is rolled to this feature, so
+            // these shapes are its own result. Downstream parametric
+            // features replay on top of this base.
+            if (re.n_shape > 0)
+            {
+                const std::string fstep = FeatStepPath(out_path, node.id);
+                zwapi::StepExportResult fse = zwapi::ExportFeatureShapesStep(fid, fstep);
+                if (fse.ok) {
+                    jf["geometry"] = BaseName(fstep);
+                }
+                diag["feat_step_init_rc"]   = fse.init_rc;
+                diag["feat_step_export_rc"] = fse.export_rc;
+            }
+
+            jf["_diag"] = std::move(diag);
         }
 
         features.push_back(std::move(jf));
     }
 
+    // Restore the history rollback bar to the end (we rolled it back per
+    // feature above to read each in its own context).
+    zwapi::ScrollHistoryTo(feats.back());
+
     doc["document"]["name"]     = zwapi::ActivePartName();
     doc["document"]["features"] = std::move(features);
+
+    // Truth geometry: export the final solid to a sibling STEP file. This
+    // is the universal baseline (correct for every feature) and the truth
+    // used downstream for geometric matching / boolean compensation. Best
+    // effort -- a failure just omits "geometry", the JSON still stands.
+    {
+        std::string step_path = out_path;
+        const std::string suffix = ".json";
+        if (step_path.size() >= suffix.size() &&
+            step_path.compare(step_path.size() - suffix.size(), suffix.size(), suffix) == 0)
+        {
+            step_path = step_path.substr(0, step_path.size() - suffix.size()) + ".step";
+        }
+        else
+        {
+            step_path += ".step";
+        }
+        zwapi::StepExportResult se = zwapi::ExportPartStep(step_path);
+        if (se.ok) {
+            doc["geometry"] = BaseName(step_path);
+        }
+        // Diagnostic: surface why a STEP export failed (best-effort, so a
+        // failure is otherwise silent). ZW_API_NO_ERROR is 0.
+        json gdiag;
+        gdiag["init_rc"]   = se.init_rc;
+        gdiag["export_rc"] = se.export_rc;
+        gdiag["path"]      = step_path;
+        doc["geometry_diag"] = std::move(gdiag);
+    }
 
     std::string text = doc.dump(2);
 
