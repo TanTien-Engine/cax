@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=32 cons=0
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=32 cons=79
   geo 1 type=Circle constr=0 params=[0.000,0.000,0.015]
   geo 2 type=Line constr=0 params=[-0.045,-0.012,-0.045,0.011]
   geo 3 type=Arc constr=0 params=[-0.045,0.021,0.010,4.7124,7.8540]
@@ -32,6 +32,85 @@ sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   geo 30 type=Point constr=0 params=[0.000,0.000]
   geo 31 type=Point constr=0 params=[0.000,0.000]
   geo 32 type=Line constr=1 params=[0.000,0.015,0.000,0.054]
+  con 1 type=CircleDiameter a=1:0 b=4294967295:0 value=0.030 driving=1
+  con 2 type=Coincident a=1:2 b=4294967295:1 value=0.000 driving=1
+  con 3 type=Vertical a=2:0 b=4294967295:0 value=0.000 driving=1
+  con 4 type=Perpendicular a=2:3 b=3:1 value=4.712 driving=1
+  con 5 type=Coincident a=4:3 b=5:1 value=0.000 driving=1
+  con 6 type=Horizontal a=5:0 b=4294967295:0 value=0.000 driving=1
+  con 7 type=Coincident a=5:3 b=6:1 value=0.000 driving=1
+  con 8 type=Vertical a=6:0 b=4294967295:0 value=0.000 driving=1
+  con 9 type=Perpendicular a=6:3 b=7:1 value=4.712 driving=1
+  con 10 type=Vertical a=4:0 b=4294967295:0 value=0.000 driving=1
+  con 11 type=Perpendicular a=3:3 b=4:1 value=4.712 driving=1
+  con 12 type=CircleRadius a=8:0 b=4294967295:0 value=0.045 driving=1
+  con 13 type=DistanceY a=2:1 b=4:3 value=0.066 driving=1
+  con 14 type=DistanceY a=3:2 b=4:3 value=0.033 driving=1
+  con 15 type=CircleDiameter a=7:0 b=4294967295:0 value=0.020 driving=1
+  con 16 type=Equal a=7:0 b=3:0 value=0.000 driving=1
+  con 17 type=DistanceY a=1:2 b=4:3 value=0.054 driving=1
+  con 18 type=Coincident a=9:1 b=3:2 value=0.000 driving=1
+  con 19 type=Coincident a=9:3 b=7:2 value=0.000 driving=1
+  con 20 type=Horizontal a=9:0 b=4294967295:0 value=0.000 driving=1
+  con 21 type=Tangent a=2:1 b=8:1 value=1.571 driving=1
+  con 22 type=Tangent a=8:3 b=10:3 value=1.571 driving=1
+  con 23 type=Perpendicular a=7:3 b=10:1 value=4.712 driving=1
+  con 24 type=Vertical a=10:0 b=4294967295:0 value=0.000 driving=1
+  con 25 type=PointOnLine a=8:2 b=4294967295:0 value=0.000 driving=1
+  con 26 type=Coincident a=14:2 b=13:2 value=0.000 driving=1
+  con 27 type=Tangent a=11:3 b=13:1 value=-1.571 driving=1
+  con 28 type=Tangent a=14:1 b=11:1 value=1.571 driving=1
+  con 29 type=Tangent a=14:3 b=12:3 value=1.571 driving=1
+  con 30 type=Tangent a=12:1 b=13:3 value=-1.571 driving=1
+  con 31 type=CircleRadius a=12:0 b=4294967295:0 value=0.005 driving=1
+  con 32 type=Coincident a=13:2 b=8:2 value=0.000 driving=1
+  con 33 type=CircleRadius a=13:0 b=4294967295:0 value=0.035 driving=1
+  con 34 type=Coincident a=15:3 b=16:1 value=0.000 driving=1
+  con 35 type=Coincident a=16:3 b=12:1 value=0.000 driving=1
+  con 36 type=Coincident a=15:3 b=8:2 value=0.000 driving=1
+  con 37 type=Coincident a=15:1 b=11:3 value=0.000 driving=1
+  con 38 type=Angle a=15:3 b=16:1 value=2.094 driving=1
+  con 39 type=Coincident a=17:1 b=11:3 value=0.000 driving=1
+  con 40 type=Coincident a=17:3 b=12:1 value=0.000 driving=1
+  con 41 type=Horizontal a=17:0 b=4294967295:0 value=0.000 driving=1
+  con 42 type=Equal a=18:0 b=19:0 value=0.000 driving=1
+  con 43 type=DistanceX a=18:2 b=19:2 value=0.040 driving=1
+  con 44 type=CircleDiameter a=19:0 b=4294967295:0 value=0.013 driving=1
+  con 45 type=Coincident a=20:1 b=18:2 value=0.000 driving=1
+  con 46 type=Coincident a=20:3 b=19:2 value=0.000 driving=1
+  con 47 type=Symmetric a=20:1 b=20:3 value=0.000 driving=1
+  con 48 type=PointOnLine a=21:1 b=4294967295:0 value=0.000 driving=1
+  con 49 type=Horizontal a=22:0 b=4294967295:0 value=0.000 driving=1
+  con 50 type=Coincident a=22:3 b=23:1 value=0.000 driving=1
+  con 51 type=Horizontal a=23:0 b=4294967295:0 value=0.000 driving=1
+  con 52 type=Coincident a=23:3 b=24:1 value=0.000 driving=1
+  con 53 type=Horizontal a=24:0 b=4294967295:0 value=0.000 driving=1
+  con 54 type=Horizontal a=25:0 b=4294967295:0 value=0.000 driving=1
+  con 55 type=Coincident a=25:3 b=26:1 value=0.000 driving=1
+  con 56 type=Horizontal a=26:0 b=4294967295:0 value=0.000 driving=1
+  con 57 type=Coincident a=26:3 b=27:1 value=0.000 driving=1
+  con 58 type=Tangent a=18:3 b=25:1 value=-1.571 driving=1
+  con 59 type=Tangent a=19:1 b=27:3 value=-1.571 driving=1
+  con 60 type=Tangent a=19:3 b=24:3 value=1.571 driving=1
+  con 61 type=Tangent a=18:1 b=22:1 value=1.571 driving=1
+  con 62 type=PointOnLine a=28:2 b=4294967295:0 value=0.000 driving=1
+  con 63 type=CircleRadius a=29:0 b=4294967295:0 value=0.013 driving=1
+  con 64 type=Equal a=29:0 b=28:0 value=0.000 driving=1
+  con 65 type=Coincident a=28:3 b=26:3 value=0.000 driving=1
+  con 66 type=Coincident a=25:3 b=28:1 value=0.000 driving=1
+  con 67 type=Coincident a=22:3 b=29:3 value=0.000 driving=1
+  con 68 type=Coincident a=23:3 b=29:1 value=0.000 driving=1
+  con 69 type=PointOnLine a=29:2 b=4294967295:0 value=0.000 driving=1
+  con 70 type=PointOnLine a=30:1 b=29:0 value=0.000 driving=1
+  con 71 type=PointOnLine a=31:1 b=28:0 value=0.000 driving=1
+  con 72 type=PointOnLine a=31:1 b=4294967295:0 value=0.000 driving=1
+  con 73 type=PointOnLine a=30:1 b=4294967295:0 value=0.000 driving=1
+  con 74 type=DistanceY a=22:3 b=30:1 value=0.005 driving=1
+  con 75 type=DistanceY a=31:1 b=25:3 value=0.005 driving=1
+  con 76 type=PointOnLine a=32:1 b=1:0 value=0.000 driving=1
+  con 77 type=PointOnLine a=32:3 b=5:0 value=0.000 driving=1
+  con 78 type=Vertical a=32:0 b=4294967295:0 value=0.000 driving=1
+  con 79 type=Symmetric a=32:1 b=32:3 value=0.000 driving=1
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
   inputs=[0:base]

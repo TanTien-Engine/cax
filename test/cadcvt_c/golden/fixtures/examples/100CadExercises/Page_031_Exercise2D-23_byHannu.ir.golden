@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=13 cons=0
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=13 cons=33
   geo 1 type=Circle constr=0 params=[0.000,0.000,0.010]
   geo 2 type=Circle constr=0 params=[-0.035,0.004,0.003]
   geo 3 type=Circle constr=0 params=[0.025,-0.024,0.002]
@@ -13,6 +13,39 @@ sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   geo 11 type=Arc constr=0 params=[0.013,0.036,0.015,3.2529,5.2045]
   geo 12 type=Arc constr=0 params=[-0.011,-0.004,0.050,5.7652,6.7360]
   geo 13 type=Line constr=0 params=[-0.040,0.011,-0.007,0.037]
+  con 1 type=Coincident a=1:2 b=4294967295:1 value=0.000 driving=1
+  con 2 type=CircleRadius a=1:0 b=4294967295:0 value=0.010 driving=1
+  con 3 type=CircleRadius a=2:0 b=4294967295:0 value=0.003 driving=1
+  con 4 type=DistanceX a=2:2 b=1:2 value=0.035 driving=1
+  con 5 type=DistanceY a=1:2 b=2:2 value=0.004 driving=1
+  con 6 type=CircleRadius a=3:0 b=4294967295:0 value=0.002 driving=1
+  con 7 type=DistanceX a=1:2 b=3:2 value=0.025 driving=1
+  con 8 type=DistanceX a=2:2 b=4:2 value=0.030 driving=1
+  con 9 type=DistanceY a=2:2 b=4:2 value=0.030 driving=1
+  con 10 type=DistanceX a=4:2 b=5:2 value=0.030 driving=1
+  con 11 type=DistanceY a=5:2 b=4:2 value=0.020 driving=1
+  con 12 type=DistanceY a=3:2 b=5:2 value=0.038 driving=1
+  con 13 type=CircleRadius a=5:0 b=4294967295:0 value=0.004 driving=1
+  con 14 type=CircleRadius a=4:0 b=4294967295:0 value=0.002 driving=1
+  con 15 type=Coincident a=6:2 b=2:2 value=0.000 driving=1
+  con 16 type=Coincident a=7:2 b=4:2 value=0.000 driving=1
+  con 17 type=Coincident a=8:2 b=5:2 value=0.000 driving=1
+  con 18 type=Coincident a=9:2 b=3:2 value=0.000 driving=1
+  con 19 type=Tangent a=6:1 b=13:1 value=1.571 driving=1
+  con 20 type=Tangent a=7:3 b=13:3 value=1.571 driving=1
+  con 21 type=Tangent a=7:1 b=11:1 value=1.571 driving=1
+  con 22 type=Tangent a=8:3 b=11:3 value=1.571 driving=1
+  con 23 type=Tangent a=8:1 b=12:3 value=-1.571 driving=1
+  con 24 type=Tangent a=9:3 b=12:1 value=-1.571 driving=1
+  con 25 type=Tangent a=10:1 b=9:1 value=1.571 driving=1
+  con 26 type=Tangent a=6:3 b=10:3 value=1.571 driving=1
+  con 27 type=CircleRadius a=6:0 b=4294967295:0 value=0.009 driving=1
+  con 28 type=CircleRadius a=7:0 b=4294967295:0 value=0.003 driving=1
+  con 29 type=CircleRadius a=8:0 b=4294967295:0 value=0.010 driving=1
+  con 30 type=CircleRadius a=9:0 b=4294967295:0 value=0.009 driving=1
+  con 31 type=CircleRadius a=11:0 b=4294967295:0 value=0.015 driving=1
+  con 32 type=CircleRadius a=12:0 b=4294967295:0 value=0.050 driving=1
+  con 33 type=CircleRadius a=10:0 b=4294967295:0 value=0.100 driving=1
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.050 dist2=0.000 end=0 flip=0
   inputs=[0:base]

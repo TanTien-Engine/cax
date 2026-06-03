@@ -1,9 +1,17 @@
 doc source=freecad
-sketch 20 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=4 cons=0
+sketch 20 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=4 cons=8
   geo 1 type=Circle constr=0 params=[0.000,0.000,0.045]
   geo 2 type=Circle constr=0 params=[0.000,0.000,0.050]
   geo 3 type=Point constr=0 params=[0.000,0.000]
   geo 4 type=Point constr=0 params=[0.000,0.000]
+  con 1 type=Coincident a=1:2 b=4294967295:1 value=0.000 driving=1
+  con 2 type=Coincident a=2:2 b=1:2 value=0.000 driving=1
+  con 3 type=CircleDiameter a=1:0 b=4294967295:0 value=0.090 driving=1
+  con 4 type=PointOnLine a=3:1 b=1:0 value=0.000 driving=1
+  con 5 type=PointOnLine a=4:1 b=2:0 value=0.000 driving=1
+  con 6 type=PointOnLine a=4:1 b=4294967295:0 value=0.000 driving=1
+  con 7 type=PointOnLine a=3:1 b=4294967295:0 value=0.000 driving=1
+  con 8 type=DistanceY a=3:1 b=4:1 value=0.005 driving=1
 feat 20 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=20
 feat 21 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=20 dir=(0.000,0.000,1.000) dist=0.175 dist2=0.000 end=0 flip=0
   inputs=[0:base]

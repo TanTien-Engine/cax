@@ -1,7 +1,11 @@
 doc source=freecad
-sketch 11 name=Sketch plane_origin=(0.025,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=2 cons=0
+sketch 11 name=Sketch plane_origin=(0.025,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=2 cons=4
   geo 1 type=Circle constr=0 params=[0.000,0.000,0.010]
   geo 2 type=Circle constr=0 params=[0.000,0.000,0.013]
+  con 1 type=Coincident a=1:2 b=4294967295:1 value=0.000 driving=1
+  con 2 type=Coincident a=2:2 b=1:2 value=0.000 driving=1
+  con 3 type=CircleRadius a=1:0 b=4294967295:0 value=0.010 driving=1
+  con 4 type=CircleRadius a=2:0 b=4294967295:0 value=0.013 driving=1
 feat 9 name=Cylinder type=PrimCylinder suppressed=0 payload=cylinder r=0.010 h=0.025
   inputs=[0:base]
 feat 10 name=Cylinder001 type=PrimCylinder suppressed=0 payload=cylinder r=0.008 h=0.025

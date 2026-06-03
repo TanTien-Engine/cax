@@ -1,6 +1,9 @@
 doc source=freecad
-sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=3
   geo 1 type=Circle constr=0 params=[0.015,0.000,0.002]
+  con 1 type=PointOnLine a=1:2 b=4294967295:0 value=0.000 driving=1
+  con 2 type=CircleDiameter a=1:0 b=4294967295:0 value=0.003 driving=1
+  con 3 type=DistanceX a=4294967295:1 b=1:2 value=0.015 driving=1
 feat 11 name=BaseFeature type=Unknown suppressed=0 payload=other
   inputs=[0:base,10:ref]
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9

@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 3 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=0
+sketch 3 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
   geo 1 type=Arc constr=0 params=[-0.002,-0.002,0.001,2.2339,5.6200]
   geo 2 type=Line constr=0 params=[-0.002,-0.001,-0.003,-0.002]
   geo 3 type=Arc constr=0 params=[0.000,0.000,0.003,2.6007,3.6825]
@@ -19,7 +19,26 @@ sketch 3 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   geo 17 type=Line constr=0 params=[0.001,-0.002,0.002,-0.003]
   geo 18 type=Arc constr=0 params=[0.000,0.000,0.003,4.1715,5.2533]
   geo 19 type=Line constr=0 params=[-0.002,-0.003,-0.001,-0.002]
-sketch 4 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=60 cons=0
+  con 1 type=Coincident a=1:1 b=2:3 value=0.000 driving=1
+  con 2 type=Coincident a=2:1 b=3:3 value=0.000 driving=1
+  con 3 type=Coincident a=3:1 b=4:3 value=0.000 driving=1
+  con 4 type=Coincident a=4:1 b=5:3 value=0.000 driving=1
+  con 5 type=Coincident a=5:1 b=6:3 value=0.000 driving=1
+  con 6 type=Coincident a=6:1 b=7:3 value=0.000 driving=1
+  con 7 type=Coincident a=7:1 b=8:3 value=0.000 driving=1
+  con 8 type=Coincident a=8:1 b=9:3 value=0.000 driving=1
+  con 9 type=Coincident a=9:1 b=10:3 value=0.000 driving=1
+  con 10 type=Coincident a=10:1 b=11:3 value=0.000 driving=1
+  con 11 type=Coincident a=11:1 b=12:3 value=0.000 driving=1
+  con 12 type=Coincident a=12:1 b=13:3 value=0.000 driving=1
+  con 13 type=Coincident a=13:1 b=14:3 value=0.000 driving=1
+  con 14 type=Coincident a=14:1 b=15:3 value=0.000 driving=1
+  con 15 type=Coincident a=15:1 b=16:3 value=0.000 driving=1
+  con 16 type=Coincident a=16:1 b=17:3 value=0.000 driving=1
+  con 17 type=Coincident a=17:1 b=18:3 value=0.000 driving=1
+  con 18 type=Coincident a=18:1 b=19:3 value=0.000 driving=1
+  con 19 type=Coincident a=19:1 b=1:3 value=0.000 driving=1
+sketch 4 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=60 cons=64
   geo 20 type=Arc constr=0 params=[-0.002,0.008,0.003,3.9270,4.7124]
   geo 21 type=Line constr=0 params=[-0.004,0.005,-0.007,0.009]
   geo 22 type=Arc constr=0 params=[-0.006,0.009,0.001,1.5708,3.9270]
@@ -80,6 +99,70 @@ sketch 4 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.0
   geo 77 type=Line constr=0 params=[0.007,0.009,0.004,0.005]
   geo 78 type=Arc constr=0 params=[0.002,0.008,0.003,4.7124,5.4978]
   geo 79 type=Line constr=0 params=[0.002,0.005,-0.002,0.005]
+  con 20 type=Coincident a=20:1 b=21:1 value=0.000 driving=1
+  con 21 type=Coincident a=21:3 b=22:3 value=0.000 driving=1
+  con 22 type=Coincident a=22:1 b=23:1 value=0.000 driving=1
+  con 23 type=Horizontal a=23:0 b=4294967295:0 value=0.000 driving=1
+  con 24 type=Coincident a=23:3 b=24:1 value=0.000 driving=1
+  con 25 type=Coincident a=24:3 b=25:1 value=0.000 driving=1
+  con 26 type=Coincident a=25:3 b=26:1 value=0.000 driving=1
+  con 27 type=Horizontal a=26:0 b=4294967295:0 value=0.000 driving=1
+  con 28 type=Coincident a=26:3 b=27:1 value=0.000 driving=1
+  con 29 type=Coincident a=27:3 b=28:1 value=0.000 driving=1
+  con 30 type=Coincident a=28:3 b=29:1 value=0.000 driving=1
+  con 31 type=Coincident a=29:3 b=30:1 value=0.000 driving=1
+  con 32 type=Coincident a=30:3 b=31:3 value=0.000 driving=1
+  con 33 type=Coincident a=31:1 b=32:1 value=0.000 driving=1
+  con 34 type=Coincident a=32:3 b=33:3 value=0.000 driving=1
+  con 35 type=Coincident a=33:1 b=34:1 value=0.000 driving=1
+  con 36 type=Coincident a=34:3 b=35:3 value=0.000 driving=1
+  con 37 type=Coincident a=35:1 b=36:1 value=0.000 driving=1
+  con 38 type=Coincident a=36:3 b=37:3 value=0.000 driving=1
+  con 39 type=Coincident a=37:1 b=38:1 value=0.000 driving=1
+  con 40 type=Coincident a=38:3 b=39:1 value=0.000 driving=1
+  con 41 type=Coincident a=39:3 b=40:1 value=0.000 driving=1
+  con 42 type=Coincident a=40:3 b=41:1 value=0.000 driving=1
+  con 43 type=Coincident a=41:3 b=42:1 value=0.000 driving=1
+  con 44 type=Horizontal a=42:0 b=4294967295:0 value=0.000 driving=1
+  con 45 type=Coincident a=42:3 b=43:1 value=0.000 driving=1
+  con 46 type=Coincident a=43:3 b=44:1 value=0.000 driving=1
+  con 47 type=Coincident a=44:3 b=45:1 value=0.000 driving=1
+  con 48 type=Horizontal a=45:0 b=4294967295:0 value=0.000 driving=1
+  con 49 type=Coincident a=45:3 b=46:3 value=0.000 driving=1
+  con 50 type=Coincident a=46:1 b=47:1 value=0.000 driving=1
+  con 51 type=Coincident a=47:3 b=48:3 value=0.000 driving=1
+  con 52 type=Coincident a=48:1 b=49:1 value=0.000 driving=1
+  con 53 type=Coincident a=49:3 b=50:3 value=0.000 driving=1
+  con 54 type=Coincident a=50:1 b=51:1 value=0.000 driving=1
+  con 55 type=Coincident a=51:3 b=52:3 value=0.000 driving=1
+  con 56 type=Coincident a=52:1 b=53:3 value=0.000 driving=1
+  con 57 type=Coincident a=53:1 b=54:1 value=0.000 driving=1
+  con 58 type=Coincident a=54:3 b=55:1 value=0.000 driving=1
+  con 59 type=Coincident a=55:3 b=56:1 value=0.000 driving=1
+  con 60 type=Coincident a=56:3 b=57:1 value=0.000 driving=1
+  con 61 type=Coincident a=57:3 b=58:1 value=0.000 driving=1
+  con 62 type=Coincident a=58:3 b=59:1 value=0.000 driving=1
+  con 63 type=Coincident a=59:3 b=60:1 value=0.000 driving=1
+  con 64 type=Coincident a=60:3 b=61:3 value=0.000 driving=1
+  con 65 type=Coincident a=61:1 b=62:1 value=0.000 driving=1
+  con 66 type=Coincident a=62:3 b=63:3 value=0.000 driving=1
+  con 67 type=Coincident a=63:1 b=64:1 value=0.000 driving=1
+  con 68 type=Coincident a=64:3 b=65:3 value=0.000 driving=1
+  con 69 type=Coincident a=65:1 b=66:1 value=0.000 driving=1
+  con 70 type=Coincident a=66:3 b=67:3 value=0.000 driving=1
+  con 71 type=Coincident a=67:1 b=68:1 value=0.000 driving=1
+  con 72 type=Coincident a=68:3 b=69:1 value=0.000 driving=1
+  con 73 type=Coincident a=69:3 b=70:1 value=0.000 driving=1
+  con 74 type=Coincident a=70:3 b=71:1 value=0.000 driving=1
+  con 75 type=Coincident a=71:3 b=72:1 value=0.000 driving=1
+  con 76 type=Coincident a=72:3 b=73:1 value=0.000 driving=1
+  con 77 type=Coincident a=73:3 b=74:1 value=0.000 driving=1
+  con 78 type=Coincident a=74:3 b=75:3 value=0.000 driving=1
+  con 79 type=Coincident a=75:1 b=76:3 value=0.000 driving=1
+  con 80 type=Coincident a=76:1 b=77:1 value=0.000 driving=1
+  con 81 type=Coincident a=77:3 b=78:3 value=0.000 driving=1
+  con 82 type=Coincident a=78:1 b=79:1 value=0.000 driving=1
+  con 83 type=Coincident a=79:3 b=20:3 value=0.000 driving=1
 feat 3 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=3
 feat 4 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=4
 feat 13 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=4 dir=(0.000,0.000,1.000) dist=0.533 dist2=0.000 end=0 flip=0

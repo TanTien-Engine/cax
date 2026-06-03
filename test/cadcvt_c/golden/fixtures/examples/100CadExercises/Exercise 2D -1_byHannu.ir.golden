@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=10 cons=0
+sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=10 cons=27
   geo 1 type=Arc constr=0 params=[0.000,0.062,0.017,3.4869,4.7124]
   geo 2 type=Arc constr=0 params=[-0.033,0.050,0.018,0.3453,4.3540]
   geo 3 type=Line constr=0 params=[0.000,0.045,0.000,0.028]
@@ -10,9 +10,40 @@ sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   geo 8 type=Arc constr=1 params=[0.000,0.000,0.045,1.5708,2.5323]
   geo 9 type=Line constr=1 params=[-0.033,0.050,0.000,0.000]
   geo 10 type=Circle constr=0 params=[-0.033,0.050,0.010]
-sketch 14 name=Sketch001 plane_origin=(0.000,0.000,0.005) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
+  con 1 type=PointOnLine a=1:2 b=4294967295:0 value=0.000 driving=1
+  con 2 type=PointOnLine a=1:3 b=4294967295:0 value=0.000 driving=1
+  con 3 type=CircleRadius a=1:0 b=4294967295:0 value=0.017 driving=1
+  con 4 type=Vertical a=3:0 b=4294967295:0 value=0.000 driving=1
+  con 5 type=Tangent a=2:1 b=1:1 value=1.571 driving=1
+  con 6 type=CircleRadius a=4:0 b=4294967295:0 value=0.005 driving=1
+  con 7 type=Tangent a=4:3 b=2:3 value=1.571 driving=1
+  con 8 type=CircleRadius a=2:0 b=4294967295:0 value=0.018 driving=1
+  con 9 type=CircleRadius a=5:0 b=4294967295:0 value=0.045 driving=1
+  con 10 type=Tangent a=5:1 b=4:1 value=1.571 driving=1
+  con 11 type=Coincident a=5:2 b=4294967295:1 value=0.000 driving=1
+  con 12 type=PointOnLine a=5:3 b=4294967295:0 value=0.000 driving=1
+  con 13 type=Coincident a=6:1 b=5:3 value=0.000 driving=1
+  con 14 type=Horizontal a=6:0 b=4294967295:0 value=0.000 driving=1
+  con 15 type=Coincident a=3:1 b=1:3 value=0.000 driving=1
+  con 16 type=Coincident a=7:1 b=3:3 value=0.000 driving=1
+  con 17 type=CircleRadius a=7:0 b=4294967295:0 value=0.028 driving=1
+  con 18 type=Coincident a=7:3 b=6:3 value=0.000 driving=1
+  con 19 type=Coincident a=7:2 b=5:2 value=0.000 driving=1
+  con 20 type=Coincident a=8:2 b=5:2 value=0.000 driving=1
+  con 21 type=Coincident a=8:1 b=1:3 value=0.000 driving=1
+  con 22 type=Coincident a=8:3 b=4:1 value=0.000 driving=1
+  con 23 type=Coincident a=9:1 b=2:2 value=0.000 driving=1
+  con 24 type=Coincident a=9:3 b=5:2 value=0.000 driving=1
+  con 25 type=Distance a=9:0 b=4294967295:0 value=0.060 driving=1
+  con 26 type=Coincident a=10:2 b=2:2 value=0.000 driving=1
+  con 27 type=CircleRadius a=10:0 b=4294967295:0 value=0.010 driving=1
+sketch 14 name=Sketch001 plane_origin=(0.000,0.000,0.005) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=4
   geo 11 type=Circle constr=0 params=[0.000,0.000,0.028]
   geo 12 type=Circle constr=0 params=[0.000,0.000,0.045]
+  con 28 type=Coincident a=11:2 b=4294967295:1 value=0.000 driving=1
+  con 29 type=Coincident a=12:2 b=11:2 value=0.000 driving=1
+  con 30 type=CircleRadius a=12:0 b=4294967295:0 value=0.045 driving=1
+  con 31 type=CircleRadius a=11:0 b=4294967295:0 value=0.028 driving=1
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=0 flip=0
   inputs=[0:base]

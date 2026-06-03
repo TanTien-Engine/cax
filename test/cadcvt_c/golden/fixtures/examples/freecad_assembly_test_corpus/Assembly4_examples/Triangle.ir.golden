@@ -1,14 +1,36 @@
 doc source=freecad
-sketch 11 name=Sketch_0 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=0
+sketch 11 name=Sketch_0 plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=5 cons=16
   geo 4 type=Arc constr=0 params=[0.000,0.000,0.025,2.0944,7.3304]
   geo 5 type=Arc constr=0 params=[0.000,0.100,0.015,5.6975,10.0105]
   geo 6 type=Line constr=0 params=[-0.012,0.092,-0.012,0.022]
   geo 7 type=Line constr=0 params=[0.012,0.092,0.012,0.022]
   geo 8 type=Circle constr=0 params=[0.000,0.000,0.008]
-sketch 22 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=3 cons=0
+  con 7 type=Coincident a=4:2 b=4294967295:1 value=0.000 driving=1
+  con 8 type=PointOnLine a=5:2 b=4294967295:0 value=0.000 driving=1
+  con 9 type=Vertical a=6:0 b=4294967295:0 value=0.000 driving=1
+  con 10 type=Vertical a=7:0 b=4294967295:0 value=0.000 driving=1
+  con 11 type=DistanceY a=4:2 b=5:2 value=0.100 driving=1
+  con 12 type=CircleDiameter a=5:0 b=4294967295:0 value=0.030 driving=1
+  con 13 type=CircleDiameter a=4:0 b=4294967295:0 value=0.050 driving=1
+  con 14 type=Coincident a=4:1 b=6:3 value=0.000 driving=1
+  con 15 type=Coincident a=4:3 b=7:3 value=0.000 driving=1
+  con 16 type=Coincident a=5:1 b=7:1 value=0.000 driving=1
+  con 17 type=Coincident a=5:3 b=6:0 value=0.000 driving=1
+  con 18 type=Coincident a=6:1 b=5:3 value=0.000 driving=1
+  con 19 type=Symmetric a=4:1 b=4:3 value=0.000 driving=1
+  con 20 type=DistanceX a=4:1 b=4:3 value=0.025 driving=1
+  con 21 type=Coincident a=8:2 b=4:2 value=0.000 driving=1
+  con 22 type=CircleDiameter a=8:0 b=4294967295:0 value=0.015 driving=1
+sketch 22 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(1.000,0.000,0.000) plane_xdir=(0.000,1.000,0.000) geos=3 cons=6
   geo 1 type=Circle constr=0 params=[0.000,0.100,0.010]
   geo 2 type=Circle constr=0 params=[0.087,-0.050,0.010]
   geo 3 type=Circle constr=0 params=[-0.087,-0.050,0.010]
+  con 1 type=Coincident a=1:2 b=4294967295:2 value=0.000 driving=1
+  con 2 type=Coincident a=2:2 b=4294967295:2 value=0.000 driving=1
+  con 3 type=Coincident a=3:2 b=4294967295:2 value=0.000 driving=1
+  con 4 type=Equal a=2:0 b=3:0 value=0.000 driving=1
+  con 5 type=Equal a=3:0 b=1:0 value=0.000 driving=1
+  con 6 type=CircleDiameter a=3:0 b=4294967295:0 value=0.020 driving=1
 feat 20 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.000 end=0 flip=0
   inputs=[0:base]
 feat 21 name=PolarPattern type=CircularPattern suppressed=0 payload=circpat axis_o=(0.000,0.000,0.000) axis_d=(1.000,0.000,0.000) count=3 total_angle=6.2832
