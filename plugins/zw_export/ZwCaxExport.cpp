@@ -275,6 +275,26 @@ struct ResultEnts
     std::vector<EntSig> curves;
 };
 
+// One curve of an extrude/revolve profile (a feature's built-in sketch),
+// in world 3D coords. Only the fields its kind needs are set.
+struct ProfileCurve
+{
+    std::string kind;                       // line / arc / circle / ellipse / nurb
+    double p0[3]     = { 0.0, 0.0, 0.0 };   // start (line/arc/nurb)
+    double p1[3]     = { 0.0, 0.0, 0.0 };   // end   (line/arc/nurb)
+    double center[3] = { 0.0, 0.0, 0.0 };   // arc/circle/ellipse centre
+    double radius    = 0.0;
+    double a0 = 0.0, a1 = 0.0;              // arc start/end angle (degrees)
+};
+
+// An extrude/revolve profile: the curves of the feature's built-in
+// sketch(es). This is what the scalar params (End E, draft, ...) act on.
+struct Profile
+{
+    int n_sketch = 0;
+    std::vector<ProfileCurve> curves;
+};
+
 // One walked feature in history order.
 struct FeatNode
 {
@@ -315,6 +335,9 @@ struct FeatNode
 #include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle)
 #include "zwapi_dataexchange.h"            // ZwExternalGeometryCopyDataGet/Free, szwExternalGeometryCopyData (CdGeomCopy)
 #include "zwapi_part_opts.h"               // cvxPartHistScrollTo (roll the history bar to read a feature in context)
+#include "zwapi_sketch_general.h"          // ZwSketch2DCurveListGet (extrude profile = a feature's built-in sketch)
+#include "zwapi_curve.h"                   // ZwCurveNURBSDataGet
+#include "zwapi_curve_data.h"              // szwCurve (line/arc/circle geometry)
 #include "zwapi_cmd_paramdefine_param.h"   // cvxDataGetAll / cvxDataGetNum / cvxDataGetPnt / cvxDataGetEnts /
                                            // cvxDataGetText / cvxFldDataFree / cvxDataFree;
                                            // svxFldData, evxFldType (VX_FLD_NUM / DST / ANG / PNT / ENT / TXT / DATA)
@@ -786,6 +809,86 @@ ResultEnts FeatureResultEnts(int idFtr)
     return r;
 }
 
+// Read an extrude/revolve feature's PROFILE: the curves of its built-in
+// sketch(es). cvxPartFtrInqAuxFtrs gives the feature's auxiliary
+// (built-in) sketches; ZwSketch2DCurveListGet enumerates each sketch's
+// curves; ZwCurveNURBSDataGet reads each curve's geometry. Points come
+// back in world 3D, so the profile is already positioned -- no separate
+// plane resolution needed to see its shape.
+void ReadProfile(int idFtr, Profile& out)
+{
+    int  n   = 0;
+    int* aux = nullptr;
+    if (cvxPartFtrInqAuxFtrs(idFtr, &n, &aux) != ZW_API_NO_ERROR || aux == nullptr || n < 1)
+    {
+        if (aux != nullptr) {
+            cvxMemFree(reinterpret_cast<void**>(&aux));
+        }
+        return;
+    }
+    out.n_sketch = n;
+
+    for (int i = 0; i < n; ++i)
+    {
+        szwEntityHandle skh;
+        if (ZwEntityIdTransfer(1, &aux[i], &skh) != ZW_API_NO_ERROR) {
+            continue;
+        }
+
+        int              cn     = 0;
+        szwEntityHandle* curves = nullptr;
+        if (ZwSketch2DCurveListGet(&skh, &cn, &curves) == ZW_API_NO_ERROR && curves != nullptr)
+        {
+            for (int c = 0; c < cn; ++c)
+            {
+                szwCurve cv;
+                if (ZwCurveNURBSDataGet(curves[c], 0, &cv) != ZW_API_NO_ERROR) {
+                    continue;
+                }
+                ProfileCurve pc;
+                const auto& I = cv.curveInformation;
+                switch (cv.type)
+                {
+                    case ZW_CURVE_LINE:
+                        pc.kind = "line";
+                        pc.p0[0] = I.line.startPoint.x; pc.p0[1] = I.line.startPoint.y; pc.p0[2] = I.line.startPoint.z;
+                        pc.p1[0] = I.line.endPoint.x;   pc.p1[1] = I.line.endPoint.y;   pc.p1[2] = I.line.endPoint.z;
+                        break;
+                    case ZW_CURVE_ARC:
+                        pc.kind = "arc";
+                        pc.radius = I.arc.radius;
+                        pc.a0 = I.arc.startAngle; pc.a1 = I.arc.endAngle;
+                        pc.p0[0] = I.arc.startPoint.x; pc.p0[1] = I.arc.startPoint.y; pc.p0[2] = I.arc.startPoint.z;
+                        pc.p1[0] = I.arc.endPoint.x;   pc.p1[1] = I.arc.endPoint.y;   pc.p1[2] = I.arc.endPoint.z;
+                        pc.center[0] = I.arc.centerPoint.x; pc.center[1] = I.arc.centerPoint.y; pc.center[2] = I.arc.centerPoint.z;
+                        break;
+                    case ZW_CURVE_CIRCLE:
+                        pc.kind = "circle";
+                        pc.radius = I.circle.radius;
+                        pc.center[0] = I.circle.centerPoint.x; pc.center[1] = I.circle.centerPoint.y; pc.center[2] = I.circle.centerPoint.z;
+                        break;
+                    case ZW_CURVE_ELLIPSE2:
+                        pc.kind = "ellipse";
+                        pc.radius = I.ellipse2.majorAxis;
+                        pc.center[0] = I.ellipse2.centerPoint.x; pc.center[1] = I.ellipse2.centerPoint.y; pc.center[2] = I.ellipse2.centerPoint.z;
+                        break;
+                    default:
+                        pc.kind = "nurb";
+                        pc.p0[0] = I.nurb.startPoint.x; pc.p0[1] = I.nurb.startPoint.y; pc.p0[2] = I.nurb.startPoint.z;
+                        pc.p1[0] = I.nurb.endPoint.x;   pc.p1[1] = I.nurb.endPoint.y;   pc.p1[2] = I.nurb.endPoint.z;
+                        break;
+                }
+                out.curves.push_back(pc);
+            }
+            ZwEntityHandleListFree(cn, &curves);
+        }
+
+        ZwEntityHandleFree(&skh);
+    }
+
+    cvxMemFree(reinterpret_cast<void**>(&aux));
+}
+
 } // namespace zwapi
 
 // ============================================================
@@ -1061,6 +1164,36 @@ json ResultEntsToJson(const ResultEnts& r)
     return j;
 }
 
+json ProfileToJson(const Profile& pr)
+{
+    json j;
+    j["n_sketch"] = pr.n_sketch;
+    json arr = json::array();
+    for (const auto& c : pr.curves)
+    {
+        json jc;
+        jc["kind"] = c.kind;
+        if (c.kind == "line" || c.kind == "arc" || c.kind == "nurb")
+        {
+            jc["p0"] = json::array({ c.p0[0], c.p0[1], c.p0[2] });
+            jc["p1"] = json::array({ c.p1[0], c.p1[1], c.p1[2] });
+        }
+        if (c.kind == "arc" || c.kind == "circle" || c.kind == "ellipse")
+        {
+            jc["center"] = json::array({ c.center[0], c.center[1], c.center[2] });
+            jc["radius"] = c.radius;
+        }
+        if (c.kind == "arc")
+        {
+            jc["a0"] = c.a0;
+            jc["a1"] = c.a1;
+        }
+        arr.push_back(std::move(jc));
+    }
+    j["curves"] = std::move(arr);
+    return j;
+}
+
 json GeomCopyToJson(const GeomCopyData& gc)
 {
     json j;
@@ -1220,6 +1353,17 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             diag["n_shape"] = re.n_shape;
             diag["n_face"]  = re.n_face;
             diag["n_curve"] = re.n_curve;
+
+            // Profile: an extrude/revolve's built-in sketch curves. This is
+            // the geometry its scalar params (End E, draft, ...) act on,
+            // and what a parametric reconstruction extrudes.
+            Profile pr;
+            zwapi::ReadProfile(fid, pr);
+            if (!pr.curves.empty()) {
+                jf["profile"] = ProfileToJson(pr);
+            }
+            diag["n_profile_sketch"] = pr.n_sketch;
+            diag["n_profile_curve"]  = static_cast<int>(pr.curves.size());
 
             // A shape-producing feature whose parameters the API won't give
             // us (e.g. CdGeomCopy, an imported base) needs its OWN geometry
