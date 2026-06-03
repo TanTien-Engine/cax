@@ -54,7 +54,6 @@ void SubSystem::initialize(VEC_pD &params, MAP_pD_pD &reductionmap)
     // relevant for the constraints listed in clist
     VEC_pD tmpplist;
     {
-        SET_pD s1(params.begin(), params.end());
         SET_pD s2;
         for (std::vector<Constraint *>::iterator constr=clist.begin();
              constr != clist.end(); ++constr) {
@@ -62,8 +61,19 @@ void SubSystem::initialize(VEC_pD &params, MAP_pD_pD &reductionmap)
             VEC_pD constr_params = (*constr)->params();
             s2.insert(constr_params.begin(), constr_params.end());
         }
-        std::set_intersection(s1.begin(), s1.end(), s2.begin(), s2.end(),
-                              std::back_inserter(tmpplist) );
+        // Select the params this subsystem's constraints use, IN `params`
+        // (insertion) order. The original code took a std::set_intersection of
+        // two std::set<double*>, which emits the result in pointer-ADDRESS
+        // order. ASLR randomizes those addresses every process launch, so the
+        // subsystem parameter order -- i.e. the Jacobian column order and the
+        // DogLeg's floating-point accumulation order -- changed run-to-run,
+        // making the solved coordinates (and any geometry OCCT derives from
+        // them) non-reproducible across runs. Iterating `params` selects the
+        // same set in a stable order, so the solve is deterministic.
+        for (VEC_pD::const_iterator itp=params.begin(); itp != params.end(); ++itp) {
+            if (s2.find(*itp) != s2.end())
+                tmpplist.push_back(*itp);
+        }
     }
 
     plist.clear();
