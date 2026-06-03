@@ -68,7 +68,7 @@ class Box is Node
 			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
 		}
 
-		var shape = PrimMaker.box(length, height, width, this.op_id)
+		var shape = PrimMaker.box(length, width, height, this.op_id)
 
 
 		if (shape) {
