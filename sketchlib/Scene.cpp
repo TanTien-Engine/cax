@@ -117,6 +117,25 @@ void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& 
         return;
     }
 
+    // A ref that names a real geometry which is not in the scene
+    // (construction / external geometry, or a geo the bridge could not
+    // build) cannot be wired. The m_geoid2index[...] lookups below use
+    // std::map::operator[], which silently inserts a missing id as
+    // index 0 -- aliasing the constraint onto the first geometry of a
+    // possibly different type. That then indexes the wrong primitive
+    // vector (m_circles / m_arcs / ...) out of bounds and segfaults the
+    // solver in a release build, where the assert() bounds checks in the
+    // Add*Cons helpers are compiled out. Drop the whole constraint
+    // instead: an unsolved degree of freedom is harmless, an OOB read is
+    // not. (None refs -- the unused slot of a unary constraint -- are
+    // expected and kept.)
+    auto geo_missing = [this](const Geo& g) {
+        return !is_none(g) && m_geoid2index.find(g.first) == m_geoid2index.end();
+    };
+    if (geo_missing(geo1) || geo_missing(geo2)) {
+        return;
+    }
+
     Constraint cons(id, type, geo1, geo2, val);
 
     size_t idx = m_cons.size();
@@ -126,8 +145,12 @@ void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& 
 
     double* cons_val = &m_cons.back().value;
 
-    int geo1_idx = m_geoid2index[geo1.first];
-    int geo2_idx = m_geoid2index[geo2.first];
+    auto idx_of = [this](const Geo& g) -> int {
+        auto it = m_geoid2index.find(g.first);
+        return it == m_geoid2index.end() ? -1 : static_cast<int>(it->second);
+    };
+    int geo1_idx = idx_of(geo1);
+    int geo2_idx = idx_of(geo2);
 
     switch (type)
     {
@@ -338,6 +361,21 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<Geo, Geo>& g
         return;
     }
 
+    auto g1 = geo1.first;
+    auto g2 = geo1.second;
+    auto g3 = geo2.first;
+    auto g4 = geo2.second;
+
+    // See the 2-geo overload: a real ref absent from the scene would be
+    // aliased to index 0 by operator[] and OOB the primitive vectors in
+    // a release build. Drop the constraint rather than crash.
+    auto geo_missing = [this](const Geo& g) {
+        return !is_none(g) && m_geoid2index.find(g.first) == m_geoid2index.end();
+    };
+    if (geo_missing(g1) || geo_missing(g2) || geo_missing(g3) || geo_missing(g4)) {
+        return;
+    }
+
     Constraint2 cons(id, type, geo1, geo2, val);
 
     size_t idx = m_cons2.size();
@@ -347,15 +385,14 @@ void Scene::AddConstraint(ConsID id, ConsType type, const std::pair<Geo, Geo>& g
 
     double* cons_val = &m_cons2.back().value;
 
-    auto g1 = geo1.first;
-    auto g2 = geo1.second;
-    auto g3 = geo2.first;
-    auto g4 = geo2.second;
-
-    int geo1_idx = m_geoid2index[g1.first];
-    int geo2_idx = m_geoid2index[g2.first];
-    int geo3_idx = m_geoid2index[g3.first];
-    int geo4_idx = m_geoid2index[g4.first];
+    auto idx_of = [this](const Geo& g) -> int {
+        auto it = m_geoid2index.find(g.first);
+        return it == m_geoid2index.end() ? -1 : static_cast<int>(it->second);
+    };
+    int geo1_idx = idx_of(g1);
+    int geo2_idx = idx_of(g2);
+    int geo3_idx = idx_of(g3);
+    int geo4_idx = idx_of(g4);
 
     switch (type)
     {
@@ -383,7 +420,7 @@ bool Scene::Solve(const std::vector<std::pair<GeoID, std::shared_ptr<gs::Shape2D
 
     int status = m_gcs->solve();
 //    int status = m_gcs->solve(true, GCS::BFGS);
-    if (status == GCS::Success) 
+    if (status == GCS::Success)
     {
         m_gcs->applySolution();
         AfterSolve(geos);
