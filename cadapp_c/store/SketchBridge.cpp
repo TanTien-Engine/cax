@@ -67,6 +67,25 @@ sketchlib::ConsType MapConsType(SkConsType t)
     }
 }
 
+// FreeCAD stores one Radius/Diameter constraint that applies to circles AND
+// arcs, and the reader maps both to Circle{Radius,Diameter}. sketchlib's
+// Circle{Radius,Diameter} handlers only accept circles, so a radius/diameter
+// that actually references an arc silently no-ops -- leaving the arc's radius
+// a free DOF, so the solver drifts the arc and the sketch collapses. Retarget
+// to the Arc{Radius,Diameter} form (whose handlers already exist) when the
+// referenced geometry is an arc.
+sketchlib::ConsType RetargetRadiusForArc(sketchlib::ConsType t,
+                                         SkGeoType a_type, SkGeoType b_type)
+{
+    using S = sketchlib::ConsType;
+    if (a_type != SkGeoType::Arc && b_type != SkGeoType::Arc) {
+        return t;
+    }
+    if (t == S::CircleRadius)   { return S::ArcRadius; }
+    if (t == S::CircleDiameter) { return S::ArcDiameter; }
+    return t;
+}
+
 // SkPointPos + geo type -> sketchlib::Geo (pair<GeoID, GeoType>)
 sketchlib::Geo MakeGeo(uint32_t geo_id, SkPointPos pos, SkGeoType geo_type)
 {
@@ -325,6 +344,8 @@ bool SketchBridge::ImportToScene(const SketchStore& store,
         auto a_geo_type = FindGeoType(store, sketch_idx, c.a_geo_id);
         auto b_geo_type = FindGeoType(store, sketch_idx, c.b_geo_id);
 
+        skl_type = RetargetRadiusForArc(skl_type, a_geo_type, b_geo_type);
+
         auto a = MakeGeo(c.a_geo_id, (SkPointPos)c.a_point_pos, a_geo_type);
         auto b = MakeGeo(c.b_geo_id, (SkPointPos)c.b_point_pos, b_geo_type);
 
@@ -363,6 +384,8 @@ bool SketchBridge::ImportToScene(const SketchIR&   sketch,
 
         auto a_geo_type = FindGeoType(sketch, c.a.geo_id);
         auto b_geo_type = FindGeoType(sketch, c.b.geo_id);
+
+        skl_type = RetargetRadiusForArc(skl_type, a_geo_type, b_geo_type);
 
         auto a = MakeGeo(c.a.geo_id, c.a.point_pos, a_geo_type);
         auto b = MakeGeo(c.b.geo_id, c.b.point_pos, b_geo_type);

@@ -213,12 +213,22 @@ void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& 
     case ConsType::Perpendicular:
         if (is_line(geo1) && is_line(geo2)) {
             AddPerpendicularCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_point(geo1) && is_point(geo2)) {
+            // FreeCAD encodes a corner where two curves meet perpendicularly
+            // as an endpoint-to-endpoint Perpendicular (both refs are
+            // endpoints), which implies the endpoints coincide. Tie them so
+            // the profile corner closes. The perpendicularity of the curve
+            // tangents needs the owning-curve type (an endpoint Geo ref does
+            // not carry it); the coincidence is the part that keeps the wire
+            // from collapsing.
+            AddP2PCoincidentCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), driving);
         }
         break;
     case ConsType::Coincident:
         if (is_point(geo1) && is_point(geo2)) {
             AddP2PCoincidentCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), driving);
         }
+        break;
     case ConsType::Horizontal:
         if (is_point(geo1) && is_point(geo2)) {
             AddHorizontalCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), driving);
@@ -311,6 +321,17 @@ void Scene::AddConstraint(ConsID id, ConsType type, const Geo& geo1, const Geo& 
             AddA2CTangentCons(id, geo1_idx, geo2_idx, driving);
         } else if (is_arc(geo1) && is_arc(geo2)) {
             AddA2ATangentCons(id, geo1_idx, geo2_idx, driving);
+        } else if (is_point(geo1) && is_point(geo2)) {
+            // Endpoint-to-endpoint tangent (a FreeCAD corner): both refs are
+            // endpoints, which implies the endpoints coincide. Tie them so
+            // the profile closes. The smooth-tangent angle itself needs the
+            // owning-curve type (not carried by an endpoint Geo ref) plus a
+            // GCS angle-via-point constraint; the coincidence alone is what
+            // stops the under-constrained corner from collapsing. Note: this
+            // deliberately does NOT add a whole-curve tangent, which would
+            // over-constrain a shared-endpoint pair into a degenerate wire
+            // that hangs OCCT's ShapeAnalysis_Wire downstream.
+            AddP2PCoincidentCons(id, geo1_idx, get_point_pos(geo1), geo2_idx, get_point_pos(geo2), driving);
         }
         break;
     case ConsType::TangentCircumf:
