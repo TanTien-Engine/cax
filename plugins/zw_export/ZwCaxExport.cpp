@@ -86,6 +86,20 @@
 #include <string>
 #include <vector>
 
+// ZW3D's C API hands back file paths as UTF-8. On Windows the CRT's narrow
+// std::fopen opens paths in the ANSI code page, so a non-ASCII path (e.g. a
+// Chinese part name) never opens. We need MultiByteToWideChar + _wfopen to
+// write the snapshot the way ZW3D's own cvxFileExport writes the STEP.
+#ifdef _WIN32
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#endif
+
 namespace
 {
 
@@ -817,76 +831,116 @@ ResultEnts FeatureResultEnts(int idFtr)
 // plane resolution needed to see its shape.
 void ReadProfile(int idFtr, Profile& out)
 {
-    int  n   = 0;
-    int* aux = nullptr;
-    if (cvxPartFtrInqAuxFtrs(idFtr, &n, &aux) != ZW_API_NO_ERROR || aux == nullptr || n < 1)
+    // Read every 2D curve of one sketch (by handle) into out.curves. Shared
+    // by the built-in-sketch path and the standalone-sketch fallback below.
+    auto read_sketch_curves = [&](szwEntityHandle& skh)
     {
-        if (aux != nullptr) {
-            cvxMemFree(reinterpret_cast<void**>(&aux));
-        }
-        return;
-    }
-    out.n_sketch = n;
-
-    for (int i = 0; i < n; ++i)
-    {
-        szwEntityHandle skh;
-        if (ZwEntityIdTransfer(1, &aux[i], &skh) != ZW_API_NO_ERROR) {
-            continue;
-        }
-
         int              cn     = 0;
         szwEntityHandle* curves = nullptr;
-        if (ZwSketch2DCurveListGet(&skh, &cn, &curves) == ZW_API_NO_ERROR && curves != nullptr)
-        {
-            for (int c = 0; c < cn; ++c)
-            {
-                szwCurve cv;
-                if (ZwCurveNURBSDataGet(curves[c], 0, &cv) != ZW_API_NO_ERROR) {
-                    continue;
-                }
-                ProfileCurve pc;
-                const auto& I = cv.curveInformation;
-                switch (cv.type)
-                {
-                    case ZW_CURVE_LINE:
-                        pc.kind = "line";
-                        pc.p0[0] = I.line.startPoint.x; pc.p0[1] = I.line.startPoint.y; pc.p0[2] = I.line.startPoint.z;
-                        pc.p1[0] = I.line.endPoint.x;   pc.p1[1] = I.line.endPoint.y;   pc.p1[2] = I.line.endPoint.z;
-                        break;
-                    case ZW_CURVE_ARC:
-                        pc.kind = "arc";
-                        pc.radius = I.arc.radius;
-                        pc.a0 = I.arc.startAngle; pc.a1 = I.arc.endAngle;
-                        pc.p0[0] = I.arc.startPoint.x; pc.p0[1] = I.arc.startPoint.y; pc.p0[2] = I.arc.startPoint.z;
-                        pc.p1[0] = I.arc.endPoint.x;   pc.p1[1] = I.arc.endPoint.y;   pc.p1[2] = I.arc.endPoint.z;
-                        pc.center[0] = I.arc.centerPoint.x; pc.center[1] = I.arc.centerPoint.y; pc.center[2] = I.arc.centerPoint.z;
-                        break;
-                    case ZW_CURVE_CIRCLE:
-                        pc.kind = "circle";
-                        pc.radius = I.circle.radius;
-                        pc.center[0] = I.circle.centerPoint.x; pc.center[1] = I.circle.centerPoint.y; pc.center[2] = I.circle.centerPoint.z;
-                        break;
-                    case ZW_CURVE_ELLIPSE2:
-                        pc.kind = "ellipse";
-                        pc.radius = I.ellipse2.majorAxis;
-                        pc.center[0] = I.ellipse2.centerPoint.x; pc.center[1] = I.ellipse2.centerPoint.y; pc.center[2] = I.ellipse2.centerPoint.z;
-                        break;
-                    default:
-                        pc.kind = "nurb";
-                        pc.p0[0] = I.nurb.startPoint.x; pc.p0[1] = I.nurb.startPoint.y; pc.p0[2] = I.nurb.startPoint.z;
-                        pc.p1[0] = I.nurb.endPoint.x;   pc.p1[1] = I.nurb.endPoint.y;   pc.p1[2] = I.nurb.endPoint.z;
-                        break;
-                }
-                out.curves.push_back(pc);
-            }
-            ZwEntityHandleListFree(cn, &curves);
+        if (ZwSketch2DCurveListGet(&skh, &cn, &curves) != ZW_API_NO_ERROR || curves == nullptr) {
+            return;
         }
+        for (int c = 0; c < cn; ++c)
+        {
+            szwCurve cv;
+            if (ZwCurveNURBSDataGet(curves[c], 0, &cv) != ZW_API_NO_ERROR) {
+                continue;
+            }
+            ProfileCurve pc;
+            const auto& I = cv.curveInformation;
+            switch (cv.type)
+            {
+                case ZW_CURVE_LINE:
+                    pc.kind = "line";
+                    pc.p0[0] = I.line.startPoint.x; pc.p0[1] = I.line.startPoint.y; pc.p0[2] = I.line.startPoint.z;
+                    pc.p1[0] = I.line.endPoint.x;   pc.p1[1] = I.line.endPoint.y;   pc.p1[2] = I.line.endPoint.z;
+                    break;
+                case ZW_CURVE_ARC:
+                    pc.kind = "arc";
+                    pc.radius = I.arc.radius;
+                    pc.a0 = I.arc.startAngle; pc.a1 = I.arc.endAngle;
+                    pc.p0[0] = I.arc.startPoint.x; pc.p0[1] = I.arc.startPoint.y; pc.p0[2] = I.arc.startPoint.z;
+                    pc.p1[0] = I.arc.endPoint.x;   pc.p1[1] = I.arc.endPoint.y;   pc.p1[2] = I.arc.endPoint.z;
+                    pc.center[0] = I.arc.centerPoint.x; pc.center[1] = I.arc.centerPoint.y; pc.center[2] = I.arc.centerPoint.z;
+                    break;
+                case ZW_CURVE_CIRCLE:
+                    pc.kind = "circle";
+                    pc.radius = I.circle.radius;
+                    pc.center[0] = I.circle.centerPoint.x; pc.center[1] = I.circle.centerPoint.y; pc.center[2] = I.circle.centerPoint.z;
+                    break;
+                case ZW_CURVE_ELLIPSE2:
+                    pc.kind = "ellipse";
+                    pc.radius = I.ellipse2.majorAxis;
+                    pc.center[0] = I.ellipse2.centerPoint.x; pc.center[1] = I.ellipse2.centerPoint.y; pc.center[2] = I.ellipse2.centerPoint.z;
+                    break;
+                default:
+                    pc.kind = "nurb";
+                    pc.p0[0] = I.nurb.startPoint.x; pc.p0[1] = I.nurb.startPoint.y; pc.p0[2] = I.nurb.startPoint.z;
+                    pc.p1[0] = I.nurb.endPoint.x;   pc.p1[1] = I.nurb.endPoint.y;   pc.p1[2] = I.nurb.endPoint.z;
+                    break;
+            }
+            out.curves.push_back(pc);
+        }
+        ZwEntityHandleListFree(cn, &curves);
+    };
 
-        ZwEntityHandleFree(&skh);
+    // 1) Built-in / auxiliary sketches: an extrude that carries its own
+    //    inline profile (the dkba case). cvxPartFtrInqAuxFtrs returns those
+    //    aux features; each transfers to a sketch handle.
+    int  n   = 0;
+    int* aux = nullptr;
+    if (cvxPartFtrInqAuxFtrs(idFtr, &n, &aux) == ZW_API_NO_ERROR && aux != nullptr && n > 0)
+    {
+        out.n_sketch = n;
+        for (int i = 0; i < n; ++i)
+        {
+            szwEntityHandle skh;
+            if (ZwEntityIdTransfer(1, &aux[i], &skh) != ZW_API_NO_ERROR) {
+                continue;
+            }
+            read_sketch_curves(skh);
+            ZwEntityHandleFree(&skh);
+        }
+    }
+    if (aux != nullptr) {
+        cvxMemFree(reinterpret_cast<void**>(&aux));
     }
 
-    cvxMemFree(reinterpret_cast<void**>(&aux));
+    // 2) Fallback: a STANDALONE sketch feature consumed as the profile (the
+    //    高压泡沫混合 case -- Sketch1/2/... are their OWN history features).
+    //    cvxPartInqFtrList omits them by design ("Non-feature type history
+    //    operations will not be output, such as ... sketch"), and they are
+    //    not auxiliary, so cvxPartFtrInqAuxFtrs above finds nothing. But the
+    //    extrude still REFERENCES that sketch in its data container -- pull
+    //    it by entity type (VX_ENT_SKETCH) via cvxPartFtrInqInpEnts and read
+    //    its curves the same way. The caller has already rolled history to
+    //    idFtr, the in-context state cvxPartFtrInqInpEnts needs.
+    if (out.curves.empty())
+    {
+        int  cnt = 0;
+        int* ids = nullptr;
+        if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_SKETCH, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr)
+        {
+            int got = 0;
+            for (int i = 0; i < cnt; ++i)
+            {
+                if (ids[i] <= 0) {
+                    continue;
+                }
+                szwEntityHandle skh;
+                if (ZwEntityIdTransfer(1, &ids[i], &skh) != ZW_API_NO_ERROR) {
+                    continue;
+                }
+                read_sketch_curves(skh);
+                ZwEntityHandleFree(&skh);
+                ++got;
+            }
+            out.n_sketch = got;
+            // cvxPartFtrInqInpEnts's list is freed with ZwMemoryFree (per its
+            // own docs), NOT cvxMemFree like the older cvxPart* inquiries.
+            ZwMemoryFree(reinterpret_cast<void**>(&ids));
+        }
+    }
 }
 
 } // namespace zwapi
@@ -1229,6 +1283,38 @@ std::string FeatStepPath(const std::string& out_path, uint32_t id)
     return p + ".feat" + std::to_string(id) + ".step";
 }
 
+// Open a file for binary writing through a Unicode-safe path. ZW3D's C API
+// returns paths in UTF-8; the CRT's narrow std::fopen opens them in the
+// ANSI code page, so a Chinese (or any non-ASCII) part name fails to open
+// even though the sibling STEP -- written by ZW3D's own Unicode-aware
+// cvxFileExport -- lands fine. Convert UTF-8 -> UTF-16 and use _wfopen so
+// the JSON write matches cvxFileExport's behaviour. Falls back to the
+// system ANSI code page if the bytes aren't valid UTF-8 (an older SDK that
+// hands back GBK). On non-Windows, plain fopen already handles UTF-8.
+FILE* OpenWriteBinary(const std::string& path)
+{
+#ifdef _WIN32
+    UINT cp  = CP_UTF8;
+    int  len = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS,
+                                   path.c_str(), -1, nullptr, 0);
+    if (len == 0)
+    {
+        cp  = CP_ACP;   // not valid UTF-8 -> treat as system ANSI (e.g. GBK)
+        len = MultiByteToWideChar(cp, 0, path.c_str(), -1, nullptr, 0);
+    }
+    if (len == 0)
+    {
+        return nullptr;
+    }
+    std::wstring wpath(static_cast<size_t>(len), L'\0');
+    MultiByteToWideChar(cp, (cp == CP_UTF8) ? MB_ERR_INVALID_CHARS : 0,
+                        path.c_str(), -1, &wpath[0], len);
+    return _wfopen(wpath.c_str(), L"wb");
+#else
+    return std::fopen(path.c_str(), "wb");
+#endif
+}
+
 } // namespace
 
 // ============================================================
@@ -1424,9 +1510,16 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         doc["geometry_diag"] = std::move(gdiag);
     }
 
-    std::string text = doc.dump(2);
+    // error_handler::replace, not the default strict: a feature label /
+    // layer name / external-file path read off the part can carry bytes
+    // that aren't valid UTF-8 (e.g. a GBK string from an older field), and
+    // strict dump() THROWS on the first such byte -- which would abort the
+    // whole export after the STEPs were already written, looking exactly
+    // like a failed file open. Replace the offending bytes with U+FFFD so
+    // a stray label never costs us the entire snapshot.
+    std::string text = doc.dump(2, ' ', false, json::error_handler_t::replace);
 
-    FILE* fp = std::fopen(out_path.c_str(), "wb");
+    FILE* fp = OpenWriteBinary(out_path);
     if (!fp)
     {
         err = "ExportActivePartToCax: cannot open output: " + out_path;
