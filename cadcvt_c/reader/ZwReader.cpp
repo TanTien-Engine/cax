@@ -460,6 +460,20 @@ bool ZwReader::ReadFile(const std::string& path,
     // else: keep whatever SetUnitScale left.
     const double s = m_unit_scale;
 
+    // Directory of the .cax.json, used to resolve the sibling per-feature
+    // STEP refs (CdGeomCopy's authored base geometry).
+    std::string doc_dir;
+    {
+        auto sl = path.find_last_of("/\\");
+        if (sl != std::string::npos) {
+            doc_dir = path.substr(0, sl + 1);
+        }
+    }
+
+    // Running body tip: the last solid-producing feature's id, so a boss
+    // extrude fuses onto the imported base instead of floating standalone.
+    uint32_t running_solid_id = 0;
+
     try
     {
         const auto& features = doc.at("document").at("features");
@@ -531,12 +545,41 @@ bool ZwReader::ReadFile(const std::string& path,
             {
                 std::string zt = JStr(jf, "zw_type", "Unknown");
 
+                // CdGeomCopy that imports a SOLID base -> FeatPayloadBakedShape
+                // (an authored body root). The Replayer makes a const node
+                // from doc.authored_shapes[id], which ZwLoader fills by
+                // loading the per-feature STEP referenced in zw_geometry.
+                // Heuristic: a closed solid has several faces (n_face >= 4);
+                // a CdGeomCopy of a couple of reference surfaces stays opaque.
+                {
+                    auto geo = jf.find("geometry");
+                    int  n_face = 0;
+                    auto re = jf.find("result_ents");
+                    if (re != jf.end()) {
+                        n_face = JGet<int>(*re, "n_face", 0);
+                    }
+                    if (zt == "CdGeomCopy" && geo != jf.end() &&
+                        geo->is_string() && n_face >= 4)
+                    {
+                        cadapp::FeatPayloadBakedShape pl;
+                        cadapp::FeatureIR f;
+                        f.id   = id;
+                        f.type = cadapp::FeatType::BakedShape;
+                        f.name = name;
+                        f.data = std::move(pl);
+                        f.ext_strings["zw_type"]     = zt;
+                        f.ext_strings["zw_geometry"] = doc_dir + geo->get<std::string>();
+                        out.features.push_back(std::move(f));
+                        running_solid_id = id;
+                        continue;
+                    }
+                }
+
                 // ZW3D solid extrude (FtAllExt) with a closed built-in
-                // profile -> reconstruct as Sketch + BossExtrude. Standalone
-                // for now (no base input): this validates that the profile +
-                // depth replay into the right solid, before wiring it onto
-                // the imported CdGeomCopy base. A profile with < 3 curves
-                // (e.g. the single-line surface extrude) is left opaque.
+                // profile -> reconstruct as Sketch + BossExtrude, fused onto
+                // the running body (the imported base) when there is one.
+                // A profile with < 3 curves (e.g. the single-line surface
+                // extrude) is left opaque.
                 auto prof = jf.find("profile");
                 if (zt == "FtAllExt" && prof != jf.end() &&
                     prof->contains("curves") && prof->at("curves").is_array() &&
@@ -573,7 +616,15 @@ bool ZwReader::ReadFile(const std::string& path,
                     ef.type = cadapp::FeatType::BossExtrude;
                     ef.name = name;
                     ef.data = std::move(epl);
+
+                    // Fuse onto the running body (the imported base) when
+                    // present; the Replayer's boss-extrude arm boolean-adds
+                    // the prism to the base input. Otherwise standalone.
+                    if (running_solid_id != 0) {
+                        PushInput(ef, running_solid_id, cadapp::InputRole::Base);
+                    }
                     out.features.push_back(std::move(ef));
+                    running_solid_id = id;
                     continue;
                 }
 
@@ -661,3 +712,4 @@ bool ZwReader::ReadFile(const std::string& path,
 } // namespace cadcvt
 
 #endif // CAX_ZW_OK
+    

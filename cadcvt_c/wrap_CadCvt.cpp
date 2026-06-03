@@ -8,8 +8,11 @@
 
 #include "brepkit_c/TransHelper.h"
 #include "brepkit_c/TopoShape.h"
+#include "brepkit_c/GlobalConfig.h"
 
 #include "brepgraph_c/computation/CalcGraph.h"
+#include "brepdb_c/WorldSender.h"
+#include "brepdb_c/VersionTree.h"
 
 #ifdef CAX_ASMSOLVER_OK
 #include "cadcvt_c/AsmSession.h"
@@ -20,6 +23,11 @@
 #include <BRep_Builder.hxx>
 #include <TopoDS_Compound.hxx>
 #include <TopoDS_Shape.hxx>
+#include <STEPControl_Reader.hxx>
+#include <IFSelect_ReturnStatus.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <gp_Trsf.hxx>
+#include <gp_Pnt.hxx>
 
 #include <chrono>
 #include <cstdio>
@@ -1299,6 +1307,56 @@ void w_ZwLoader_load()
         st->last_error = err.empty() ? "ReadFile failed" : err;
         ves_set_nil(0);
         return;
+    }
+
+    // Load per-feature authored geometry (CdGeomCopy STEP refs the
+    // SDK-free ZwReader could only record as paths) into authored_shapes.
+    // The Replayer's BakedShape arm turns each into a body-root node.
+    // OCCT lives here in the loader, not in the reader (Reader.h contract).
+    for (auto& feat : doc.features)
+    {
+        auto it = feat.ext_strings.find("zw_geometry");
+        if (it == feat.ext_strings.end() || it->second.empty()) {
+            continue;
+        }
+        STEPControl_Reader rd;
+        if (rd.ReadFile(it->second.c_str()) != IFSelect_RetDone) {
+            continue;   // missing/unreadable -> Replayer reports the gap
+        }
+        rd.TransferRoots();
+        TopoDS_Shape shp = rd.OneShape();
+        if (shp.IsNull()) {
+            continue;
+        }
+        // OCCT reads ZW3D's STEP in its native unit (mm); scale by the
+        // reader's unit_scale (mm -> m) about the origin so the authored
+        // base matches the metre-scaled parametric features. Same origin
+        // scaling the reader applied to the 2D profile coords.
+        const double sc = st->reader.UnitScale();
+        if (sc != 1.0) {
+            gp_Trsf t;
+            t.SetScale(gp_Pnt(0.0, 0.0, 0.0), sc);
+            shp = BRepBuilderAPI_Transform(shp, t, true).Shape();
+        }
+        auto ts = std::make_shared<brepkit::TopoShape>(shp);
+
+        // Register the imported base as a VersionTree root (mirrors
+        // PrimMaker::Box). Without a version id, a downstream boolean
+        // fusing onto it asserts in VersionTree::Merge (the parent id is
+        // unknown) when the result is serialized / meshed. The editable
+        // RebuildHistory graph evaluates against GlobalConfig's tree, so
+        // register there.
+        auto gc = brepkit::GlobalConfig::Instance();
+        auto tn = gc ? gc->GetTopoNaming()  : nullptr;
+        auto vt = gc ? gc->GetVersionTree() : nullptr;
+        if (tn && vt) {
+            brepdb::BRepWorld  world;
+            brepdb::WorldSender sender(tn);
+            sender.Serialize(ts->GetShape(), world);
+            ts->SetVersionId(vt->AddRoot(world, "zw_base"));
+        }
+
+        doc.authored_shapes[feat.id] = ts;
     }
 
     cadapp::ReplayOptions opt;

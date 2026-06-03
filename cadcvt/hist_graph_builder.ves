@@ -85,6 +85,28 @@ class HistGraphBuilder
         // Pass 1: create a node per non-const step and fill its params.
         for (var step = 0; step < n; step = step + 1) {
             var op = graph.get_step_op_name(step)
+
+            // A $shape const is a baked shape VALUE used as a body input
+            // (e.g. an authored / imported base feeding a boolean -- the
+            // ZW3D CdGeomCopy base under a fuse). Materialize it as a
+            // BakedShape source node so consumers (fuse / cut / common)
+            // can wire from it; without this the consumer loses that
+            // input. Other consts ($num / $vec3 / $sketch / ...) stay
+            // immediate params and are skipped below.
+            if (op == "$shape") {
+                var scol  = HistGraphBuilder.column_of(graph, step, depth)
+                var srow  = col_rows[scol]
+                var snode = HistGraphBuilder.make_baked(graph, step)
+                if (snode) {
+                    editor.add_node(snode, ox + scol * 200, oy + srow * 110)
+                    step2node[step] = snode
+                    depth[step] = scol
+                    col_rows[scol] = srow + 1
+                    created = created + 1
+                }
+                continue
+            }
+
             if (CONST_OPS.contains(op)) {
                 continue
             }

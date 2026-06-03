@@ -67,6 +67,14 @@ public:
         m_unit_scale = s;
     }
 
+    // The scale actually in effect after the last ReadFile (resolved from
+    // the file's length_unit). The ZwLoader applies it to STEP-loaded
+    // authored geometry, which OCCT reads in the file's native unit (mm),
+    // so it matches the metre-scaled parametric features.
+    double UnitScale() const {
+        return m_unit_scale;
+    }
+
     // When true the reader fails on any unknown feature kind. When
     // false (default) unknown kinds become FeatPayloadOpaque and the
     // walk continues.

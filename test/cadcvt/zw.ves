@@ -36,8 +36,8 @@ _editor.add_node(node3, 392.18895050427, 211.79090897199)
 // LoadZw: .cax.json -> TopoShape. unit_scale 0.001 maps ZW3D mm to
 // the project's metre convention.
 var node4 = ::cadcvt::nodes::load_zw::LoadZw()
-//node4.query_param("path").value = "D:/projects/cad/zw3d/dkba80218026-2200_10.Z3PRT.cax.json"
-node4.query_param("path").value = "D:/projects/tantien-cad/thirdparty/cax/test/cadcvt_c/golden/fixtures/zw/box.cax.json"
+node4.query_param("path").value = "D:/projects/cad/zw3d/dkba80218026-2200_10.Z3PRT.cax.json"
+//node4.query_param("path").value = "D:/projects/tantien-cad/thirdparty/cax/test/cadcvt_c/golden/fixtures/zw/box.cax.json"
 node4.query_param("unit_scale").value = 0.001
 node4.query_param("strict").value = false
 
