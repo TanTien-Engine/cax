@@ -30,6 +30,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -331,6 +332,80 @@ void ApplyInputs(const json& jf, cadapp::FeatureIR& feat)
     }
 }
 
+// ---- ZW3D feature-style helpers (opaque features that carry richer data) -
+
+// Value of a feature data-container field by its stable id, from the full
+// "fields" dump the plugin emits on opaque features. Returns def if absent.
+double FieldValueById(const json& jf, int fld_id, double def)
+{
+    auto fit = jf.find("fields");
+    if (fit == jf.end() || !fit->is_array()) {
+        return def;
+    }
+    for (const auto& fd : *fit)
+    {
+        auto idit = fd.find("id");
+        if (idit != fd.end() && idit->is_number() && idit->get<int>() == fld_id)
+        {
+            auto vit = fd.find("value");
+            if (vit != fd.end() && vit->is_number()) {
+                return vit->get<double>();
+            }
+        }
+    }
+    return def;
+}
+
+// Build a SketchIR from a ZW3D extrude's built-in profile ("profile" block:
+// a list of world-3D curves). First cut assumes the profile lies on the XY
+// plane (z==0 for the test part), so the sketch plane is XY and 2D coords
+// are the world (x,y). General plane fitting from the curve points is TODO.
+void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
+                            cadapp::SketchIR& sk)
+{
+    sk.feature_id = feature_id;
+    sk.plane_origin[0] = 0.0; sk.plane_origin[1] = 0.0; sk.plane_origin[2] = 0.0;
+    sk.plane_x_dir[0]  = 1.0; sk.plane_x_dir[1]  = 0.0; sk.plane_x_dir[2]  = 0.0;
+    sk.plane_normal[0] = 0.0; sk.plane_normal[1] = 0.0; sk.plane_normal[2] = 1.0;
+
+    auto cit = profile.find("curves");
+    if (cit == profile.end() || !cit->is_array()) {
+        return;
+    }
+
+    const double kDegToRad = 3.14159265358979323846 / 180.0;
+    uint32_t gid = 1;
+    for (const auto& c : *cit)
+    {
+        const std::string ck = JStr(c, "kind", "");
+        if (ck == "line")
+        {
+            const auto& a = c.at("p0");
+            const auto& b = c.at("p1");
+            sk.geos.push_back(cadapp::SkGeoIR::Line(gid++,
+                a.at(0).get<double>() * s, a.at(1).get<double>() * s,
+                b.at(0).get<double>() * s, b.at(1).get<double>() * s));
+        }
+        else if (ck == "circle")
+        {
+            const auto& ctr = c.at("center");
+            double r = c.at("radius").get<double>() * s;
+            sk.geos.push_back(cadapp::SkGeoIR::Circle(gid++,
+                ctr.at(0).get<double>() * s, ctr.at(1).get<double>() * s, r));
+        }
+        else if (ck == "arc")
+        {
+            const auto& ctr = c.at("center");
+            double r  = c.at("radius").get<double>() * s;
+            double a0 = JGet<double>(c, "a0", 0.0) * kDegToRad;  // szwCurve angles
+            double a1 = JGet<double>(c, "a1", 0.0) * kDegToRad;  // are in degrees
+            sk.geos.push_back(cadapp::SkGeoIR::Arc(gid++,
+                ctr.at(0).get<double>() * s, ctr.at(1).get<double>() * s, r, a0, a1));
+        }
+        // nurb / ellipse: not reconstructed yet (TODO).
+    }
+}
+
 } // namespace
 
 ZwReader::ZwReader() = default;
@@ -454,6 +529,54 @@ bool ZwReader::ReadFile(const std::string& path,
             }
             else
             {
+                std::string zt = JStr(jf, "zw_type", "Unknown");
+
+                // ZW3D solid extrude (FtAllExt) with a closed built-in
+                // profile -> reconstruct as Sketch + BossExtrude. Standalone
+                // for now (no base input): this validates that the profile +
+                // depth replay into the right solid, before wiring it onto
+                // the imported CdGeomCopy base. A profile with < 3 curves
+                // (e.g. the single-line surface extrude) is left opaque.
+                auto prof = jf.find("profile");
+                if (zt == "FtAllExt" && prof != jf.end() &&
+                    prof->contains("curves") && prof->at("curves").is_array() &&
+                    prof->at("curves").size() >= 3)
+                {
+                    const uint32_t sketch_fid = 1000000u + id;
+
+                    cadapp::SketchIR sk;
+                    sk.name = name + ":profile";
+                    BuildSketchFromProfile(*prof, s, sketch_fid, sk);
+                    out.sketches.push_back(std::move(sk));
+
+                    cadapp::FeatPayloadSketch spl;
+                    spl.sketch_id = sketch_fid;
+                    cadapp::FeatureIR sf;
+                    sf.id   = sketch_fid;
+                    sf.type = cadapp::FeatType::Sketch;
+                    sf.name = name + ":profile";
+                    sf.data = std::move(spl);
+                    out.features.push_back(std::move(sf));
+
+                    // depth = End E (fld 3) - Start S (fld 2), from the field
+                    // dump; magnitude (direction resolved from plane normal).
+                    double endE   = FieldValueById(jf, 3, 0.0);
+                    double startS = FieldValueById(jf, 2, 0.0);
+                    double depth  = std::fabs(endE - startS) * s;
+
+                    cadapp::FeatPayloadExtrude epl;
+                    epl.sketch_id = sketch_fid;
+                    epl.distance  = depth;
+                    epl.end_type  = cadapp::ExtrudeEndType::Blind;
+                    cadapp::FeatureIR ef;
+                    ef.id   = id;
+                    ef.type = cadapp::FeatType::BossExtrude;
+                    ef.name = name;
+                    ef.data = std::move(epl);
+                    out.features.push_back(std::move(ef));
+                    continue;
+                }
+
                 if (m_strict) {
                     return fail("ZwReader: unknown feature kind '" + kind +
                                 "' for feature " + name);
@@ -461,7 +584,6 @@ bool ZwReader::ReadFile(const std::string& path,
                 // Opaque: visible in the IR, carries its raw ZW3D type,
                 // and is NOT wired into the body chain (no inputs), so
                 // the recognised features still replay around it.
-                std::string zt = JStr(jf, "zw_type", "Unknown");
                 cadapp::FeatPayloadOpaque pl;
                 pl.strings["zw_type"] = zt;
 

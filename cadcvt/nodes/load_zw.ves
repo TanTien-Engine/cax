@@ -1,0 +1,114 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_STRING, VAR_TYPE_NUMBER, VAR_TYPE_BOOLEAN
+import "blueprint.node_helper" for NodeHelper
+import "brepkit.variant" for VAR_TOPO_SHAPE
+import "cadcvt" for ZwLoader
+
+// ============================================================
+// cadcvt::nodes::load_zw::LoadZw
+//
+// Reads the ZW3D neutral intermediate (.cax.json, emitted by the
+// zw_export plugin running inside ZW3D) through cadcvt::ZwReader +
+// Replayer and exposes the resulting OCCT shape as a TopoShape output.
+//
+// SDK-free: unlike LoadSw (which drives an installed SolidWorks via
+// COM), nothing here needs a ZW3D runtime -- the .cax.json already
+// carries the parametric features + authored geometry refs.
+//
+// Inputs:
+//   path       string  - .cax.json file path
+//   unit_scale number  - length multiplier (0.001: ZW3D mm -> metres)
+//   strict     boolean - fail on unknown ZW3D feature kinds
+//
+// Outputs:
+//   shape              TopoShape (merged body; nil on failure)
+// ============================================================
+
+class LoadZw is Node
+{
+    init()
+    {
+        super.init()
+
+        this.imports = [
+            Pin(this, "path",       VAR_TYPE_STRING),
+            Pin(this, "unit_scale", VAR_TYPE_NUMBER),
+            Pin(this, "strict",     VAR_TYPE_BOOLEAN),
+        ]
+        this.exports = [
+            Pin(this, "shape", VAR_TOPO_SHAPE),
+        ]
+
+        this.params.add(NodeParam("path", ""))
+        this.params.add(NodeParam("unit_scale", 0.001))
+        this.params.add(NodeParam("strict", false))
+
+        this.layout()
+
+        this.loader = ZwLoader.init()
+
+        this.cached_key   = nil
+        this.cached_shape = nil
+        this.last_error   = nil
+    }
+
+    // Ensure the read + replay ran for the current (path, unit_scale,
+    // strict) key, caching the merged shape.
+    ensure_loaded()
+    {
+        var path       = NodeHelper.calc_prop_value(this, "path")
+        var unit_scale = NodeHelper.calc_prop_value(this, "unit_scale")
+        var strict     = NodeHelper.calc_prop_value(this, "strict")
+
+        if (!path or path == "") {
+            this.last_error = "path is empty"
+            return nil
+        }
+
+        var key = "%(path)|%(unit_scale)|%(strict)"
+        if (key == this.cached_key) {
+            return this.cached_shape
+        }
+
+        this.loader.set_unit_scale(unit_scale)
+        this.loader.set_strict(strict)
+
+        var shape = this.loader.load(path)
+        this.cached_key   = key
+        this.cached_shape = shape
+        this.last_error   = this.loader.last_error()
+
+        if (!shape) {
+            if (this.last_error) {
+                System.print("LoadZw ERROR: %(this.last_error)")
+            }
+        } else if (this.last_error) {
+            System.print("LoadZw WARN: %(this.last_error)")
+        }
+
+        return shape
+    }
+
+    // Construction CalcGraph from the last load (nil when none was kept).
+    // RebuildHistory calls this (duck-typed) to decompile the import into
+    // an editable history tree; the graph builder is reader-agnostic.
+    get_calc_graph()
+    {
+        if (!this.ensure_loaded()) {
+            return nil
+        }
+        return this.loader.calc_graph()
+    }
+
+    calc_value(idx)
+    {
+        var shape = this.ensure_loaded()
+        if (!shape) {
+            return nil
+        }
+        return Variant(VAR_TOPO_SHAPE, shape)
+    }
+}

@@ -140,6 +140,48 @@ foreign class SwLoader
 }
 
 // =========================================================
+// ZwLoader -- ZW3D neutral intermediate (.cax.json) -> shape.
+//
+// The .cax.json is produced by the zw_export plugin running inside
+// ZW3D; this loader is SDK-free (parses JSON + replays via the
+// reader-agnostic Replayer), so no ZW3D runtime is needed. Same load
+// surface as SwLoader, minus the SW-only COM / transparency extras.
+// =========================================================
+
+foreign class ZwLoader
+{
+    init() {}
+
+    // ---- options ----
+    foreign set_unit_scale(s)   // length multiplier; default 0.001 (mm -> m)
+    foreign set_strict(b)       // fail on unknown feature kinds
+
+    // ---- one-shot read + replay ----
+    // Returns a TopoShape (or nil on failure; see last_error()).
+    foreign load(path)
+    foreign last_error()
+
+    // ---- per-part access (valid after load) ----
+    foreign part_count()
+    foreign part_shape(i)
+
+    // ---- construction graph + sketch exposure (history-tree rebuild) ----
+    // Same contract as SwLoader / FreeCadLoader: RebuildHistory duck-types
+    // on get_calc_graph() (below) + reads raw 2D geometry / constraints off
+    // a $sketch const so HistGraphBuilder can decompile the import.
+    foreign calc_graph()
+    foreign sketch_plane_at(step)
+    foreign sketch_geo_count_at(step)
+    foreign sketch_geo_at(step, g)
+    foreign sketch_cons_count_at(step)
+    foreign sketch_cons_at(step, i)
+
+    // Stateless face builder (a rebuilt sketch sub-graph feeds its edited
+    // 2D geometry through here); same contract as SwLoader.
+    foreign face_from_geos(geos, origin, x_dir, normal)
+}
+
+// =========================================================
 // AsmSession -- interactive assembly editing (pick + drag).
 //
 // load() reads a FreeCAD native-AssemblyWB file and builds the
