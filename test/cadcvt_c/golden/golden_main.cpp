@@ -3,6 +3,7 @@
 
 #include "cadcvt_c/reader/FreeCadReader.h"
 #include "cadcvt_c/reader/SwReader.h"
+#include "cadcvt_c/reader/ZwReader.h"
 #include "cadapp_c/emitter/Replayer.h"
 #include "brepkit_c/TopoShape.h"
 
@@ -166,12 +167,24 @@ bool IsSwFixture(const fs::path& p)
     return e == "sldprt" || e == "sldasm";
 }
 
+// ZW3D fixtures are the neutral .cax.json intermediate the zw_export
+// plugin emits. They are read through ZwReader (no ZW3D SDK / no running
+// ZW3D needed -- the reader is pure JSON), so they run anywhere, in CI.
+bool IsZwFixture(const fs::path& p)
+{
+    return LowerExt(p) == "json";
+}
+
 // Run the reader on one fixture, dispatching by extension. Returns false
 // (and fills err) on a hard reader failure; a successful parse fills doc.
 bool RunReader(const fs::path& fixture, cadapp::DocumentIR& doc, std::string& err)
 {
     if (IsSwFixture(fixture)) {
         cadcvt::SwReader reader;
+        return reader.ReadFile(fixture.string(), doc, &err);
+    }
+    if (IsZwFixture(fixture)) {
+        cadcvt::ZwReader reader;
         return reader.ReadFile(fixture.string(), doc, &err);
     }
     cadcvt::FreeCadReader reader;
@@ -313,7 +326,8 @@ bool IsFixture(const fs::path& p)
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return (char)std::tolower(c); });
     return ext == ".fcstd" || ext == ".xml"
-        || ext == ".sldprt" || ext == ".sldasm";
+        || ext == ".sldprt" || ext == ".sldasm"
+        || ext == ".json";   // ZW3D neutral intermediate (.cax.json)
 }
 
 } // anonymous namespace

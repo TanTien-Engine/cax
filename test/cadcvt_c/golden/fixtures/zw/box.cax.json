@@ -1,0 +1,20 @@
+{
+  "_comment": "ZW3D neutral intermediate (.cax.json) as the zw_export plugin emits for a Block primitive (FtAllBox). Read by cadcvt::ZwReader -> FeatPayloadPrimBox -> Replayer. Dimensions differ per axis (30/20/10 mm) so a length/width/height swap surfaces in the IR golden; placement is the box's world min-corner, applied as a translate by the Replayer (verifies the placement path).",
+  "schema_version": 1,
+  "source": "zw3d",
+  "length_unit": "mm",
+  "document": {
+    "name": "zw_box_test",
+    "features": [
+      {
+        "id": 1,
+        "kind": "box",
+        "name": "Box",
+        "length": 30.0,
+        "width": 20.0,
+        "height": 10.0,
+        "placement": [10.0, 20.0, 30.0]
+      }
+    ]
+  }
+}
