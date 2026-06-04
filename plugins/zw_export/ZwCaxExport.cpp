@@ -303,10 +303,23 @@ struct ProfileCurve
 
 // An extrude/revolve profile: the curves of the feature's built-in
 // sketch(es). This is what the scalar params (End E, draft, ...) act on.
+// The curves come back in the sketch's LOCAL 2D frame (z==0 on the plane),
+// so the plane is what positions them in the world -- a sketch drawn on a
+// face at z=1.5 reports its curves at z==0, and only the plane carries the
+// 1.5. Without it the reader would drop every profile onto world z==0.
 struct Profile
 {
     int n_sketch = 0;
     std::vector<ProfileCurve> curves;
+
+    // Sketch insertion plane in WORLD coords (from ZwEntityMatrixGet on the
+    // sketch handle): origin = matrix offset column, x_dir / normal = its
+    // x / z axis columns. has_plane stays false for a profile we couldn't
+    // resolve a plane for (reader then falls back to world XY at z==0).
+    bool   has_plane = false;
+    double origin[3] = { 0.0, 0.0, 0.0 };
+    double x_dir [3] = { 1.0, 0.0, 0.0 };
+    double normal[3] = { 0.0, 0.0, 1.0 };
 };
 
 // One walked feature in history order.
@@ -346,7 +359,9 @@ struct FeatNode
 #include "zwapi_general_ent.h"             // cvxEntBndBox / cvxEntExists
 #include "zwapi_brep_face.h"               // cvxFaceParam / cvxFaceEval (face normal for matching signatures)
 #include "zwapi_file.h"                    // cvxFileExportInit / cvxFileExport (STEP truth geometry)
-#include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle)
+#include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle); ZwEntityMatrixGet
+#include "zwapi_matrix_data.h"             // szwMatrix (sketch insertion-plane world transform)
+#include "zwapi_datum.h"                   // ZwDatumAxisDirectionGet (pattern direction axis -> unit vector)
 #include "zwapi_dataexchange.h"            // ZwExternalGeometryCopyDataGet/Free, szwExternalGeometryCopyData (CdGeomCopy)
 #include "zwapi_part_opts.h"               // cvxPartHistScrollTo (roll the history bar to read a feature in context)
 #include "zwapi_sketch_general.h"          // ZwSketch2DCurveListGet (extrude profile = a feature's built-in sketch)
@@ -835,6 +850,22 @@ void ReadProfile(int idFtr, Profile& out)
     // by the built-in-sketch path and the standalone-sketch fallback below.
     auto read_sketch_curves = [&](szwEntityHandle& skh)
     {
+        // Capture the sketch's world insertion plane once. The curves below
+        // come back in the sketch's LOCAL 2D frame (z==0), so this matrix is
+        // what carries their true world placement. szwMatrix columns:
+        // 1st = x-axis, 3rd = z-axis (normal), 4th = origin/offset.
+        if (!out.has_plane)
+        {
+            szwMatrix m;
+            if (ZwEntityMatrixGet(skh, &m) == ZW_API_NO_ERROR)
+            {
+                out.origin[0] = m.xt; out.origin[1] = m.yt; out.origin[2] = m.zt;
+                out.x_dir[0]  = m.xx; out.x_dir[1]  = m.xy; out.x_dir[2]  = m.xz;
+                out.normal[0] = m.zx; out.normal[1] = m.zy; out.normal[2] = m.zz;
+                out.has_plane = true;
+            }
+        }
+
         int              cn     = 0;
         szwEntityHandle* curves = nullptr;
         if (ZwSketch2DCurveListGet(&skh, &cn, &curves) != ZW_API_NO_ERROR || curves == nullptr) {
@@ -941,6 +972,97 @@ void ReadProfile(int idFtr, Profile& out)
             ZwMemoryFree(reinterpret_cast<void**>(&ids));
         }
     }
+}
+
+// A pattern's DIRECTION comes from a referenced entity, NOT a scalar field
+// (the feature's "Direction" field is just the cached pick point). It can be
+// a datum axis OR -- as on 高压泡沫混合 -- a picked model EDGE. The first
+// guess (axis/datum only) found nothing, so cast a wide net: query the
+// pattern's input entities across every plausible direction-carrying type
+// and resolve a unit direction for each (ZwDatumAxisDirectionGet for axes;
+// end-start of the curve for edges/lines). Every candidate is emitted so the
+// real +Y source is visible from one export even if several types match.
+struct PatternDirCand
+{
+    int    type    = 0;      // evxEntType queried
+    int    count   = 0;      // entities of that type the pattern references
+    bool   has_dir = false;
+    double dir[3]  = { 0.0, 0.0, 0.0 };
+};
+
+std::vector<PatternDirCand> ReadPatternDirCandidates(int idFtr)
+{
+    std::vector<PatternDirCand> out;
+
+    const evxEntType kTypes[] = {
+        VX_ENT_EDGE, VX_ENT_PART_LINE, VX_ENT_NRB_CRV,
+        VX_ENT_INT_CRV, VX_ENT_AXIS, VX_ENT_DATUM,
+    };
+
+    for (evxEntType t : kTypes)
+    {
+        int  cnt = 0;
+        int* ids = nullptr;
+        if (cvxPartFtrInqInpEnts(idFtr, t, &cnt, &ids) != ZW_API_NO_ERROR || ids == nullptr) {
+            continue;
+        }
+
+        PatternDirCand c;
+        c.type  = static_cast<int>(t);
+        c.count = cnt;
+
+        for (int i = 0; i < cnt && !c.has_dir; ++i)
+        {
+            if (ids[i] <= 0) {
+                continue;
+            }
+            szwEntityHandle h;
+            if (ZwEntityIdTransfer(1, &ids[i], &h) != ZW_API_NO_ERROR) {
+                continue;
+            }
+
+            // Axis / datum: direction is read directly.
+            szwPoint ap, ad;
+            if (ZwDatumAxisDirectionGet(h, &ap, &ad) == ZW_API_NO_ERROR)
+            {
+                double L = std::sqrt(ad.x * ad.x + ad.y * ad.y + ad.z * ad.z);
+                if (L > 1e-9) {
+                    c.dir[0] = ad.x / L; c.dir[1] = ad.y / L; c.dir[2] = ad.z / L;
+                    c.has_dir = true;
+                }
+            }
+
+            // Edge / line / curve: direction = (end - start) of the curve.
+            if (!c.has_dir)
+            {
+                szwCurve cv;
+                if (ZwCurveNURBSDataGet(h, 0, &cv) == ZW_API_NO_ERROR)
+                {
+                    const auto& I = cv.curveInformation;
+                    double sx, sy, sz, ex, ey, ez;
+                    if (cv.type == ZW_CURVE_LINE) {
+                        sx = I.line.startPoint.x; sy = I.line.startPoint.y; sz = I.line.startPoint.z;
+                        ex = I.line.endPoint.x;   ey = I.line.endPoint.y;   ez = I.line.endPoint.z;
+                    } else {
+                        sx = I.nurb.startPoint.x; sy = I.nurb.startPoint.y; sz = I.nurb.startPoint.z;
+                        ex = I.nurb.endPoint.x;   ey = I.nurb.endPoint.y;   ez = I.nurb.endPoint.z;
+                    }
+                    double dx = ex - sx, dy = ey - sy, dz = ez - sz;
+                    double L = std::sqrt(dx * dx + dy * dy + dz * dz);
+                    if (L > 1e-9) {
+                        c.dir[0] = dx / L; c.dir[1] = dy / L; c.dir[2] = dz / L;
+                        c.has_dir = true;
+                    }
+                }
+            }
+
+            ZwEntityHandleFree(&h);
+        }
+
+        out.push_back(c);
+        ZwMemoryFree(reinterpret_cast<void**>(&ids));
+    }
+    return out;
 }
 
 } // namespace zwapi
@@ -1222,6 +1344,14 @@ json ProfileToJson(const Profile& pr)
 {
     json j;
     j["n_sketch"] = pr.n_sketch;
+    if (pr.has_plane)
+    {
+        json pl;
+        pl["origin"] = json::array({ pr.origin[0], pr.origin[1], pr.origin[2] });
+        pl["x_dir"]  = json::array({ pr.x_dir[0],  pr.x_dir[1],  pr.x_dir[2]  });
+        pl["normal"] = json::array({ pr.normal[0], pr.normal[1], pr.normal[2] });
+        j["plane"] = std::move(pl);
+    }
     json arr = json::array();
     for (const auto& c : pr.curves)
     {
@@ -1450,6 +1580,41 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             }
             diag["n_profile_sketch"] = pr.n_sketch;
             diag["n_profile_curve"]  = static_cast<int>(pr.curves.size());
+
+            // Pattern (FtPtnFtr): count / spacing / patterned-target are
+            // already in the field dump (fld 3 / 4 / 1); the one missing
+            // piece is the DIRECTION, which lives in a referenced axis, not
+            // a field. Resolve it here. (Reader uses this + the fields to
+            // build a LinearPattern.) Diagnostics ride in _diag so a missed
+            // direction-source is visible from the export.
+            if (type == "FtPtnFtr")
+            {
+                std::vector<zwapi::PatternDirCand> cands =
+                    zwapi::ReadPatternDirCandidates(fid);
+
+                json cand_arr = json::array();
+                bool picked = false;
+                for (const auto& c : cands)
+                {
+                    json cj;
+                    cj["type"]  = c.type;
+                    cj["count"] = c.count;
+                    if (c.has_dir)
+                    {
+                        cj["dir"] = json::array({ c.dir[0], c.dir[1], c.dir[2] });
+                        if (!picked)   // first resolved direction -> pattern.dir
+                        {
+                            json pj;
+                            pj["dir"] = json::array({ c.dir[0], c.dir[1], c.dir[2] });
+                            jf["pattern"] = std::move(pj);
+                            picked = true;
+                        }
+                    }
+                    cand_arr.push_back(std::move(cj));
+                }
+                diag["pat_dir_ok"]     = picked;
+                diag["pat_candidates"] = std::move(cand_arr);
+            }
 
             // A shape-producing feature whose parameters the API won't give
             // us (e.g. CdGeomCopy, an imported base) needs its OWN geometry
