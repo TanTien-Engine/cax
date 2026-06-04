@@ -1408,9 +1408,28 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int pat = cg->AddOp("linear_pattern",
                                      {target, d1, c1, s1, d2, c2, s2},
                                      {}, feat.name);
-                node = pi.originals.empty()
-                        ? pat
-                        : CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
+                if (pi.originals.empty()) {
+                    node = pat;
+                } else if (ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
+                           && base_node >= 0) {
+                    // ZW3D: the pattern adds its instances to the CURRENT body
+                    // (base_node), not the patterned feature's own base --
+                    // otherwise any feature between the original and the
+                    // pattern (e.g. a cut) is dropped. Combine per the
+                    // original's op_kind. FreeCAD never sets this ext_param,
+                    // so its CombinePatternedTool path is byte-for-byte
+                    // unchanged.
+                    char op = pi.originals[0].op_kind;
+                    if (op == 'c') {
+                        node = cg->AddOp("cut", {base_node, pat}, {}, feat.name);
+                    } else if (op == '0') {
+                        node = pat;
+                    } else {
+                        node = cg->AddOp("fuse", {base_node, pat}, {}, feat.name);
+                    }
+                } else {
+                    node = CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
+                }
             }
 
             // ---- CircularPattern ----

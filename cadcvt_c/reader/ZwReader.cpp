@@ -409,10 +409,44 @@ double FieldValueById(const json& jf, int fld_id, double def)
     return def;
 }
 
-// Build a SketchIR from a ZW3D extrude's built-in profile ("profile" block:
-// a list of world-3D curves). First cut assumes the profile lies on the XY
-// plane (z==0 for the test part), so the sketch plane is XY and 2D coords
-// are the world (x,y). General plane fitting from the curve points is TODO.
+// First entity-reference anchor (world mm) of field fld_id from the dump --
+// e.g. a pattern's "Base" (fld 1), whose anchor is the patterned feature's
+// location. Returns false (out untouched) when the field / anchor is absent.
+bool FieldEntAnchor(const json& jf, int fld_id, double out[3])
+{
+    auto fit = jf.find("fields");
+    if (fit == jf.end() || !fit->is_array()) {
+        return false;
+    }
+    for (const auto& fd : *fit)
+    {
+        auto idit = fd.find("id");
+        if (idit == fd.end() || !idit->is_number() || idit->get<int>() != fld_id) {
+            continue;
+        }
+        auto eit = fd.find("ents");
+        if (eit == fd.end() || !eit->is_array() || eit->empty()) {
+            return false;
+        }
+        const auto& a = eit->at(0).find("anchor");
+        if (a == eit->at(0).end() || !a->is_array() || a->size() < 3) {
+            return false;
+        }
+        out[0] = a->at(0).get<double>();
+        out[1] = a->at(1).get<double>();
+        out[2] = a->at(2).get<double>();
+        return true;
+    }
+    return false;
+}
+
+// Build a SketchIR from a ZW3D extrude's built-in profile ("profile" block).
+// The curves are in the sketch's LOCAL 2D frame (u,v with z==0 on the plane),
+// so they map straight onto the SketchIR's 2D plane coords; the "plane" block
+// (origin/x_dir/normal in world, from the plugin's ZwEntityMatrixGet) is what
+// positions that frame in space. Absent a plane block (older snapshots, or a
+// sketch drawn on world XY), the default is XY at z==0 -- which is why the
+// base extrude, on z==0, was already correct without it.
 void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
                             cadapp::SketchIR& sk)
 {
@@ -420,6 +454,24 @@ void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
     sk.plane_origin[0] = 0.0; sk.plane_origin[1] = 0.0; sk.plane_origin[2] = 0.0;
     sk.plane_x_dir[0]  = 1.0; sk.plane_x_dir[1]  = 0.0; sk.plane_x_dir[2]  = 0.0;
     sk.plane_normal[0] = 0.0; sk.plane_normal[1] = 0.0; sk.plane_normal[2] = 1.0;
+
+    auto plit = profile.find("plane");
+    if (plit != profile.end() && plit->is_object())
+    {
+        // origin is positional (scale mm->m); x_dir / normal are unit dirs.
+        auto rd = [&](const char* key, double scale, double out3[3])
+        {
+            auto a = plit->find(key);
+            if (a != plit->end() && a->is_array() && a->size() == 3) {
+                out3[0] = a->at(0).get<double>() * scale;
+                out3[1] = a->at(1).get<double>() * scale;
+                out3[2] = a->at(2).get<double>() * scale;
+            }
+        };
+        rd("origin", s,   sk.plane_origin);
+        rd("x_dir",  1.0, sk.plane_x_dir);
+        rd("normal", 1.0, sk.plane_normal);
+    }
 
     auto cit = profile.find("curves");
     if (cit == profile.end() || !cit->is_array()) {
@@ -526,6 +578,13 @@ bool ZwReader::ReadFile(const std::string& path,
     // Running body tip: the last solid-producing feature's id, so a boss
     // extrude fuses onto the imported base instead of floating standalone.
     uint32_t running_solid_id = 0;
+
+    // World x/y extent (mm) of each reconstructed solid extrude, by feature
+    // id. A later pattern (FtPtnFtr) carries its target only as a world
+    // anchor; this lets the reader map that anchor back to the feature the
+    // pattern copies, so it patterns that feature's tool (not the whole body).
+    struct XYBox { uint32_t id; double xmin, xmax, ymin, ymax; };
+    std::vector<XYBox> extrude_xy;
 
     try
     {
@@ -640,9 +699,25 @@ bool ZwReader::ReadFile(const std::string& path,
                 {
                     const uint32_t sketch_fid = 1000000u + id;
 
+                    // Start S (fld 2) / End E (fld 3): extrude limits measured
+                    // ALONG the sketch normal from the sketch plane. The solid
+                    // spans [S, E]; the profile curves sit ON the plane
+                    // (offset 0), so a non-zero S means the extrude starts OFF
+                    // the plane. Shift the sketch plane by S along its normal
+                    // so the prism begins at S, then extrude the remaining
+                    // |E - S|. (Ignoring S put every such boss |S| too low --
+                    // Extrude3_Boss landed at z[0, 9.78] instead of its true
+                    // [6.05, 15.83], the missing 4.55 being Start S.)
+                    double startS = FieldValueById(jf, 2, 0.0);
+                    double endE   = FieldValueById(jf, 3, 0.0);
+
                     cadapp::SketchIR sk;
                     sk.name = name + ":profile";
                     BuildSketchFromProfile(*prof, s, sketch_fid, sk);
+                    const double startS_m = startS * s;
+                    sk.plane_origin[0] += startS_m * sk.plane_normal[0];
+                    sk.plane_origin[1] += startS_m * sk.plane_normal[1];
+                    sk.plane_origin[2] += startS_m * sk.plane_normal[2];
                     out.sketches.push_back(std::move(sk));
 
                     cadapp::FeatPayloadSketch spl;
@@ -654,31 +729,131 @@ bool ZwReader::ReadFile(const std::string& path,
                     sf.data = std::move(spl);
                     out.features.push_back(std::move(sf));
 
-                    // depth = End E (fld 3) - Start S (fld 2), from the field
-                    // dump; magnitude (direction resolved from plane normal).
-                    double endE   = FieldValueById(jf, 3, 0.0);
-                    double startS = FieldValueById(jf, 2, 0.0);
+                    // Extrude the remaining span; E below S grows the solid
+                    // the other way along the normal (flip).
                     double depth  = std::fabs(endE - startS) * s;
 
                     cadapp::FeatPayloadExtrude epl;
-                    epl.sketch_id = sketch_fid;
-                    epl.distance  = depth;
-                    epl.end_type  = cadapp::ExtrudeEndType::Blind;
+                    epl.sketch_id      = sketch_fid;
+                    epl.distance       = depth;
+                    epl.end_type       = cadapp::ExtrudeEndType::Blind;
+                    epl.flip_direction = (endE < startS);
+
+                    // fld 14 = ZW3D boolean combine: 0 = new/base, 1 = add
+                    // (boss), 2 = remove (cut). A cut rebuilt as a boss just
+                    // fuses material already inside the body -> "no visible
+                    // effect"; route fld14==2 to CutExtrude so it subtracts
+                    // (the Replayer cuts the prism from the running body).
+                    const bool is_cut =
+                        std::fabs(FieldValueById(jf, 14, 0.0) - 2.0) < 0.5;
+
                     cadapp::FeatureIR ef;
                     ef.id   = id;
-                    ef.type = cadapp::FeatType::BossExtrude;
+                    ef.type = is_cut ? cadapp::FeatType::CutExtrude
+                                     : cadapp::FeatType::BossExtrude;
                     ef.name = name;
                     ef.data = std::move(epl);
 
-                    // Fuse onto the running body (the imported base) when
-                    // present; the Replayer's boss-extrude arm boolean-adds
-                    // the prism to the base input. Otherwise standalone.
+                    // Wire the running body (imported / prior solid) as the
+                    // Base input: a boss fuses the prism onto it, a cut
+                    // subtracts the prism from it (the Replayer picks the
+                    // boolean by feat type). A boss with no running body
+                    // stands alone; a cut needs one (else the Replayer errs).
                     if (running_solid_id != 0) {
                         PushInput(ef, running_solid_id, cadapp::InputRole::Base);
                     }
+
+                    // Record this extrude's world x/y extent (mm) so a later
+                    // pattern can map its target anchor back to this feature.
+                    {
+                        double xmn = 1e300, xmx = -1e300, ymn = 1e300, ymx = -1e300;
+                        for (const auto& c : prof->at("curves")) {
+                            for (const char* key : { "p0", "p1", "center" }) {
+                                auto p = c.find(key);
+                                if (p != c.end() && p->is_array() && p->size() >= 2) {
+                                    double x = p->at(0).get<double>();
+                                    double y = p->at(1).get<double>();
+                                    if (x < xmn) xmn = x;
+                                    if (x > xmx) xmx = x;
+                                    if (y < ymn) ymn = y;
+                                    if (y > ymx) ymx = y;
+                                }
+                            }
+                        }
+                        if (xmn <= xmx) {
+                            extrude_xy.push_back({ id, xmn, xmx, ymn, ymx });
+                        }
+                    }
+
                     out.features.push_back(std::move(ef));
                     running_solid_id = id;
                     continue;
+                }
+
+                // ZW3D pattern (FtPtnFtr) -> LinearPattern. count (fld 3) /
+                // spacing (fld 4) / target anchor (fld 1) are in the field
+                // dump; the direction is the unit vector the plugin resolved
+                // from the pattern's referenced edge ("pattern":{"dir":[...]}).
+                // Map the target anchor to the reconstructed extrude it copies,
+                // pattern that feature's tool, and combine the instances onto
+                // the CURRENT body (ext_param pattern_onto_running; the
+                // Replayer otherwise fuses onto the patterned feature's own
+                // base, dropping any feature between it and the pattern, e.g.
+                // Extrude4's cut).
+                {
+                    auto patj = jf.find("pattern");
+                    if (zt == "FtPtnFtr" && patj != jf.end() &&
+                        patj->contains("dir") && patj->at("dir").is_array() &&
+                        patj->at("dir").size() == 3 &&
+                        running_solid_id != 0 && !extrude_xy.empty())
+                    {
+                        double anc[3] = { 0.0, 0.0, 0.0 };
+                        uint32_t target = 0;
+                        if (FieldEntAnchor(jf, 1, anc))
+                        {
+                            // anchor (mm) -> extrude whose x/y box contains it
+                            // (nearest box centre breaks ties / misses).
+                            double best = 1e300;
+                            for (const auto& b : extrude_xy) {
+                                bool inside = anc[0] >= b.xmin - 1.0 && anc[0] <= b.xmax + 1.0 &&
+                                              anc[1] >= b.ymin - 1.0 && anc[1] <= b.ymax + 1.0;
+                                double cx = 0.5 * (b.xmin + b.xmax);
+                                double cy = 0.5 * (b.ymin + b.ymax);
+                                double d2 = (anc[0] - cx) * (anc[0] - cx) +
+                                            (anc[1] - cy) * (anc[1] - cy);
+                                double score = inside ? d2 : (d2 + 1e6);
+                                if (score < best) { best = score; target = b.id; }
+                            }
+                        }
+
+                        if (target != 0)
+                        {
+                            cadapp::FeatPayloadLinearPattern lp;
+                            lp.dir1[0] = patj->at("dir").at(0).get<double>();
+                            lp.dir1[1] = patj->at("dir").at(1).get<double>();
+                            lp.dir1[2] = patj->at("dir").at(2).get<double>();
+                            int count1  = static_cast<int>(FieldValueById(jf, 3, 2.0));
+                            lp.count1   = (count1 >= 1) ? count1 : 2;
+                            lp.spacing1 = FieldValueById(jf, 4, 0.0) * s;
+                            int count2  = static_cast<int>(FieldValueById(jf, 6, 1.0));
+                            lp.count2   = (count2 >= 1) ? count2 : 1;
+                            lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
+
+                            cadapp::FeatureIR pf;
+                            pf.id   = id;
+                            pf.type = cadapp::FeatType::LinearPattern;
+                            pf.name = name;
+                            pf.data = std::move(lp);
+                            // Tool = the feature being patterned; Base = the
+                            // current body to combine instances onto.
+                            PushInput(pf, target, cadapp::InputRole::Tool);
+                            PushInput(pf, running_solid_id, cadapp::InputRole::Base);
+                            pf.ext_params["pattern_onto_running"] = 1.0;
+                            out.features.push_back(std::move(pf));
+                            running_solid_id = id;
+                            continue;
+                        }
+                    }
                 }
 
                 if (m_strict) {
