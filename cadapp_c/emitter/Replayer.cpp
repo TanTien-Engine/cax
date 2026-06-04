@@ -1396,38 +1396,49 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 // CircularPattern.
                 auto pi = ResolvePatternInputs(feat, feature_tools,
                                                feature_nodes);
-                int target = -1;
-                if (!pi.originals.empty()) {
-                    target = pi.originals[0].tool_node;
-                } else if (base_node >= 0) {
-                    target = base_node;
-                } else {
-                    step_ok = false;
-                    return;
-                }
-                int pat = cg->AddOp("linear_pattern",
-                                     {target, d1, c1, s1, d2, c2, s2},
-                                     {}, feat.name);
+                const bool onto_running =
+                    ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
+                    && base_node >= 0;
+
                 if (pi.originals.empty()) {
-                    node = pat;
-                } else if (ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
-                           && base_node >= 0) {
+                    // No Original tool -> pattern the whole body.
+                    if (base_node < 0) {
+                        step_ok = false;
+                        return;
+                    }
+                    node = cg->AddOp("linear_pattern",
+                                      {base_node, d1, c1, s1, d2, c2, s2},
+                                      {}, feat.name);
+                } else if (onto_running) {
                     // ZW3D: the pattern adds its instances to the CURRENT body
                     // (base_node), not the patterned feature's own base --
                     // otherwise any feature between the original and the
-                    // pattern (e.g. a cut) is dropped. Combine per the
-                    // original's op_kind. FreeCAD never sets this ext_param,
-                    // so its CombinePatternedTool path is byte-for-byte
-                    // unchanged.
-                    char op = pi.originals[0].op_kind;
-                    if (op == 'c') {
-                        node = cg->AddOp("cut", {base_node, pat}, {}, feat.name);
-                    } else if (op == '0') {
-                        node = pat;
-                    } else {
-                        node = cg->AddOp("fuse", {base_node, pat}, {}, feat.name);
+                    // pattern (e.g. a cut) is dropped. Multiply EACH original's
+                    // tool and fold every instance set onto the running body
+                    // per its op_kind: the seeds may be a co-located GROUP
+                    // (e.g. three concentric pins ZW3D patterns as one unit),
+                    // and patterning only originals[0] left the rest behind.
+                    // FreeCAD never sets this ext_param, so its
+                    // CombinePatternedTool path below is byte-for-byte unchanged.
+                    int acc = base_node;
+                    for (const auto& orig : pi.originals) {
+                        int patk = cg->AddOp("linear_pattern",
+                                              {orig.tool_node, d1, c1, s1, d2, c2, s2},
+                                              {}, feat.name);
+                        char op = orig.op_kind;
+                        if (op == 'c') {
+                            acc = cg->AddOp("cut", {acc, patk}, {}, feat.name);
+                        } else if (op == '0') {
+                            acc = patk;
+                        } else {
+                            acc = cg->AddOp("fuse", {acc, patk}, {}, feat.name);
+                        }
                     }
+                    node = acc;
                 } else {
+                    int pat = cg->AddOp("linear_pattern",
+                                         {pi.originals[0].tool_node, d1, c1, s1, d2, c2, s2},
+                                         {}, feat.name);
                     node = CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
                 }
             }

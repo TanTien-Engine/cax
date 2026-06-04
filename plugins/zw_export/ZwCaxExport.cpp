@@ -242,6 +242,8 @@ struct EntSig
     double      anchor[3] = { 0.0, 0.0, 0.0 };
     double      normal[3] = { 0.0, 0.0, 0.0 };
     bool        has_normal = false;
+    bool        has_num    = false;         // scalar tied to this pick, e.g. a
+    double      num        = 0.0;           // chamfer / fillet per-edge setback
 };
 
 // One field of a feature's data container, read generically. fld_id is
@@ -257,6 +259,8 @@ struct FieldDump
     bool        has_pt   = false; double pt[3] = { 0.0, 0.0, 0.0 };
     bool        has_text = false; std::string text;
     std::vector<EntSig> ents;
+    int         list_count = -1;            // VX_FLD_DATA: # top-level tree
+                                            // items found (diagnostic; -1 = n/a)
 };
 
 // Typed data of an external-geometry-copy feature (ZW3D "CdGeomCopy").
@@ -358,6 +362,7 @@ struct FeatNode
 #include "zwapi_util.h"                    // vxName, evxErrors, ZW_API_NO_ERROR, svxBndBox, svxPoint/Vector, VX_ENT_*
 #include "zwapi_general_ent.h"             // cvxEntBndBox / cvxEntExists
 #include "zwapi_brep_face.h"               // cvxFaceParam / cvxFaceEval (face normal for matching signatures)
+#include "zwapi_brep_shape.h"              // cvxPartInqShapeFaces (DIAG: body face count to test roll-back)
 #include "zwapi_file.h"                    // cvxFileExportInit / cvxFileExport (STEP truth geometry)
 #include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle); ZwEntityMatrixGet
 #include "zwapi_matrix_data.h"             // szwMatrix (sketch insertion-plane world transform)
@@ -615,7 +620,98 @@ EntSig EntitySig(int idEnt)
             }
         }
     }
+    // NOTE: for a curved edge the bbox centre is NOT on the curve (a circular
+    // rim's centre is a full radius off it), and TopoRefResolver scores edges
+    // by point-to-curve distance -- so this anchor is only "good enough"
+    // within the resolver tolerance (~5x the dressup setback), not tight. A
+    // tighter on-edge point would need a curve eval, but the picked edge of a
+    // chamfer/fillet is CONSUMED at this (the feature's own) state, so it is
+    // not reliably curve-evaluable here; rolling back to make it live does NOT
+    // help either, because entity ids are scroll-state-local (the id would
+    // then point at a different entity). bbox-centre via ZW3D's historical
+    // resolution is the pragmatic, proven anchor.
     return s;
+}
+
+// A chamfer / fillet edge list is a nested VDATA TREE, not a flat list: the
+// field's items are themselves sub-containers, each holding the picked edge(s)
+// (idEntity) and the per-edge setback (Num) one or more levels down. The flat
+// accessors (cvxDataGetEnts / cvxDataGetList) only see the top level and
+// returned nothing for the chamfer, so walk the tree with the per-ITEM API:
+// cvxDataGetItemList gives item handles, and each handle is BOTH an item
+// (cvxDataGetItemData -> its svxData) AND a sub-container (cvxDataGetAll ->
+// its own fields, whose VX_FLD_DATA sub-fields recurse). Collect every edge id
+// (deduped) and the first non-zero number encountered as the setback.
+void CollectVDataTree(int handle,
+                      std::vector<int>& edge_ids,
+                      double&           setback,
+                      bool&             has_setback,
+                      int               depth)
+{
+    if (depth > 6) {
+        return;                         // guard against a pathological cycle
+    }
+    auto add_edge = [&](int id)
+    {
+        if (id <= 0) { return; }
+        for (int e : edge_ids) { if (e == id) { return; } }   // dedup
+        edge_ids.push_back(id);
+    };
+
+    // (a) the handle AS A LEAF ITEM: its svxData may carry the edge + setback.
+    svxData sd;
+    cvxDataZero(&sd);
+    if (cvxDataGetItemData(handle, &sd) == ZW_API_NO_ERROR)
+    {
+        if (sd.isEntity) { add_edge(sd.idEntity); }
+        if (sd.isNumber && !has_setback && sd.Num != 0.0) {
+            setback     = sd.Num;
+            has_setback = true;
+        }
+    }
+
+    // (b) the handle AS A SUB-CONTAINER: walk its fields, pulling entities and
+    //     the first non-zero number directly, and recursing into nested lists.
+    int         numFld = 0;
+    svxFldData* flds   = nullptr;
+    if (cvxDataGetAll(handle, &numFld, &flds) == ZW_API_NO_ERROR && flds != nullptr)
+    {
+        for (int i = 0; i < numFld; ++i)
+        {
+            const svxFldData& f = flds[i];
+            if (f.fld_type == VX_FLD_ENT)
+            {
+                int  cnt = 0;
+                int* ids = nullptr;
+                if (cvxDataGetEnts(handle, f.fld_id, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr)
+                {
+                    for (int k = 0; k < cnt; ++k) { add_edge(ids[k]); }
+                    cvxMemFree(reinterpret_cast<void**>(&ids));
+                }
+            }
+            else if ((f.fld_type == VX_FLD_NUM || f.fld_type == VX_FLD_DST) && !has_setback)
+            {
+                double v = 0.0;
+                if (cvxDataGetNum(handle, f.fld_id, &v) == ZW_API_NO_ERROR && v != 0.0) {
+                    setback     = v;
+                    has_setback = true;
+                }
+            }
+            else if (f.fld_type == VX_FLD_DATA)
+            {
+                int  count = 0;
+                int* items = nullptr;
+                if (cvxDataGetItemList(handle, f.fld_id, &count, &items) == ZW_API_NO_ERROR && items != nullptr)
+                {
+                    for (int k = 0; k < count; ++k) {
+                        CollectVDataTree(items[k], edge_ids, setback, has_setback, depth + 1);
+                    }
+                    cvxMemFree(reinterpret_cast<void**>(&items));
+                }
+            }
+        }
+        cvxFldDataFree(numFld, &flds);
+    }
 }
 
 // Full dump of a feature's data container: EVERY field, by type. Unlike
@@ -693,7 +789,49 @@ std::vector<FieldDump> DumpFields(int idFtr)
             }
             else if (f.fld_type == VX_FLD_DATA)
             {
-                d.type = "list";   // nested container; deep dump is future work
+                d.type = "list";   // a nested VDATA tree (e.g. a chamfer /
+                                   // fillet edge list). Walk it per-item with
+                                   // cvxDataGetItemList + CollectVDataTree to
+                                   // pull the picked edge(s) + setback that the
+                                   // flat accessors can't see.
+                std::vector<int> edge_ids;
+                double           sb     = 0.0;
+                bool             has_sb = false;
+
+                int   count = 0;
+                int*  items = nullptr;
+                if (cvxDataGetItemList(idData, f.fld_id, &count, &items) == ZW_API_NO_ERROR && items != nullptr)
+                {
+                    for (int k = 0; k < count; ++k) {
+                        CollectVDataTree(items[k], edge_ids, sb, has_sb, 0);
+                    }
+                    cvxMemFree(reinterpret_cast<void**>(&items));
+                }
+                d.list_count = count;   // diagnostic: top-level item count
+
+                // Last-resort flat fallbacks (kept for non-tree list widgets).
+                if (edge_ids.empty())
+                {
+                    int  cnt = 0;
+                    int* ids = nullptr;
+                    if (cvxDataGetEnts(idData, f.fld_id, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr)
+                    {
+                        for (int k = 0; k < cnt; ++k) {
+                            if (ids[k] > 0) { edge_ids.push_back(ids[k]); }
+                        }
+                        cvxMemFree(reinterpret_cast<void**>(&ids));
+                    }
+                }
+
+                for (int eid : edge_ids) {
+                    EntSig sig = EntitySig(eid);
+                    if (has_sb) { sig.has_num = true; sig.num = sb; }
+                    d.ents.push_back(sig);
+                }
+                if (has_sb) {
+                    d.has_num = true;
+                    d.num     = sb;
+                }
             }
             else
             {
@@ -707,6 +845,138 @@ std::vector<FieldDump> DumpFields(int idFtr)
 
     cvxDataFree(idData);
     return out;
+}
+
+// The model EDGES a feature consumes as input. For a chamfer / fillet these
+// ARE the picked edges -- their edge-list field is a nested VX_FLD_DATA list
+// DumpFields cannot descend, so read them straight off the feature's input
+// entity set instead (the same cvxPartFtrInqInpEnts path ReadProfile uses for
+// an extrude's standalone sketch, here filtered to VX_ENT_EDGE). History is
+// already rolled to idFtr by the caller -- the in-context state this inquiry
+// needs. Each edge becomes a geometric signature (anchor = edge bbox centre);
+// the ZW3D id is meaningless after the OCCT rebuild, only the geometry is, so
+// the loader matches the chamfer onto the rebuilt body by that anchor.
+std::vector<EntSig> InputEdges(int idFtr, int idPrevFtr)
+{
+    std::vector<EntSig> out;
+    // A dressup (chamfer / fillet) CONSUMES its picked edge: at idFtr's own
+    // state the edge is gone and the reference resolves to a POST-dressup edge
+    // (the chamfer boundary, a `setback` away from the original -- proven by
+    // test.Z3PRT, where a box-top edge at (5,0,5) reads back as (0,0,5)). To
+    // read the ORIGINAL edge, roll the history bar back to the PREVIOUS feature
+    // and do BOTH the query AND the geometry read THERE: the edge is live, and
+    // keeping query+read in the same state means we never carry a scroll-state-
+    // LOCAL index across states (those renumber). ZW3D resolves the feature's
+    // stored edge reference (persistent name) to the live original edge at this
+    // prior state. Restore the bar to idFtr afterwards (the loop's invariant).
+    const bool rolled = (idPrevFtr > 0);
+    if (rolled) {
+        cvxPartHistScrollTo(idPrevFtr);
+    }
+    int  cnt = 0;
+    int* ids = nullptr;
+    if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_EDGE, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr)
+    {
+        for (int i = 0; i < cnt; ++i) {
+            if (ids[i] > 0) {
+                out.push_back(EntitySig(ids[i]));
+            }
+        }
+        // cvxPartFtrInqInpEnts allocates its list for ZwMemoryFree, not the
+        // cvxMemFree the older cvxPart* inquiries use (same as ReadProfile).
+        ZwMemoryFree(reinterpret_cast<void**>(&ids));
+    }
+    if (rolled) {
+        cvxPartHistScrollTo(idFtr);   // restore the caller's history state
+    }
+    return out;
+}
+
+// ---- DIAGNOSTIC (temporary) -------------------------------------------------
+// How does a dressup's input edge resolve across history states? For the first
+// input edge of idFtr it captures: the edge id + bbox-centre AT idFtr (post-
+// dressup); then rolls to idPrevFtr and captures (a) the SAME id's
+// existence/bbox there (does carrying the id across states reach the original
+// edge?), and (b) a fresh cvxPartFtrInqInpEnts at that state (does re-querying
+// reach it?). Lets us SEE which method yields the original edge vs the consumed
+// edge's post-dressup successor, instead of guessing.
+struct EdgeProbe {
+    int    post_id = 0, post_is_edge = 0, post_is_face = 0;
+    double post_anchor[3] = { 0, 0, 0 };
+    int    scroll_rc = -999;
+    int    prev_sameid_edge = 0, prev_sameid_face = 0, prev_sameid_box = 0;
+    double prev_sameid_anchor[3] = { 0, 0, 0 };
+    int    prev_requery_id = 0, prev_requery_edge = 0, prev_requery_face = 0, prev_requery_box = 0;
+    double prev_requery_anchor[3] = { 0, 0, 0 };
+    // Body face count at each state. If the roll-back really changed the model,
+    // post (chamfered) > prev (pre-chamfer); if they're EQUAL the body did NOT
+    // roll back (so the API/usage is the problem, exactly as suspected).
+    int    post_body_faces = -1, prev_body_faces = -1, body_shape_id = 0;
+};
+
+EdgeProbe ProbeInputEdge(int idFtr, int idPrevFtr)
+{
+    EdgeProbe p;
+    auto bbcenter = [](int id, double out[3]) -> bool {
+        svxBndBox b;
+        if (cvxEntBndBox(id, &b) != ZW_API_NO_ERROR) { return false; }
+        out[0] = 0.5 * (b.X.min + b.X.max);
+        out[1] = 0.5 * (b.Y.min + b.Y.max);
+        out[2] = 0.5 * (b.Z.min + b.Z.max);
+        return true;
+    };
+    {
+        int cnt = 0; int* ids = nullptr;
+        if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_EDGE, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr) {
+            if (cnt > 0 && ids[0] > 0) {
+                p.post_id      = ids[0];
+                p.post_is_edge = cvxEntExists(ids[0], VX_ENT_EDGE) ? 1 : 0;
+                p.post_is_face = cvxEntExists(ids[0], VX_ENT_FACE) ? 1 : 0;
+                bbcenter(ids[0], p.post_anchor);
+            }
+            ZwMemoryFree(reinterpret_cast<void**>(&ids));
+        }
+    }
+    // Body shape + its face count at the post (this-feature) state.
+    auto faceCount = [](int shapeId) -> int {
+        if (shapeId <= 0) { return -1; }
+        int  fc   = 0;
+        int* fids = nullptr;
+        if (cvxPartInqShapeFaces(shapeId, &fc, &fids) != ZW_API_NO_ERROR) { return -1; }
+        if (fids != nullptr) { cvxMemFree(reinterpret_cast<void**>(&fids)); }
+        return fc;
+    };
+    {
+        int  cnt = 0; int* sh = nullptr;
+        if (cvxPartInqFtrEnts(idFtr, VX_ENT_SHAPE, &cnt, &sh) == ZW_API_NO_ERROR && sh != nullptr) {
+            if (cnt > 0) { p.body_shape_id = sh[0]; }
+            cvxMemFree(reinterpret_cast<void**>(&sh));
+        }
+        p.post_body_faces = faceCount(p.body_shape_id);
+    }
+
+    if (p.post_id <= 0 || idPrevFtr <= 0) { return p; }
+    p.scroll_rc        = static_cast<int>(cvxPartHistScrollTo(idPrevFtr));
+    // SAME body shape id, counted at the rolled-back state: equal count => the
+    // roll-back did NOT change the model.
+    p.prev_body_faces  = faceCount(p.body_shape_id);
+    p.prev_sameid_edge = cvxEntExists(p.post_id, VX_ENT_EDGE) ? 1 : 0;
+    p.prev_sameid_face = cvxEntExists(p.post_id, VX_ENT_FACE) ? 1 : 0;
+    p.prev_sameid_box  = bbcenter(p.post_id, p.prev_sameid_anchor) ? 1 : 0;
+    {
+        int cnt = 0; int* ids = nullptr;
+        if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_EDGE, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr) {
+            if (cnt > 0 && ids[0] > 0) {
+                p.prev_requery_id   = ids[0];
+                p.prev_requery_edge = cvxEntExists(ids[0], VX_ENT_EDGE) ? 1 : 0;
+                p.prev_requery_face = cvxEntExists(ids[0], VX_ENT_FACE) ? 1 : 0;
+                p.prev_requery_box  = bbcenter(ids[0], p.prev_requery_anchor) ? 1 : 0;
+            }
+            ZwMemoryFree(reinterpret_cast<void**>(&ids));
+        }
+    }
+    cvxPartHistScrollTo(idFtr);   // restore
+    return p;
 }
 
 // Export the active part's final solid to a STEP file. This is the
@@ -1281,6 +1551,9 @@ json EntSigToJson(const EntSig& e)
     if (e.has_normal) {
         j["normal"] = json::array({ e.normal[0], e.normal[1], e.normal[2] });
     }
+    if (e.has_num) {
+        j["num"] = e.num;
+    }
     return j;
 }
 
@@ -1313,6 +1586,9 @@ json FieldsToJson(const std::vector<FieldDump>& fields)
                 es.push_back(EntSigToJson(e));
             }
             j["ents"] = std::move(es);
+        }
+        if (d.list_count >= 0) {
+            j["list_count"] = d.list_count;   // VX_FLD_DATA tree item count
         }
         arr.push_back(std::move(j));
     }
@@ -1542,6 +1818,39 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             diag["field_count"] = probe.field_count;
 
             std::vector<FieldDump> fields = zwapi::DumpFields(fid);
+
+            // Picked edges in their ORIGINAL geometry. The nested-list ents in
+            // `fields` above were read at THIS feature's own state, where a
+            // dressup has already consumed its edge -> they carry the POST-
+            // dressup boundary edge. InputEdges rolls back to the previous
+            // feature (feats[i-1]) and reads the same edges where they're still
+            // the originals. When the counts line up, overwrite the list-field
+            // ents' anchors with the originals so the reader / TopoRefResolver
+            // matches the true edge instead of the chamfer's new boundary
+            // (which on test.Z3PRT sat at the face centre, tied across 4 edges).
+            const int prev_fid = (i > 0) ? feats[i - 1] : 0;
+            std::vector<EntSig> in_edges = zwapi::InputEdges(fid, prev_fid);
+            if (!in_edges.empty())
+            {
+                size_t n_list = 0;
+                for (const auto& fd : fields) {
+                    if (fd.list_count >= 0) { n_list += fd.ents.size(); }
+                }
+                if (n_list == in_edges.size())
+                {
+                    size_t k = 0;
+                    for (auto& fd : fields) {
+                        if (fd.list_count < 0) { continue; }
+                        for (auto& e : fd.ents) {
+                            e.anchor[0] = in_edges[k].anchor[0];
+                            e.anchor[1] = in_edges[k].anchor[1];
+                            e.anchor[2] = in_edges[k].anchor[2];
+                            ++k;
+                        }
+                    }
+                }
+            }
+
             if (!fields.empty()) {
                 jf["fields"] = FieldsToJson(fields);
             }
@@ -1569,6 +1878,18 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             diag["n_shape"] = re.n_shape;
             diag["n_face"]  = re.n_face;
             diag["n_curve"] = re.n_curve;
+
+            // Feature-level input edges (original geometry, computed above via
+            // the roll-back) -- also emitted standalone as a fallback for the
+            // reader when it can't use the list-field ents.
+            if (!in_edges.empty()) {
+                json ea = json::array();
+                for (const auto& e : in_edges) {
+                    ea.push_back(EntSigToJson(e));
+                }
+                jf["input_edges"] = std::move(ea);
+            }
+            diag["n_input_edge"] = static_cast<int>(in_edges.size());
 
             // Profile: an extrude/revolve's built-in sketch curves. This is
             // the geometry its scalar params (End E, draft, ...) act on,
@@ -1631,6 +1952,35 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                 }
                 diag["feat_step_init_rc"]   = fse.init_rc;
                 diag["feat_step_export_rc"] = fse.export_rc;
+            }
+
+            // DIAGNOSTIC: probe how this feature's input edge resolves at its
+            // own state vs one feature back (only does work when there IS an
+            // input edge). Reveals which method reaches the ORIGINAL edge.
+            {
+                zwapi::EdgeProbe ep = zwapi::ProbeInputEdge(fid, prev_fid);
+                if (ep.post_id > 0)
+                {
+                    json jp;
+                    jp["post_id"]            = ep.post_id;
+                    jp["post_is_edge"]       = ep.post_is_edge;
+                    jp["post_is_face"]       = ep.post_is_face;
+                    jp["post_anchor"]        = json::array({ ep.post_anchor[0], ep.post_anchor[1], ep.post_anchor[2] });
+                    jp["scroll_rc"]          = ep.scroll_rc;
+                    jp["prev_sameid_edge"]   = ep.prev_sameid_edge;
+                    jp["prev_sameid_face"]   = ep.prev_sameid_face;
+                    jp["prev_sameid_box"]    = ep.prev_sameid_box;
+                    jp["prev_sameid_anchor"] = json::array({ ep.prev_sameid_anchor[0], ep.prev_sameid_anchor[1], ep.prev_sameid_anchor[2] });
+                    jp["prev_requery_id"]    = ep.prev_requery_id;
+                    jp["prev_requery_edge"]  = ep.prev_requery_edge;
+                    jp["prev_requery_face"]  = ep.prev_requery_face;
+                    jp["prev_requery_box"]   = ep.prev_requery_box;
+                    jp["prev_requery_anchor"]= json::array({ ep.prev_requery_anchor[0], ep.prev_requery_anchor[1], ep.prev_requery_anchor[2] });
+                    jp["post_body_faces"]    = ep.post_body_faces;
+                    jp["prev_body_faces"]    = ep.prev_body_faces;
+                    jp["body_shape_id"]      = ep.body_shape_id;
+                    diag["edge_probe"] = std::move(jp);
+                }
             }
 
             jf["_diag"] = std::move(diag);

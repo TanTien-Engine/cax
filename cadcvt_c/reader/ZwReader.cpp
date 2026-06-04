@@ -27,9 +27,11 @@
 #include "cadapp_c/ir/FeatureIR.h"
 #include "cadapp_c/ir/SketchIR.h"
 #include "cadapp_c/ir/Enums.h"
+#include "cadapp_c/ir/TopoRefIR.h"
 
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -511,6 +513,71 @@ void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
     }
 }
 
+// A ZW3D extrude (FtAllExt) yields a SOLID only when its profile bounds a
+// closed region. The historic guard "curves >= 3" rejected the single-line
+// surface extrude correctly, but ALSO dropped perfectly good 1-2 curve solid
+// profiles: a lone circle (a pin / hole), two concentric circles (a ring),
+// or a 2-curve loop (arc + chord, a D-section). Accept those; keep every
+// >= 3 profile exactly as before (zero risk to the base or existing bosses).
+bool ProfileExtrudable(const json& curves)
+{
+    if (!curves.is_array()) {
+        return false;
+    }
+    const size_t n = curves.size();
+    if (n >= 3) {
+        return true;            // unchanged: the existing multi-curve path
+    }
+    if (n == 0) {
+        return false;
+    }
+    // n == 1 or 2: a solid only if the curves close. A circle / ellipse is
+    // self-closing; a line / arc must chain endpoint-to-endpoint, no dangling
+    // end. (A lone line or arc is the open surface-extrude case -> reject.)
+    int closed_loops = 0;
+    std::vector<std::array<double, 2>> ends;
+    for (const auto& c : curves)
+    {
+        const std::string k = JStr(c, "kind", "");
+        if (k == "circle" || k == "ellipse") {
+            ++closed_loops;
+            continue;
+        }
+        auto p0 = c.find("p0");
+        auto p1 = c.find("p1");
+        if (p0 == c.end() || p1 == c.end() ||
+            !p0->is_array() || !p1->is_array() ||
+            p0->size() < 2 || p1->size() < 2) {
+            return false;       // open curve we can't verify -> not safe
+        }
+        ends.push_back({ p0->at(0).get<double>(), p0->at(1).get<double>() });
+        ends.push_back({ p1->at(0).get<double>(), p1->at(1).get<double>() });
+    }
+    // Every open endpoint must coincide with exactly one other (a closed
+    // chain). With only 1-2 curves this pairing is cheap and exact.
+    const double tol = 1e-6;
+    std::vector<bool> used(ends.size(), false);
+    for (size_t i = 0; i < ends.size(); ++i)
+    {
+        if (used[i]) { continue; }
+        bool matched = false;
+        for (size_t j = i + 1; j < ends.size(); ++j)
+        {
+            if (used[j]) { continue; }
+            if (std::fabs(ends[i][0] - ends[j][0]) < tol &&
+                std::fabs(ends[i][1] - ends[j][1]) < tol) {
+                used[i] = used[j] = true;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            return false;       // dangling end -> open profile (a surface)
+        }
+    }
+    return closed_loops > 0 || !ends.empty();
+}
+
 } // namespace
 
 ZwReader::ZwReader() = default;
@@ -579,12 +646,29 @@ bool ZwReader::ReadFile(const std::string& path,
     // extrude fuses onto the imported base instead of floating standalone.
     uint32_t running_solid_id = 0;
 
-    // World x/y extent (mm) of each reconstructed solid extrude, by feature
-    // id. A later pattern (FtPtnFtr) carries its target only as a world
+    // World-placed footprint of each reconstructed solid extrude, by feature
+    // id. A later pattern (FtPtnFtr) carries its target only as a world-space
     // anchor; this lets the reader map that anchor back to the feature the
     // pattern copies, so it patterns that feature's tool (not the whole body).
-    struct XYBox { uint32_t id; double xmin, xmax, ymin, ymax; };
-    std::vector<XYBox> extrude_xy;
+    //
+    // Stored as the sketch plane (origin + u/v axes, world mm) plus the
+    // profile's LOCAL (u,v) bounding box. Matching projects the anchor onto
+    // the plane and tests the 2D box -- correct for ANY plane orientation.
+    // (The old anchor.xy-vs-local-box test only worked when the sketch lay on
+    // world XY, so a pattern of a boss on a side plane -- e.g. Pattern2's
+    // -Y-plane pins -- mis-targeted whichever XY feature happened to be near.)
+    struct ExtrudeFootprint {
+        uint32_t id;
+        double   origin[3];
+        double   udir[3];
+        double   vdir[3];
+        double   umin, umax, vmin, vmax;
+        double   wc[3];           // world-space centre of the footprint, for
+                                  // grouping co-located seeds a pattern copies
+                                  // together (concentric pins -> one stepped
+                                  // pin patterned as a unit).
+    };
+    std::vector<ExtrudeFootprint> extrude_xy;
 
     try
     {
@@ -652,6 +736,13 @@ bool ZwReader::ReadFile(const std::string& path,
                 }
 
                 out.features.push_back(std::move(f));
+                // A box primitive is a solid body root, so it becomes the
+                // running body tip -- a following feature that dresses / fuses
+                // onto the current body (e.g. a chamfer, whose arm bails when
+                // running_solid_id==0) must see it. (Extrude / baked / pattern
+                // set this too; the box branch was the gap that left a
+                // box+chamfer part dropping the chamfer to opaque.)
+                running_solid_id = id;
             }
             else
             {
@@ -694,8 +785,8 @@ bool ZwReader::ReadFile(const std::string& path,
                 // extrude) is left opaque.
                 auto prof = jf.find("profile");
                 if (zt == "FtAllExt" && prof != jf.end() &&
-                    prof->contains("curves") && prof->at("curves").is_array() &&
-                    prof->at("curves").size() >= 3)
+                    prof->contains("curves") &&
+                    ProfileExtrudable(prof->at("curves")))
                 {
                     const uint32_t sketch_fid = 1000000u + id;
 
@@ -763,25 +854,68 @@ bool ZwReader::ReadFile(const std::string& path,
                         PushInput(ef, running_solid_id, cadapp::InputRole::Base);
                     }
 
-                    // Record this extrude's world x/y extent (mm) so a later
-                    // pattern can map its target anchor back to this feature.
+                    // Record this extrude's world-placed footprint (plane +
+                    // local u/v box, mm) so a later pattern can map its world
+                    // anchor back to this feature -- see ExtrudeFootprint.
                     {
-                        double xmn = 1e300, xmx = -1e300, ymn = 1e300, ymx = -1e300;
+                        double umn = 1e300, umx = -1e300, vmn = 1e300, vmx = -1e300;
                         for (const auto& c : prof->at("curves")) {
                             for (const char* key : { "p0", "p1", "center" }) {
                                 auto p = c.find(key);
                                 if (p != c.end() && p->is_array() && p->size() >= 2) {
-                                    double x = p->at(0).get<double>();
-                                    double y = p->at(1).get<double>();
-                                    if (x < xmn) xmn = x;
-                                    if (x > xmx) xmx = x;
-                                    if (y < ymn) ymn = y;
-                                    if (y > ymx) ymx = y;
+                                    double u = p->at(0).get<double>();
+                                    double v = p->at(1).get<double>();
+                                    if (u < umn) umn = u;
+                                    if (u > umx) umx = u;
+                                    if (v < vmn) vmn = v;
+                                    if (v > vmx) vmx = v;
                                 }
                             }
                         }
-                        if (xmn <= xmx) {
-                            extrude_xy.push_back({ id, xmn, xmx, ymn, ymx });
+                        if (umn <= umx) {
+                            ExtrudeFootprint fp;
+                            fp.id = id;
+                            // Plane frame in world mm (unscaled, to match the
+                            // pattern anchor, which is world mm). v = normal x u
+                            // (right-handed) -- the same frame the profile's
+                            // (u,v) curve coords are authored in.
+                            double o[3]  = { 0, 0, 0 };
+                            double ud[3] = { 1, 0, 0 };
+                            double nd[3] = { 0, 0, 1 };
+                            auto pl = prof->find("plane");
+                            if (pl != prof->end() && pl->is_object()) {
+                                auto rd3 = [&](const char* key, double d[3]) {
+                                    auto a = pl->find(key);
+                                    if (a != pl->end() && a->is_array() && a->size() == 3) {
+                                        d[0] = a->at(0).get<double>();
+                                        d[1] = a->at(1).get<double>();
+                                        d[2] = a->at(2).get<double>();
+                                    }
+                                };
+                                rd3("origin", o);
+                                rd3("x_dir",  ud);
+                                rd3("normal", nd);
+                            }
+                            double vd[3] = {
+                                nd[1] * ud[2] - nd[2] * ud[1],
+                                nd[2] * ud[0] - nd[0] * ud[2],
+                                nd[0] * ud[1] - nd[1] * ud[0],
+                            };
+                            for (int k = 0; k < 3; ++k) {
+                                fp.origin[k] = o[k];
+                                fp.udir[k]   = ud[k];
+                                fp.vdir[k]   = vd[k];
+                            }
+                            fp.umin = umn; fp.umax = umx;
+                            fp.vmin = vmn; fp.vmax = vmx;
+                            // World centre of the footprint (origin + centre in
+                            // the plane frame), for co-location grouping.
+                            double cu = 0.5 * (umn + umx);
+                            double cv = 0.5 * (vmn + vmx);
+                            for (int k = 0; k < 3; ++k) {
+                                fp.wc[k] = o[k] + cu * ud[k] + cv * vd[k];
+                            }
+                            extrude_xy.push_back(fp);
                         }
                     }
 
@@ -811,16 +945,25 @@ bool ZwReader::ReadFile(const std::string& path,
                         uint32_t target = 0;
                         if (FieldEntAnchor(jf, 1, anc))
                         {
-                            // anchor (mm) -> extrude whose x/y box contains it
-                            // (nearest box centre breaks ties / misses).
+                            // Project the world anchor (mm) onto each extrude's
+                            // sketch plane and test the profile's local (u,v)
+                            // box. The out-of-plane offset (the anchor sits at
+                            // the patterned feature's top face, the profile at
+                            // its base) is dropped by the projection, so a boss
+                            // on ANY plane is matched -- not just world-XY ones.
+                            // Nearest footprint centre breaks ties / misses.
                             double best = 1e300;
                             for (const auto& b : extrude_xy) {
-                                bool inside = anc[0] >= b.xmin - 1.0 && anc[0] <= b.xmax + 1.0 &&
-                                              anc[1] >= b.ymin - 1.0 && anc[1] <= b.ymax + 1.0;
-                                double cx = 0.5 * (b.xmin + b.xmax);
-                                double cy = 0.5 * (b.ymin + b.ymax);
-                                double d2 = (anc[0] - cx) * (anc[0] - cx) +
-                                            (anc[1] - cy) * (anc[1] - cy);
+                                double du[3] = { anc[0] - b.origin[0],
+                                                 anc[1] - b.origin[1],
+                                                 anc[2] - b.origin[2] };
+                                double u = du[0]*b.udir[0] + du[1]*b.udir[1] + du[2]*b.udir[2];
+                                double v = du[0]*b.vdir[0] + du[1]*b.vdir[1] + du[2]*b.vdir[2];
+                                bool inside = u >= b.umin - 1.0 && u <= b.umax + 1.0 &&
+                                              v >= b.vmin - 1.0 && v <= b.vmax + 1.0;
+                                double cu = 0.5 * (b.umin + b.umax);
+                                double cv = 0.5 * (b.vmin + b.vmax);
+                                double d2 = (u - cu) * (u - cu) + (v - cv) * (v - cv);
                                 double score = inside ? d2 : (d2 + 1e6);
                                 if (score < best) { best = score; target = b.id; }
                             }
@@ -844,15 +987,137 @@ bool ZwReader::ReadFile(const std::string& path,
                             pf.type = cadapp::FeatType::LinearPattern;
                             pf.name = name;
                             pf.data = std::move(lp);
-                            // Tool = the feature being patterned; Base = the
-                            // current body to combine instances onto.
-                            PushInput(pf, target, cadapp::InputRole::Tool);
+
+                            // Tools = the matched seed AND every other seed
+                            // co-located with it. Concentric pins (e.g. id6+
+                            // id7+id8: a ring + two studs at one spot) are
+                            // SEPARATE ZW3D features, but one ZW3D pattern
+                            // copies them together as a unit -- so pattern the
+                            // whole co-located group, not just the nearest one
+                            // (which left the other studs un-replicated). The
+                            // Replayer multiplies each Tool and fuses them all
+                            // onto the running body. Base = that current body.
+                            const double* tgt_wc = nullptr;
+                            for (const auto& b : extrude_xy) {
+                                if (b.id == target) { tgt_wc = b.wc; break; }
+                            }
+                            const double kGroupTol = 1.5;   // mm (concentric
+                                                            // seeds sit ~0 apart)
+                            int n_tool = 0;
+                            if (tgt_wc) {
+                                for (const auto& b : extrude_xy) {
+                                    double dx = b.wc[0] - tgt_wc[0];
+                                    double dy = b.wc[1] - tgt_wc[1];
+                                    double dz = b.wc[2] - tgt_wc[2];
+                                    if (dx*dx + dy*dy + dz*dz <= kGroupTol*kGroupTol) {
+                                        PushInput(pf, b.id, cadapp::InputRole::Tool);
+                                        ++n_tool;
+                                    }
+                                }
+                            }
+                            if (n_tool == 0) {
+                                PushInput(pf, target, cadapp::InputRole::Tool);
+                            }
                             PushInput(pf, running_solid_id, cadapp::InputRole::Base);
                             pf.ext_params["pattern_onto_running"] = 1.0;
                             out.features.push_back(std::move(pf));
                             running_solid_id = id;
                             continue;
                         }
+                    }
+                }
+
+                // ZW3D chamfer/fillet (FtChamfers2) -> FeatPayloadChamfer.
+                // The plugin captured the picked edge(s) from the feature's
+                // nested VDATA edge-list as world-mm anchors with their
+                // per-edge setback (fld "ents":[{anchor,num}]), plus a
+                // feature-level "input_edges" fallback (anchor only). The cax
+                // Replayer applies the dressup itself: it builds a
+                // resolve_edge_ref per anchor (matched to the running body's
+                // edge within ~5x the setback) and a chamfer op -- so there is
+                // no loader/OCCT work here, only the IR mapping.
+                if (zt == "FtChamfers2" && running_solid_id != 0)
+                {
+                    struct Pick { double anc[3] = { 0, 0, 0 };
+                                  double num = 0.0; bool has_num = false; };
+                    std::vector<Pick> picks;
+                    auto read_ents = [&](const json& ents)
+                    {
+                        for (const auto& e : ents)
+                        {
+                            auto a = e.find("anchor");
+                            if (a == e.end() || !a->is_array() || a->size() < 3) {
+                                continue;
+                            }
+                            Pick pk;
+                            pk.anc[0] = a->at(0).get<double>();
+                            pk.anc[1] = a->at(1).get<double>();
+                            pk.anc[2] = a->at(2).get<double>();
+                            auto n = e.find("num");
+                            if (n != e.end() && n->is_number()) {
+                                pk.num     = n->get<double>();
+                                pk.has_num = true;
+                            }
+                            picks.push_back(pk);
+                        }
+                    };
+
+                    // Prefer the field ents (they carry the per-edge setback);
+                    // fall back to the feature-level input_edges.
+                    auto fit2 = jf.find("fields");
+                    if (fit2 != jf.end() && fit2->is_array()) {
+                        for (const auto& fd : *fit2) {
+                            auto eit = fd.find("ents");
+                            if (eit != fd.end() && eit->is_array() && !eit->empty()) {
+                                read_ents(*eit);
+                            }
+                        }
+                    }
+                    if (picks.empty()) {
+                        auto iit = jf.find("input_edges");
+                        if (iit != jf.end() && iit->is_array()) {
+                            read_ents(*iit);
+                        }
+                    }
+
+                    // Setback: first captured per-edge value, else the field
+                    // distance (fld 3). A 0-distance chamfer would just error
+                    // in OCCT, so fall through to opaque when neither exists.
+                    double setback = 0.0;
+                    for (const auto& pk : picks) {
+                        if (pk.has_num && pk.num > 0.0) { setback = pk.num; break; }
+                    }
+                    if (setback <= 0.0) {
+                        setback = FieldValueById(jf, 3, 0.0);
+                    }
+
+                    if (!picks.empty() && setback > 0.0)
+                    {
+                        cadapp::FeatPayloadChamfer pl;
+                        pl.distance1 = setback * s;
+                        pl.distance2 = 0.0;          // symmetric (fld 42 Type=0)
+                        for (const auto& pk : picks)
+                        {
+                            cadapp::TopoRefIR r;
+                            r.kind     = cadapp::TopoRefIR::Kind::Edge;
+                            r.point[0] = pk.anc[0] * s;
+                            r.point[1] = pk.anc[1] * s;
+                            r.point[2] = pk.anc[2] * s;
+                            pl.edges.push_back(r);
+                        }
+
+                        cadapp::FeatureIR cf;
+                        cf.id   = id;
+                        cf.type = cadapp::FeatType::Chamfer;
+                        cf.name = name;
+                        cf.data = std::move(pl);
+                        cf.ext_strings["zw_type"] = zt;
+                        // Base = the running body the chamfer dresses; the
+                        // Replayer resolves the picked edges against it.
+                        PushInput(cf, running_solid_id, cadapp::InputRole::Base);
+                        out.features.push_back(std::move(cf));
+                        running_solid_id = id;
+                        continue;
                     }
                 }
 
