@@ -1,0 +1,57 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER3
+import "brepkit.variant" for VAR_TOPO_SHAPE
+import "brepkit" for ShapeTools
+import "maths.vector" for Vector3
+
+// ============================================================
+// brepkit::nodes::shape_aabb::ShapeAABB
+//
+// World-space axis-aligned bounding box of a TopoShape, exposed as
+// two num3 corners (min / max). Feed these into a Perspective node's
+// bb_min / bb_max inputs so the camera near/far planes adapt to the
+// model's size -- otherwise a model imported at a large unit scale
+// (e.g. ZW3D in mm with unit_scale = 1) sits deep in a fixed
+// [0.01, 100] frustum and z-fights.
+// ============================================================
+
+class ShapeAABB is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "min", VAR_TYPE_NUMBER3),
+			Pin(this, "max", VAR_TYPE_NUMBER3),
+		]
+
+		this.layout()
+	}
+
+	calc_value(idx)
+	{
+		var v_shape = Blueprint.calc_input_value(this, 0)
+		if (!v_shape) {
+			return nil
+		}
+
+		var b = ShapeTools.aabb(v_shape.value)
+		if (!b) {
+			return nil
+		}
+
+		if (idx == 0) {
+			return Variant(VAR_TYPE_NUMBER3, Vector3(b[0], b[1], b[2]))
+		} else if (idx == 1) {
+			return Variant(VAR_TYPE_NUMBER3, Vector3(b[3], b[4], b[5]))
+		}
+
+		return nil
+	}
+}

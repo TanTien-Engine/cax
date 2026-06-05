@@ -27,7 +27,7 @@ _editor.add_node(node3, 392.18895050427, 211.79090897199)
 var node4 = ::cadcvt::nodes::load_zw::LoadZw()
 //node4.query_param("path").value = "D:/projects/cad/zw3d/test.Z3PRT.cax.json"
 node4.query_param("path").value = "D:/projects/cad/zw3d/高压泡沫混合_029-R2900_20.Z3PRT.cax.json"
-node4.query_param("unit_scale").value = 0.1
+node4.query_param("unit_scale").value = 1
 node4.query_param("strict").value = false
 
 _editor.add_node(node4, 29.22809917355, 135.62727272727)
@@ -37,9 +37,20 @@ node5.query_param("disable").value = false
 
 _editor.add_node(node5, 397.97407447121, 120.3305785124)
 
+var node6 = ::brepkit::nodes::shape_aabb::ShapeAABB()
+
+_editor.add_node(node6, 210.13432009961, 30.0)
+
 Blueprint.connect(node4, "shape", node2, "shape")
 Blueprint.connect(node2, "edges", node5, "var")
 Blueprint.connect(node2, "va", node3, "var")
 Blueprint.connect(node3, "var", node1, "geos")
 Blueprint.connect(node0, "this", node1, "view_cam")
 Blueprint.connect(node5, "var", node1, "edges")
+
+// Feed the imported body's bounding box into the render graph so the
+// camera near/far planes adapt to the model (keeps the mm-scale,
+// unit_scale=1 import z-fight free).
+Blueprint.connect(node4, "shape", node6, "shape")
+Blueprint.connect(node6, "min", node1, "aabb_min")
+Blueprint.connect(node6, "max", node1, "aabb_max")

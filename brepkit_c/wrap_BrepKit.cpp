@@ -392,6 +392,28 @@ void w_ShapeTools_map_edges()
     brepkit::return_topo_shape_list(edges);
 }
 
+void w_ShapeTools_aabb()
+{
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
+    double mn[3], mx[3];
+    bool ok = brepkit::ShapeTools::AABB(shape, mn, mx);
+
+    ves_pop(ves_argnum());
+
+    if (!ok) {
+        ves_set_nil(0);
+        return;
+    }
+
+    const double v[6] = { mn[0], mn[1], mn[2], mx[0], mx[1], mx[2] };
+    ves_newlist(6);
+    for (int i = 0; i < 6; ++i) {
+        ves_pushnumber(v[i]);
+        ves_seti(-2, i);
+        ves_pop(1);
+    }
+}
+
 void w_TopoAlgo_fillet()
 {
     auto src = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
@@ -1201,6 +1223,7 @@ VesselForeignMethodFn BrepKitBindMethod(const char* signature)
     if (strcmp(signature, "static ShapeTools.map_shells(_)") == 0) return w_ShapeTools_map_shells;
     if (strcmp(signature, "static ShapeTools.map_faces(_)") == 0) return w_ShapeTools_map_faces;
     if (strcmp(signature, "static ShapeTools.map_edges(_)") == 0) return w_ShapeTools_map_edges;
+    if (strcmp(signature, "static ShapeTools.aabb(_)") == 0) return w_ShapeTools_aabb;
 
     if (strcmp(signature, "static TopoAlgo.fillet(_,_,_,_)") == 0) return w_TopoAlgo_fillet;
     if (strcmp(signature, "static TopoAlgo.chamfer(_,_,_,_)") == 0) return w_TopoAlgo_chamfer;

@@ -78,6 +78,8 @@ foreign class ShapeTools
 	foreign static map_shells(shape)
 	foreign static map_faces(shape)
 	foreign static map_edges(shape)
+
+	foreign static aabb(shape)
 }
 
 foreign class TopoAlgo

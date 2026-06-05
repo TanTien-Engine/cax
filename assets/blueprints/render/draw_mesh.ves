@@ -902,3 +902,28 @@ Blueprint.connect(node57, "var", node50, "light_pos")
 Blueprint.connect(node51, "v3", node50, "light_col")
 Blueprint.connect(node55, "var", node50, "cam_pos")
 Blueprint.connect(node53, "var", node50, "projection")
+
+// === adaptive near/far ==========================================
+// Fit the perspective znear/zfar to the model's bounding box so the
+// view stays z-fight free regardless of the import scale. The scene
+// supplies the box via the aabb_min / aabb_max inputs (e.g. from a
+// brepkit ShapeAABB node); cam_pos comes from the live view camera.
+// When a scene leaves aabb_min / aabb_max unconnected the Perspective
+// node falls back to its fixed znear / zfar fields (unchanged behaviour).
+var node81 = ::blueprint::nodes::input::Input()
+
+node81.var_name = "aabb_min"
+node81.var_type = "num3"
+
+_editor.add_node(node81, -966, 60)
+
+var node82 = ::blueprint::nodes::input::Input()
+
+node82.var_name = "aabb_max"
+node82.var_type = "num3"
+
+_editor.add_node(node82, -966, 0)
+
+Blueprint.connect(node3,  "pos", node2, "cam_pos")
+Blueprint.connect(node81, "var", node2, "bb_min")
+Blueprint.connect(node82, "var", node2, "bb_max")
