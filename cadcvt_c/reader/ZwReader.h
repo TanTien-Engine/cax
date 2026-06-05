@@ -37,10 +37,12 @@
 //     SetStrict(true), which fails on the first unknown kind.
 //
 // Units:
-//   The intermediate carries "length_unit". ZW3D parts are commonly
-//   millimetres, so the default scale is 0.001 (to reach the project's
-//   metre convention); ReadFile overrides it from the file's
-//   length_unit. SetUnitScale stays for symmetry / odd-unit overrides.
+//   The intermediate carries "length_unit". By default ReadFile resolves
+//   the scale from it (mm -> 0.001, cm -> 0.01, m -> 1, in -> 0.0254) to
+//   reach the project's metre convention. SetUnitScale(s) with s > 0
+//   FORCES that exact scale instead, overriding length_unit -- the
+//   "set explicitly to force a scale" escape hatch. s <= 0 (the default)
+//   leaves it on auto.
 // ============================================================
 
 namespace cadcvt
@@ -60,17 +62,18 @@ public:
         return "zw";
     }
 
-    // Multiplier applied to every length read from the intermediate.
-    // Overridden per-file from "length_unit"; set explicitly only to
-    // force a scale.
+    // Force the length multiplier, overriding the per-file length_unit
+    // derivation. s > 0 pins the scale to s; s <= 0 (the default) leaves
+    // ReadFile to resolve it from the file's length_unit.
     void SetUnitScale(double s) {
-        m_unit_scale = s;
+        m_forced_scale = s;
     }
 
-    // The scale actually in effect after the last ReadFile (resolved from
-    // the file's length_unit). The ZwLoader applies it to STEP-loaded
-    // authored geometry, which OCCT reads in the file's native unit (mm),
-    // so it matches the metre-scaled parametric features.
+    // The scale actually in effect after the last ReadFile (the forced
+    // value when one was set, else resolved from the file's length_unit).
+    // The ZwLoader applies it to STEP-loaded authored geometry, which OCCT
+    // reads in the file's native unit (mm), so it matches the scaled
+    // parametric features.
     double UnitScale() const {
         return m_unit_scale;
     }
@@ -83,8 +86,9 @@ public:
     }
 
 private:
-    double m_unit_scale = 0.001;
-    bool   m_strict     = false;
+    double m_unit_scale   = 0.001;  // resolved scale, valid after ReadFile
+    double m_forced_scale = 0.0;    // > 0: caller forced this; <= 0: auto
+    bool   m_strict       = false;
 
     uint32_t m_next_sketch_cons_id = 1;
 };

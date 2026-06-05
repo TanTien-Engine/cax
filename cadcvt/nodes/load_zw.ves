@@ -20,7 +20,9 @@ import "cadcvt" for ZwLoader
 //
 // Inputs:
 //   path       string  - .cax.json file path
-//   unit_scale number  - length multiplier (0.001: ZW3D mm -> metres)
+//   unit_scale number  - length multiplier; 0 (default) = auto from the
+//                        file's length_unit (mm -> 0.001 etc.), >0 forces
+//                        that exact scale
 //   strict     boolean - fail on unknown ZW3D feature kinds
 //
 // Outputs:
@@ -43,7 +45,7 @@ class LoadZw is Node
         ]
 
         this.params.add(NodeParam("path", ""))
-        this.params.add(NodeParam("unit_scale", 0.001))
+        this.params.add(NodeParam("unit_scale", 0.0))   // 0 = auto from length_unit
         this.params.add(NodeParam("strict", false))
 
         this.layout()

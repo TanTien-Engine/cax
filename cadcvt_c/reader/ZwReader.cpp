@@ -623,13 +623,20 @@ bool ZwReader::ReadFile(const std::string& path,
     out.source   = Name();
     out.doc_path = path;
 
-    // length_unit -> scale; target is the project's metre convention.
-    std::string unit = JStr(doc, "length_unit", sc::unit::Mm);
-    if (unit == sc::unit::Mm) { m_unit_scale = 0.001; }
-    else if (unit == sc::unit::Cm) { m_unit_scale = 0.01; }
-    else if (unit == sc::unit::M) { m_unit_scale = 1.0; }
-    else if (unit == sc::unit::In) { m_unit_scale = 0.0254; }
-    // else: keep whatever SetUnitScale left.
+    // Resolve the length scale; target is the project's metre convention.
+    // A forced scale (SetUnitScale with s > 0) wins over the file's
+    // declared unit -- the "set explicitly to force a scale" contract.
+    // Otherwise derive it from length_unit.
+    if (m_forced_scale > 0.0) {
+        m_unit_scale = m_forced_scale;
+    } else {
+        std::string unit = JStr(doc, "length_unit", sc::unit::Mm);
+        if (unit == sc::unit::Mm) { m_unit_scale = 0.001; }
+        else if (unit == sc::unit::Cm) { m_unit_scale = 0.01; }
+        else if (unit == sc::unit::M) { m_unit_scale = 1.0; }
+        else if (unit == sc::unit::In) { m_unit_scale = 0.0254; }
+        else { m_unit_scale = 0.001; }   // unknown unit -> mm convention
+    }
     const double s = m_unit_scale;
 
     // Directory of the .cax.json, used to resolve the sibling per-feature
