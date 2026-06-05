@@ -1420,18 +1420,50 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     // and patterning only originals[0] left the rest behind.
                     // FreeCAD never sets this ext_param, so its
                     // CombinePatternedTool path below is byte-for-byte unchanged.
+                    //
+                    // A linear_pattern emits an instance at position 0
+                    // coincident with the seed -- which is ALREADY fused into
+                    // base_node. Re-combining that copy is harmless for a bare
+                    // seed (an idempotent union, why Pattern1 worked), but WRONG
+                    // once a feature BETWEEN the seed and the pattern reshaped
+                    // it: e.g. a chamfer/fillet bevels the seed's rim (id9
+                    // here), then fusing the un-beveled position-0 copy back
+                    // FILLS the bevel and the chamfer disappears. So cut the
+                    // seed footprint (orig.tool_node IS the position-0 instance)
+                    // out of the pattern and combine only the NEW copies; the
+                    // original, already-dressed seed stays untouched in acc. The
+                    // offset copies are disjoint from the seed tool, so the cut
+                    // leaves exactly the added instances.
                     int acc = base_node;
+                    // A 1x1 "pattern" (no offset instances) holds only the
+                    // position-0 seed, already present in acc -- cutting the
+                    // seed out of it would leave an EMPTY shape and nuke the
+                    // body. Such a pattern adds nothing, so leave acc untouched.
+                    double l2sq = p.dir2[0] * p.dir2[0]
+                                + p.dir2[1] * p.dir2[1]
+                                + p.dir2[2] * p.dir2[2];
+                    bool has_copies = (p.count1 > 1)
+                                   || (p.count2 > 1 && l2sq > 1e-30);
                     for (const auto& orig : pi.originals) {
+                        if (!has_copies) {
+                            break;
+                        }
                         int patk = cg->AddOp("linear_pattern",
                                               {orig.tool_node, d1, c1, s1, d2, c2, s2},
                                               {}, feat.name);
                         char op = orig.op_kind;
-                        if (op == 'c') {
-                            acc = cg->AddOp("cut", {acc, patk}, {}, feat.name);
-                        } else if (op == '0') {
+                        if (op == '0') {
+                            // Seed was itself the body base -- no running seed to
+                            // preserve; the whole pattern (incl. pos 0) IS body.
                             acc = patk;
+                            continue;
+                        }
+                        int copies = cg->AddOp("cut", {patk, orig.tool_node},
+                                                {}, feat.name);
+                        if (op == 'c') {
+                            acc = cg->AddOp("cut", {acc, copies}, {}, feat.name);
                         } else {
-                            acc = cg->AddOp("fuse", {acc, patk}, {}, feat.name);
+                            acc = cg->AddOp("fuse", {acc, copies}, {}, feat.name);
                         }
                     }
                     node = acc;

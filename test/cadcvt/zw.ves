@@ -1,20 +1,11 @@
-// ZW3D load test scene. Feeds a LoadZw node (cadcvt::ZwReader +
-// Replayer) the neutral .cax.json the zw_export plugin emits, and
-// replays it into a 3D body via the same ToMesh / draw_mesh path as
-// freecad.ves / sw.ves.
-//
-// SDK-free: no ZW3D runtime is launched -- the .cax.json already
-// carries the features + authored geometry refs.
-
 var node0 = ::blueprint::nodes::camera3d::Camera3d()
 
-// Framed for the ~240 x 150 mm dkba test part (metres after unit_scale).
-node0.cam.position.set(-0.10, -0.45, 0.35)
+node0.cam.position.set(-0.37387331656566, -22.574113742468, 14.728388092775)
 node0.cam.yaw = -90.8
-node0.cam.pitch = 45
+node0.cam.pitch = 58
 node0.cam.zoom = 45
 node0.cam.update_vectors()
-node0.speed = 0.002
+node0.speed = 0.2
 
 _editor.add_node(node0, 537.95018571588, -34.75814028784)
 
@@ -33,12 +24,10 @@ node3.query_param("disable").value = false
 
 _editor.add_node(node3, 392.18895050427, 211.79090897199)
 
-// LoadZw: .cax.json -> TopoShape. unit_scale 0.001 maps ZW3D mm to
-// the project's metre convention.
 var node4 = ::cadcvt::nodes::load_zw::LoadZw()
-//node4.query_param("path").value = "D:/projects/cad/zw3d/高压泡沫混合_029-R2900_20.Z3PRT.cax.json"
-node4.query_param("path").value = "D:/projects/cad/zw3d/test.Z3PRT.cax.json"
-node4.query_param("unit_scale").value = 0.001
+//node4.query_param("path").value = "D:/projects/cad/zw3d/test.Z3PRT.cax.json"
+node4.query_param("path").value = "D:/projects/cad/zw3d/高压泡沫混合_029-R2900_20.Z3PRT.cax.json"
+node4.query_param("unit_scale").value = 0.1
 node4.query_param("strict").value = false
 
 _editor.add_node(node4, 29.22809917355, 135.62727272727)
@@ -48,7 +37,6 @@ node5.query_param("disable").value = false
 
 _editor.add_node(node5, 397.97407447121, 120.3305785124)
 
-// shape -> main surface + edges.
 Blueprint.connect(node4, "shape", node2, "shape")
 Blueprint.connect(node2, "edges", node5, "var")
 Blueprint.connect(node2, "va", node3, "var")
