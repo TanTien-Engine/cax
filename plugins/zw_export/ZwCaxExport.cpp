@@ -369,6 +369,7 @@ struct FeatNode
 #include "zwapi_datum.h"                   // ZwDatumAxisDirectionGet (pattern direction axis -> unit vector)
 #include "zwapi_dataexchange.h"            // ZwExternalGeometryCopyDataGet/Free, szwExternalGeometryCopyData (CdGeomCopy)
 #include "zwapi_part_opts.h"               // cvxPartHistScrollTo (roll the history bar to read a feature in context)
+#include "zwapi_history.h"                 // ZwHistoryReplay + ezwHistoryModelStopLinePosition (the real history roll-back)
 #include "zwapi_sketch_general.h"          // ZwSketch2DCurveListGet (extrude profile = a feature's built-in sketch)
 #include "zwapi_curve.h"                   // ZwCurveNURBSDataGet
 #include "zwapi_curve_data.h"              // szwCurve (line/arc/circle geometry)
@@ -856,23 +857,28 @@ std::vector<FieldDump> DumpFields(int idFtr)
 // needs. Each edge becomes a geometric signature (anchor = edge bbox centre);
 // the ZW3D id is meaningless after the OCCT rebuild, only the geometry is, so
 // the loader matches the chamfer onto the rebuilt body by that anchor.
-std::vector<EntSig> InputEdges(int idFtr, int idPrevFtr)
+std::vector<EntSig> InputEdges(int idFtr)
 {
     std::vector<EntSig> out;
-    // A dressup (chamfer / fillet) CONSUMES its picked edge: at idFtr's own
-    // state the edge is gone and the reference resolves to a POST-dressup edge
-    // (the chamfer boundary, a `setback` away from the original -- proven by
-    // test.Z3PRT, where a box-top edge at (5,0,5) reads back as (0,0,5)). To
-    // read the ORIGINAL edge, roll the history bar back to the PREVIOUS feature
-    // and do BOTH the query AND the geometry read THERE: the edge is live, and
-    // keeping query+read in the same state means we never carry a scroll-state-
-    // LOCAL index across states (those renumber). ZW3D resolves the feature's
-    // stored edge reference (persistent name) to the live original edge at this
-    // prior state. Restore the bar to idFtr afterwards (the loop's invariant).
-    const bool rolled = (idPrevFtr > 0);
-    if (rolled) {
-        cvxPartHistScrollTo(idPrevFtr);
+    // A dressup (chamfer / fillet) CONSUMES its picked edge: in the final regen
+    // body the edge is gone, replaced by the chamfer boundary, and EVERY id /
+    // feature-input query resolves to that boundary (a `setback` off the
+    // original). To read the ORIGINAL edge, roll the MODEL back to before this
+    // feature with ZwHistoryReplay -- the REAL roll-back. (cvxPartHistScrollTo
+    // is a no-op for the model: proven on test.Z3PRT, faces stayed 7->7;
+    // ZwHistoryReplay gives 7->6 and the input edge then resolves to the
+    // original -- box top edge id 1550 @ (5,0,5) instead of boundary id 2018 @
+    // (-3,0,5).) Query + read at the rolled-back state, then replay TO_THE_END
+    // to restore the model and re-assert the loop's per-feature eval context.
+    szwEntityHandle h;
+    bool rolled = false;
+    if (ZwEntityIdTransfer(1, &idFtr, &h) == ZW_API_NO_ERROR) {
+        if (ZwHistoryReplay(&h, ZW_HISTORY_REPLAY_BEFORE_FEATURE) == ZW_API_NO_ERROR) {
+            rolled = true;
+        }
+        ZwEntityHandleFree(&h);
     }
+
     int  cnt = 0;
     int* ids = nullptr;
     if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_EDGE, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr)
@@ -886,8 +892,10 @@ std::vector<EntSig> InputEdges(int idFtr, int idPrevFtr)
         // cvxMemFree the older cvxPart* inquiries use (same as ReadProfile).
         ZwMemoryFree(reinterpret_cast<void**>(&ids));
     }
+
     if (rolled) {
-        cvxPartHistScrollTo(idFtr);   // restore the caller's history state
+        ZwHistoryReplay(nullptr, ZW_HISTORY_REPLAY_TO_THE_END);  // restore model
+        cvxPartHistScrollTo(idFtr);   // restore the loop's per-feature context
     }
     return out;
 }
@@ -1829,7 +1837,7 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             // matches the true edge instead of the chamfer's new boundary
             // (which on test.Z3PRT sat at the face centre, tied across 4 edges).
             const int prev_fid = (i > 0) ? feats[i - 1] : 0;
-            std::vector<EntSig> in_edges = zwapi::InputEdges(fid, prev_fid);
+            std::vector<EntSig> in_edges = zwapi::InputEdges(fid);  // ZwHistoryReplay roll-back inside
             if (!in_edges.empty())
             {
                 size_t n_list = 0;

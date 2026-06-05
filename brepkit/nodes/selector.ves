@@ -41,6 +41,17 @@ class Selector is Node
 		this.calc_step_id = -1
 	}
 
+	// Seed the selection from a reconstructed import (cadcvt history rebuild):
+	// pre-fill the picked entity by its TopoNaming uid + the already-resolved
+	// shape, so the first eval returns it immediately and a later upstream edit
+	// (which clears selected_objs) re-selects it by uid on the live body.
+	seed_selection(sel_type, uid, shape)
+	{
+		this.query_param("type").value = sel_type
+		this.selected_uids = [uid]
+		this.selected_objs = [Variant(VAR_TOPO_SHAPE, shape)]
+	}
+
 	on_pin_dirty(pin, type, msg)
 	{
 		super.on_pin_dirty(pin, type, msg)

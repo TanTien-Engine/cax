@@ -154,6 +154,16 @@ void w_HistGraph_get_node_uid()
     auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
 
     auto node = hg->QueryNode(shape);
+    // QueryNode can miss (shape not a tracked node of this hist graph) or
+    // return a node without a NodeId component -- e.g. a reconstructed import
+    // querying a resolve-step edge that was never registered. Return nil
+    // instead of dereferencing a null / component-less node (the interactive
+    // Selector only ever queries freshly-picked, registered shapes, so it
+    // never hit this; the cadcvt history rebuild does).
+    if (!node || !node->HasComponent<brepgraph::NodeId>()) {
+        ves_set_nil(0);
+        return;
+    }
     auto& cid = node->GetComponent<brepgraph::NodeId>();
     ves_set_number(0, cid.GetUID());
 }
@@ -273,6 +283,26 @@ void w_CalcGraph_eval()
             ves_seti(-2, i);
             ves_pop(1);
         }
+    } else {
+        ves_set_nil(0);
+    }
+}
+
+void w_CalcGraph_get_step_tag()
+{
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
+
+    int node_idx = (int)ves_tonumber(1);
+
+    auto result = cg->Eval(node_idx);
+
+    // The TopoNaming UID a resolve_*_ref op stamped onto its result
+    // (resolve_ops.cpp: ShapeVal::tag = resolved uid; 0 = no binding). Lets the
+    // history rebuild seed a Selector BY UID instead of dereferencing the
+    // resolved sub-shape (which is not a registered node, so get_node_uid on it
+    // misses). Returns nil when the step result is not a shape.
+    if (auto* v = std::get_if<brepgraph::ShapeVal>(&result)) {
+        ves_set_number(0, (double)v->tag);
     } else {
         ves_set_nil(0);
     }
@@ -582,6 +612,7 @@ VesselForeignMethodFn BrepGraphBindMethod(const char* signature)
     if (strcmp(signature, "CalcGraph.get_graph()") == 0) return w_CalcGraph_get_graph;
     if (strcmp(signature, "CalcGraph.get_graph(_)") == 0) return w_CalcGraph_get_graph_filtered;
     if (strcmp(signature, "CalcGraph.eval(_)") == 0) return w_CalcGraph_eval;
+    if (strcmp(signature, "CalcGraph.get_step_tag(_)") == 0) return w_CalcGraph_get_step_tag;
     if (strcmp(signature, "CalcGraph.set_parallel(_)") == 0) return w_CalcGraph_set_parallel;
     if (strcmp(signature, "CalcGraph.add_integer_node(_,_)") == 0) return w_CalcGraph_add_integer_node;
     if (strcmp(signature, "CalcGraph.add_number_node(_,_)") == 0) return w_CalcGraph_add_number_node;

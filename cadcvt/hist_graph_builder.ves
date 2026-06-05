@@ -5,6 +5,7 @@ import "blueprint.nodes.output" for Output
 import "brepkitnodes" for BREP_KIT_NODES
 import "cadcvt.nodes.baked_shape" for BakedShape
 import "cadcvt.nodes.sketch_to_face" for SketchToFace
+import "brepkit.nodes.selector" for Selector
 import "sketchgraph.nodes.line" for Line as SkLineNode
 import "sketchgraph.nodes.arc" for Arc as SkArcNode
 import "sketchgraph.nodes.circle" for Circle as SkCircleNode
@@ -27,21 +28,29 @@ var CONST_OPS = ["$num", "$int", "$bool", "$vec3", "$shape", "$sketch", "$topore
 // registered signature -- hence the explicit whitelist rather than
 // trusting every auto-discovered op.
 //
-// fillet / chamfer / shell are deliberately NOT here yet: their edge /
-// face inputs come from resolve_*_ref steps (geometric refs into the live
-// body) that have no editable selector form yet, and a brepkit dressup
-// takes its refs as ONE array pin (Blueprint.connect would overwrite, not
-// append, multiple of them). Until selector reconstruction lands (the
-// same Stage C as the sketch node) we bake the whole dressup result, so
-// everything UPSTREAM of it (the extrude / booleans / transforms) stays
-// editable instead of being half-wired to frozen edge refs.
+// chamfer / fillet decompile to their brepkit Chamfer / Fillet nodes via
+// Stage-C selector reconstruction. Their picked edges arrive as resolve_edge_ref
+// steps (a geometric ref resolved to a live edge + a TopoNaming UID); each such
+// step is rebuilt as a Selector node (selector.ves) seeded with that UID, which
+// re-selects the edge BY UID on the re-evaluated body and feeds the dressup's
+// edges array pin -- so box -> ... -> Chamfer <- Selector(uid) re-evaluates and
+// stays editable (the dist/radius is a live param; the picked edge tracks the
+// body through TopoNaming). A baked edge snapshot would NOT work here:
+// TopoAlgo::Chamfer does MakeChamfer(body).Add(dist, edge) and needs `edge` to
+// be a live SUB-SHAPE of the re-evaluated body, which a frozen replay-body edge
+// is not. shell stays baked (no node yet).
 var SUPPORTED_OPS = [
     "box", "cylinder", "cone", "sphere", "torus",
     "cut", "fuse", "common",
     "translate", "rotate", "scale", "mirror", "offset",
     "linear_pattern", "circular_pattern",
     "revolve", "prism",
+    "chamfer", "fillet",
 ]
+
+// resolve_*_ref steps become Selector nodes (not BakedShapes) so a dressup's
+// picked edges/faces track the live body by TopoNaming UID -- see make_selector.
+var RESOLVE_OPS = ["resolve_edge_ref", "resolve_face_ref"]
 
 // ============================================================
 // cadcvt::hist_graph_builder::HistGraphBuilder
@@ -125,6 +134,10 @@ class HistGraphBuilder
                 // geometry (double-click to edit) feeding a SketchToFace that
                 // caps it into the B-rep face downstream ops consume.
                 node = HistGraphBuilder.make_sketch(graph, step, loader, editor, nx, ny)
+            } else if (RESOLVE_OPS.contains(op)) {
+                // A dressup's picked edge / face: rebuild as a Selector seeded
+                // with the resolved TopoNaming UID so it tracks the live body.
+                node = HistGraphBuilder.make_selector(graph, step, op, editor, nx, ny)
             } else {
                 node = HistGraphBuilder.make_node(graph, step, op, op2class)
                 if (node) {
@@ -144,7 +157,23 @@ class HistGraphBuilder
         // Pass 2: wire shape + variadic inputs now that every node exists.
         for (var step = 0; step < n; step = step + 1) {
             var node = step2node[step]
-            if (node) {
+            if (!node) {
+                continue
+            }
+            var wop = graph.get_step_op_name(step)
+            if (RESOLVE_OPS.contains(wop) and node["imports"] and !node["imports"].isEmpty) {
+                // Selector node: wire its shape input (pin 0) to the body so it
+                // can re-select by UID after an upstream edit. wire_node skips
+                // it (Selector.calc_info is nil). A baked fallback has no
+                // imports -> handled by the else branch (no-op).
+                var rins = graph.get_step_inputs(step)
+                if (!rins.isEmpty) {
+                    var src = HistGraphBuilder.node_at(step2node, rins[0])
+                    if (src) {
+                        Blueprint.connect(src, 0, node, 0)
+                    }
+                }
+            } else {
                 HistGraphBuilder.wire_node(graph, step, node, step2node)
             }
         }
@@ -192,6 +221,40 @@ class HistGraphBuilder
         }
         var node = BakedShape()
         node.set_shape(shape)
+        return node
+    }
+
+    // Rebuild a resolve_edge_ref / resolve_face_ref step as a Selector node
+    // seeded with the resolved entity's TopoNaming UID, so it re-selects the
+    // edge / face BY UID on the live (re-evaluated) body -- the editable form a
+    // dressup's picked refs need (selector.ves selects by uid via the edge /
+    // face TopoNaming graph). selected_objs is pre-filled with the resolved
+    // shape so the first eval is immediate; after an upstream edit clears it,
+    // the Selector falls back to re-selecting by UID (needs its shape input
+    // wired -- done in pass 2). Falls back to a frozen baked snapshot when the
+    // step has no shape or no stable UID.
+    static make_selector(graph, step, op, editor, x, y)
+    {
+        var shape = graph.eval(step)
+        if (!shape) {
+            return HistGraphBuilder.make_baked_at(graph, step, editor, x, y)
+        }
+
+        // The resolve_*_ref op stamped the resolved TopoNaming UID onto its
+        // result (resolve_ops.cpp: ShapeVal.tag). Read it directly -- a
+        // get_node_uid on the resolved sub-shape misses (it is not a registered
+        // hist-graph node, which crashed before). uid 0 = resolver found no
+        // TopoNaming binding -> can't re-select it, so freeze the ref as a baked
+        // snapshot (as before).
+        var uid = graph.get_step_tag(step)
+        if (!uid or uid == 0) {
+            return HistGraphBuilder.make_baked_at(graph, step, editor, x, y)
+        }
+
+        var is_face = (op == "resolve_face_ref")
+        var node = Selector()
+        node.seed_selection(is_face ? "face" : "edge", uid, shape)
+        editor.add_node(node, x, y)
         return node
     }
 

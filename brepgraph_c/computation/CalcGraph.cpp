@@ -334,7 +334,18 @@ const std::string& CalcGraph::GetStepOpName(int step_id) const
 std::vector<int> CalcGraph::GetStepInputs(int step_id) const
 {
 	auto* s = m_history.Get(step_id);
-	return s ? s->inputs : std::vector<int>{};
+	if (!s) {
+		return std::vector<int>{};
+	}
+	// Fixed inputs FOLLOWED BY variadic inputs, so a host gets the step's
+	// COMPLETE input list. The history rebuild (hist_graph_builder.wire_node)
+	// slots them as [shapes..., params..., variadic...]; a dressup's edges live
+	// in var_inputs, and returning only `inputs` left them unwired (chamfer's
+	// Selector never connected to the Chamfer's edges pin). Only caller is the
+	// ves binding, so this widening is safe.
+	std::vector<int> all = s->inputs;
+	all.insert(all.end(), s->var_inputs.begin(), s->var_inputs.end());
+	return all;
 }
 
 // ---------------------------------------------------------------

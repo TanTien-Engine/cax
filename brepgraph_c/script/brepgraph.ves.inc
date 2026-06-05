@@ -37,6 +37,7 @@ foreign class CalcGraph
 	foreign get_graph(root_step)
 
 	foreign eval(node_idx)
+	foreign get_step_tag(node_idx)
 	foreign set_parallel(enabled)
 
 	foreign add_integer_node(int, desc)
