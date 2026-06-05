@@ -195,7 +195,18 @@ class HistGraphBuilder
             }
         }
 
-        return created
+        // The rebuilt subgraph's output node = the highest real step's output
+        // (the final body, since a feature history is linear). Returned so the
+        // caller can splice it in where the loader fed downstream.
+        var tip = nil
+        for (var step = n - 1; step >= 0; step = step - 1) {
+            if (step2output[step]) {
+                tip = step2output[step]
+                break
+            }
+        }
+
+        return [created, tip]
     }
 
     // op name -> brepkit node class, auto-discovered from each node's

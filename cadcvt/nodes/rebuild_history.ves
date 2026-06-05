@@ -98,8 +98,29 @@ class RebuildHistory is Node
         }
         var ox = this.query_param("origin_x").value
         var oy = this.query_param("origin_y").value
-        var created = HistGraphBuilder.build(graph, src.loader, editor, ox, oy)
+        var res = HistGraphBuilder.build(graph, src.loader, editor, ox, oy)
+        var created = res[0]
+        var tip = res[1]
         Logger.info("RebuildHistory: rebuilt %(created) node(s) from (%(ox), %(oy))")
+
+        // Splice the rebuilt tip in where the loader fed downstream (e.g. the
+        // ToMesh): reconnect each of the loader's output consumers -- except
+        // this RebuildHistory node itself -- to the tip. Saves the user a manual
+        // rewire and means the graph evaluates once (the render eval is also the
+        // one that bootstraps each Selector's uid). connect() replaces the
+        // consumer's existing input, so no explicit disconnect is needed.
+        if (tip and !src.exports.isEmpty) {
+            var loader_out = src.exports[0]
+            var targets = []
+            for (var conn in loader_out.conns) {
+                if (conn.to.node != this) {
+                    targets.add(conn.to)
+                }
+            }
+            for (var to_pin in targets) {
+                Blueprint.connect(tip.exports[0], to_pin)
+            }
+        }
 
         // Make the editor pick up the freshly added nodes / connections.
         editor.scene_stack.bp_dirty = true
