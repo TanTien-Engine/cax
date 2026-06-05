@@ -96,10 +96,10 @@ class RebuildHistory is Node
             Logger.error("RebuildHistory: no active editor")
             return
         }
-
         var ox = this.query_param("origin_x").value
         var oy = this.query_param("origin_y").value
-        HistGraphBuilder.build(graph, src.loader, editor, ox, oy)
+        var created = HistGraphBuilder.build(graph, src.loader, editor, ox, oy)
+        Logger.info("RebuildHistory: rebuilt %(created) node(s) from (%(ox), %(oy))")
 
         // Make the editor pick up the freshly added nodes / connections.
         editor.scene_stack.bp_dirty = true
