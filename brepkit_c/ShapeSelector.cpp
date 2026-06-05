@@ -14,9 +14,50 @@
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <BRepIntCurveSurface_Inter.hxx>
 #include <GeomAPI_ExtremaCurveCurve.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
+
+#include <cmath>
 
 namespace brepkit
 {
+
+namespace
+{
+
+// Bounding-box centre of a sub-shape. Seam-independent (a full circle's
+// differing param start does not move it), unlike a curve-parameter midpoint.
+gp_Pnt ShapeCentre(const TopoDS_Shape& s, bool& ok)
+{
+    Bnd_Box bb;
+    BRepBndLib::Add(s, bb);
+    if (bb.IsVoid()) {
+        ok = false;
+        return gp_Pnt();
+    }
+    Standard_Real x0, y0, z0, x1, y1, z1;
+    bb.Get(x0, y0, z0, x1, y1, z1);
+    ok = true;
+    return gp_Pnt(0.5 * (x0 + x1), 0.5 * (y0 + y1), 0.5 * (z0 + z1));
+}
+
+double EdgeLen(const TopoDS_Edge& e)
+{
+    GProp_GProps props;
+    BRepGProp::LinearProperties(e, props);
+    return props.Mass();
+}
+
+double FaceArea(const TopoDS_Face& f)
+{
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(f, props);
+    return props.Mass();
+}
+
+} // anonymous namespace
 
 std::shared_ptr<TopoShape> ShapeSelector::SelectFace(const std::shared_ptr<TopoShape>& shape, int index)
 {
@@ -166,6 +207,92 @@ std::shared_ptr<TopoShape> ShapeSelector::SelectEdge(const std::shared_ptr<TopoS
     }
 
     return min_dist == DBL_MAX ? nullptr : std::make_shared<TopoShape>(selected);
+}
+
+std::shared_ptr<TopoShape> ShapeSelector::MatchEdge(const std::shared_ptr<TopoShape>& shape, const std::shared_ptr<TopoShape>& ref)
+{
+    if (!shape || !ref) {
+        return nullptr;
+    }
+
+    TopoDS_Edge ref_edge;
+    for (TopExp_Explorer ex(ref->GetShape(), TopAbs_EDGE); ex.More(); ex.Next()) {
+        ref_edge = TopoDS::Edge(ex.Current());
+        break;
+    }
+    if (ref_edge.IsNull()) {
+        return nullptr;
+    }
+
+    bool ok = false;
+    gp_Pnt ref_c = ShapeCentre(ref_edge, ok);
+    if (!ok) {
+        return nullptr;
+    }
+    double ref_len = EdgeLen(ref_edge);
+
+    // Score each live edge by centre distance + length difference: the same
+    // (centre + measure) identity the import's TopoRefResolver matched on.
+    // Length disambiguates concentric rims (e.g. the id6/7/8 pins) that share
+    // a centre but differ in radius.
+    TopoDS_Edge selected;
+    double best = DBL_MAX;
+    for (TopExp_Explorer ex(shape->GetShape(), TopAbs_EDGE); ex.More(); ex.Next()) {
+        TopoDS_Edge e = TopoDS::Edge(ex.Current());
+        bool ok2 = false;
+        gp_Pnt c = ShapeCentre(e, ok2);
+        if (!ok2) {
+            continue;
+        }
+        double score = ref_c.Distance(c) + std::abs(ref_len - EdgeLen(e));
+        if (score < best) {
+            best = score;
+            selected = e;
+        }
+    }
+
+    return selected.IsNull() ? nullptr : std::make_shared<TopoShape>(selected);
+}
+
+std::shared_ptr<TopoShape> ShapeSelector::MatchFace(const std::shared_ptr<TopoShape>& shape, const std::shared_ptr<TopoShape>& ref)
+{
+    if (!shape || !ref) {
+        return nullptr;
+    }
+
+    TopoDS_Face ref_face;
+    for (TopExp_Explorer ex(ref->GetShape(), TopAbs_FACE); ex.More(); ex.Next()) {
+        ref_face = TopoDS::Face(ex.Current());
+        break;
+    }
+    if (ref_face.IsNull()) {
+        return nullptr;
+    }
+
+    bool ok = false;
+    gp_Pnt ref_c = ShapeCentre(ref_face, ok);
+    if (!ok) {
+        return nullptr;
+    }
+    double ref_area = FaceArea(ref_face);
+
+    TopoDS_Face selected;
+    double best = DBL_MAX;
+    for (TopExp_Explorer ex(shape->GetShape(), TopAbs_FACE); ex.More(); ex.Next()) {
+        TopoDS_Face f = TopoDS::Face(ex.Current());
+        bool ok2 = false;
+        gp_Pnt c = ShapeCentre(f, ok2);
+        if (!ok2) {
+            continue;
+        }
+        double score = ref_c.Distance(c) + std::abs(ref_area - FaceArea(f));
+        if (score < best) {
+            best = score;
+            selected = f;
+        }
+    }
+
+    return selected.IsNull() ? nullptr : std::make_shared<TopoShape>(selected);
 }
 
 }

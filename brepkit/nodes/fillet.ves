@@ -71,6 +71,15 @@ class Fillet is Node
 		var v_edges = Blueprint.calc_input_value(this, 2)
 		var edges = VariantHelper.flatten_values(v_edges, VAR_TOPO_SHAPE)
 
+		// Edges pin wired but nothing resolved -> fillet NOTHING. An empty
+		// edge list means "fillet EVERY edge of the body" in TopoAlgo
+		// (TopoAlgo.cpp); a rebuilt pattern copy whose edge uid missed
+		// would otherwise round the whole body's thousands of edges -> AV.
+		var edges_pin = this.imports[2]
+		if (edges_pin and !edges_pin.conns.isEmpty and (!edges or edges.count == 0)) {
+			return v_shape
+		}
+
 		var shape = TopoAlgo.fillet(v_shape.value, radius, edges, this.op_id)
 
 

@@ -1,5 +1,6 @@
 import "blueprint.blueprint" for Blueprint
 import "blueprint.nodes.subgraph" for Subgraph
+import "blueprint.nodes.cache" for Cache
 import "blueprint.nodes.merge" for Merge
 import "blueprint.nodes.output" for Output
 import "brepkitnodes" for BREP_KIT_NODES
@@ -52,6 +53,17 @@ var SUPPORTED_OPS = [
 // picked edges/faces track the live body by TopoNaming UID -- see make_selector.
 var RESOLVE_OPS = ["resolve_edge_ref", "resolve_face_ref"]
 
+// Shape-producing ops whose output is wrapped in a Cache node on rebuild, so a
+// node pulled by MULTIPLE consumers is computed ONCE rather than re-evaluated
+// per consumer. The interactive blueprint eval is a recursive calc_value pull
+// with NO memoization: a dressup body feeds both the Chamfer (pin 0) AND its
+// edge Selector (which re-pulls the body), so each chamfer re-evaluates its
+// whole upstream chain twice -- and a chain of N dressups (e.g. a patterned
+// chamfer replicated per instance) becomes 2^N, exploding memory/time. Caching
+// the booleans + dressups (the expensive, fan-out-prone ops) collapses that to
+// linear. Cheap leaves (sketch / prism / translate) stay uncached.
+var CACHE_OPS = ["fuse", "cut", "common", "chamfer", "fillet"]
+
 // ============================================================
 // cadcvt::hist_graph_builder::HistGraphBuilder
 //
@@ -81,11 +93,14 @@ class HistGraphBuilder
         // Step ids are dense (0 .. n-1) and a step's inputs are always
         // earlier steps, so index these by step with plain lists -- ves
         // maps do not accept number keys. Columns also stay in 0 .. n-1.
-        var step2node = []    // step id -> created brepkit node (nil if none)
+        var step2node   = []  // step id -> created brepkit node (nil if none)
+        var step2output = []  // step id -> the node consumers wire FROM: the
+                              // node itself, or a Cache wrapping it (CACHE_OPS)
         var depth     = []    // step id -> layout column        (nil if none)
         var col_rows  = []    // column  -> next free row
         for (var i = 0; i < n; i = i + 1) {
             step2node.add(nil)
+            step2output.add(nil)
             depth.add(nil)
             col_rows.add(0)
         }
@@ -109,6 +124,7 @@ class HistGraphBuilder
                 if (snode) {
                     editor.add_node(snode, ox + scol * 200, oy + srow * 110)
                     step2node[step] = snode
+                    step2output[step] = snode
                     depth[step] = scol
                     col_rows[scol] = srow + 1
                     created = created + 1
@@ -149,6 +165,7 @@ class HistGraphBuilder
             }
 
             step2node[step] = node
+            step2output[step] = HistGraphBuilder.maybe_cache(node, op, editor, nx + 90, ny + 40)
             depth[step] = col
             col_rows[col] = row + 1
             created = created + 1
@@ -168,13 +185,13 @@ class HistGraphBuilder
                 // imports -> handled by the else branch (no-op).
                 var rins = graph.get_step_inputs(step)
                 if (!rins.isEmpty) {
-                    var src = HistGraphBuilder.node_at(step2node, rins[0])
+                    var src = HistGraphBuilder.node_at(step2output, rins[0])
                     if (src) {
                         Blueprint.connect(src, 0, node, 0)
                     }
                 }
             } else {
-                HistGraphBuilder.wire_node(graph, step, node, step2node)
+                HistGraphBuilder.wire_node(graph, step, node, step2output)
             }
         }
 
@@ -224,6 +241,28 @@ class HistGraphBuilder
         return node
     }
 
+    // Wrap a freshly created node's output in a Cache when its op is expensive
+    // and fan-out-prone (CACHE_OPS). Consumers (wired via step2output) then pull
+    // ONE computed result instead of re-evaluating the whole upstream chain per
+    // consumer -- the interactive blueprint pull eval does not memoize, so
+    // without this a chain of dressup "diamonds" (Chamfer + its Selector both
+    // pulling the body) is exponential. Returns the Cache (the consumers'
+    // source) or the node itself when no cache is needed.
+    static maybe_cache(node, op, editor, x, y)
+    {
+        if (!CACHE_OPS.contains(op)) {
+            return node
+        }
+        var cache = Cache()
+        var dp = cache.query_param("disable")
+        if (dp) {
+            dp.value = false
+        }
+        editor.add_node(cache, x, y)
+        Blueprint.connect(node, 0, cache, 0)
+        return cache
+    }
+
     // Rebuild a resolve_edge_ref / resolve_face_ref step as a Selector node
     // seeded with the resolved entity's TopoNaming UID, so it re-selects the
     // edge / face BY UID on the live (re-evaluated) body -- the editable form a
@@ -244,12 +283,14 @@ class HistGraphBuilder
         // result (resolve_ops.cpp: ShapeVal.tag). Read it directly -- a
         // get_node_uid on the resolved sub-shape misses (it is not a registered
         // hist-graph node, which crashed before). uid 0 = resolver found no
-        // TopoNaming binding -> can't re-select it, so freeze the ref as a baked
-        // snapshot (as before).
+        // TopoNaming binding (common for pattern-copy edges under the simplified
+        // pattern naming). We ALWAYS build a Selector and seed it with the
+        // import-resolved sub-shape, so calc_value can re-find the edge by
+        // GEOMETRY -- using the uid as a fast path only when it is present and
+        // still resolves. (Previously uid 0 froze a baked snapshot, whose stale
+        // edge is foreign to the rebuilt body -> the chamfer then beveled every
+        // edge or found nothing.)
         var uid = graph.get_step_tag(step)
-        if (!uid or uid == 0) {
-            return HistGraphBuilder.make_baked_at(graph, step, editor, x, y)
-        }
 
         var is_face = (op == "resolve_face_ref")
         var node = Selector()

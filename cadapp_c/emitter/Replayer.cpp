@@ -15,6 +15,7 @@
 #include <TopoDS_Vertex.hxx>
 #include <gp_Pnt.hxx>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -178,6 +179,23 @@ struct FeatureToolInfo
     int  tool_node = -1;
     int  base_node = -1;
     char op_kind   = '0';
+    // false only for an up-to-X extrude bound to the running body: its
+    // solid depends on that body's geometry, so it is NOT a rigid-motion
+    // image of itself and a pattern must NOT merely transform it.
+    bool equivariant = true;
+};
+
+// A reference-based dressup (chamfer / fillet), recorded so a pattern
+// over the dressed seed can REPLICATE it: re-emit the same op on each
+// instance body with the picked anchors moved by the instance
+// transform. The dressup-side sibling of FeatureToolInfo -- together
+// they form a seed's "contribution" that a pattern multiplies.
+struct FeatureDressupInfo
+{
+    FeatType               kind = FeatType::Chamfer;  // Chamfer / Fillet
+    double                 size = 0.0;   // distance1 (chamfer) | radius (fillet)
+    std::vector<TopoRefIR> refs;         // picked edges/faces (world anchors)
+    uint32_t               base_feat_id = 0;  // the feature it dressed
 };
 
 // Walk FeatureIR::input_feature_ids for Role::Tool entries and
@@ -335,6 +353,206 @@ int CombinePatternedTool(brepgraph::CalcGraph& cg,
         return cg.AddOp("cut", {orig.base_node, pattern_node}, {}, desc);
     }
     return pattern_node;
+}
+
+// ============================================================
+// Generalized pattern lowering (shared, reusable)
+//
+// A feature pattern is the rigid-motion image of the seed's
+// construction. Tool features (extrude/revolve/sweep/loft/prim) are
+// rigid-motion EQUIVARIANT, so an instance's tool == transform(seed
+// tool solid) -- no need to re-run sketch->extrude. Reference dressups
+// (chamfer/fillet) are NOT solids: an instance's dressup == the same op
+// re-resolved on that instance's body with the picked anchors moved by
+// the instance transform. So a pattern replays the seed group's
+// CONTRIBUTIONS (its tools AND the dressups on them) once per non-seed
+// instance. One routine drives linear and circular, any tool, any
+// dressup -- no per-feature-type special cases. Kept self-contained
+// (takes a resolved contribution list + a transform) so the editable
+// Pattern node can reuse it when it re-lowers on edit (Stage 2).
+// ============================================================
+
+// One rigid instance transform: a translation (linear pattern) or a
+// rotation about an axis (circular). Carries the calc-op params
+// (EmitTransform emits a translate/rotate op) AND drives the closed-
+// form anchor map (TransformRef) -- the two MUST agree.
+struct InstanceXform
+{
+    bool            is_rotation = false;
+    brepgraph::Vec3 offset      = {};   // translation
+    brepgraph::Vec3 axis_origin = {};   // rotation
+    brepgraph::Vec3 axis_dir    = {};
+    double          angle       = 0.0;
+};
+
+// Move a TopoRefIR's geometry by X: the anchor `point` by the full
+// motion; `normal` + `extra_samples` by the rotational part only (a
+// translation leaves directions unchanged -- which is why the linear
+// case only had to move `point`). Closed form; no OCCT dependency.
+void TransformRef(TopoRefIR& r, const InstanceXform& X)
+{
+    if (!X.is_rotation) {
+        for (int k = 0; k < 3; ++k) r.point[k] += X.offset[k];
+        for (int s = 0; s < (int)r.extra_sample_count && s < 4; ++s)
+            for (int k = 0; k < 3; ++k) r.extra_samples[s][k] += X.offset[k];
+        return;
+    }
+    double dl = std::sqrt(X.axis_dir[0]*X.axis_dir[0] +
+                          X.axis_dir[1]*X.axis_dir[1] +
+                          X.axis_dir[2]*X.axis_dir[2]);
+    if (dl < 1e-15) return;
+    const double dx = X.axis_dir[0]/dl, dy = X.axis_dir[1]/dl, dz = X.axis_dir[2]/dl;
+    const double c = std::cos(X.angle), s = std::sin(X.angle);
+    // Rodrigues rotation of v about the unit axis (dx,dy,dz) by angle.
+    auto rot = [&](double v[3], bool about_origin) {
+        double px = v[0], py = v[1], pz = v[2];
+        if (about_origin) { px -= X.axis_origin[0]; py -= X.axis_origin[1]; pz -= X.axis_origin[2]; }
+        const double dot = dx*px + dy*py + dz*pz;
+        const double crx = dy*pz - dz*py, cry = dz*px - dx*pz, crz = dx*py - dy*px;
+        double rx = px*c + crx*s + dx*dot*(1.0 - c);
+        double ry = py*c + cry*s + dy*dot*(1.0 - c);
+        double rz = pz*c + crz*s + dz*dot*(1.0 - c);
+        if (about_origin) { rx += X.axis_origin[0]; ry += X.axis_origin[1]; rz += X.axis_origin[2]; }
+        v[0] = rx; v[1] = ry; v[2] = rz;
+    };
+    rot(r.point, true);
+    rot(r.normal, false);
+    for (int s2 = 0; s2 < (int)r.extra_sample_count && s2 < 4; ++s2)
+        rot(r.extra_samples[s2], true);
+}
+
+// Emit a calc node that rigid-transforms `node` by X (the translate /
+// rotate ops -- the same motion TransformRef applies to anchors).
+int EmitTransform(brepgraph::CalcGraph& cg, int node,
+                  const InstanceXform& X, const std::string& desc)
+{
+    if (X.is_rotation) {
+        int o = cg.AddConst(X.axis_origin, "axis_origin");
+        int a = cg.AddConst(X.axis_dir,    "axis_dir");
+        int g = cg.AddConst(X.angle,       "angle");
+        return cg.AddOp("rotate", {node, o, a, g}, {}, desc);
+    }
+    int off = cg.AddConst(X.offset, "offset");
+    return cg.AddOp("translate", {node, off}, {}, desc);
+}
+
+// One seed contribution: a Tool (transform the solid + combine by
+// op_kind) or a Dressup (re-resolve the moved anchors + re-apply).
+struct Contribution
+{
+    bool     is_tool     = true;
+    uint32_t feat_id     = 0;          // creation-order sort key
+    int      tool_node   = -1;         // tool
+    char     op_kind     = 'f';
+    bool     equivariant = true;
+    FeatType dress_kind  = FeatType::Chamfer;   // dressup
+    double   dress_size  = 0.0;
+    std::vector<TopoRefIR> dress_refs;
+};
+
+// Collect a pattern's seed group: its Tool-role seeds + every dressup
+// that (transitively) operated on one of them, ordered by creation
+// (feat_id == creation order for ZW3D). The list a pattern replays
+// under each instance transform.
+std::vector<Contribution> AssembleContributions(
+    const FeatureIR&                              pat,
+    const std::map<uint32_t, FeatureToolInfo>&    feature_tools,
+    const std::map<uint32_t, FeatureDressupInfo>& feature_dressups)
+{
+    std::set<uint32_t> group;
+    for (size_t i = 0; i < pat.input_feature_ids.size(); ++i) {
+        InputRole role = (i < pat.input_roles.size())
+                            ? pat.input_roles[i] : InputRole::Base;
+        if (role == InputRole::Tool) group.insert(pat.input_feature_ids[i]);
+    }
+    // Pull in dressups whose base is in the group (transitive: a
+    // chamfer on a filleted seed, a dressup on a dressup).
+    bool grew = true;
+    while (grew) {
+        grew = false;
+        for (const auto& kv : feature_dressups) {
+            if (!group.count(kv.first) && group.count(kv.second.base_feat_id)) {
+                group.insert(kv.first);
+                grew = true;
+            }
+        }
+    }
+    std::vector<Contribution> out;
+    out.reserve(group.size());
+    for (uint32_t id : group) {
+        auto ti = feature_tools.find(id);
+        if (ti != feature_tools.end()) {
+            Contribution c;
+            c.is_tool = true; c.feat_id = id;
+            c.tool_node = ti->second.tool_node;
+            c.op_kind = ti->second.op_kind;
+            c.equivariant = ti->second.equivariant;
+            out.push_back(std::move(c));
+            continue;
+        }
+        auto di = feature_dressups.find(id);
+        if (di != feature_dressups.end()) {
+            Contribution c;
+            c.is_tool = false; c.feat_id = id;
+            c.dress_kind = di->second.kind;
+            c.dress_size = di->second.size;
+            c.dress_refs = di->second.refs;
+            out.push_back(std::move(c));
+        }
+    }
+    std::sort(out.begin(), out.end(),
+              [](const Contribution& a, const Contribution& b) {
+                  return a.feat_id < b.feat_id;
+              });
+    return out;
+}
+
+// Replay one pattern instance onto `acc`: transform each tool by X and
+// combine by op_kind; re-resolve + re-apply each dressup on the
+// post-combine instance body with X-moved anchors.
+int ApplyPatternInstance(brepgraph::CalcGraph& cg, int acc,
+                         const std::vector<Contribution>& contribs,
+                         const InstanceXform& X, double topo_tol,
+                         const std::string& tag)
+{
+    int body = acc;
+    for (const Contribution& c : contribs) {
+        if (c.is_tool) {
+            int t = EmitTransform(cg, c.tool_node, X, tag);
+            const char* op = (c.op_kind == 'c') ? "cut" : "fuse";
+            body = cg.AddOp(op, {body, t}, {}, tag);
+        } else {
+            double dtol = std::max(topo_tol, 5.0 * c.dress_size);
+            std::vector<int> edge_nodes;
+            edge_nodes.reserve(c.dress_refs.size());
+            for (TopoRefIR ref : c.dress_refs) {
+                TransformRef(ref, X);
+                ref.resolved_uid = 0;
+                ref.resolved_topo_index = 0;
+                const char* rop = (ref.kind == TopoRefIR::Kind::Face)
+                                    ? "resolve_face_ref" : "resolve_edge_ref";
+                edge_nodes.push_back(
+                    AddResolveRefNode(cg, rop, body, ref, dtol, tag + ":edge"));
+            }
+            if (c.dress_kind == FeatType::Fillet) {
+                int r = cg.AddConst(c.dress_size, "radius");
+                body = cg.AddOp("fillet", {body, r}, edge_nodes, tag);
+            } else {
+                int d = cg.AddConst(c.dress_size, "dist");
+                body = cg.AddOp("chamfer", {body, d}, edge_nodes, tag);
+            }
+        }
+    }
+    return body;
+}
+
+// Unit vector from a raw double[3] direction (matches the normalization
+// the linear/circular pattern ops apply internally).
+brepgraph::Vec3 NormalizedDir(const double v[3])
+{
+    double l = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+    if (l < 1e-15) return {v[0], v[1], v[2]};
+    return {v[0]/l, v[1]/l, v[2]/l};
 }
 
 // Build a "mirror with original" subtree: mirror the input shape
@@ -548,6 +766,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // Populated by primitive / extrude handlers; consumed by pattern
     // / mirror / MultiTransform handlers that carry an Originals list.
     std::map<uint32_t, FeatureToolInfo> feature_tools;
+
+    // feature_id -> its reference-based dressup (chamfer/fillet) record,
+    // so a pattern over the dressed seed can replicate it per instance.
+    std::map<uint32_t, FeatureDressupInfo> feature_dressups;
 
     // feature_id -> calc-graph node id of the body shape produced by
     // that feature. This is the central DAG store the Replayer reads
@@ -773,6 +995,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 FeatureToolInfo ti;
                 ti.tool_node = tool_n;
                 ti.base_node = base_node;
+                // Equivariant unless an up-to-X end type ties the solid to
+                // the running body (then a pattern can't merely transform it).
+                ti.equivariant = (p.end_type  == ExtrudeEndType::Blind &&
+                                  p.end_type2 == ExtrudeEndType::Blind);
 
                 if (feat.type == FeatType::BossExtrude)
                 {
@@ -1302,6 +1528,27 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     node = cg->AddOp("chamfer", {body_n, d},
                                       edge_nodes, feat.name);
                 }
+
+                // Record this dressup so a pattern over the dressed seed
+                // can replicate it per instance (re-resolve the moved
+                // anchors on each copy). base_feat_id = the feature it
+                // dressed (its Role::Base input).
+                {
+                    FeatureDressupInfo di;
+                    di.kind = std::is_same_v<T, FeatPayloadFillet>
+                                  ? FeatType::Fillet : FeatType::Chamfer;
+                    di.size = dressup_size;
+                    di.refs = p.edges;
+                    for (size_t bi = 0; bi < feat.input_feature_ids.size(); ++bi) {
+                        InputRole role = (bi < feat.input_roles.size())
+                                            ? feat.input_roles[bi] : InputRole::Base;
+                        if (role == InputRole::Base) {
+                            di.base_feat_id = feat.input_feature_ids[bi];
+                            break;
+                        }
+                    }
+                    feature_dressups[feat.id] = std::move(di);
+                }
             }
 
             // ---- Shell ----
@@ -1410,60 +1657,47 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                       {base_node, d1, c1, s1, d2, c2, s2},
                                       {}, feat.name);
                 } else if (onto_running) {
-                    // ZW3D: the pattern adds its instances to the CURRENT body
-                    // (base_node), not the patterned feature's own base --
-                    // otherwise any feature between the original and the
-                    // pattern (e.g. a cut) is dropped. Multiply EACH original's
-                    // tool and fold every instance set onto the running body
-                    // per its op_kind: the seeds may be a co-located GROUP
-                    // (e.g. three concentric pins ZW3D patterns as one unit),
-                    // and patterning only originals[0] left the rest behind.
-                    // FreeCAD never sets this ext_param, so its
-                    // CombinePatternedTool path below is byte-for-byte unchanged.
-                    //
-                    // A linear_pattern emits an instance at position 0
-                    // coincident with the seed -- which is ALREADY fused into
-                    // base_node. Re-combining that copy is harmless for a bare
-                    // seed (an idempotent union, why Pattern1 worked), but WRONG
-                    // once a feature BETWEEN the seed and the pattern reshaped
-                    // it: e.g. a chamfer/fillet bevels the seed's rim (id9
-                    // here), then fusing the un-beveled position-0 copy back
-                    // FILLS the bevel and the chamfer disappears. So cut the
-                    // seed footprint (orig.tool_node IS the position-0 instance)
-                    // out of the pattern and combine only the NEW copies; the
-                    // original, already-dressed seed stays untouched in acc. The
-                    // offset copies are disjoint from the seed tool, so the cut
-                    // leaves exactly the added instances.
-                    int acc = base_node;
-                    // A 1x1 "pattern" (no offset instances) holds only the
-                    // position-0 seed, already present in acc -- cutting the
-                    // seed out of it would leave an EMPTY shape and nuke the
-                    // body. Such a pattern adds nothing, so leave acc untouched.
+                    // ZW3D: replay the seed group's CONTRIBUTION -- its Tool
+                    // seeds AND the dressups on them -- once per NON-seed
+                    // instance, each under the instance's rigid transform.
+                    // i=0 is the live, already-dressed seed group (in
+                    // base_node), so it is skipped; every other (i,j) cell
+                    // transforms the tools by its offset and re-applies the
+                    // dressups with the offset anchors, so a chamfer/fillet on
+                    // the seed is replicated onto each copy. This is the general
+                    // rigid image of the seed sub-graph -- no pos-0 cut, no
+                    // per-dressup special case (it subsumes both). FreeCAD never
+                    // sets pattern_onto_running, so its CombinePatternedTool
+                    // path below is unchanged.
+                    auto contribs = AssembleContributions(
+                        feat, feature_tools, feature_dressups);
+                    for (const auto& c : contribs) {
+                        if (c.is_tool && !c.equivariant) {
+                            if (!out.err_msg.empty()) out.err_msg += "; ";
+                            out.err_msg += "pattern " + feat.name +
+                                " replicates a non-Blind (up-to) extrude by "
+                                "rigid transform; geometry may be wrong";
+                        }
+                    }
+                    brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
+                    brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
                     double l2sq = p.dir2[0] * p.dir2[0]
                                 + p.dir2[1] * p.dir2[1]
                                 + p.dir2[2] * p.dir2[2];
-                    bool has_copies = (p.count1 > 1)
-                                   || (p.count2 > 1 && l2sq > 1e-30);
-                    for (const auto& orig : pi.originals) {
-                        if (!has_copies) {
-                            break;
-                        }
-                        int patk = cg->AddOp("linear_pattern",
-                                              {orig.tool_node, d1, c1, s1, d2, c2, s2},
-                                              {}, feat.name);
-                        char op = orig.op_kind;
-                        if (op == '0') {
-                            // Seed was itself the body base -- no running seed to
-                            // preserve; the whole pattern (incl. pos 0) IS body.
-                            acc = patk;
-                            continue;
-                        }
-                        int copies = cg->AddOp("cut", {patk, orig.tool_node},
-                                                {}, feat.name);
-                        if (op == 'c') {
-                            acc = cg->AddOp("cut", {acc, copies}, {}, feat.name);
-                        } else {
-                            acc = cg->AddOp("fuse", {acc, copies}, {}, feat.name);
+                    int eff2 = (l2sq > 1e-30 && p.count2 > 1) ? (int)p.count2 : 1;
+                    int acc = base_node;
+                    for (int i = 0; i < (int)p.count1; ++i) {
+                        for (int j = 0; j < eff2; ++j) {
+                            if (i == 0 && j == 0) {
+                                continue;   // the live seed group
+                            }
+                            InstanceXform X;   // linear -> pure translation
+                            for (int k = 0; k < 3; ++k)
+                                X.offset[k] = i * p.spacing1 * u1[k]
+                                            + j * p.spacing2 * u2[k];
+                            acc = ApplyPatternInstance(*cg, acc, contribs, X,
+                                                       opt.topo_tolerance,
+                                                       feat.name + ":inst");
                         }
                     }
                     node = acc;

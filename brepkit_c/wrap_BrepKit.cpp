@@ -323,6 +323,22 @@ void w_ShapeSelector_select_edge()
     brepkit::return_topo_shape(edge);
 }
 
+void w_ShapeSelector_match_edge()
+{
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
+    auto ref = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(2))->obj;
+    auto edge = brepkit::ShapeSelector::MatchEdge(shape, ref);
+    brepkit::return_topo_shape(edge);
+}
+
+void w_ShapeSelector_match_face()
+{
+    auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
+    auto ref = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(2))->obj;
+    auto face = brepkit::ShapeSelector::MatchFace(shape, ref);
+    brepkit::return_topo_shape(face);
+}
+
 void w_ShapeTools_find_edge_idx()
 {
     auto shape = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
@@ -1175,6 +1191,8 @@ VesselForeignMethodFn BrepKitBindMethod(const char* signature)
 
     if (strcmp(signature, "static ShapeSelector.select_face(_,_,_)") == 0) return w_ShapeSelector_select_face;
     if (strcmp(signature, "static ShapeSelector.select_edge(_,_,_)") == 0) return w_ShapeSelector_select_edge;
+    if (strcmp(signature, "static ShapeSelector.match_edge(_,_)") == 0) return w_ShapeSelector_match_edge;
+    if (strcmp(signature, "static ShapeSelector.match_face(_,_)") == 0) return w_ShapeSelector_match_face;
 
     if (strcmp(signature, "static ShapeTools.find_edge_idx(_,_)") == 0) return w_ShapeTools_find_edge_idx;
     if (strcmp(signature, "static ShapeTools.find_edge_key(_,_)") == 0) return w_ShapeTools_find_edge_key;

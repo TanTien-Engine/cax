@@ -978,37 +978,6 @@ bool ZwReader::ReadFile(const std::string& path,
 
                         if (target != 0)
                         {
-                            // If the seed group was chamfered/filleted right
-                            // before this pattern (the feature immediately
-                            // preceding it dresses a seed), ZW3D replicates that
-                            // dressup onto EVERY copy -- so capture it now, while
-                            // it is still out.features.back(), to re-emit on the
-                            // copies' rims after the pattern. Copy by value: the
-                            // push_back below may reallocate the vector.
-                            std::vector<cadapp::TopoRefIR> seed_dress_edges;
-                            double   seed_dress_d1   = 0.0;
-                            double   seed_dress_d2   = 0.0;
-                            uint32_t seed_dress_base = 0;
-                            if (!out.features.empty()) {
-                                const auto& prev = out.features.back();
-                                if (prev.type == cadapp::FeatType::Chamfer &&
-                                    prev.id == running_solid_id) {
-                                    for (size_t k = 0; k < prev.input_feature_ids.size(); ++k) {
-                                        if (k < prev.input_roles.size() &&
-                                            prev.input_roles[k] == cadapp::InputRole::Base) {
-                                            seed_dress_base = prev.input_feature_ids[k];
-                                            break;
-                                        }
-                                    }
-                                    if (const auto* cpl = std::get_if<
-                                            cadapp::FeatPayloadChamfer>(&prev.data)) {
-                                        seed_dress_edges = cpl->edges;
-                                        seed_dress_d1    = cpl->distance1;
-                                        seed_dress_d2    = cpl->distance2;
-                                    }
-                                }
-                            }
-
                             cadapp::FeatPayloadLinearPattern lp;
                             lp.dir1[0] = patj->at("dir").at(0).get<double>();
                             lp.dir1[1] = patj->at("dir").at(1).get<double>();
@@ -1019,22 +988,6 @@ bool ZwReader::ReadFile(const std::string& path,
                             int count2  = static_cast<int>(FieldValueById(jf, 6, 1.0));
                             lp.count2   = (count2 >= 1) ? count2 : 1;
                             lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
-
-                            // Snapshot the pattern offsets before lp is moved
-                            // into pf (used below to place the copies' chamfers).
-                            // Normalize dir1/dir2 exactly as LinearPattern does,
-                            // so the chamfer offsets track the instance positions
-                            // even when the plugin emits a non-unit direction.
-                            double pdir1[3] = { lp.dir1[0], lp.dir1[1], lp.dir1[2] };
-                            double pdir2[3] = { lp.dir2[0], lp.dir2[1], lp.dir2[2] };
-                            double pn1 = std::sqrt(pdir1[0]*pdir1[0] + pdir1[1]*pdir1[1] + pdir1[2]*pdir1[2]);
-                            if (pn1 > 1e-15) { pdir1[0]/=pn1; pdir1[1]/=pn1; pdir1[2]/=pn1; }
-                            double pn2 = std::sqrt(pdir2[0]*pdir2[0] + pdir2[1]*pdir2[1] + pdir2[2]*pdir2[2]);
-                            if (pn2 > 1e-15) { pdir2[0]/=pn2; pdir2[1]/=pn2; pdir2[2]/=pn2; }
-                            int    pcount1  = lp.count1;
-                            int    pcount2  = lp.count2;
-                            double pspacing1 = lp.spacing1;
-                            double pspacing2 = lp.spacing2;
 
                             cadapp::FeatureIR pf;
                             pf.id   = id;
@@ -1057,7 +1010,6 @@ bool ZwReader::ReadFile(const std::string& path,
                             }
                             const double kGroupTol = 1.5;   // mm (concentric
                                                             // seeds sit ~0 apart)
-                            std::vector<uint32_t> tool_ids;
                             int n_tool = 0;
                             if (tgt_wc) {
                                 for (const auto& b : extrude_xy) {
@@ -1066,77 +1018,17 @@ bool ZwReader::ReadFile(const std::string& path,
                                     double dz = b.wc[2] - tgt_wc[2];
                                     if (dx*dx + dy*dy + dz*dz <= kGroupTol*kGroupTol) {
                                         PushInput(pf, b.id, cadapp::InputRole::Tool);
-                                        tool_ids.push_back(b.id);
                                         ++n_tool;
                                     }
                                 }
                             }
                             if (n_tool == 0) {
                                 PushInput(pf, target, cadapp::InputRole::Tool);
-                                tool_ids.push_back(target);
                             }
                             PushInput(pf, running_solid_id, cadapp::InputRole::Base);
                             pf.ext_params["pattern_onto_running"] = 1.0;
                             out.features.push_back(std::move(pf));
                             running_solid_id = id;
-
-                            // Replicate the seed's chamfer onto every pattern
-                            // copy: ZW3D bevels all instances' rims, not just the
-                            // seed's (verified against the export -- N cones, one
-                            // per copy). The seed copy (i=j=0) is already
-                            // chamfered upstream and kept intact by the Replayer's
-                            // pos-0 cut; here we add ONE chamfer feature whose
-                            // edges are each captured anchor translated by every
-                            // non-zero instance offset (i*spacing1*dir1 +
-                            // j*spacing2*dir2). Only when the captured dressup
-                            // actually dressed one of THIS pattern's seeds (else
-                            // its anchors would not land on a copy rim).
-                            bool dressed_seed = false;
-                            for (uint32_t t : tool_ids) {
-                                if (t == seed_dress_base) { dressed_seed = true; break; }
-                            }
-                            if (dressed_seed && !seed_dress_edges.empty()) {
-                                cadapp::FeatPayloadChamfer cp;
-                                cp.distance1 = seed_dress_d1;
-                                cp.distance2 = seed_dress_d2;
-                                // Match LinearPattern's effective 2nd count: dir2
-                                // only contributes when valid and count2>1.
-                                int eff2 = ((pn2 > 1e-15) && (pcount2 > 1))
-                                                ? pcount2 : 1;
-                                for (int i = 0; i < pcount1; ++i) {
-                                    for (int j = 0; j < eff2; ++j) {
-                                        if (i == 0 && j == 0) {
-                                            continue;   // seed copy, already done
-                                        }
-                                        double off[3] = {
-                                            i*pspacing1*pdir1[0] + j*pspacing2*pdir2[0],
-                                            i*pspacing1*pdir1[1] + j*pspacing2*pdir2[1],
-                                            i*pspacing1*pdir1[2] + j*pspacing2*pdir2[2],
-                                        };
-                                        for (const auto& e : seed_dress_edges) {
-                                            cadapp::TopoRefIR r = e;
-                                            r.point[0] = e.point[0] + off[0];
-                                            r.point[1] = e.point[1] + off[1];
-                                            r.point[2] = e.point[2] + off[2];
-                                            r.resolved_uid        = 0;  // re-resolve
-                                            r.resolved_topo_index = 0;
-                                            cp.edges.push_back(r);
-                                        }
-                                    }
-                                }
-                                if (!cp.edges.empty()) {
-                                    cadapp::FeatureIR cf2;
-                                    cf2.id   = id + 100000u;   // synthetic, unique
-                                    cf2.type = cadapp::FeatType::Chamfer;
-                                    cf2.name = name + "_ptn_chamfer";
-                                    cf2.data = std::move(cp);
-                                    cf2.ext_strings["zw_type"] = "FtChamfers2";
-                                    PushInput(cf2, running_solid_id,
-                                              cadapp::InputRole::Base);
-                                    out.features.push_back(std::move(cf2));
-                                    running_solid_id = cf2.id;
-                                }
-                            }
                             continue;
                         }
                     }

@@ -63,6 +63,8 @@ foreign class ShapeSelector
 {
 	foreign static select_face(shape, pos, dir)
 	foreign static select_edge(shape, pos, dir)
+	foreign static match_edge(shape, ref)
+	foreign static match_face(shape, ref)
 }
 
 foreign class ShapeTools

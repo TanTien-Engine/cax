@@ -67,6 +67,17 @@ class Chamfer is Node
 		var v_edges = Blueprint.calc_input_value(this, 2)
 		var edges = VariantHelper.flatten_values(v_edges, VAR_TOPO_SHAPE)
 
+		// The edges pin is wired (an explicit edge pick) but nothing
+		// resolved -> chamfer NOTHING. TopoAlgo.chamfer reads an empty
+		// edge list as "chamfer EVERY edge of the body" (the unwired
+		// convenience case, TopoAlgo.cpp). For a rebuilt pattern copy
+		// whose edge uid failed to re-resolve, that runs ChFi3d over the
+		// whole body's thousands of edges -> hang / AV. Bail to identity.
+		var edges_pin = this.imports[2]
+		if (edges_pin and !edges_pin.conns.isEmpty and (!edges or edges.count == 0)) {
+			return v_shape
+		}
+
 		if (this.op_id < 0) {
 			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
 		}

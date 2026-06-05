@@ -34,6 +34,9 @@ class Selector is Node
 
 		this.selected_objs = []
 		this.selected_uids = []
+		// Import-resolved reference sub-shape, kept for the geometric fallback
+		// in calc_value (survives on_pin_dirty, which clears selected_objs).
+		this.ref_shape = nil
 
 		this.calc_info = nil
 		this.calc_const_refs = nil
@@ -48,8 +51,17 @@ class Selector is Node
 	seed_selection(sel_type, uid, shape)
 	{
 		this.query_param("type").value = sel_type
-		this.selected_uids = [uid]
+		// uid 0 means the import had no TopoNaming binding (e.g. a pattern-copy
+		// edge): keep no uid and rely purely on the geometric match below.
+		if (uid and uid != 0) {
+			this.selected_uids = [uid]
+		} else {
+			this.selected_uids = []
+		}
 		this.selected_objs = [Variant(VAR_TOPO_SHAPE, shape)]
+		// Keep the import's geo-resolved sub-shape so calc_value can re-match it
+		// on the live body when the TopoNaming uid drifts (or never existed).
+		this.ref_shape = shape
 	}
 
 	on_pin_dirty(pin, type, msg)
@@ -66,10 +78,53 @@ class Selector is Node
 
 	calc_value(idx)
 	{
-		if (this.selected_objs.isEmpty and !this.selected_uids.isEmpty)
+		if (this.selected_objs.isEmpty and (!this.selected_uids.isEmpty or this.ref_shape))
 		{
-			Blueprint.calc_input_value(this, 0)
-			this.load_selected_by_uid(this.selected_uids)
+			var sel_type = this.query_param("type").value
+			var v_body = Blueprint.calc_input_value(this, 0)
+
+			// Imported pick (ref_shape set from the cadcvt rebuild): resolve by
+			// GEOMETRY on the live body. The TopoNaming uid query returns the
+			// edge registered at IMPORT time in the shared hist-graph, which is
+			// FOREIGN to the rebuilt body whenever the rebuild's op_ids diverge
+			// (complex/branching parts) -- feeding that foreign edge to chamfer
+			// silently fails. (That is exactly why only the one pick that fell
+			// back to geometry was beveling: the uid-resolved ones handed the
+			// chamfer an import-body edge.) Geometry matches the live body's own
+			// edge, so it is correct for both simple and complex parts. The uid
+			// path stays for genuine user picks (no ref_shape), where the uid is
+			// minted against the live body.
+			if (this.ref_shape and v_body)
+			{
+				var matched = nil
+				if (sel_type == "face") {
+					matched = ShapeSelector.match_face(v_body.value, this.ref_shape)
+				} else {
+					matched = ShapeSelector.match_edge(v_body.value, this.ref_shape)
+				}
+				if (matched) {
+					this.selected_objs.add(Variant(VAR_TOPO_SHAPE, matched))
+					// Capture the matched edge's uid on the LIVE body and switch
+					// to it: from here this Selector is an ordinary uid pick
+					// (the only thing to_string persists), the import geometry is
+					// dropped. So no persistent dual source, no dependence on the
+					// builder, and it survives save/reload. op_ids are stable per
+					// node across evals, so the captured uid keeps resolving; if
+					// it ever drifts the user re-picks like any topo-name break.
+					var hg = this.get_hist_graph()
+					if (hg) {
+						var live_uid = hg.get_node_uid(matched)
+						if (live_uid and live_uid != 0) {
+							this.selected_uids = [live_uid]
+							this.ref_shape = nil
+						}
+					}
+				}
+			}
+			else if (!this.selected_uids.isEmpty)
+			{
+				this.load_selected_by_uid(this.selected_uids)
+			}
 		}
 
 		if (this.selected_objs.isEmpty) {
@@ -225,7 +280,18 @@ class Selector is Node
 		for (var uid in uids)
 		{
 			var hg = this.get_hist_graph()
+			if (!hg) {
+				continue
+			}
+			// query_shapes returns nil when the uid does not resolve on the
+			// current body (e.g. a reconstructed dressup whose TopoNaming uid
+			// is not stable across the rebuilt graph). Guard it so a missed
+			// re-selection degrades to "no edge" instead of crashing the whole
+			// eval ("Method iterate(_) does not implement" on a nil).
 			var shapes = hg.query_shapes(uid)
+			if (!shapes) {
+				continue
+			}
 			for (var shp in shapes) {
 				this.selected_objs.add(Variant(VAR_TOPO_SHAPE, shp))
 			}
