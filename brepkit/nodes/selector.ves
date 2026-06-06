@@ -78,6 +78,17 @@ class Selector is Node
 
 	calc_value(idx)
 	{
+		// A rebuilt body is re-evaluated to a fresh TopoDS on every pull (e.g.
+		// when a downstream chamfer's radius is edited), so an edge cached from
+		// a previous eval is FOREIGN to the new body and the chamfer silently
+		// fails (the pick "disappears"). For an IMPORTED pick (ref_shape set) we
+		// therefore re-match geometrically EVERY eval -- the TopoNaming uid is
+		// stale across re-evals (query_shapes hands back the prior edge), only
+		// the geometry on the live body stays correct. User picks (no ref_shape)
+		// keep their cache, invalidated by on_pin_dirty on structural change.
+		if (this.ref_shape) {
+			this.selected_objs.clear()
+		}
 		if (this.selected_objs.isEmpty and (!this.selected_uids.isEmpty or this.ref_shape))
 		{
 			var sel_type = this.query_param("type").value
@@ -104,19 +115,18 @@ class Selector is Node
 				}
 				if (matched) {
 					this.selected_objs.add(Variant(VAR_TOPO_SHAPE, matched))
-					// Capture the matched edge's uid on the LIVE body and switch
-					// to it: from here this Selector is an ordinary uid pick
-					// (the only thing to_string persists), the import geometry is
-					// dropped. So no persistent dual source, no dependence on the
-					// builder, and it survives save/reload. op_ids are stable per
-					// node across evals, so the captured uid keeps resolving; if
-					// it ever drifts the user re-picks like any topo-name break.
+					// Capture the matched edge's uid for persistence (to_string),
+					// but KEEP ref_shape: the uid is NOT reliable across re-evals
+					// here -- on a rebuilt body each eval re-derives a fresh
+					// TopoDS and query_shapes(uid) hands back the stale prior
+					// edge (foreign to the new body), so the chamfer fails. The
+					// geometric match on the live body is the only identity that
+					// stays correct, so we re-match it every eval.
 					var hg = this.get_hist_graph()
 					if (hg) {
 						var live_uid = hg.get_node_uid(matched)
 						if (live_uid and live_uid != 0) {
 							this.selected_uids = [live_uid]
-							this.ref_shape = nil
 						}
 					}
 				}
