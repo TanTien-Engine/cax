@@ -20,6 +20,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <iostream>
 #include <map>
 #include <set>
 #include <sstream>
@@ -1671,14 +1672,83 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     // path below is unchanged.
                     auto contribs = AssembleContributions(
                         feat, feature_tools, feature_dressups);
+                    bool has_dressup    = false;
+                    bool all_equivariant = true;
                     for (const auto& c : contribs) {
-                        if (c.is_tool && !c.equivariant) {
-                            if (!out.err_msg.empty()) out.err_msg += "; ";
-                            out.err_msg += "pattern " + feat.name +
-                                " replicates a non-Blind (up-to) extrude by "
-                                "rigid transform; geometry may be wrong";
+                        if (c.is_tool) {
+                            if (!c.equivariant) all_equivariant = false;
+                        } else {
+                            has_dressup = true;
                         }
                     }
+                    if (!all_equivariant) {
+                        if (!out.err_msg.empty()) out.err_msg += "; ";
+                        out.err_msg += "pattern " + feat.name +
+                            " replicates a non-Blind (up-to) extrude by "
+                            "rigid transform; geometry may be wrong";
+                    }
+
+                    // Decide HOW to lower from the pattern's GEOMETRY, not from
+                    // the import-layer onto_running flag: a pure-tool, rigid-
+                    // equivariant pattern needs no per-instance dressup re-
+                    // resolution, so it lowers to the SHARED linear_pattern op
+                    // (one n-ary instance union, see TopoAlgo_Ext) combined onto
+                    // the running body ONCE per tool -- instead of N sequential
+                    // per-instance booleans. The seed copy (i=0) is already in
+                    // base_node; fusing/cutting the full instance set (which
+                    // includes the coincident seed) over it is idempotent. Only
+                    // patterns that carry a per-instance dressup, or a non-
+                    // equivariant tool, fall back to the per-instance expansion.
+                    if (all_equivariant) {
+                        // Phase 1: replicate every tool with the shared n-ary
+                        // linear_pattern op and combine each onto the running
+                        // body once -- replaces count1*count2 sequential tool
+                        // booleans with one pattern + one combine per tool.
+                        int acc = base_node;
+                        for (const auto& c : contribs) {
+                            if (!c.is_tool) continue;
+                            int pat = cg->AddOp(
+                                "linear_pattern",
+                                {c.tool_node, d1, c1, s1, d2, c2, s2},
+                                {}, feat.name + ":pat");
+                            const char* op = (c.op_kind == 'c') ? "cut" : "fuse";
+                            acc = cg->AddOp(op, {acc, pat}, {}, feat.name);
+                        }
+                        // Phase 2: per-instance dressups (chamfer/fillet). All
+                        // tools are present on `acc` now and pattern instances
+                        // occupy DISJOINT regions, so re-resolving + applying
+                        // each copy's dressup on the unified body is equivalent
+                        // to interleaving it between the booleans (resolve is
+                        // geometric, not index-based) -- without paying N
+                        // sequential tool fuses. The seed (i=0,j=0) is already
+                        // dressed in base_node, so it is skipped.
+                        if (has_dressup) {
+                            std::vector<Contribution> dressups;
+                            for (const auto& c : contribs)
+                                if (!c.is_tool) dressups.push_back(c);
+                            brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
+                            brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
+                            double l2sq = p.dir2[0] * p.dir2[0]
+                                        + p.dir2[1] * p.dir2[1]
+                                        + p.dir2[2] * p.dir2[2];
+                            int eff2 = (l2sq > 1e-30 && p.count2 > 1)
+                                            ? (int)p.count2 : 1;
+                            for (int i = 0; i < (int)p.count1; ++i) {
+                                for (int j = 0; j < eff2; ++j) {
+                                    if (i == 0 && j == 0) continue;
+                                    InstanceXform X;
+                                    for (int k = 0; k < 3; ++k)
+                                        X.offset[k] = i * p.spacing1 * u1[k]
+                                                    + j * p.spacing2 * u2[k];
+                                    acc = ApplyPatternInstance(
+                                        *cg, acc, dressups, X,
+                                        opt.topo_tolerance,
+                                        feat.name + ":dress");
+                                }
+                            }
+                        }
+                        node = acc;
+                    } else {
                     brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
                     brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
                     double l2sq = p.dir2[0] * p.dir2[0]
@@ -1701,6 +1771,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         }
                     }
                     node = acc;
+                    }
                 } else {
                     int pat = cg->AddOp("linear_pattern",
                                          {pi.originals[0].tool_node, d1, c1, s1, d2, c2, s2},

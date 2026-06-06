@@ -116,44 +116,62 @@ TopoDS_Shape FuseInstancesAndUnify(const std::vector<TopoDS_Shape>& instances,
     if (instances.empty()) {
         return TopoDS_Shape();
     }
-    TopoDS_Shape result = instances[0];
+    if (instances.size() == 1) {
+        return instances[0];
+    }
 
-    for (size_t i = 1; i < instances.size(); ++i)
+    auto has_faces = [](const TopoDS_Shape& s) -> bool {
+        if (s.IsNull()) return false;
+        TopExp_Explorer ex(s, TopAbs_FACE);
+        return ex.More() == Standard_True;
+    };
+
+    // Fast path: fuse ALL instances in ONE n-ary BOP instead of N-1
+    // pairwise steps. EXPERIMENTAL -- under evaluation against goldens.
+    TopoDS_Shape result;
     {
         BRepAlgoAPI_Fuse algo;
-        TopTools_ListOfShape args;  args.Append(result);
-        TopTools_ListOfShape tools; tools.Append(instances[i]);
+        TopTools_ListOfShape args;  args.Append(instances[0]);
+        TopTools_ListOfShape tools;
+        for (size_t i = 1; i < instances.size(); ++i) {
+            tools.Append(instances[i]);
+        }
         algo.SetArguments(args);
         algo.SetTools(tools);
         algo.SetFuzzyValue(1e-6);
         algo.SetGlue(glue);
+        algo.SetRunParallel(true);
         algo.Build();
-
-        // A successful BOP can still produce a degenerate empty shape
-        // when the glue hint is wrong (see header comment). Treat a
-        // zero-face result as failure so we fall back to a plain
-        // glue-off fuse rather than poisoning the running result.
-        bool ok = algo.IsDone() && !algo.Shape().IsNull();
-        if (ok) {
-            TopExp_Explorer ex(algo.Shape(), TopAbs_FACE);
-            if (!ex.More()) {
-                ok = false;
-            }
-        }
-        if (ok) {
+        if (algo.IsDone() && has_faces(algo.Shape())) {
             result = algo.Shape();
-            continue;
         }
+    }
 
-        // Glue mode is wrong for the geometry of this pair; fall
-        // back to plain fuse rather than abandoning the step.
-        BRepAlgoAPI_Fuse retry;
-        retry.SetArguments(args);
-        retry.SetTools(tools);
-        retry.SetFuzzyValue(1e-6);
-        retry.Build();
-        if (retry.IsDone() && !retry.Shape().IsNull()) {
-            result = retry.Shape();
+    if (result.IsNull())
+    {
+        result = instances[0];
+        for (size_t i = 1; i < instances.size(); ++i)
+        {
+            BRepAlgoAPI_Fuse algo;
+            TopTools_ListOfShape args;  args.Append(result);
+            TopTools_ListOfShape tools; tools.Append(instances[i]);
+            algo.SetArguments(args);
+            algo.SetTools(tools);
+            algo.SetFuzzyValue(1e-6);
+            algo.SetGlue(glue);
+            algo.Build();
+            if (algo.IsDone() && has_faces(algo.Shape())) {
+                result = algo.Shape();
+                continue;
+            }
+            BRepAlgoAPI_Fuse retry;
+            retry.SetArguments(args);
+            retry.SetTools(tools);
+            retry.SetFuzzyValue(1e-6);
+            retry.Build();
+            if (retry.IsDone() && !retry.Shape().IsNull()) {
+                result = retry.Shape();
+            }
         }
     }
 
