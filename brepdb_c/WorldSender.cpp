@@ -44,6 +44,24 @@
 #include <logger/logger.h>
 
 #include <assert.h>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+
+namespace
+{
+// [ws_serialize] probe: per-call sub-shape count + wall time, to attribute the
+// expand-path "re-serialize the whole growing body after every op" (O(N^2))
+// cost. Off by default; set BREPDB_WS_PROBE=1 to enable. No behavior change.
+bool WsProbeOn()
+{
+    static const bool on = [] {
+        const char* e = std::getenv("BREPDB_WS_PROBE");
+        return e && e[0] && e[0] != '0';
+    }();
+    return on;
+}
+} // anonymous
 
 namespace
 {
@@ -91,6 +109,10 @@ WorldSender::WorldSender(const std::shared_ptr<brepgraph::TopoNaming>& tn)
 
 void WorldSender::Serialize(const TopoDS_Shape& shape, BRepWorld& world)
 {
+    const bool _probe = WsProbeOn();
+    const auto _t0 = _probe ? std::chrono::steady_clock::now()
+                            : std::chrono::steady_clock::time_point{};
+
     TopTools_IndexedMapOfShape all_shapes;
     TopExp::MapShapes(shape, all_shapes);
 
@@ -158,6 +180,17 @@ void WorldSender::Serialize(const TopoDS_Shape& shape, BRepWorld& world)
         default:
             break;
         }
+    }
+
+    if (_probe)
+    {
+        const double _ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - _t0).count();
+        // sub-shapes drive both the geometry serialize AND ~2-3 GetUID
+        // make_shared<TopoShape>+hash-query allocations each (pass1 + ResolveUID).
+        std::fprintf(stderr, "[ws_serialize] subshapes=%d  %.2fms\n",
+                     all_shapes.Extent(), _ms);
+        std::fflush(stderr);
     }
 }
 
@@ -287,12 +320,15 @@ uint32_t WorldSender::GetUID(const TopoDS_Shape& shape) const
     if (!hg)
         return 0xffffffff;
 
-    auto node = hg->QueryNode(std::make_shared<brepkit::TopoShape>(shape));
-    if (!node)
-        return 0xffffffff;
-
-    auto& cid = node->GetComponent<brepgraph::NodeId>();
-    return cid.GetUID();
+    // Direct m_shape2uid hash lookup. The old QueryNode() compatibility
+    // wrapper allocated a make_shared<brepkit::TopoShape> per call AND built a
+    // synthetic graph::Node -- two heap allocations for EVERY sub-shape, and
+    // GetUID runs per sub-shape in pass 1 plus again via ResolveUID in pass 2
+    // and per wire edge. On the expand path Serialize re-walks the whole
+    // growing body after every op, so that churn was a large slice of the
+    // non-OCCT (operator-new) allocation half. GetUID(const TopoDS_Shape&) is
+    // the canonical lookup QueryNode wraps -- identical uid, zero allocation.
+    return hg->GetUID(shape);
 }
 
 CurveComp WorldSender::SerializeCurve(const Handle(Geom_Curve)& curve)
