@@ -942,8 +942,24 @@ bool ZwReader::ReadFile(const std::string& path,
                 // base, dropping any feature between it and the pattern, e.g.
                 // Extrude4's cut).
                 {
+                    // ZW3D FtPtnFtr is a GENERIC pattern feature; field 26 is its
+                    // method enum. Only the LINEAR methods (1, 2) reconstruct
+                    // faithfully as a LinearPattern off pattern.dir -- there the
+                    // resolved "dir" is a genuine TRANSLATION axis. For circular /
+                    // fill / point methods (>= 3) that same "dir" is a ROTATION
+                    // axis (or unused), so a linear sweep flings the copies off
+                    // into space (R2900_30's feature 15 is a polar pattern: dir is
+                    // the axis, count 10 x 20mm scattered the instances ~150mm
+                    // away). A correct rebuild needs the axis ORIGIN + angle, which
+                    // the plugin does not yet export (ZwCaxExport reads the datum
+                    // point but drops it). Until that lands, leave a non-linear
+                    // pattern OPAQUE -- the seed features are already in the body,
+                    // so the part stays sane; only the replicated copies are absent.
                     auto patj = jf.find("pattern");
-                    if (zt == "FtPtnFtr" && patj != jf.end() &&
+                    double pat_method    = FieldValueById(jf, 26, 1.0);
+                    bool   linear_method = std::fabs(pat_method - 1.0) < 0.5 ||
+                                           std::fabs(pat_method - 2.0) < 0.5;
+                    if (zt == "FtPtnFtr" && linear_method && patj != jf.end() &&
                         patj->contains("dir") && patj->at("dir").is_array() &&
                         patj->at("dir").size() == 3 &&
                         running_solid_id != 0 && !extrude_xy.empty())
