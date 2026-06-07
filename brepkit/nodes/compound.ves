@@ -21,10 +21,28 @@ class Compound is Node
 		]
 
 		this.layout()
+
+		this.cached_shape = nil
+	}
+
+	on_pin_dirty(pin, type, msg) {
+		super.on_pin_dirty(pin, type, msg)
+		if (pin.is_input) {
+			this.cached_shape = nil
+		}
+	}
+
+	on_param_dirty() {
+		super.on_param_dirty()
+		this.cached_shape = nil
 	}
 
 	calc_value(idx)
 	{
+		if (this.cached_shape) {
+			return Variant(VAR_TOPO_SHAPE, this.cached_shape)
+		}
+
 		var shapes = []
 		for (var i in 0 .. this.imports.count)
 		{
@@ -36,6 +54,7 @@ class Compound is Node
 
 		var shape = ShapeBuilder.make_compound(shapes)
 		if (shape) {
+			this.cached_shape = shape
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
 			return nil
