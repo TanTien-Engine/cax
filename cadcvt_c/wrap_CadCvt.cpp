@@ -9,6 +9,7 @@
 #include "brepkit_c/TransHelper.h"
 #include "brepkit_c/TopoShape.h"
 #include "brepkit_c/GlobalConfig.h"
+#include "brepkit_c/MemProbe.h"
 
 #include "brepgraph_c/computation/CalcGraph.h"
 #include "brepdb_c/WorldSender.h"
@@ -1301,6 +1302,8 @@ void w_ZwLoader_load()
         return;
     }
 
+    brepkit::MemProbe("ZwLoad: start (before parse)");
+
     cadapp::DocumentIR doc;
     std::string err;
     if (!st->reader.ReadFile(path, doc, &err)) {
@@ -1308,6 +1311,8 @@ void w_ZwLoader_load()
         ves_set_nil(0);
         return;
     }
+
+    brepkit::MemProbe("ZwLoad: after ReadFile (parse)");
 
     // Load per-feature authored geometry (CdGeomCopy STEP refs the
     // SDK-free ZwReader could only record as paths) into authored_shapes.
@@ -1359,6 +1364,8 @@ void w_ZwLoader_load()
         doc.authored_shapes[feat.id] = ts;
     }
 
+    brepkit::MemProbe("ZwLoad: after authored STEP load");
+
     cadapp::ReplayOptions opt;
     opt.write_back_resolved = false;
     opt.commit_versions     = false;
@@ -1371,10 +1378,14 @@ void w_ZwLoader_load()
         return;
     }
 
+    brepkit::MemProbe("ZwLoad: after ReplayParts (replay)");
+
     st->last_error = res.err_msg;   // diagnostics, even on success
     st->parts      = std::move(res.parts);
     st->calc_graph = res.calc_graph;  // kept by the single-part serial path
     brepkit::return_topo_shape(res.shape);
+
+    brepkit::MemProbe("ZwLoad: done (shape returned)");
 }
 
 void w_ZwLoader_last_error()

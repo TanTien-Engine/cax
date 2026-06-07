@@ -128,6 +128,8 @@ set(brepkit__tools
     "brepkit_c/TopoAlgo_Ext.h"
     "brepkit_c/GlobalConfig.cpp"
     "brepkit_c/GlobalConfig.h"
+    "brepkit_c/MemProbe.cpp"
+    "brepkit_c/MemProbe.h"
 )
 source_group("brepkit\\tools" FILES ${brepkit__tools})
 

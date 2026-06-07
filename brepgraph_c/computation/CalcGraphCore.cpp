@@ -1,7 +1,9 @@
 #include "brepgraph_c/computation/CalcGraph.h"
 
 #include <algorithm>
+#include <chrono>
 #include <future>
+#include <iostream>
 #include <queue>
 #include <sstream>
 
@@ -697,7 +699,19 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	if (desc && desc->eval)
 	{
 		EvalCtx ctx{resolved, nd->fixed_input_count, tn, nd->op_id};
+		// Per-op self-time (this op's own work; inputs already resolved
+		// above). Only fires on a real recompute, never on a cache hit,
+		// so it attributes the replay cost feature-by-feature. Threshold
+		// keeps trivial const/selector ops out of the log.
+		const auto _t0 = std::chrono::steady_clock::now();
 		result = desc->eval(ctx);
+		const double _ms = std::chrono::duration<double, std::milli>(
+			std::chrono::steady_clock::now() - _t0).count();
+		if (_ms > 1.0)
+			std::cerr << "[eval] op=" << nd->op_name
+			          << " op_id=" << nd->op_id
+			          << " node=" << ref.id
+			          << "  " << _ms << "ms\n";
 	}
 
 	bool no_vt_cache = desc && desc->flags.no_vt_cache;

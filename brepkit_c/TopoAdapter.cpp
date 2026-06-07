@@ -1,5 +1,6 @@
 #include "TopoAdapter.h"
 #include "TopoShape.h"
+#include "MemProbe.h"
 
 #include <unirender/Device.h>
 #include <unirender/VertexBuffer.h>
@@ -29,11 +30,39 @@
 #include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
 #include <BRepLib.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 
 #include <set>
+#include <cmath>
 
 namespace
 {
+
+// Angular deflection (radians) for display tessellation. On curved surfaces
+// this is the BINDING constraint (linear deflection is non-binding once scaled
+// to the model), so it sets the circumferential facet count on cylinders/cones.
+// 0.1 rad (~5.7°, ~63 facets/circle) over-tessellates; 0.3 rad (~17°, ~21
+// facets/circle) ~ OCCT's viewer default and cuts curved-face triangles ~3x,
+// shrinking both meshing time and the BRepMesh memory transient.
+constexpr double kAngularDeflection = 0.3;
+
+// Linear deflection for display tessellation, scaled to the model's size.
+// A fixed absolute value (formerly 0.01) over-tessellates large mm-scale parts
+// — tessellation is the dominant cost when (re)meshing — while a size-relative
+// deflection adapts automatically. The 1e-3 coefficient matches OCCT's own
+// viewer default (Prs3d DeviationCoefficient = bbox-diagonal * 0.001). The 0.01
+// floor keeps the mesh no finer than the previous behaviour, so small parts are
+// unaffected; only large parts get coarser (and faster / lighter on memory).
+double DisplayDeflection(const TopoDS_Shape& shape)
+{
+    Bnd_Box box;
+    BRepBndLib::Add(shape, box);
+    if (box.IsVoid())
+        return 0.01;
+    double defl = std::sqrt(box.SquareExtent()) * 1.0e-3;
+    return defl > 0.01 ? defl : 0.01;
+}
 
 // from FreeCAD part/app/tools
 
@@ -45,7 +74,7 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
         return mesh;
 
     // Try meshing the original face (preserves wire trimming)
-    BRepMesh_IncrementalMesh(face, 0.01, Standard_False, 0.1);
+    BRepMesh_IncrementalMesh(face, DisplayDeflection(face), Standard_False, kAngularDeflection);
     mesh = BRep_Tool::Triangulation(face, loc);
     if (!mesh.IsNull())
         return mesh;
@@ -84,7 +113,7 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
     TopoDS_Shape shape = mkBuilder.Shape();
     shape.Location(loc);
 
-    BRepMesh_IncrementalMesh(shape, 0.01, Standard_False, 0.1);
+    BRepMesh_IncrementalMesh(shape, DisplayDeflection(shape), Standard_False, kAngularDeflection);
     return BRep_Tool::Triangulation(TopoDS::Face(shape), loc);
 }
 
@@ -148,7 +177,7 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildEdgesFromShape(const std::sha
     BRepLib::BuildCurves3d(src);
     // Last arg enables OCCT's per-face parallel meshing (uses its internal
     // OSD_ThreadPool); tessellation is the dominant cost when re-meshing.
-    BRepMesh_IncrementalMesh algo(src, 0.01, Standard_False, 0.1, Standard_True);
+    BRepMesh_IncrementalMesh algo(src, DisplayDeflection(src), Standard_False, kAngularDeflection, Standard_True);
     algo.Perform();
 
     std::vector<Vertex> vertices;
@@ -307,6 +336,8 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
 {
     std::vector<Vertex> vertices;
 
+    brepkit::MemProbe("BuildMesh: enter");
+
     auto type = shape.ShapeType();
     if (type == TopAbs_EDGE)
     {
@@ -320,8 +351,10 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
         BRepTools::Clean(shape);
         // Last arg enables OCCT's per-face parallel meshing (uses its internal
         // OSD_ThreadPool); tessellation is the dominant cost when re-meshing.
-        BRepMesh_IncrementalMesh algo(shape, 0.01, Standard_False, 0.1, Standard_True);
+        brepkit::MemProbe("BuildMesh: before BRepMesh");
+        BRepMesh_IncrementalMesh algo(shape, DisplayDeflection(shape), Standard_False, kAngularDeflection, Standard_True);
         algo.Perform();
+        brepkit::MemProbe("BuildMesh: after BRepMesh");
 
         TriangulationFaces(shape, vertices, alpha);
     }
@@ -353,6 +386,7 @@ std::shared_ptr<ur::VertexArray> TopoAdapter::BuildMesh(const std::shared_ptr<ur
     ));
 	va->SetVertexBufferAttrs(vbuf_attrs);
 
+    brepkit::MemProbe("BuildMesh: done (VertexArray built)");
     return va;
 }
 
