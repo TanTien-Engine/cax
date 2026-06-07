@@ -38,6 +38,8 @@
 #include <ShapeAnalysis_FreeBounds.hxx>
 #include <ShapeFix_Face.hxx>
 
+#include <memory>
+
 namespace cadapp
 {
 
@@ -179,6 +181,12 @@ struct WireRec
 	double      area = 0.0;
 	gp_Pnt      sample;
 	int         depth = 0;
+	// Point-in-face classifier for `face`, built ONCE here and reused across
+	// the O(n^2) containment tests below. Rebuilding a BRepTopAdaptor_FClass2d
+	// per pairwise test was ~98% of the sketch_face op cost on dense profiles
+	// (92 wires -> ~8.5k rebuilds, ~700ms); the ctor is the expensive part,
+	// Perform() is cheap. unique_ptr keeps WireRec move-only (no accidental copy).
+	std::unique_ptr<BRepTopAdaptor_FClass2d> cls;
 };
 
 // Build a WireRec from a single TopoDS_Wire. Returns false when the
@@ -195,19 +203,20 @@ bool BuildWireRec(const TopoDS_Wire& w, const gp_Pln& plane, WireRec& out)
 	if (out.area == 0.0) return false;
 	out.sample = props.CentreOfMass();
 	out.wire   = w;
+	out.cls    = std::make_unique<BRepTopAdaptor_FClass2d>(
+		out.face, Precision::Confusion());
 	return true;
 }
 
-// Classify a 3D world point against a planar face by projecting
-// onto the plane's UV and running BRepTopAdaptor_FClass2d. The face
-// must be supported by `plane` (its UV system); since we build all
-// faces here from the same gp_Pln this holds.
-bool PointInsideFace(const TopoDS_Face& face, const gp_Pln& plane,
-                      const gp_Pnt& p, double tol)
+// Classify a 3D world point against a planar face's PREBUILT classifier by
+// projecting onto the plane's UV. The classifier must come from a face
+// supported by `plane` (its UV system); since we build all faces here from
+// the same gp_Pln this holds.
+bool PointInsideFace(BRepTopAdaptor_FClass2d& cls, const gp_Pln& plane,
+                      const gp_Pnt& p)
 {
 	double u, v;
 	ElSLib::Parameters(plane, p, u, v);
-	BRepTopAdaptor_FClass2d cls(face, tol);
 	return cls.Perform(gp_Pnt2d(u, v)) == TopAbs_IN;
 }
 
@@ -245,14 +254,13 @@ std::shared_ptr<brepkit::TopoShape> WiresToFace(
 	// pairs where the candidate container's area is no larger than
 	// mine -- closed planar regions can only contain strictly
 	// smaller ones.
-	const double tol = Precision::Confusion();
 	for (size_t i = 0; i < recs.size(); ++i)
 	{
 		for (size_t j = 0; j < recs.size(); ++j)
 		{
 			if (i == j) continue;
 			if (recs[j].area <= recs[i].area) continue;
-			if (PointInsideFace(recs[j].face, plane, recs[i].sample, tol))
+			if (PointInsideFace(*recs[j].cls, plane, recs[i].sample))
 				++recs[i].depth;
 		}
 	}
@@ -279,7 +287,7 @@ std::shared_ptr<brepkit::TopoShape> WiresToFace(
 			if (i == j) continue;
 			if (recs[j].depth != recs[i].depth + 1) continue;
 			if (recs[j].area >= recs[i].area) continue;
-			if (PointInsideFace(recs[i].face, plane, recs[j].sample, tol))
+			if (PointInsideFace(*recs[i].cls, plane, recs[j].sample))
 				mk.Add(recs[j].wire);
 		}
 
