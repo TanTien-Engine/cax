@@ -353,6 +353,7 @@ struct FeatNode
 // All identifiers verified against this SDK's headers (api/inc):
 //   cvxPartInqFtrList(int*, int**)            [zwapi_part_history.h]
 //   cvxPartInqFtrTemplate(int, vxName)        [zwapi_part_history.h]
+//   cvxEntName(int, char*, int)               [zwapi_general_ent.h]
 //   cvxMemFree(void**)                        [zwapi_memory.h]
 //   vxName == char[32], ZW_API_NO_ERROR       [zwapi_util.h]
 // ============================================================
@@ -360,7 +361,7 @@ struct FeatNode
 #include "zwapi_part_history.h"            // cvxPartInqFtrList / cvxPartInqFtrTemplate / cvxPartInqFtrData / cvxPartInqFtrEnts
 #include "zwapi_memory.h"                  // cvxMemFree
 #include "zwapi_util.h"                    // vxName, evxErrors, ZW_API_NO_ERROR, svxBndBox, svxPoint/Vector, VX_ENT_*
-#include "zwapi_general_ent.h"             // cvxEntBndBox / cvxEntExists
+#include "zwapi_general_ent.h"             // cvxEntBndBox / cvxEntExists / cvxEntName (feature tree label)
 #include "zwapi_brep_face.h"               // cvxFaceParam / cvxFaceEval (face normal for matching signatures)
 #include "zwapi_brep_shape.h"              // cvxPartInqShapeFaces (DIAG: body face count to test roll-back)
 #include "zwapi_file.h"                    // cvxFileExportInit / cvxFileExport (STEP truth geometry)
@@ -469,11 +470,59 @@ std::string FeatureType(int idFtr)
     return std::string(tmpl);
 }
 
-// Display name. No dedicated localized-name getter is bound yet, so the
-// stable template token doubles as the label (name is round-trip-only and
-// non-critical). TODO: bind a localized feature-name getter if wanted.
+// Convert a ZW3D API string to guaranteed-valid UTF-8 for the neutral JSON.
+// Modern ZW3D SDKs hand back UTF-8, but older ones (and some locales) return
+// system ANSI (e.g. GBK). nlohmann's dump() runs with error_handler::replace,
+// so raw GBK bytes would be emitted as U+FFFD -- a garbled "倒角1" on the cax
+// side. Pass valid UTF-8 through untouched; transcode anything else from the
+// system ANSI code page.
+std::string ToUtf8(const char* s)
+{
+#ifdef _WIN32
+    if (!s || !*s) {
+        return std::string();
+    }
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, nullptr, 0) > 0) {
+        return std::string(s);   // already valid UTF-8
+    }
+    int wlen = MultiByteToWideChar(CP_ACP, 0, s, -1, nullptr, 0);
+    if (wlen <= 0) {
+        return std::string(s);
+    }
+    std::wstring w(static_cast<size_t>(wlen), L'\0');
+    MultiByteToWideChar(CP_ACP, 0, s, -1, &w[0], wlen);
+    int u8 = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (u8 <= 0) {
+        return std::string(s);
+    }
+    std::string out(static_cast<size_t>(u8), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, &out[0], u8, nullptr, nullptr);
+    if (!out.empty() && out.back() == '\0') {
+        out.pop_back();          // the -1 length added a trailing NUL
+    }
+    return out;
+#else
+    return s ? std::string(s) : std::string();
+#endif
+}
+
+// Display name: the feature's user-facing name from the history tree -- the
+// localized label like "草图1" / "倒角1" on a Chinese install -- via the entity
+// name getter cvxEntName (the ZW3D analogue of SolidWorks' IFeature::GetName()).
+// A feature id is an entity id, so cvxEntName returns its tree name. Falls back
+// to the stable template token when the feature has no name, so a node is never
+// left unnamed. NOTE: type DISPATCH stays on FeatureType() / "zw_type" (a stable
+// language-independent token), so the real name here never changes how the cax
+// reader maps the feature -- it only sets the display label.
 std::string FeatureName(int idFtr)
 {
+    char name[256];
+    name[0] = '\0';
+    if (cvxEntName(idFtr, name, static_cast<int>(sizeof(name))) == ZW_API_NO_ERROR
+        && name[0] != '\0')
+    {
+        return ToUtf8(name);
+    }
     return FeatureType(idFtr);
 }
 

@@ -210,6 +210,25 @@ bool PropBool(const pugi::xml_node& props_node, const char* prop_name, bool def 
     return v.attribute("value").as_bool(def);
 }
 
+// Read an App::PropertyString value (<Property name="X"><String value="..."/>).
+// Returns def when the property is absent or empty. Document.xml is UTF-8 on
+// disk and pugixml returns the bytes verbatim, so a localized value (e.g. a
+// Chinese feature Label) comes back as correct UTF-8.
+std::string PropString(const pugi::xml_node& props_node, const char* prop_name,
+                       const std::string& def = std::string())
+{
+    auto p = FindProperty(props_node, prop_name);
+    if (!p) {
+        return def;
+    }
+    auto v = p.first_child();
+    if (!v) {
+        return def;
+    }
+    const char* s = v.attribute("value").value();
+    return (s && s[0] != '\0') ? std::string(s) : def;
+}
+
 // PropertyLink / PropertyLinkSub - returns the referenced object
 // name, plus an optional list of sub element names ("Edge1", "Face3").
 struct LinkRef
@@ -3088,9 +3107,17 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         }
         auto props = it->second.child("Properties");
 
+        // Display name = the user-facing Label (what FreeCAD shows in the tree,
+        // e.g. a renamed or localized "拉伸"), falling back to the internal
+        // object name ("Pad001") when there is no Label. pending.name stays the
+        // internal name everywhere else -- it is the cross-reference KEY
+        // (by_name / data_by_name / name_to_body / links), so only the display
+        // name is swapped.
+        std::string disp_name = PropString(props, "Label", pending.name);
+
         FeatureIR feat;
         feat.id   = pending.feature_id;
-        feat.name = pending.name;
+        feat.name = disp_name;
 
         // Body context: tag every body-owned feature with its body
         // name, and mark the first 3D-producing child as a body root
@@ -3156,7 +3183,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
             // ---- Sketch ----
             SketchIR sk;
             sk.feature_id = pending.feature_id;
-            sk.name       = pending.name;
+            sk.name       = disp_name;
 
             // Plane from Placement: (Px,Py,Pz) is origin, Q* is
             // the rotation quaternion. Default identity gives the

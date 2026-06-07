@@ -570,6 +570,25 @@ void w_CalcGraph_get_step_inputs()
     }
 }
 
+void w_CalcGraph_get_step_desc()
+{
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
+    int step_id = (int)ves_tonumber(1);
+
+    // The history rebuild titles each generated node after the original CAD
+    // feature, which the Replayer stamped onto the step desc: a feature's
+    // top-level op carries the bare feature name (e.g. "Boss-Extrude1") and
+    // its helper / sub-ops append a ":suffix" (":place_rot", ":fuse_orig",
+    // ":refine", ":edge", ...). Return the name with any suffix stripped, so
+    // every op of one feature reports the SAME clean name -- the rebuild
+    // groups by it and titles one node per feature. Stripping is done here
+    // because the Vessel String type has no substring primitive.
+    const std::string& desc = cg->GetStepDesc(step_id);
+    auto pos = desc.find(':');
+    int len = (pos == std::string::npos) ? (int)desc.size() : (int)pos;
+    ves_set_lstring(0, desc.c_str(), len);
+}
+
 void w_CalcGraph_claim_step()
 {
     auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
@@ -639,6 +658,7 @@ VesselForeignMethodFn BrepGraphBindMethod(const char* signature)
     if (strcmp(signature, "CalcGraph.get_history_size()") == 0) return w_CalcGraph_get_history_size;
     if (strcmp(signature, "CalcGraph.get_step_op_name(_)") == 0) return w_CalcGraph_get_step_op_name;
     if (strcmp(signature, "CalcGraph.get_step_inputs(_)") == 0) return w_CalcGraph_get_step_inputs;
+    if (strcmp(signature, "CalcGraph.get_step_desc(_)") == 0) return w_CalcGraph_get_step_desc;
     if (strcmp(signature, "CalcGraph.claim_step(_)") == 0) return w_CalcGraph_claim_step;
     if (strcmp(signature, "CalcGraph.is_step_claimed(_)") == 0) return w_CalcGraph_is_step_claimed;
     if (strcmp(signature, "CalcGraph.has_preloaded_history()") == 0) return w_CalcGraph_has_preloaded_history;

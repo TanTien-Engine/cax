@@ -476,6 +476,11 @@ public:
 	size_t GetHistorySize() const { return m_history.Size(); }
 	const std::string& GetStepOpName(int step_id) const;
 	std::vector<int> GetStepInputs(int step_id) const;
+	// The step's design-intent description. For a feature's top-level op this
+	// is the original CAD feature name (e.g. "Boss-Extrude1"); helper / sub-ops
+	// append a ":suffix". The history rebuild uses it to title the generated
+	// blueprint node after the source feature.
+	const std::string& GetStepDesc(int step_id) const;
 	void ClaimStep(int step_id) { m_claimed_steps.insert(step_id); }
 	bool IsStepClaimed(int step_id) const { return m_claimed_steps.count(step_id) > 0; }
 	void ClearClaims() { m_claimed_steps.clear(); }

@@ -171,6 +171,34 @@ class HistGraphBuilder
             created = created + 1
         }
 
+        // Pass 1.5: name each created node after the original CAD feature.
+        // get_step_desc returns the source feature name (e.g. "Boss-Extrude1"),
+        // already suffix-stripped, so EVERY op of one feature -- the top-level
+        // op AND its helpers (placement transforms, the boolean's tool, a
+        // dressup's edge selectors, the per-instance pattern copies) -- reports
+        // the SAME clean name. Walk steps high-to-low and title only the FIRST
+        // (highest step) node seen per name: that is the feature's output tip,
+        // so each feature surfaces as ONE titled node with its plumbing left at
+        // default labels. sketch_face / sketch_wire are titled on their
+        // Subgraph inside make_sketch, so skip them here.
+        var titled = {}
+        for (var step = n - 1; step >= 0; step = step - 1) {
+            var tnode = step2node[step]
+            if (!tnode) {
+                continue
+            }
+            var top = graph.get_step_op_name(step)
+            if (top == "sketch_face" or top == "sketch_wire") {
+                continue
+            }
+            var fname = graph.get_step_desc(step)
+            if (!fname or fname == "" or titled.containsKey(fname)) {
+                continue
+            }
+            titled[fname] = true
+            tnode.title = fname
+        }
+
         // Pass 2: wire shape + variadic inputs now that every node exists.
         for (var step = 0; step < n; step = step + 1) {
             var node = step2node[step]
@@ -338,6 +366,15 @@ class HistGraphBuilder
         // generated script would re-lex them, and tiny FP values printed in
         // scientific notation do not parse).
         var sub = Subgraph()
+
+        // Name the sketch sub-graph after the original sketch (the collapsed
+        // Subgraph is what the user sees and double-clicks to edit). The step
+        // desc is the sketch name (sketch_wire's ":wire" suffix is already
+        // stripped by get_step_desc).
+        var sk_title = graph.get_step_desc(step)
+        if (sk_title and sk_title != "") {
+            sub.title = sk_title
+        }
 
         // Geo nodes, kept BOTH as a compact merge list and as a slot array
         // indexed by the non-construction geo index (with nil holes for the

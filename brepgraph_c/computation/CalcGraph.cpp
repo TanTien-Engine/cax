@@ -348,6 +348,12 @@ std::vector<int> CalcGraph::GetStepInputs(int step_id) const
 	return all;
 }
 
+const std::string& CalcGraph::GetStepDesc(int step_id) const
+{
+	auto* s = m_history.Get(step_id);
+	return s ? s->desc : s_empty_str;
+}
+
 // ---------------------------------------------------------------
 //  CalcGraph persistence
 //
