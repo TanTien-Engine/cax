@@ -1720,8 +1720,21 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         // each copy's dressup on the unified body is equivalent
                         // to interleaving it between the booleans (resolve is
                         // geometric, not index-based) -- without paying N
-                        // sequential tool fuses. The seed (i=0,j=0) is already
-                        // dressed in base_node, so it is skipped.
+                        // sequential tool fuses.
+                        //
+                        // The seed (i=0,j=0) is NOT skipped here, unlike the
+                        // per-instance path below. There, base_node carries the
+                        // seed dressup untouched. Here, Phase 1 re-fused the
+                        // raw (un-dressed) seed tool over base_node -- the
+                        // n-ary linear_pattern includes the i=0 instance -- so a
+                        // CONVEX seed chamfer/fillet (which removes material) got
+                        // refilled and must be re-applied. Re-applying is safe
+                        // for the concave case too: that dressup added material
+                        // outside the raw tool, so it survived Phase 1, and the
+                        // i=0 re-resolve simply misses the now-gone sharp edge
+                        // and no-ops. (Without this, R2900_20's first chamfer --
+                        // a 0.2 mm convex chamfer on a patterned 0.4 mm boss --
+                        // silently vanished.)
                         if (has_dressup) {
                             std::vector<Contribution> dressups;
                             for (const auto& c : contribs)
@@ -1735,7 +1748,6 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                             ? (int)p.count2 : 1;
                             for (int i = 0; i < (int)p.count1; ++i) {
                                 for (int j = 0; j < eff2; ++j) {
-                                    if (i == 0 && j == 0) continue;
                                     InstanceXform X;
                                     for (int k = 0; k < 3; ++k)
                                         X.offset[k] = i * p.spacing1 * u1[k]
