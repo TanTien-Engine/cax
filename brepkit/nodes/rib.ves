@@ -44,22 +44,12 @@ class Rib is Node
 		this.calc_step_id = -1
 
 		this.op_id = -1
-
-		this.cached_shape = nil
 	}
 
 	on_param_dirty()
 	{
 		super.on_param_dirty()
 		Compiler.update_params(this)
-		this.cached_shape = nil
-	}
-
-	on_pin_dirty(pin, type, msg) {
-		super.on_pin_dirty(pin, type, msg)
-		if (pin.is_input) {
-			this.cached_shape = nil
-		}
 	}
 
 
@@ -69,10 +59,6 @@ class Rib is Node
 
 	calc_value(idx)
 	{
-		if (this.cached_shape) {
-			return Variant(VAR_TOPO_SHAPE, this.cached_shape)
-		}
-
 		var v_body = Blueprint.calc_input_value(this, 0)
 		var v_profile = Blueprint.calc_input_value(this, 1)
 		if (!v_body or !v_profile) {
@@ -91,7 +77,6 @@ class Rib is Node
 
 
 		if (shape) {
-			this.cached_shape = shape
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
 			return nil

@@ -43,25 +43,12 @@ class Offset is Node
 		this.calc_step_id = -1
 
 		this.op_id = []
-
-		// Memoize the result Variant (see fuse.ves). The output is either
-		// Variant(VAR_TOPO_SHAPE, ...) or Variant(array of solids), so cache
-		// the whole Variant.
-		this.cached_result = nil
 	}
 
 	on_param_dirty()
 	{
 		super.on_param_dirty()
 		Compiler.update_params(this)
-		this.cached_result = nil
-	}
-
-	on_pin_dirty(pin, type, msg) {
-		super.on_pin_dirty(pin, type, msg)
-		if (pin.is_input) {
-			this.cached_result = nil
-		}
 	}
 
 
@@ -71,10 +58,6 @@ class Offset is Node
 
 	calc_value(idx)
 	{
-		if (this.cached_result) {
-			return this.cached_result
-		}
-
 		var v_shape = Blueprint.calc_input_value(this, 0)
 		var src_shps = []
 		this.get_input_shapes(v_shape, src_shps)
@@ -123,7 +106,6 @@ class Offset is Node
 		}
 
 
-		this.cached_result = result
 		return result
 	}
 

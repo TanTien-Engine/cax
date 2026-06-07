@@ -33,16 +33,6 @@ class Fuse is Node
 		this.calc_step_id = -1
 
 		this.op_id = -1
-
-		// Memoized result shape. The interactive pull eval does NOT
-		// memoize, so without this every downstream re-pull (re-wiring
-		// ToMesh, editing an unrelated node, etc.) re-runs the whole
-		// upstream boolean chain AND re-commits to the VersionTree. We
-		// cache the computed shape and only recompute when an INPUT pin
-		// is dirtied (upstream changed / input re-wired) or our own
-		// param changes -- an OUTPUT re-wire (e.g. to ToMesh) does NOT
-		// invalidate it, so viewing a feature is instant.
-		this.cached_shape = nil
 	}
 
 
@@ -50,24 +40,8 @@ class Fuse is Node
 		this.calc_step_id = -1
 	}
 
-	on_pin_dirty(pin, type, msg) {
-		super.on_pin_dirty(pin, type, msg)
-		if (pin.is_input) {
-			this.cached_shape = nil
-		}
-	}
-
-	on_param_dirty() {
-		super.on_param_dirty()
-		this.cached_shape = nil
-	}
-
 	calc_value(idx)
 	{
-		if (this.cached_shape) {
-			return Variant(VAR_TOPO_SHAPE, this.cached_shape)
-		}
-
 		var v_a = Blueprint.calc_input_value(this, 0)
 		if (!v_a) {
 			return nil
@@ -85,7 +59,6 @@ class Fuse is Node
 
 
 		if (shape) {
-			this.cached_shape = shape
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
 			return nil

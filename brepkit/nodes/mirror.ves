@@ -40,25 +40,12 @@ class Mirror is Node
 		this.calc_step_id = -1
 
 		this.op_id = -1
-
-		// Memoize the result Variant (see fuse.ves). The output type is
-		// polymorphic (VAR_TOPO_SHAPE or VAR_TOPO_WIRE), so cache the whole
-		// Variant -- not just the shape -- to preserve the type.
-		this.cached_result = nil
 	}
 
 	on_param_dirty()
 	{
 		super.on_param_dirty()
 		Compiler.update_params(this)
-		this.cached_result = nil
-	}
-
-	on_pin_dirty(pin, type, msg) {
-		super.on_pin_dirty(pin, type, msg)
-		if (pin.is_input) {
-			this.cached_result = nil
-		}
 	}
 
 
@@ -68,10 +55,6 @@ class Mirror is Node
 
 	calc_value(idx)
 	{
-		if (this.cached_result) {
-			return this.cached_result
-		}
-
 		var v_obj = Blueprint.calc_input_value(this, 0)
 		if (!v_obj) {
 			return nil
@@ -93,9 +76,7 @@ class Mirror is Node
 
 
 		if (shape) {
-			var result = Variant(type, shape)
-			this.cached_result = result
-			return result
+			return Variant(type, shape)
 		} else {
 			return nil
 		}
