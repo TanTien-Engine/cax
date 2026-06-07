@@ -1451,12 +1451,31 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         CountSolids(algo->Shape()) > 1 &&
         BboxesOverlap(s1->GetShape(), s2->GetShape()))
     {
-        int best_solids = CountSolids(algo->Shape());
+        auto solid_volume = [](const TopoDS_Shape& s) -> double {
+            if (s.IsNull()) return 0.0;
+            GProp_GProps gp;
+            BRepGProp::VolumeProperties(s, gp);
+            return gp.Mass();
+        };
+        int    best_solids = CountSolids(algo->Shape());
+        double base_volume = solid_volume(algo->Shape());
         for (double fuzzy : {1e-5, 1e-4, 1e-3}) {
             auto retry = run_fuse(fuzzy);
             if (!retry->IsDone() || retry->Shape().IsNull()) continue;
             int retry_solids = CountSolids(retry->Shape());
-            if (retry_solids < best_solids) {
+            // Accept a fragment merge (fewer solids) ONLY when it also
+            // preserves the body's volume. A larger fuzzy that DROPS the
+            // volume is not gluing coincident faces -- it is melting features
+            // thinner than the fuzzy and collapsing the body to a degenerate
+            // remnant. That remnant has a low solid count, so the bare
+            // "fewest solids wins" rule used to PREFER it over the correct
+            // result: a pattern fuse onto a body carrying 0.1mm pins escalated
+            // to a 1mm fuzzy, wiped the whole part to a sliver (1 solid), and
+            // that sliver won -- R2900_30 rebuilt to "nothing displayed".
+            // A real merge keeps the union volume; require that.
+            double retry_volume = solid_volume(retry->Shape());
+            if (retry_solids < best_solids &&
+                retry_volume >= 0.9 * base_volume) {
                 algo = std::move(retry);
                 best_solids = retry_solids;
                 if (best_solids <= 1) break;
