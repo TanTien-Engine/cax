@@ -640,11 +640,18 @@ uniform UBO
 
 void main()
 {
-	vec4 clip = projection * view * model * vec4(aPos, 1.0);
-	// pull edges slightly toward the camera in NDC to win the depth
-	// comparison against the face they belong to without z-fighting.
-	clip.z -= 0.0005 * clip.w;
-	gl_Position = clip;
+	// Pull the edge slightly toward the camera ALONG THE VIEW RAY so it
+	// wins the depth test against its own coplanar face without
+	// z-fighting. Scaling the eye-space position toward the eye origin
+	// leaves screen-space x/y bit-identical (the scale cancels in the
+	// perspective divide) and lowers depth by a constant FRACTION of eye
+	// depth. Unlike the old fixed NDC offset (clip.z -= k*clip.w), this
+	// stays bounded at the back of the view volume, so hidden back edges
+	// no longer poke through nearer faces when the adaptive near/far
+	// makes far/near large (camera inside/near the model AABB).
+	vec4 eye = view * model * vec4(aPos, 1.0);
+	eye.xyz *= 0.999;
+	gl_Position = projection * eye;
 }
 "
 node72.tcs = ""
@@ -751,11 +758,16 @@ uniform UBO
 
 void main()
 {
-	vec4 clip = projection * view * model * vec4(aPos, 1.0);
-	// pull edges slightly toward the camera in NDC to win the depth
-	// comparison against the face they belong to without z-fighting.
-	clip.z -= 0.0005 * clip.w;
-	gl_Position = clip;
+	// Same screen-stable, depth-fraction pull toward the camera as the
+	// opaque edge pass: scale the eye-space position toward the eye
+	// origin (screen x/y unchanged, depth lowered by a bounded fraction)
+	// instead of a fixed NDC offset that blows up at the back of a large
+	// far/near frustum. depth_mask stays off in this pass, so the shell's
+	// own front/back edges still show (x-ray look); only edges genuinely
+	// behind opaque solids stay hidden by the opaque depth.
+	vec4 eye = view * model * vec4(aPos, 1.0);
+	eye.xyz *= 0.999;
+	gl_Position = projection * eye;
 	v_alpha = aAlpha;
 }
 "
