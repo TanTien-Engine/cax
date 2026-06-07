@@ -35,6 +35,12 @@ class Cut is Node
 		this.calc_step_id = -1
 
 		this.op_id = -1
+
+		// See fuse.ves: memoize the result so a downstream re-pull
+		// (re-wiring ToMesh, editing an unrelated node) does not re-run
+		// the whole boolean chain. Cleared when an INPUT pin or our own
+		// param is dirtied; an OUTPUT re-wire keeps the cache.
+		this.cached_shape = nil
 	}
 
 
@@ -42,8 +48,24 @@ class Cut is Node
 		this.calc_step_id = -1
 	}
 
+	on_pin_dirty(pin, type, msg) {
+		super.on_pin_dirty(pin, type, msg)
+		if (pin.is_input) {
+			this.cached_shape = nil
+		}
+	}
+
+	on_param_dirty() {
+		super.on_param_dirty()
+		this.cached_shape = nil
+	}
+
 	calc_value(idx)
 	{
+		if (this.cached_shape) {
+			return Variant(VAR_TOPO_SHAPE, this.cached_shape)
+		}
+
 		var v_a = Blueprint.calc_input_value(this, 0)
 		if (!v_a) {
 			return nil
@@ -61,6 +83,7 @@ class Cut is Node
 
 
 		if (shape) {
+			this.cached_shape = shape
 			return Variant(VAR_TOPO_SHAPE, shape)
 		} else {
 			return nil
