@@ -84,6 +84,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // ZW3D's C API hands back file paths as UTF-8. On Windows the CRT's narrow
@@ -244,6 +245,14 @@ struct EntSig
     bool        has_normal = false;
     bool        has_num    = false;         // scalar tied to this pick, e.g. a
     double      num        = 0.0;           // chamfer / fillet per-edge setback
+    // The JSON ordinal id (FeatNode.id == loop index + 1) of the feature that
+    // OWNS this entity, from cvxPartInqEntFtr. Lets a pattern's Base entities
+    // carry feature IDENTITY the reader can use directly -- e.g. a pattern of a
+    // pattern (Pattern4 over Pattern3's ring) resolves to the inner pattern
+    // feature instead of being guessed from a sub-mm cluster of anchors. 0 when
+    // the owner isn't a history feature in the exported list.
+    bool        has_feat   = false;
+    int         feat       = 0;
 };
 
 // One field of a feature's data container, read generically. fld_id is
@@ -635,17 +644,44 @@ void ReadBox(int idFtr, BoxData& out)
     out.has_place = ReadShapeMinCorner(idFtr, out.place);
 }
 
+// Maps a ZW3D feature id -> the 1-based ordinal the exporter writes as the
+// JSON feature "id" (FeatNode.id == loop index + 1). Populated once at the
+// start of the export (SetJsonIdMap) so EntitySig can stamp each referenced
+// entity with the JSON id of its OWNING feature. ZW feature ids and the JSON
+// ordinal are DIFFERENT id spaces -- cvxPartInqEntFtr returns a ZW id, which
+// only this map can translate into the id the reader keys features by.
+std::unordered_map<int, int> g_zwfid_to_jsonid;
+
+void SetJsonIdMap(const std::vector<int>& feats)
+{
+    g_zwfid_to_jsonid.clear();
+    for (size_t i = 0; i < feats.size(); ++i) {
+        g_zwfid_to_jsonid[feats[i]] = static_cast<int>(i + 1);
+    }
+}
+
 // Geometric signature of a referenced entity, for later matching in OCCT.
 // Faces get an on-surface point (evaluated at mid-UV) + normal; anything
 // else gets its bounding-box centre. The ZW3D entity id is NOT recorded
 // -- it is meaningless once the part is rebuilt in OCCT; only geometry
-// survives a cross-kernel rebuild.
+// survives a cross-kernel rebuild. The OWNING feature (cvxPartInqEntFtr,
+// translated to the JSON ordinal) IS recorded: it survives as feature
+// identity the reader uses to wire pattern Base links structurally.
 EntSig EntitySig(int idEnt)
 {
     EntSig s;
     if (cvxEntExists(idEnt, VX_ENT_FACE)) { s.kind = "face"; }
     else if (cvxEntExists(idEnt, VX_ENT_EDGE)) { s.kind = "edge"; }
     else { s.kind = "ent"; }
+
+    int owner_fid = 0;
+    if (cvxPartInqEntFtr(idEnt, &owner_fid) == ZW_API_NO_ERROR) {
+        auto it = g_zwfid_to_jsonid.find(owner_fid);
+        if (it != g_zwfid_to_jsonid.end()) {
+            s.feat     = it->second;
+            s.has_feat = true;
+        }
+    }
 
     svxBndBox box;
     if (cvxEntBndBox(idEnt, &box) == ZW_API_NO_ERROR)
@@ -1638,6 +1674,9 @@ json EntSigToJson(const EntSig& e)
     if (e.has_num) {
         j["num"] = e.num;
     }
+    if (e.has_feat) {
+        j["feat"] = e.feat;   // JSON ordinal id of the OWNING feature
+    }
     return j;
 }
 
@@ -1830,6 +1869,11 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         err = "ExportActivePartToCax: no features (no active part?)";
         return false;
     }
+
+    // Build the ZW-feature-id -> JSON-ordinal map BEFORE the loop so every
+    // EntitySig (incl. a pattern's Base picks) can stamp its owning feature's
+    // JSON id (cvxPartInqEntFtr returns a ZW id; the JSON id is the ordinal).
+    zwapi::SetJsonIdMap(feats);
 
     // History is linear per part, so the running solid tip is just the
     // previous solid-producing feature's id. Sketches don't advance it.

@@ -740,6 +740,16 @@ bool ZwReader::ReadFile(const std::string& path,
     };
     std::vector<ExtrudeFootprint> extrude_xy;
 
+    // Records which prior pattern consumed a given seed feature, keyed by the
+    // seed's feature id -> the pattern's feature id. Lets a LATER pattern that
+    // copies the same seed nest the prior pattern's RESULT (e.g. Pattern4 over
+    // Pattern3's ring) instead of just the bare seed: the seed id is mapped to
+    // the pattern so the outer pattern's Tool becomes the inner pattern, which
+    // the Replayer lowers as linear_pattern(circular_pattern(seed)). Overwritten
+    // by the latest consumer, so a reference resolves to the most recent prior
+    // pattern (processed in feature order).
+    std::unordered_map<uint32_t, uint32_t> seed_to_pattern;
+
     try
     {
         const auto& features = doc.at("document").at("features");
@@ -1250,6 +1260,9 @@ bool ZwReader::ReadFile(const std::string& path,
                         // from its remaining ents. (Circular keeps the first-ent
                         // seed above -- its axis needs that one footprint.)
                         std::vector<uint32_t> seed_ids;
+                        std::vector<uint32_t> consumed_seeds;   // raw seeds (pre-
+                                                                // nesting) this
+                                                                // pattern copies
                         if (linear_method) {
                             auto add_seed = [&](uint32_t t) {
                                 if (t == 0) { return; }
@@ -1265,6 +1278,22 @@ bool ZwReader::ReadFile(const std::string& path,
                                     auto eit = fd.find("ents");
                                     if (eit != fd.end() && eit->is_array()) {
                                         for (const auto& e : *eit) {
+                                            // Prefer the OWNING feature id the
+                                            // plugin resolved (cvxPartInqEntFtr,
+                                            // emitted as "feat"): it names the
+                                            // exact base child -- including a
+                                            // prior PATTERN (Pattern4's Base lists
+                                            // Pattern3, which a sub-mm cluster of
+                                            // anchors can't disambiguate). Fall
+                                            // back to geometric anchor matching
+                                            // for older snapshots with no "feat".
+                                            auto ft = e.find("feat");
+                                            if (ft != e.end() &&
+                                                ft->is_number_integer()) {
+                                                add_seed(static_cast<uint32_t>(
+                                                    ft->get<int>()));
+                                                continue;
+                                            }
                                             auto a = e.find("anchor");
                                             if (a == e.end() || !a->is_array() ||
                                                 a->size() < 3) { continue; }
@@ -1278,6 +1307,36 @@ bool ZwReader::ReadFile(const std::string& path,
                                     break;
                                 }
                             }
+
+                            consumed_seeds = seed_ids;   // record raw, pre-nesting
+
+                            // NEST a prior pattern: if a seed was itself patterned
+                            // earlier (Pattern3 ringed Extrude11), copy that
+                            // pattern's RESULT, not the bare seed -- map the seed
+                            // to the pattern. The Replayer lowers the pattern-as-
+                            // tool to linear_pattern(circular_pattern(seed)), so
+                            // the whole ring replicates. Only maps to a pattern
+                            // created BEFORE this one (its result is in the body).
+                            for (uint32_t& sd : seed_ids) {
+                                auto sp = seed_to_pattern.find(sd);
+                                if (sp != seed_to_pattern.end() &&
+                                    sp->second < id) {
+                                    sd = sp->second;
+                                }
+                            }
+                            // Re-dedup: two seeds may map to the same pattern.
+                            {
+                                std::vector<uint32_t> uniq;
+                                for (uint32_t sd : seed_ids) {
+                                    bool seen = false;
+                                    for (uint32_t u : uniq) {
+                                        if (u == sd) { seen = true; break; }
+                                    }
+                                    if (!seen) { uniq.push_back(sd); }
+                                }
+                                seed_ids.swap(uniq);
+                            }
+
                             if (target == 0 && !seed_ids.empty()) {
                                 target = seed_ids.front();
                             }
@@ -1399,10 +1458,19 @@ bool ZwReader::ReadFile(const std::string& path,
 
                                 // Sweep ONLY the matched seed (one feature).
                                 PushInput(pf, target, cadapp::InputRole::Tool);
+                                consumed_seeds = { target };
                             }
 
                             PushInput(pf, running_solid_id, cadapp::InputRole::Base);
                             pf.ext_params["pattern_onto_running"] = 1.0;
+
+                            // Record which pattern consumed each raw seed so a
+                            // LATER pattern copying the same seed nests THIS
+                            // pattern's result (the ring), not the bare seed.
+                            for (uint32_t sd : consumed_seeds) {
+                                if (sd != 0) { seed_to_pattern[sd] = id; }
+                            }
+
                             out.features.push_back(std::move(pf));
                             running_solid_id = id;
                             continue;

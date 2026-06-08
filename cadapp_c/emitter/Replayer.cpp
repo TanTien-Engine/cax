@@ -1883,6 +1883,42 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                                    feat.name + ":inst");
                     }
                     node = acc;
+
+                    // Register this circular pattern as a reusable TOOL so a
+                    // LATER pattern can NEST it -- a pattern of a pattern, e.g.
+                    // R2900_50's Pattern4 (linear) copies Pattern3's whole RING.
+                    // The tool node is the ISOLATED instance union (an n-ary
+                    // circular_pattern op, which already includes the i=0 seed),
+                    // NOT `node` (that ring is already fused into the body). The
+                    // outer pattern then lowers as linear_pattern(this ring) and
+                    // replicates the entire ring. Built from the tool contributions
+                    // only; a dressup on the seed is not carried into the nested
+                    // copy (known limitation). The extra node is orphaned (never
+                    // pulled) unless a later pattern actually references it, so a
+                    // non-nested circular pattern pays nothing.
+                    {
+                        int  ring    = -1;
+                        char ring_op = 'f';
+                        for (const auto& cc : contribs) {
+                            if (!cc.is_tool) { continue; }
+                            int cpn = cg->AddOp("circular_pattern",
+                                                {cc.tool_node, o, a, c, t}, {},
+                                                feat.name + ":toolring");
+                            ring = (ring < 0)
+                                 ? cpn
+                                 : cg->AddOp("fuse", {ring, cpn}, {},
+                                             feat.name + ":toolring");
+                            ring_op = cc.op_kind;
+                        }
+                        if (ring >= 0) {
+                            FeatureToolInfo ti;
+                            ti.tool_node   = ring;
+                            ti.base_node   = base_node;
+                            ti.op_kind     = (ring_op == 'c') ? 'c' : 'f';
+                            ti.equivariant = true;
+                            feature_tools[feat.id] = ti;
+                        }
+                    }
                 } else {
                     int pat = cg->AddOp("circular_pattern",
                                          {pi.originals[0].tool_node, o, a, c, t},
