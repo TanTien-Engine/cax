@@ -338,6 +338,30 @@ bool BboxesOverlap(const TopoDS_Shape& a, const TopoDS_Shape& b)
     return !ba.IsOut(bb);
 }
 
+// Boolean fuzzy scaled to operand size. OCCT's fuzzy is ABSOLUTE; the fixed
+// 1e-6 is ~1% of a metre-scale feature (enough to glue thin coplanar faces)
+// but only ~0.001% of a millimetre-scale feature -- there the BOP leaves
+// gaps and a patterned 0.1 mm boss fused onto the body silently melts it
+// (R2900_30 Pattern3: works at metre scale, destroys the body at mm). Scale
+// the fuzzy with the operands' bbox diagonal so behaviour is constant across
+// import scales. The diag>1.0 gate keeps EVERY metre-scale shape (all
+// goldens, FreeCAD + golden-harness ZW) at exactly 1e-6 -> zero golden churn;
+// only mm-scale parts (the editor's unit_scale=1 ZW import, diag in the
+// 10s-1000s) get the larger fuzzy. Returns the base fuzzy; the Fuse retry
+// escalates in multiples of it (so metre retries stay 1e-5/1e-4/1e-3).
+double ScaledBopFuzzy(const TopoDS_Shape& a, const TopoDS_Shape& b)
+{
+    Bnd_Box box;
+    if (!a.IsNull()) BRepBndLib::Add(a, box);
+    if (!b.IsNull()) BRepBndLib::Add(b, box);
+    if (box.IsVoid()) return 1e-6;
+    Standard_Real xmin, ymin, zmin, xmax, ymax, zmax;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    const double dx = xmax - xmin, dy = ymax - ymin, dz = zmax - zmin;
+    const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
+    return (diag > 1.0) ? (diag * 5e-6) : 1e-6;
+}
+
 // Refine the raw output of a BOP (Cut / Fuse / Common):
 //
 //   1. ShapeUpgrade_UnifySameDomain merges coplanar / cosurface face
@@ -1416,7 +1440,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     TopTools_ListOfShape tools; tools.Append(s2->GetShape());
     algo.SetArguments(args);
     algo.SetTools(tools);
-    algo.SetFuzzyValue(1e-6);
+    algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
     algo.Build();
 
     if (!algo.IsDone()) {
@@ -1463,7 +1487,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         return a;
     };
 
-    auto algo = run_fuse(1e-6);
+    const double base_fuzzy =
+        ScaledBopFuzzy(s1->GetShape(), s2->GetShape());
+    auto algo = run_fuse(base_fuzzy);
     if (!algo->IsDone()) {
         algo->DumpErrors(std::cerr);
     }
@@ -1499,7 +1525,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         double    base_volume  = solid_volume(algo->Shape());
         int       retries_ran = 0, retries_accepted = 0;
         const auto _t0 = std::chrono::steady_clock::now();
-        for (double fuzzy : {1e-5, 1e-4, 1e-3}) {
+        for (double fuzzy : {base_fuzzy * 10.0, base_fuzzy * 100.0,
+                             base_fuzzy * 1000.0}) {
             auto retry = run_fuse(fuzzy);
             ++retries_ran;
             if (!retry->IsDone() || retry->Shape().IsNull()) continue;
@@ -1582,7 +1609,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
     TopTools_ListOfShape tools; tools.Append(s2->GetShape());
     algo.SetArguments(args);
     algo.SetTools(tools);
-    algo.SetFuzzyValue(1e-6);
+    algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
     algo.Build();
 
     if (!algo.IsDone()) {

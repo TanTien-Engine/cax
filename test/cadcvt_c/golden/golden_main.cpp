@@ -185,6 +185,10 @@ bool RunReader(const fs::path& fixture, cadapp::DocumentIR& doc, std::string& er
     }
     if (IsZwFixture(fixture)) {
         cadcvt::ZwReader reader;
+        // The editor imports ZW at unit_scale=1 (mm); the golden auto-resolves
+        // to 0.001 (m). OCCT tolerances are absolute, so boolean robustness can
+        // differ. Force mm to match the editor when CAX_ZW_SCALE1 is set.
+        if (std::getenv("CAX_ZW_SCALE1")) reader.SetUnitScale(1.0);
         return reader.ReadFile(fixture.string(), doc, &err);
     }
     cadcvt::FreeCadReader reader;

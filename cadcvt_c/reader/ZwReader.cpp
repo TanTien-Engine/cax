@@ -411,6 +411,33 @@ double FieldValueById(const json& jf, int fld_id, double def)
     return def;
 }
 
+// Point value (world mm) of a PNT-type field by its stable id -- e.g. a
+// pattern's "Direction" (fld 2), whose cached pick "pt" lies ON the
+// referenced axis/edge. Returns false (out untouched) when absent.
+bool FieldPoint(const json& jf, int fld_id, double out[3])
+{
+    auto fit = jf.find("fields");
+    if (fit == jf.end() || !fit->is_array()) {
+        return false;
+    }
+    for (const auto& fd : *fit)
+    {
+        auto idit = fd.find("id");
+        if (idit == fd.end() || !idit->is_number() || idit->get<int>() != fld_id) {
+            continue;
+        }
+        auto pit = fd.find("pt");
+        if (pit == fd.end() || !pit->is_array() || pit->size() < 3) {
+            return false;
+        }
+        out[0] = pit->at(0).get<double>();
+        out[1] = pit->at(1).get<double>();
+        out[2] = pit->at(2).get<double>();
+        return true;
+    }
+    return false;
+}
+
 // First entity-reference anchor (world mm) of field fld_id from the dump --
 // e.g. a pattern's "Base" (fld 1), whose anchor is the patterned feature's
 // location. Returns false (out untouched) when the field / anchor is absent.
@@ -943,25 +970,34 @@ bool ZwReader::ReadFile(const std::string& path,
                 // Extrude4's cut).
                 {
                     // ZW3D FtPtnFtr is a GENERIC pattern feature; field 26 is its
-                    // method enum. Only the LINEAR methods (1, 2) reconstruct
-                    // faithfully as a LinearPattern off pattern.dir -- there the
-                    // resolved "dir" is a genuine TRANSLATION axis. For circular /
-                    // fill / point methods (>= 3) that same "dir" is a ROTATION
-                    // axis (or unused), so a linear sweep flings the copies off
-                    // into space (R2900_30's feature 15 is a polar pattern: dir is
-                    // the axis, count 10 x 20mm scattered the instances ~150mm
-                    // away). A correct rebuild needs the axis ORIGIN + angle, which
-                    // the plugin does not yet export (ZwCaxExport reads the datum
-                    // point but drops it). Until that lands, leave a non-linear
-                    // pattern OPAQUE -- the seed features are already in the body,
-                    // so the part stays sane; only the replicated copies are absent.
+                    // method enum.
+                    //   LINEAR (1, 2): pattern.dir is a TRANSLATION axis ->
+                    //     LinearPattern; the co-located seed group is patterned as
+                    //     a unit (concentric pins copied together).
+                    //   CIRCULAR (3): the rotation axis is the seed's sketch-plane
+                    //     NORMAL (the pattern lies in that plane) through the
+                    //     fld 2 "Direction" cached pick point (which sits ON the
+                    //     axis). pattern.dir is only a parallel-offset reference
+                    //     edge and is NOT used here. Only the single matched seed
+                    //     is swept. fld 12 = per-instance angle, fld 3 = count
+                    //     (incl. the seed). Verified against R2900_30 by circle-
+                    //     fitting the exported solid's pins (axis (0,-1,0)).
+                    // Other methods (>= 4: fill / point / at-pattern), or a
+                    // circular pattern with no axis pick point, stay OPAQUE.
                     auto patj = jf.find("pattern");
                     double pat_method    = FieldValueById(jf, 26, 1.0);
                     bool   linear_method = std::fabs(pat_method - 1.0) < 0.5 ||
                                            std::fabs(pat_method - 2.0) < 0.5;
-                    if (zt == "FtPtnFtr" && linear_method && patj != jf.end() &&
-                        patj->contains("dir") && patj->at("dir").is_array() &&
-                        patj->at("dir").size() == 3 &&
+                    bool   circular_method = std::fabs(pat_method - 3.0) < 0.5;
+                    double axis_pt[3] = { 0.0, 0.0, 0.0 };
+                    bool   has_axis_pt = FieldPoint(jf, 2, axis_pt);
+                    bool   has_dir = patj != jf.end() &&
+                                     patj->contains("dir") &&
+                                     patj->at("dir").is_array() &&
+                                     patj->at("dir").size() == 3;
+                    if (zt == "FtPtnFtr" &&
+                        ((linear_method && has_dir) ||
+                         (circular_method && has_axis_pt)) &&
                         running_solid_id != 0 && !extrude_xy.empty())
                     {
                         double anc[3] = { 0.0, 0.0, 0.0 };
@@ -994,53 +1030,98 @@ bool ZwReader::ReadFile(const std::string& path,
 
                         if (target != 0)
                         {
-                            cadapp::FeatPayloadLinearPattern lp;
-                            lp.dir1[0] = patj->at("dir").at(0).get<double>();
-                            lp.dir1[1] = patj->at("dir").at(1).get<double>();
-                            lp.dir1[2] = patj->at("dir").at(2).get<double>();
-                            int count1  = static_cast<int>(FieldValueById(jf, 3, 2.0));
-                            lp.count1   = (count1 >= 1) ? count1 : 2;
-                            lp.spacing1 = FieldValueById(jf, 4, 0.0) * s;
-                            int count2  = static_cast<int>(FieldValueById(jf, 6, 1.0));
-                            lp.count2   = (count2 >= 1) ? count2 : 1;
-                            lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
-
                             cadapp::FeatureIR pf;
                             pf.id   = id;
-                            pf.type = cadapp::FeatType::LinearPattern;
                             pf.name = name;
-                            pf.data = std::move(lp);
 
-                            // Tools = the matched seed AND every other seed
-                            // co-located with it. Concentric pins (e.g. id6+
-                            // id7+id8: a ring + two studs at one spot) are
-                            // SEPARATE ZW3D features, but one ZW3D pattern
-                            // copies them together as a unit -- so pattern the
-                            // whole co-located group, not just the nearest one
-                            // (which left the other studs un-replicated). The
-                            // Replayer multiplies each Tool and fuses them all
-                            // onto the running body. Base = that current body.
-                            const double* tgt_wc = nullptr;
-                            for (const auto& b : extrude_xy) {
-                                if (b.id == target) { tgt_wc = b.wc; break; }
-                            }
-                            const double kGroupTol = 1.5;   // mm (concentric
-                                                            // seeds sit ~0 apart)
-                            int n_tool = 0;
-                            if (tgt_wc) {
+                            if (linear_method)
+                            {
+                                cadapp::FeatPayloadLinearPattern lp;
+                                lp.dir1[0] = patj->at("dir").at(0).get<double>();
+                                lp.dir1[1] = patj->at("dir").at(1).get<double>();
+                                lp.dir1[2] = patj->at("dir").at(2).get<double>();
+                                int count1  = static_cast<int>(FieldValueById(jf, 3, 2.0));
+                                lp.count1   = (count1 >= 1) ? count1 : 2;
+                                lp.spacing1 = FieldValueById(jf, 4, 0.0) * s;
+                                int count2  = static_cast<int>(FieldValueById(jf, 6, 1.0));
+                                lp.count2   = (count2 >= 1) ? count2 : 1;
+                                lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
+                                pf.type = cadapp::FeatType::LinearPattern;
+                                pf.data = std::move(lp);
+
+                                // Tools = the matched seed AND every other seed
+                                // co-located with it (concentric pins copied as a
+                                // unit). Base = the current running body.
+                                const double* tgt_wc = nullptr;
                                 for (const auto& b : extrude_xy) {
-                                    double dx = b.wc[0] - tgt_wc[0];
-                                    double dy = b.wc[1] - tgt_wc[1];
-                                    double dz = b.wc[2] - tgt_wc[2];
-                                    if (dx*dx + dy*dy + dz*dz <= kGroupTol*kGroupTol) {
-                                        PushInput(pf, b.id, cadapp::InputRole::Tool);
-                                        ++n_tool;
+                                    if (b.id == target) { tgt_wc = b.wc; break; }
+                                }
+                                const double kGroupTol = 1.5;   // mm (concentric
+                                                                // seeds sit ~0 apart)
+                                int n_tool = 0;
+                                if (tgt_wc) {
+                                    for (const auto& b : extrude_xy) {
+                                        double dx = b.wc[0] - tgt_wc[0];
+                                        double dy = b.wc[1] - tgt_wc[1];
+                                        double dz = b.wc[2] - tgt_wc[2];
+                                        if (dx*dx + dy*dy + dz*dz <= kGroupTol*kGroupTol) {
+                                            PushInput(pf, b.id, cadapp::InputRole::Tool);
+                                            ++n_tool;
+                                        }
                                     }
                                 }
+                                if (n_tool == 0) {
+                                    PushInput(pf, target, cadapp::InputRole::Tool);
+                                }
                             }
-                            if (n_tool == 0) {
+                            else   // circular_method (gated above on has_axis_pt)
+                            {
+                                cadapp::FeatPayloadCircularPattern cp;
+                                // Axis DIRECTION = the seed's sketch-plane normal
+                                // (= udir x vdir of the matched footprint). The
+                                // pattern lies IN that plane, so the plane normal
+                                // is the rotation axis. pattern.dir (a reference
+                                // edge, parallel-offset & oblique) is NOT used.
+                                double nx = 0.0, ny = 0.0, nz = 1.0;
+                                for (const auto& b : extrude_xy) {
+                                    if (b.id == target) {
+                                        nx = b.udir[1]*b.vdir[2] - b.udir[2]*b.vdir[1];
+                                        ny = b.udir[2]*b.vdir[0] - b.udir[0]*b.vdir[2];
+                                        nz = b.udir[0]*b.vdir[1] - b.udir[1]*b.vdir[0];
+                                        break;
+                                    }
+                                }
+                                double nl = std::sqrt(nx*nx + ny*ny + nz*nz);
+                                if (nl < 1e-9) { nx = 0.0; ny = 0.0; nz = 1.0; nl = 1.0; }
+                                cp.axis_dir[0] = nx / nl;
+                                cp.axis_dir[1] = ny / nl;
+                                cp.axis_dir[2] = nz / nl;
+                                // fld 2 pick point lies ON the axis; it is a
+                                // POSITION -> raw*s space (dir is unit, unscaled).
+                                cp.axis_origin[0] = axis_pt[0] * s;
+                                cp.axis_origin[1] = axis_pt[1] * s;
+                                cp.axis_origin[2] = axis_pt[2] * s;
+                                int cnt = static_cast<int>(FieldValueById(jf, 3, 2.0));
+                                cp.count = (cnt >= 1) ? cnt : 2;
+                                // fld 12 = per-instance angle (deg). TopoAlgo's
+                                // CircularPattern uses step = total_angle / count,
+                                // so feed step * count.
+                                double step_deg = FieldValueById(jf, 12, 0.0);
+                                cp.total_angle  = step_deg * cp.count
+                                                * 3.14159265358979323846 / 180.0;
+                                // Push each copy ~20um into the body so the thin
+                                // coplanar boss base becomes a clean volumetric
+                                // overlap (mm-scale OCCT will not merge a pure
+                                // coplanar contact). 0.02 raw-mm in the geometry's
+                                // raw*s units; well under a typical boss depth.
+                                cp.penetration = 0.02 * s;
+                                pf.type = cadapp::FeatType::CircularPattern;
+                                pf.data = std::move(cp);
+
+                                // Sweep ONLY the matched seed (one feature).
                                 PushInput(pf, target, cadapp::InputRole::Tool);
                             }
+
                             PushInput(pf, running_solid_id, cadapp::InputRole::Base);
                             pf.ext_params["pattern_onto_running"] = 1.0;
                             out.features.push_back(std::move(pf));

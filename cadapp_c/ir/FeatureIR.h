@@ -194,6 +194,13 @@ struct FeatPayloadCircularPattern
     double  axis_dir   [3] = { 0.0, 0.0, 1.0 };
     int32_t count          = 2;
     double  total_angle    = 0.0;     // radians; 0 means equal-spaced full
+    // Per-copy overlap into the body, along -axis_dir, applied AFTER the
+    // rotation. A thin boss whose base sits coplanar on the body surface does
+    // not overlap it volumetrically, so the fuse leaves it a separate solid
+    // (OCCT merges coplanar contact at metre scale but not mm). Pushing each
+    // copy a hair into the body makes the fuse a clean overlap -> one solid.
+    // 0 = no overlap (default; the linear / FreeCAD paths leave it 0).
+    double  penetration    = 0.0;
 };
 
 // One step inside a MultiTransform. Mirrors / linear patterns /

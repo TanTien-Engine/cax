@@ -384,6 +384,10 @@ struct InstanceXform
     brepgraph::Vec3 axis_origin = {};   // rotation
     brepgraph::Vec3 axis_dir    = {};
     double          angle       = 0.0;
+    // Optional small translation applied AFTER the rotation (zero vec = none).
+    // Used by circular patterns to push each copy a hair into the body so a
+    // coplanar thin-boss base becomes a clean volumetric overlap that fuses.
+    brepgraph::Vec3 post_offset = {};
 };
 
 // Move a TopoRefIR's geometry by X: the anchor `point` by the full
@@ -420,6 +424,11 @@ void TransformRef(TopoRefIR& r, const InstanceXform& X)
     rot(r.normal, false);
     for (int s2 = 0; s2 < (int)r.extra_sample_count && s2 < 4; ++s2)
         rot(r.extra_samples[s2], true);
+    // Post-rotation translation (the penetration offset) moves anchor points
+    // but not directions, exactly like the linear case.
+    for (int k = 0; k < 3; ++k) r.point[k] += X.post_offset[k];
+    for (int s2 = 0; s2 < (int)r.extra_sample_count && s2 < 4; ++s2)
+        for (int k = 0; k < 3; ++k) r.extra_samples[s2][k] += X.post_offset[k];
 }
 
 // Emit a calc node that rigid-transforms `node` by X (the translate /
@@ -431,7 +440,13 @@ int EmitTransform(brepgraph::CalcGraph& cg, int node,
         int o = cg.AddConst(X.axis_origin, "axis_origin");
         int a = cg.AddConst(X.axis_dir,    "axis_dir");
         int g = cg.AddConst(X.angle,       "angle");
-        return cg.AddOp("rotate", {node, o, a, g}, {}, desc);
+        int rotated = cg.AddOp("rotate", {node, o, a, g}, {}, desc);
+        if (X.post_offset[0] != 0.0 || X.post_offset[1] != 0.0 ||
+            X.post_offset[2] != 0.0) {
+            int po = cg.AddConst(X.post_offset, "post_offset");
+            return cg.AddOp("translate", {rotated, po}, {}, desc);
+        }
+        return rotated;
     }
     int off = cg.AddConst(X.offset, "offset");
     return cg.AddOp("translate", {node, off}, {}, desc);
@@ -1824,24 +1839,56 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 auto pi = ResolvePatternInputs(feat, feature_tools,
                                                feature_nodes);
-                int target = -1;
-                if (!pi.originals.empty()) {
-                    target = pi.originals[0].tool_node;
-                } else if (pi.body_target >= 0) {
-                    target = pi.body_target;
-                } else if (base_node >= 0) {
-                    target = base_node;
+                const bool onto_running =
+                    ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
+                    && base_node >= 0;
+
+                if (pi.originals.empty()) {
+                    int target = (pi.body_target >= 0) ? pi.body_target
+                                                        : base_node;
+                    if (target < 0) { step_ok = false; return; }
+                    node = cg->AddOp("circular_pattern",
+                                      {target, o, a, c, t}, {}, feat.name);
+                } else if (onto_running) {
+                    // ZW3D: replay the seed group's CONTRIBUTION (its Tool seeds
+                    // AND the dressups on them) once per NON-seed instance, each
+                    // under that instance's rigid ROTATION about the axis. i=0 is
+                    // the live, already-dressed seed (in base_node) so it is
+                    // skipped. Mirrors the linear onto_running path; only the
+                    // per-instance transform differs (rotation vs translation),
+                    // reusing the shared per-instance machinery. Per-instance
+                    // (one fuse per copy onto the running body) is more robust
+                    // than the n-ary union for many overlapping thin copies.
+                    auto contribs = AssembleContributions(
+                        feat, feature_tools, feature_dressups);
+                    // step MUST match TopoAlgo_Ext::CircularPattern (angle/count).
+                    double step = (p.count > 1)
+                        ? (p.total_angle / static_cast<double>(p.count)) : 0.0;
+                    // Push each copy p.penetration into the body along -axis_dir
+                    // so the thin coplanar boss base overlaps the body (a pure
+                    // coplanar contact does not fuse at mm scale).
+                    brepgraph::Vec3 pen = {-p.penetration * axis[0],
+                                           -p.penetration * axis[1],
+                                           -p.penetration * axis[2]};
+                    int acc = base_node;
+                    for (int i = 1; i < (int)p.count; ++i) {
+                        InstanceXform X;
+                        X.is_rotation = true;
+                        X.axis_origin = origin;
+                        X.axis_dir    = axis;
+                        X.angle       = step * i;
+                        X.post_offset = pen;
+                        acc = ApplyPatternInstance(*cg, acc, contribs, X,
+                                                   opt.topo_tolerance,
+                                                   feat.name + ":inst");
+                    }
+                    node = acc;
+                } else {
+                    int pat = cg->AddOp("circular_pattern",
+                                         {pi.originals[0].tool_node, o, a, c, t},
+                                         {}, feat.name);
+                    node = CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
                 }
-                if (target < 0) {
-                    step_ok = false;
-                    return;
-                }
-                int pat = cg->AddOp("circular_pattern",
-                                     {target, o, a, c, t},
-                                     {}, feat.name);
-                node = pi.originals.empty()
-                        ? pat
-                        : CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
             }
 
             // ---- MultiTransform ----
