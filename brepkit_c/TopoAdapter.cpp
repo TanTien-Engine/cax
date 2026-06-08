@@ -13,6 +13,7 @@
 
 // OCCT
 #include <Standard_Handle.hxx>
+#include <Standard_Failure.hxx>
 #include <Poly_Triangulation.hxx>
 #include <TopoDS_Face.hxx>
 #include <BRep_Tool.hxx>
@@ -70,26 +71,44 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
 {
     TopLoc_Location loc;
     Handle (Poly_Triangulation) mesh = BRep_Tool::Triangulation(face, loc);
-    if (!mesh.IsNull())
+    // NB: BRepMesh can attach a NON-null triangulation with ZERO triangles to a
+    // face it failed on (a thin seam-crossing cylinder, see below). Treat that
+    // as "no mesh" too, else we return an empty triangulation and the face
+    // renders as a hole instead of falling through to the patch fallback.
+    if (!mesh.IsNull() && mesh->NbTriangles() > 0)
         return mesh;
+
+    // Everything below re-meshes / rebuilds this one face. Any OCCT throw
+    // here must NOT escape: it would propagate out of BuildMesh and drop the
+    // WHOLE model. On failure we return the original (empty) triangulation --
+    // the face stays a hole, exactly the pre-fallback behaviour, but the rest
+    // of the model still renders.
+    try
+    {
 
     // Try meshing the original face (preserves wire trimming)
     BRepMesh_IncrementalMesh(face, DisplayDeflection(face), Standard_False, kAngularDeflection);
     mesh = BRep_Tool::Triangulation(face, loc);
-    if (!mesh.IsNull())
+    if (!mesh.IsNull() && mesh->NbTriangles() > 0)
         return mesh;
 
-    // Fallback for infinite or degenerate surfaces
-    BRepAdaptor_Surface adapt(face);
-    double u1 = adapt.FirstUParameter();
-    double u2 = adapt.LastUParameter();
-    double v1 = adapt.FirstVParameter();
-    double v2 = adapt.LastVParameter();
-
-    bool hasInfinite = Precision::IsInfinite(u1) || Precision::IsInfinite(u2) ||
-                       Precision::IsInfinite(v1) || Precision::IsInfinite(v2);
-    if (!hasInfinite)
-        return mesh;
+    // Fallback for faces BRepMesh leaves untriangulated. This covers two
+    // cases:
+    //   * infinite / unbounded surfaces (planes, full cylinders), and
+    //   * a VALID but mesh-hostile trimmed face whose own wire defeats
+    //     BRepMesh -- notably a thin, SEAM-CROSSING cylindrical band left by a
+    //     boolean at mm scale (e.g. R2900_30 Extrude10_Cut's 0.2mm-tall pocket
+    //     wall, whose arc runs 351deg->189deg across the 0/2pi seam). Such a
+    //     face meshes to ZERO triangles -> a real see-through hole in the
+    //     display mesh, even though the B-rep is a valid closed solid and the
+    //     same face meshes fine at metre scale. The underlying SURFACE still
+    //     meshes, so tessellate an untrimmed patch of it over the FACE's own UV
+    //     bounds. The patch covers the region (no hole); a seam-crossing patch
+    //     may slightly overhang the true trimmed boundary -- an acceptable
+    //     trade for an otherwise-invisible face, and it only fires on the rare
+    //     face BRepMesh could not handle at all.
+    double u1, u2, v1, v2;
+    BRepTools::UVBounds(face, u1, u2, v1, v2);
 
     auto selectRange = [](double& p1, double& p2) {
         if (Precision::IsInfinite(p1) && Precision::IsInfinite(p2)) {
@@ -108,13 +127,23 @@ Handle(Poly_Triangulation) TriangulationOfFace(const TopoDS_Face& face)
     selectRange(v1, v2);
 
     Handle(Geom_Surface) surface = BRep_Tool::Surface(face);
+    if (surface.IsNull() || u2 <= u1 || v2 <= v1)
+        return mesh;
     BRepBuilderAPI_MakeFace mkBuilder(surface, u1, u2, v1, v2, Precision::Confusion() );
+    if (!mkBuilder.IsDone())
+        return mesh;
 
     TopoDS_Shape shape = mkBuilder.Shape();
     shape.Location(loc);
 
     BRepMesh_IncrementalMesh(shape, DisplayDeflection(shape), Standard_False, kAngularDeflection);
     return BRep_Tool::Triangulation(TopoDS::Face(shape), loc);
+
+    }
+    catch (const Standard_Failure&)
+    {
+        return Handle(Poly_Triangulation)();
+    }
 }
 
 Handle(Poly_Polygon3D) PolygonOfEdge(const TopoDS_Edge& edge, TopLoc_Location& loc)
@@ -413,7 +442,9 @@ void TopoAdapter::TriangulationFaces(const TopoDS_Shape& shape, std::vector<Vert
             }
         }
 
-        if (mesh.IsNull()) {
+        // A non-null but EMPTY (0-triangle) triangulation must also route to
+        // the fallback, else the face renders as a hole (R2900_30 pocket wall).
+        if (mesh.IsNull() || mesh->NbTriangles() == 0) {
             mesh = TriangulationOfFace(act_face);
         }
 
