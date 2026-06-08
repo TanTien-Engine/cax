@@ -98,9 +98,24 @@ class RebuildHistory is Node
         }
         var ox = this.query_param("origin_x").value
         var oy = this.query_param("origin_y").value
+
+        // Suppress pin-dirty propagation while we bulk-build and wire the graph
+        // (and splice the tip below). Every Blueprint.connect() otherwise fires a
+        // DIRTY_CONNECTION wave that walks the WHOLE upstream chain from the
+        // connected pin (blueprint.connect -> on_pin_dirty on conn.from -> up
+        // every input). A decompiled history with patterns is a long running-body
+        // spine (per-instance fuse -> Cache -> fuse -> ...), so once it is many
+        // ops deep that per-connect upstream walk recurses past the script VM's
+        // native stack and overflows mid-wire (R2900_50, 7 patterns). Nothing has
+        // been evaluated yet during the build, so there are no caches to
+        // invalidate -- the single bp_dirty below re-evaluates everything once.
+        // Mirrors Editor.loadfromstring, which guards bulk graph loads the same
+        // way.
+        Blueprint.enable_pass_pin_dirty(false)
+
         var res = HistGraphBuilder.build(graph, src.loader, editor, ox, oy)
         var created = res[0]
-        var tip = res[1]
+        var tip_pin = res[1]
         Logger.info("RebuildHistory: rebuilt %(created) node(s) from (%(ox), %(oy))")
 
         // Splice the rebuilt tip in where the loader fed downstream (e.g. the
@@ -109,7 +124,9 @@ class RebuildHistory is Node
         // rewire and means the graph evaluates once (the render eval is also the
         // one that bootstraps each Selector's uid). connect() replaces the
         // consumer's existing input, so no explicit disconnect is needed.
-        if (tip and !src.exports.isEmpty) {
+        // tip_pin is the tip's data-output pin (it may be an encapsulated pattern
+        // Subgraph, whose result pin is not exports[0]).
+        if (tip_pin and !src.exports.isEmpty) {
             var loader_out = src.exports[0]
             var targets = []
             for (var conn in loader_out.conns) {
@@ -118,11 +135,16 @@ class RebuildHistory is Node
                 }
             }
             for (var to_pin in targets) {
-                Blueprint.connect(tip.exports[0], to_pin)
+                Blueprint.connect(tip_pin, to_pin)
             }
         }
 
         // Make the editor pick up the freshly added nodes / connections.
         editor.scene_stack.bp_dirty = true
+
+        // Re-arm dirty propagation now the graph is fully wired. The bp_dirty
+        // flag above drives one clean re-evaluation (a single deep traversal,
+        // not one per connect), so the editor stays interactive afterwards.
+        Blueprint.enable_pass_pin_dirty(true)
     }
 }

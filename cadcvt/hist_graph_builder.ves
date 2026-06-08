@@ -2,6 +2,7 @@ import "blueprint.blueprint" for Blueprint
 import "blueprint.nodes.subgraph" for Subgraph
 import "blueprint.nodes.cache" for Cache
 import "blueprint.nodes.merge" for Merge
+import "blueprint.nodes.input" for Input
 import "blueprint.nodes.output" for Output
 import "brepkitnodes" for BREP_KIT_NODES
 import "cadcvt.nodes.baked_shape" for BakedShape
@@ -14,7 +15,8 @@ import "sketchgraph.nodes.geo_point" for GeoPoint
 import "sketchgraph.nodes.solver" for Solver as SkSolverNode
 import "sketchgraph.nodes.cons_nodes" for Distance, DistanceX, DistanceY, Angle, Parallel, Perpendicular, Coincident, Horizontal, Vertical, Equal, PointOnLine, Tangent, CircleRadius, CircleDiameter, ArcRadius, ArcDiameter
 import "cadcvt.nodes.sketch_draw" for SketchDraw
-import "maths.vector" for Vector3
+import "maths.vector" for Vector2, Vector3
+import "blueprint.node_layout" for DEFAULT_HEIGHT, PIN_RADIUS
 import "logger.logger" for Logger
 
 // const-step op names in a CalcGraph: immediate values that become a
@@ -64,6 +66,11 @@ var RESOLVE_OPS = ["resolve_edge_ref", "resolve_face_ref"]
 // linear. Cheap leaves (sketch / prism / translate) stay uncached.
 var CACHE_OPS = ["fuse", "cut", "common", "chamfer", "fillet"]
 
+// Pattern (阵列) ops. A pattern feature can decompile to MANY nodes (the n-ary
+// pattern op plus per-instance booleans / dressups / selectors), so its whole
+// feature group is collapsed into one double-click Subgraph (encapsulate_patterns).
+var PATTERN_OPS = ["linear_pattern", "circular_pattern"]
+
 // ============================================================
 // cadcvt::hist_graph_builder::HistGraphBuilder
 //
@@ -89,6 +96,13 @@ class HistGraphBuilder
 
         var op2class = HistGraphBuilder.op_registry()
         var n = graph.get_history_size()
+
+        // Snapshot the editor scene before we add anything: add_node appends to
+        // the top scene in creation order, so scene.nodes[base ..] is exactly
+        // the set this build produces -- which relayout() (the final pass)
+        // arranges into clean dependency columns.
+        var scene = editor.scene_stack.top()
+        var base  = scene.nodes.count
 
         // Step ids are dense (0 .. n-1) and a step's inputs are always
         // earlier steps, so index these by step with plain lists -- ves
@@ -223,18 +237,31 @@ class HistGraphBuilder
             }
         }
 
-        // The rebuilt subgraph's output node = the highest real step's output
-        // (the final body, since a feature history is linear). Returned so the
-        // caller can splice it in where the loader fed downstream.
-        var tip = nil
+        // Pass 2.5: collapse each pattern (阵列) feature -- which decompiles to
+        // many per-instance nodes -- into a single double-click Subgraph, so the
+        // top level stays readable. Remaps step2output for an encapsulated tip.
+        HistGraphBuilder.encapsulate_patterns(graph, editor, scene, step2node, step2output, n)
+
+        // Pass 3: lay the created nodes out into clean dependency columns,
+        // sized to the real nodes so the same level sits in one vertical
+        // column and nothing overlaps. This replaces the provisional grid
+        // positions used at creation time above.
+        HistGraphBuilder.relayout(scene, base, ox, oy)
+
+        // The rebuilt graph's output = the highest real step's output (the final
+        // body, since a feature history is linear). Returned as the output PIN so
+        // the caller can splice it in where the loader fed downstream -- the tip
+        // may be an encapsulated pattern Subgraph, whose result pin is not
+        // exports[0] (that is the "next" exec port).
+        var tip_pin = nil
         for (var step = n - 1; step >= 0; step = step - 1) {
             if (step2output[step]) {
-                tip = step2output[step]
+                tip_pin = HistGraphBuilder.output_pin(step2output[step])
                 break
             }
         }
 
-        return [created, tip]
+        return [created, tip_pin]
     }
 
     // op name -> brepkit node class, auto-discovered from each node's
@@ -297,6 +324,14 @@ class HistGraphBuilder
         if (dp) {
             dp.value = false
         }
+        // The cache is pure plumbing (memoizes the boolean/dressup so consumers
+        // don't re-evaluate the whole upstream chain). Hide it: zero size + not
+        // drawn, and relayout parks it on its producer so producer -> consumer
+        // reads as one straight wire. Size/visibility are set BEFORE add_node so
+        // the bounding box is built at zero size (not selectable).
+        cache.visible = false
+        cache.style.width = 0
+        cache.style.height = 0
         editor.add_node(cache, x, y)
         Blueprint.connect(node, 0, cache, 0)
         return cache
@@ -735,5 +770,565 @@ class HistGraphBuilder
             return step2node[id]
         }
         return nil
+    }
+
+    // ------------------------------------------------------------------
+    // Layered re-layout of the nodes this build appended (scene.nodes[base..]).
+    //
+    // Reads the LIVE wiring (every node now exists and is connected) and the
+    // REAL node sizes, then drops each node into a dependency column: a node's
+    // column is the longest input path to it, so producers always sit left of
+    // consumers and "the same level" lands in one vertical stack. Columns are
+    // spaced by the real max node width and rows by the real node height, so
+    // nothing overlaps (the old fixed 200x110 grid clipped tall / param-heavy
+    // nodes and let the Cache / sketch satellites collide with their
+    // neighbours). Pure pass-through Cache wrappers share their producer's
+    // column rather than spending one of their own, so the rebuild stays as
+    // short as the dependency depth allows.
+    // ------------------------------------------------------------------
+    static relayout(scene, base, ox, oy)
+    {
+        var total = scene.nodes.count
+        var m = total - base
+        if (m <= 0) {
+            return
+        }
+
+        // Local view of the created nodes (scene order == creation order).
+        var snodes  = []   // local idx -> scene node
+        var bps     = []   // local idx -> blueprint node
+        var visible = []   // local idx -> drawn? (hidden Cache wrappers are not)
+        for (var i = base; i < total; i = i + 1) {
+            var sn = scene.nodes[i]
+            snodes.add(sn)
+            bps.add(sn.components["bp"])
+            visible.add(sn.components["bp"].visible)
+        }
+
+        // VISIBLE predecessors of each VISIBLE node, seen THROUGH hidden
+        // pass-throughs (a Cache is plumbing: it is skipped here and parked on its
+        // producer at the end, so the grid only ever lays out real nodes). Order
+        // is NOT assumed topological -- an encapsulated pattern Subgraph is added
+        // last but consumes/feeds earlier nodes -- so j may be > k; the longest
+        // path is solved by relaxation below rather than a single forward sweep.
+        var preds = []
+        for (var k = 0; k < m; k = k + 1) {
+            preds.add([])
+        }
+        for (var k = 0; k < m; k = k + 1) {
+            if (!visible[k]) {
+                continue
+            }
+            for (var pin in bps[k].imports) {
+                if (!pin.conns.isEmpty) {
+                    var raw = HistGraphBuilder.index_of(bps, pin.conns.front().from.node)
+                    var j = HistGraphBuilder.visible_src(bps, visible, raw)
+                    if (j >= 0 and j != k) {
+                        preds[k].add(j)
+                    }
+                }
+            }
+        }
+
+        // Successor lists (invert preds) for the as-late-as-possible pass.
+        var succs = []
+        for (var k = 0; k < m; k = k + 1) {
+            succs.add([])
+        }
+        for (var k = 0; k < m; k = k + 1) {
+            for (var j in preds[k]) {
+                succs[j].add(k)
+            }
+        }
+
+        // Longest path FROM a source (asap) and TO a sink (dsink), each by
+        // relaxation (DAG -> converges in <= m passes, any node order).
+        var asap  = HistGraphBuilder.longest_path(m, visible, preds)
+        var dsink = HistGraphBuilder.longest_path(m, visible, succs)
+        var maxlayer = 0
+        for (var k = 0; k < m; k = k + 1) {
+            if (asap[k] > maxlayer) {
+                maxlayer = asap[k]
+            }
+        }
+
+        // Column = AS-LATE-AS-POSSIBLE: push each node as close to its CONSUMER as
+        // dependencies allow (maxlayer - distance-to-sink). Critical-path nodes (the
+        // running-body spine) stay put; an off-spine branch -- a boolean's tool body
+        // (sketch -> extrude) -- slides RIGHT to sit just before the boolean it feeds,
+        // instead of every source piling up at the far left (which asap would do).
+        // Hidden nodes get no column (-1).
+        var layer = []
+        for (var k = 0; k < m; k = k + 1) {
+            layer.add(visible[k] ? (maxlayer - dsink[k]) : -1)
+        }
+
+        // Bucket the VISIBLE nodes per column, creation order preserved.
+        var cols = []
+        for (var c = 0; c <= maxlayer; c = c + 1) {
+            cols.add([])
+        }
+        for (var k = 0; k < m; k = k + 1) {
+            if (visible[k]) {
+                cols[layer[k]].add(k)
+            }
+        }
+
+        // Crossing reduction: sweep left->right, ordering each column by the
+        // mean row of its predecessors (a barycenter pass). row[k] = a node's
+        // position within its column.
+        var row = []
+        for (var k = 0; k < m; k = k + 1) {
+            row.add(0)
+        }
+        for (var r = 0; r < cols[0].count; r = r + 1) {
+            row[cols[0][r]] = r
+        }
+        for (var c = 1; c <= maxlayer; c = c + 1) {
+            var bucket = cols[c]
+            var keys = []
+            for (var r = 0; r < bucket.count; r = r + 1) {
+                var k = bucket[r]
+                var sum = 0.0
+                var cnt = 0
+                for (var j in preds[k]) {
+                    sum = sum + row[j]
+                    cnt = cnt + 1
+                }
+                keys.add(cnt > 0 ? sum / cnt : r)
+            }
+            HistGraphBuilder.sort_by_key(bucket, keys)
+            for (var r = 0; r < bucket.count; r = r + 1) {
+                row[bucket[r]] = r
+            }
+        }
+
+        // Column center X, spaced by the real max width in each column plus a
+        // fixed gap (pos is a node's CENTER).
+        var COL_GAP = 70
+        var ROW_GAP = 28
+        var cx = []
+        var prev_right = ox
+        for (var c = 0; c <= maxlayer; c = c + 1) {
+            var w = 0
+            for (var k in cols[c]) {
+                var nw = bps[k].get_size().x
+                if (nw > w) {
+                    w = nw
+                }
+            }
+            if (w <= 0) {
+                w = 120
+            }
+            var center = (c == 0) ? (ox + w * 0.5) : (prev_right + COL_GAP + w * 0.5)
+            cx.add(center)
+            prev_right = center + w * 0.5
+        }
+
+        // Place visible nodes: stack each column by real height, centered on oy.
+        var px = []
+        var py = []
+        for (var k = 0; k < m; k = k + 1) {
+            px.add(0)
+            py.add(0)
+        }
+        for (var c = 0; c <= maxlayer; c = c + 1) {
+            var bucket = cols[c]
+            var totalh = 0
+            for (var k in bucket) {
+                totalh = totalh + bps[k].get_size().y
+            }
+            if (bucket.count > 1) {
+                totalh = totalh + (bucket.count - 1) * ROW_GAP
+            }
+            var run = oy - totalh * 0.5
+            for (var r = 0; r < bucket.count; r = r + 1) {
+                var k = bucket[r]
+                var h = bps[k].get_size().y
+                px[k] = cx[c]
+                py[k] = run + h * 0.5
+                run = run + h + ROW_GAP
+                HistGraphBuilder.move_node(snodes[k], px[k], py[k])
+            }
+        }
+
+        // Park each hidden pass-through (Cache) so its OUTPUT pin lands exactly on
+        // its producer's output pin. The incoming wire is not drawn and the node
+        // has zero size, so the single drawn outgoing wire then starts right at the
+        // producer's port -> producer -> consumer reads as one straight link.
+        // (Aligning pins, not centers: a zero-size node's export pin sits at an
+        // offset from its center, so parking on the producer's centre would start
+        // the wire off in space -- which is what looked wrong.)
+        for (var k = 0; k < m; k = k + 1) {
+            if (visible[k]) {
+                continue
+            }
+            var src = HistGraphBuilder.visible_src(bps, visible, k)
+            if (src < 0) {
+                continue
+            }
+            var cache = bps[k]
+            if (cache.imports.isEmpty or cache.imports[0].conns.isEmpty or cache.exports.isEmpty) {
+                HistGraphBuilder.move_node(snodes[k], px[src], py[src])
+                continue
+            }
+            // producer export pin (feeding the cache) world pos = producer centre
+            // + its pin offset; place the cache so cache-export-pin == that point.
+            var poff = HistGraphBuilder.pin_offset(cache.imports[0].conns.front().from)
+            var coff = HistGraphBuilder.pin_offset(cache.exports[0])
+            HistGraphBuilder.move_node(snodes[k], px[src] + poff[0] - coff[0], py[src] + poff[1] - coff[1])
+        }
+    }
+
+    // A pin's [x, y] offset from its node's CENTER (the position-independent part
+    // of NodeLayout.calc_pin_pos), so a node's pin world pos = node centre + offset.
+    static pin_offset(pin)
+    {
+        var hw = pin.node.style.width * 0.5
+        var hh = pin.node.style.height * 0.5
+        var x = pin.is_input ? (-hw + PIN_RADIUS * 2) : (hw - PIN_RADIUS * 2)
+        var y = hh - DEFAULT_HEIGHT - (pin.slot_idx + 0.5) * DEFAULT_HEIGHT
+        return [x, y]
+    }
+
+    // Longest-path distance for each VISIBLE node over adjacency `adj` (list per
+    // node of neighbour local indices), by relaxation: d[k] = max(d[nbr]+1). With
+    // adj=preds this is the as-soon-as-possible depth; with adj=succs it is the
+    // distance to the farthest sink. DAG -> converges in <= m passes regardless of
+    // node order; hidden nodes stay -1.
+    static longest_path(m, visible, adj)
+    {
+        var d = []
+        for (var k = 0; k < m; k = k + 1) {
+            d.add(visible[k] ? 0 : -1)
+        }
+        var changed = true
+        var iter = 0
+        while (changed and iter <= m) {
+            changed = false
+            for (var k = 0; k < m; k = k + 1) {
+                if (!visible[k]) {
+                    continue
+                }
+                var best = 0
+                for (var j in adj[k]) {
+                    if (d[j] + 1 > best) {
+                        best = d[j] + 1
+                    }
+                }
+                if (best != d[k]) {
+                    d[k] = best
+                    changed = true
+                }
+            }
+            iter = iter + 1
+        }
+        return d
+    }
+
+    // Follow hidden single-input pass-throughs (Cache wrappers) from local index
+    // `idx` to the first VISIBLE node at/above it; -1 if it dead-ends outside the
+    // created set. Used both to see real predecessors through a cache and to find
+    // a hidden cache's producer.
+    static visible_src(bps, visible, idx)
+    {
+        var guard = 0
+        while (idx >= 0 and !visible[idx]) {
+            var nx = -1
+            for (var pin in bps[idx].imports) {
+                if (!pin.conns.isEmpty) {
+                    nx = HistGraphBuilder.index_of(bps, pin.conns.front().from.node)
+                    break
+                }
+            }
+            idx = nx
+            guard = guard + 1
+            if (guard > 128) {
+                return -1
+            }
+        }
+        return idx
+    }
+
+    // Move a scene node to (x, y): transform + bounding box, mirroring what
+    // Editor.add_node does so selection / aabb stay correct.
+    static move_node(sn, x, y)
+    {
+        var p = Vector2(x, y)
+        sn.components["transform"].set_position(p)
+        var bb = sn.components["bounding"]
+        if (bb) {
+            bb.transform(p, 0, Vector2())
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Collapse each PATTERN feature into its own Subgraph.
+    //
+    // A pattern (阵列) feature decompiles to many nodes -- the n-ary pattern op
+    // plus, per replicated instance, its own boolean / dressup / edge-selector
+    // copies (see Replayer's pattern emission). Left flat that is a wall of
+    // boxes. Steps are grouped by get_step_desc (every op of one CAD feature --
+    // the op AND its helpers -- reports the SAME suffix-stripped feature name),
+    // so all of one pattern's nodes group cleanly; each such group with >1 node
+    // is moved into a single double-click Subgraph wired in by Input/Output.
+    // ------------------------------------------------------------------
+    static encapsulate_patterns(graph, editor, scene, step2node, step2output, n)
+    {
+        // Group the created steps by feature name, in first-seen order.
+        var names     = []
+        var name2step = {}
+        for (var step = 0; step < n; step = step + 1) {
+            if (!step2node[step]) {
+                continue
+            }
+            var nm = graph.get_step_desc(step)
+            if (!nm or nm == "") {
+                continue
+            }
+            if (!name2step.containsKey(nm)) {
+                name2step[nm] = []
+                names.add(nm)
+            }
+            name2step[nm].add(step)
+        }
+
+        for (var ni = 0; ni < names.count; ni = ni + 1) {
+            var nm    = names[ni]
+            var steps = name2step[nm]
+
+            // Only pattern features.
+            var is_pat = false
+            for (var s in steps) {
+                if (PATTERN_OPS.contains(graph.get_step_op_name(s))) {
+                    is_pat = true
+                }
+            }
+            if (!is_pat) {
+                continue
+            }
+
+            // The feature's editor nodes: each step's primary node + its Cache
+            // wrapper (step2output), de-duplicated.
+            var S = []
+            for (var s in steps) {
+                var nd = step2node[s]
+                if (nd and HistGraphBuilder.index_of(S, nd) < 0) {
+                    S.add(nd)
+                }
+                var op = step2output[s]
+                if (op and op != nd and HistGraphBuilder.index_of(S, op) < 0) {
+                    S.add(op)
+                }
+            }
+            if (S.count < 2) {
+                continue   // a single-node pattern has nothing to collapse
+            }
+
+            HistGraphBuilder.encapsulate(editor, scene, nm, S, steps, step2output)
+        }
+    }
+
+    // Move the node-set S (one feature) into a fresh collapsed Subgraph, wiring
+    // its boundary across Input / Output nodes, and splice the sub back into the
+    // outer graph in place of S. step2output[last step] is re-pointed at the sub
+    // so the tip scan / ToMesh splice find the feature's result on the sub.
+    static encapsulate(editor, scene, title, S, steps, step2output)
+    {
+        var sub = Subgraph()
+        if (title and title != "") {
+            sub.title = title
+        }
+
+        // Boundary INPUTS: each external export pin -> the internal import pins
+        // it feeds (deduped, so one seed feeding several internals = one Input).
+        var in_src = []
+        var in_dst = []
+        for (var node in S) {
+            for (var p in node.imports) {
+                if (p.conns.isEmpty) {
+                    continue
+                }
+                var fpin = p.conns.front().from
+                if (HistGraphBuilder.index_of(S, fpin.node) >= 0) {
+                    continue   // internal edge -- keep as-is
+                }
+                var si = HistGraphBuilder.index_of(in_src, fpin)
+                if (si < 0) {
+                    in_src.add(fpin)
+                    in_dst.add([])
+                    si = in_src.count - 1
+                }
+                in_dst[si].add(p)
+            }
+        }
+
+        // Boundary OUTPUTS: each internal export pin -> the external import pins
+        // it feeds. The feature result (highest step's output) leads the list so
+        // the collapsed sub's exports[0] is always the result -- even when nothing
+        // consumes it yet (the final feature, spliced to ToMesh later).
+        var out_src = []
+        var out_dst = []
+        var result_pin = step2output[steps[steps.count - 1]].exports[0]
+        out_src.add(result_pin)
+        out_dst.add([])
+        for (var node in S) {
+            for (var q in node.exports) {
+                for (var cc in q.conns) {
+                    if (HistGraphBuilder.index_of(S, cc.to.node) >= 0) {
+                        continue   // internal edge
+                    }
+                    var oi = HistGraphBuilder.index_of(out_src, q)
+                    if (oi < 0) {
+                        out_src.add(q)
+                        out_dst.add([])
+                        oi = out_src.count - 1
+                    }
+                    out_dst[oi].add(cc.to)
+                }
+            }
+        }
+
+        // Cut the boundary edges (each input/external-consumer import pin holds a
+        // single conn). Internal edges between two S nodes are left untouched.
+        for (var i = 0; i < in_dst.count; i = i + 1) {
+            for (var p in in_dst[i]) {
+                if (!p.conns.isEmpty) {
+                    Blueprint.disconnect(p.conns.front())
+                }
+            }
+        }
+        for (var i = 0; i < out_dst.count; i = i + 1) {
+            for (var tpin in out_dst[i]) {
+                if (!tpin.conns.isEmpty) {
+                    Blueprint.disconnect(tpin.conns.front())
+                }
+            }
+        }
+
+        // Move the feature's nodes into the sub (left->right row; creation order
+        // is topological so this reads early->late).
+        for (var i = 0; i < S.count; i = i + 1) {
+            var sn = HistGraphBuilder.scene_node_of(scene, S[i])
+            if (sn) {
+                scene.nodes.remove(sn)
+            }
+            sub.add_node(S[i], i * 200, 0)
+        }
+
+        // Boundary Input / Output nodes. add_node APPENDS each to sub.imports /
+        // sub.exports (a fresh Subgraph already owns a "prev"/"next" exec port at
+        // index 0), so capture the data pin it just created rather than trusting
+        // a positional index.
+        var inputs      = []
+        var sub_in_pins = []
+        for (var i = 0; i < in_src.count; i = i + 1) {
+            var inp = Input()
+            inp.var_name = "in%(i)"
+            inp.var_type = in_src[i].type
+            sub.add_node(inp, -200, i * 80)
+            inputs.add(inp)
+            sub_in_pins.add(sub.imports[sub.imports.count - 1])
+        }
+        var outputs      = []
+        var sub_out_pins = []
+        for (var i = 0; i < out_src.count; i = i + 1) {
+            var outp = Output()
+            outp.var_name = "out%(i)"
+            outp.var_type = out_src[i].type
+            sub.add_node(outp, (S.count + 1) * 200, i * 80)
+            outputs.add(outp)
+            sub_out_pins.add(sub.exports[sub.exports.count - 1])
+        }
+
+        // Wire internals to the boundary nodes (Input.exports[0] / Output.imports[0]
+        // are each the node's single "var" pin).
+        for (var i = 0; i < inputs.count; i = i + 1) {
+            for (var p in in_dst[i]) {
+                Blueprint.connect(inputs[i].exports[0], p)
+            }
+        }
+        for (var i = 0; i < out_src.count; i = i + 1) {
+            Blueprint.connect(out_src[i], outputs[i].imports[0])
+        }
+
+        sub.rebuild_sub()
+        sub.layout()
+        editor.add_node(sub, 0, 0)
+
+        // Splice the collapsed sub back into the outer graph.
+        for (var i = 0; i < in_src.count; i = i + 1) {
+            Blueprint.connect(in_src[i], sub_in_pins[i])
+        }
+        for (var i = 0; i < out_src.count; i = i + 1) {
+            for (var tpin in out_dst[i]) {
+                Blueprint.connect(sub_out_pins[i], tpin)
+            }
+        }
+
+        // The feature result is now the sub's first data export; point the
+        // highest step's output at the sub so the tip scan (via output_pin) and
+        // the do_rebuild ToMesh splice find it.
+        step2output[steps[steps.count - 1]] = sub
+    }
+
+    // The scene node wrapping blueprint node `bp` (nil if absent).
+    static scene_node_of(scene, bp)
+    {
+        for (var i = 0; i < scene.nodes.count; i = i + 1) {
+            if (scene.nodes[i].components["bp"] == bp) {
+                return scene.nodes[i]
+            }
+        }
+        return nil
+    }
+
+    // The data-output pin of a rebuilt tip node. A plain brepkit node exposes its
+    // result on exports[0]; an encapsulated pattern Subgraph carries a "next" exec
+    // port at exports[0], so its feature result is the first data export (added
+    // first by encapsulate) at exports[1].
+    static output_pin(node)
+    {
+        if (node is Subgraph) {
+            if (node.exports.count > 1) {
+                return node.exports[1]
+            }
+            return nil
+        }
+        if (!node.exports.isEmpty) {
+            return node.exports[0]
+        }
+        return nil
+    }
+
+    // Identity lookup of `item` in `list` (-1 if absent). bp nodes have no
+    // value equality, so this matches the same object reference.
+    static index_of(list, item)
+    {
+        for (var i = 0; i < list.count; i = i + 1) {
+            if (list[i] == item) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    // Stable in-place sort of parallel lists `idxs` / `keys` by ascending key
+    // (insertion sort -- the columns are small and stability keeps equal-key
+    // nodes in creation order).
+    static sort_by_key(idxs, keys)
+    {
+        for (var i = 1; i < idxs.count; i = i + 1) {
+            var vi = idxs[i]
+            var ki = keys[i]
+            var j = i - 1
+            while (j >= 0 and keys[j] > ki) {
+                idxs[j + 1] = idxs[j]
+                keys[j + 1] = keys[j]
+                j = j - 1
+            }
+            idxs[j + 1] = vi
+            keys[j + 1] = ki
+        }
     }
 }
