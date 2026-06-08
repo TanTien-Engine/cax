@@ -438,6 +438,42 @@ bool FieldPoint(const json& jf, int fld_id, double out[3])
     return false;
 }
 
+// Unit DIRECTION of a field by its stable id -- a "Direction" widget (a
+// pattern's fld 5 "Direction D" / fld 2 "Direction", a revolve axis, ...)
+// stores its resolved direction in the field data's Dir member, which the
+// plugin emits as "dir":[x,y,z]. This is ZW3D's TRUE signed direction; it is
+// preferred over the edge-derived pattern.dir, whose sign -- and even axis --
+// follow the referenced edge's arbitrary parametric orientation. Returns
+// false (out untouched) when the field carries no (non-zero) direction.
+bool FieldDir(const json& jf, int fld_id, double out[3])
+{
+    auto fit = jf.find("fields");
+    if (fit == jf.end() || !fit->is_array()) {
+        return false;
+    }
+    for (const auto& fd : *fit)
+    {
+        auto idit = fd.find("id");
+        if (idit == fd.end() || !idit->is_number() || idit->get<int>() != fld_id) {
+            continue;
+        }
+        auto dit = fd.find("dir");
+        if (dit == fd.end() || !dit->is_array() || dit->size() < 3) {
+            return false;
+        }
+        double d[3] = { dit->at(0).get<double>(),
+                        dit->at(1).get<double>(),
+                        dit->at(2).get<double>() };
+        if (std::fabs(d[0]) < 1e-12 && std::fabs(d[1]) < 1e-12 &&
+            std::fabs(d[2]) < 1e-12) {
+            return false;
+        }
+        out[0] = d[0]; out[1] = d[1]; out[2] = d[2];
+        return true;
+    }
+    return false;
+}
+
 // First entity-reference anchor (world mm) of field fld_id from the dump --
 // e.g. a pattern's "Base" (fld 1), whose anchor is the patterned feature's
 // location. Returns false (out untouched) when the field / anchor is absent.
@@ -958,6 +994,151 @@ bool ZwReader::ReadFile(const std::string& path,
                     continue;
                 }
 
+                // ZW3D revolve (FtAllRev) -> Sketch + BossRevolve / CutRevolve.
+                // The profile is captured exactly like an extrude's
+                // (profile.curves on profile.plane); the difference is the boss
+                // is swept around an AXIS instead of along the plane normal.
+                // fld 2 "Axis A" gives only a POINT on the axis -- the plugin
+                // does not export the axis direction. Recover it the way
+                // SwReader does: the revolve axis is a LINE in the profile
+                // sketch, so the profile line whose support passes through the
+                // fld 2 point IS the axis, and its direction is the rotation
+                // axis. (On R2900_50 the fld 2 point lies exactly on one profile
+                // line, dir (0,1,0); the exported solid's surface placements all
+                // share that axis -- STEP-cylinder, circular-pattern-orbit, and
+                // profile-line fits independently agree.) The sketch is NOT
+                // shifted (a revolve profile stays in its own plane). fld 3
+                // Start / fld 4 End angle (deg) -> |E - S| radians; a 360 sweep
+                // becomes exactly 2*PI so the Replayer closes the solid. fld 14
+                // boolean combine: 2 = cut -> CutRevolve, else BossRevolve. When
+                // no profile line carries the axis point (the axis is a datum we
+                // cannot resolve reader-side), fall through to opaque.
+                if (zt == "FtAllRev" && prof != jf.end() &&
+                    prof->contains("curves") && prof->at("curves").is_array())
+                {
+                    double axpt[3] = { 0.0, 0.0, 0.0 };
+                    if (FieldPoint(jf, 2, axpt))
+                    {
+                        // World plane frame (raw mm, to match axpt) from
+                        // profile.plane; v = normal x x_dir (right-handed) is
+                        // the frame the profile's (u,v) curve coords live in.
+                        double o[3]  = { 0, 0, 0 };
+                        double ud[3] = { 1, 0, 0 };
+                        double nd[3] = { 0, 0, 1 };
+                        auto pl = prof->find("plane");
+                        if (pl != prof->end() && pl->is_object()) {
+                            auto rd3 = [&](const char* key, double d[3]) {
+                                auto a = pl->find(key);
+                                if (a != pl->end() && a->is_array() &&
+                                    a->size() == 3) {
+                                    d[0] = a->at(0).get<double>();
+                                    d[1] = a->at(1).get<double>();
+                                    d[2] = a->at(2).get<double>();
+                                }
+                            };
+                            rd3("origin", o);
+                            rd3("x_dir",  ud);
+                            rd3("normal", nd);
+                        }
+                        double vd[3] = {
+                            nd[1] * ud[2] - nd[2] * ud[1],
+                            nd[2] * ud[0] - nd[0] * ud[2],
+                            nd[0] * ud[1] - nd[1] * ud[0],
+                        };
+
+                        // Axis direction = the profile line whose infinite
+                        // support passes closest to the fld 2 axis point.
+                        double best_d = 1e300;
+                        double axis_dir[3] = { 0.0, 0.0, 0.0 };
+                        for (const auto& c : prof->at("curves")) {
+                            if (JStr(c, "kind", "") != "line") { continue; }
+                            auto p0 = c.find("p0");
+                            auto p1 = c.find("p1");
+                            if (p0 == c.end() || p1 == c.end() ||
+                                !p0->is_array() || !p1->is_array() ||
+                                p0->size() < 2 || p1->size() < 2) { continue; }
+                            double w0[3], w1[3];
+                            for (int k = 0; k < 3; ++k) {
+                                w0[k] = o[k] + p0->at(0).get<double>() * ud[k]
+                                             + p0->at(1).get<double>() * vd[k];
+                                w1[k] = o[k] + p1->at(0).get<double>() * ud[k]
+                                             + p1->at(1).get<double>() * vd[k];
+                            }
+                            double dd[3] = { w1[0]-w0[0], w1[1]-w0[1], w1[2]-w0[2] };
+                            double L = std::sqrt(dd[0]*dd[0] + dd[1]*dd[1] +
+                                                 dd[2]*dd[2]);
+                            if (L < 1e-9) { continue; }
+                            double du[3] = { dd[0]/L, dd[1]/L, dd[2]/L };
+                            double ap[3] = { axpt[0]-w0[0], axpt[1]-w0[1],
+                                             axpt[2]-w0[2] };
+                            double t = ap[0]*du[0] + ap[1]*du[1] + ap[2]*du[2];
+                            double ft[3] = { w0[0]+t*du[0], w0[1]+t*du[1],
+                                             w0[2]+t*du[2] };
+                            double pd = std::sqrt(
+                                (axpt[0]-ft[0])*(axpt[0]-ft[0]) +
+                                (axpt[1]-ft[1])*(axpt[1]-ft[1]) +
+                                (axpt[2]-ft[2])*(axpt[2]-ft[2]));
+                            if (pd < best_d) {
+                                best_d = pd;
+                                axis_dir[0] = du[0];
+                                axis_dir[1] = du[1];
+                                axis_dir[2] = du[2];
+                            }
+                        }
+
+                        double startA = FieldValueById(jf, 3, 0.0);
+                        double endA   = FieldValueById(jf, 4, 0.0);
+                        const double kPi = 3.14159265358979323846;
+                        double angle  = std::fabs(endA - startA) * kPi / 180.0;
+
+                        // Accept only when a profile line truly carries the axis
+                        // point (~1e-3 mm) and the sweep is non-degenerate.
+                        if (best_d < 1e-3 && angle > 1e-6)
+                        {
+                            const uint32_t sketch_fid = 1000000u + id;
+                            cadapp::SketchIR sk;
+                            sk.name = name + ":profile";
+                            BuildSketchFromProfile(*prof, s, sketch_fid, sk);
+                            out.sketches.push_back(std::move(sk));
+
+                            cadapp::FeatPayloadSketch spl;
+                            spl.sketch_id = sketch_fid;
+                            cadapp::FeatureIR sf;
+                            sf.id   = sketch_fid;
+                            sf.type = cadapp::FeatType::Sketch;
+                            sf.name = name + ":profile";
+                            sf.data = std::move(spl);
+                            out.features.push_back(std::move(sf));
+
+                            cadapp::FeatPayloadRevolve rpl;
+                            rpl.sketch_id      = sketch_fid;
+                            rpl.axis_origin[0] = axpt[0] * s;
+                            rpl.axis_origin[1] = axpt[1] * s;
+                            rpl.axis_origin[2] = axpt[2] * s;
+                            rpl.axis_dir[0]    = axis_dir[0];
+                            rpl.axis_dir[1]    = axis_dir[1];
+                            rpl.axis_dir[2]    = axis_dir[2];
+                            rpl.angle          = angle;
+
+                            const bool is_cut =
+                                std::fabs(FieldValueById(jf, 14, 0.0) - 2.0) < 0.5;
+                            cadapp::FeatureIR rf;
+                            rf.id   = id;
+                            rf.name = name;
+                            rf.type = is_cut ? cadapp::FeatType::CutRevolve
+                                             : cadapp::FeatType::BossRevolve;
+                            rf.data = std::move(rpl);
+                            if (running_solid_id != 0) {
+                                PushInput(rf, running_solid_id,
+                                          cadapp::InputRole::Base);
+                            }
+                            out.features.push_back(std::move(rf));
+                            running_solid_id = id;
+                            continue;
+                        }
+                    }
+                }
+
                 // ZW3D pattern (FtPtnFtr) -> LinearPattern. count (fld 3) /
                 // spacing (fld 4) / target anchor (fld 1) are in the field
                 // dump; the direction is the unit vector the plugin resolved
@@ -969,53 +1150,71 @@ bool ZwReader::ReadFile(const std::string& path,
                 // base, dropping any feature between it and the pattern, e.g.
                 // Extrude4's cut).
                 {
-                    // ZW3D FtPtnFtr is a GENERIC pattern feature; field 26 is its
-                    // method enum.
-                    //   LINEAR (1, 2): pattern.dir is a TRANSLATION axis ->
-                    //     LinearPattern; the co-located seed group is patterned as
-                    //     a unit (concentric pins copied together).
-                    //   CIRCULAR (3): the rotation axis is the seed's sketch-plane
+                    // ZW3D FtPtnFtr is a GENERIC pattern feature. fld 26 is NOT
+                    // the method enum -- it is the pattern's creation ORDINAL
+                    // (1,2,3,... across the part). On R2900_20/_30 the first
+                    // patterns were linear,linear,circular, so the ordinals
+                    // 1,2,3 happened to look like a method code; R2900_50 has
+                    // seven patterns numbered 1..7, exposing fld 26 as a plain
+                    // counter (there is no "method 7"). The real discriminator
+                    // is fld 10 (0 = linear, 1 = circular); fld 28 "Diameter"
+                    // (the pattern circle's diameter, > 0 only for circular)
+                    // agrees and is used as a backstop. fld 12 carries the real
+                    // per-step angle for a circular pattern; for a linear one it
+                    // is a stale default.
+                    //   LINEAR: pattern.dir is a TRANSLATION axis ->
+                    //     LinearPattern; the co-located seed group is patterned
+                    //     as a unit (concentric pins copied together).
+                    //   CIRCULAR: the rotation axis is the seed's sketch-plane
                     //     NORMAL (the pattern lies in that plane) through the
-                    //     fld 2 "Direction" cached pick point (which sits ON the
-                    //     axis). pattern.dir is only a parallel-offset reference
-                    //     edge and is NOT used here. Only the single matched seed
-                    //     is swept. fld 12 = per-instance angle, fld 3 = count
-                    //     (incl. the seed). Verified against R2900_30 by circle-
-                    //     fitting the exported solid's pins (axis (0,-1,0)).
-                    // Other methods (>= 4: fill / point / at-pattern), or a
-                    // circular pattern with no axis pick point, stay OPAQUE.
+                    //     fld 2 cached pick point (which sits ON the axis).
+                    //     pattern.dir is only a parallel-offset reference edge
+                    //     and is NOT used here. Only the single matched seed is
+                    //     swept. fld 12 = per-instance angle, fld 3 = count
+                    //     (incl. the seed). Verified against R2900_30/_50 by
+                    //     circle-fitting the exported solid's pins.
+                    // A circular pattern with no axis pick point stays OPAQUE.
                     auto patj = jf.find("pattern");
-                    double pat_method    = FieldValueById(jf, 26, 1.0);
-                    bool   linear_method = std::fabs(pat_method - 1.0) < 0.5 ||
-                                           std::fabs(pat_method - 2.0) < 0.5;
-                    bool   circular_method = std::fabs(pat_method - 3.0) < 0.5;
+                    bool   is_circular     = FieldValueById(jf, 10, 0.0) > 0.5 ||
+                                             FieldValueById(jf, 28, 0.0) > 1e-6;
+                    bool   linear_method   = !is_circular;
+                    bool   circular_method = is_circular;
                     double axis_pt[3] = { 0.0, 0.0, 0.0 };
                     bool   has_axis_pt = FieldPoint(jf, 2, axis_pt);
-                    bool   has_dir = patj != jf.end() &&
-                                     patj->contains("dir") &&
-                                     patj->at("dir").is_array() &&
-                                     patj->at("dir").size() == 3;
+                    double fdir_tmp[3];
+                    bool   has_dir = (patj != jf.end() &&
+                                      patj->contains("dir") &&
+                                      patj->at("dir").is_array() &&
+                                      patj->at("dir").size() == 3) ||
+                                     FieldDir(jf, 2, fdir_tmp);
                     if (zt == "FtPtnFtr" &&
                         ((linear_method && has_dir) ||
                          (circular_method && has_axis_pt)) &&
                         running_solid_id != 0 && !extrude_xy.empty())
                     {
-                        double anc[3] = { 0.0, 0.0, 0.0 };
-                        uint32_t target = 0;
-                        if (FieldEntAnchor(jf, 1, anc))
-                        {
-                            // Project the world anchor (mm) onto each extrude's
-                            // sketch plane and test the profile's local (u,v)
-                            // box. The out-of-plane offset (the anchor sits at
-                            // the patterned feature's top face, the profile at
-                            // its base) is dropped by the projection, so a boss
-                            // on ANY plane is matched -- not just world-XY ones.
-                            // Nearest footprint centre breaks ties / misses.
+                        // Match a world-mm anchor to a reconstructed extrude
+                        // footprint: project onto each extrude's sketch plane and
+                        // test the profile's local (u,v) box (the out-of-plane
+                        // offset -- anchor at the feature's top face, profile at
+                        // its base -- drops out, so a boss on ANY plane matches,
+                        // not just world-XY). Returns 0 when the best hit is
+                        // implausible (anchor far from every footprint CENTRE):
+                        // the +1e6 keeps an outside hit last, and even an "inside"
+                        // hit is trusted only within kSeedCentreTol of the centre.
+                        // A pattern whose true seed is an UNreconstructed feature
+                        // (a thin boss beside the opaque revolve) otherwise lands
+                        // "inside" some large unrelated boss's box ~15 mm
+                        // off-centre (R2900_50's Pattern6) and would replicate the
+                        // WRONG body -- staying opaque (a clean warning) beats
+                        // silently wrong geometry. Real seeds match within a
+                        // fraction of a mm, so 5 mm is ample.
+                        auto match_anchor = [&](const double a[3]) -> uint32_t {
                             double best = 1e300;
+                            uint32_t hit = 0;
                             for (const auto& b : extrude_xy) {
-                                double du[3] = { anc[0] - b.origin[0],
-                                                 anc[1] - b.origin[1],
-                                                 anc[2] - b.origin[2] };
+                                double du[3] = { a[0] - b.origin[0],
+                                                 a[1] - b.origin[1],
+                                                 a[2] - b.origin[2] };
                                 double u = du[0]*b.udir[0] + du[1]*b.udir[1] + du[2]*b.udir[2];
                                 double v = du[0]*b.vdir[0] + du[1]*b.vdir[1] + du[2]*b.vdir[2];
                                 bool inside = u >= b.umin - 1.0 && u <= b.umax + 1.0 &&
@@ -1024,7 +1223,63 @@ bool ZwReader::ReadFile(const std::string& path,
                                 double cv = 0.5 * (b.vmin + b.vmax);
                                 double d2 = (u - cu) * (u - cu) + (v - cv) * (v - cv);
                                 double score = inside ? d2 : (d2 + 1e6);
-                                if (score < best) { best = score; target = b.id; }
+                                if (score < best) { best = score; hit = b.id; }
+                            }
+                            const double kSeedCentreTol = 5.0;   // mm
+                            return (best > kSeedCentreTol * kSeedCentreTol) ? 0u : hit;
+                        };
+
+                        // First Base (fld 1) ent -> seed. Drives the gate and,
+                        // for a circular pattern, the rotation axis (taken from
+                        // this one footprint's normal).
+                        double anc[3] = { 0.0, 0.0, 0.0 };
+                        uint32_t target = 0;
+                        if (FieldEntAnchor(jf, 1, anc)) {
+                            target = match_anchor(anc);
+                        }
+
+                        // A LINEAR pattern's Base may list SEVERAL entities at
+                        // different places (e.g. a boss and the cut that grooves
+                        // it -- ~13 mm apart on R2900_50's Pattern7). Matching
+                        // only the first ent + spatial grouping drops the rest, so
+                        // the pattern replicates an incomplete seed (Pattern7
+                        // patterned the lone cut -> nothing to carve -> no visible
+                        // effect). Match EVERY fld 1 ent (guarded, deduped). This
+                        // also lets a pattern whose first ent is unreconstructed
+                        // (Pattern6's first ents sit on the revolve) still rebuild
+                        // from its remaining ents. (Circular keeps the first-ent
+                        // seed above -- its axis needs that one footprint.)
+                        std::vector<uint32_t> seed_ids;
+                        if (linear_method) {
+                            auto add_seed = [&](uint32_t t) {
+                                if (t == 0) { return; }
+                                for (uint32_t e : seed_ids) { if (e == t) return; }
+                                seed_ids.push_back(t);
+                            };
+                            auto fit = jf.find("fields");
+                            if (fit != jf.end() && fit->is_array()) {
+                                for (const auto& fd : *fit) {
+                                    auto idit = fd.find("id");
+                                    if (idit == fd.end() || !idit->is_number() ||
+                                        idit->get<int>() != 1) { continue; }
+                                    auto eit = fd.find("ents");
+                                    if (eit != fd.end() && eit->is_array()) {
+                                        for (const auto& e : *eit) {
+                                            auto a = e.find("anchor");
+                                            if (a == e.end() || !a->is_array() ||
+                                                a->size() < 3) { continue; }
+                                            double ea[3] = {
+                                                a->at(0).get<double>(),
+                                                a->at(1).get<double>(),
+                                                a->at(2).get<double>() };
+                                            add_seed(match_anchor(ea));
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                            if (target == 0 && !seed_ids.empty()) {
+                                target = seed_ids.front();
                             }
                         }
 
@@ -1037,9 +1292,26 @@ bool ZwReader::ReadFile(const std::string& path,
                             if (linear_method)
                             {
                                 cadapp::FeatPayloadLinearPattern lp;
-                                lp.dir1[0] = patj->at("dir").at(0).get<double>();
-                                lp.dir1[1] = patj->at("dir").at(1).get<double>();
-                                lp.dir1[2] = patj->at("dir").at(2).get<double>();
+                                // Direction: prefer fld 2 "Direction"'s TRUE
+                                // signed Dir over the edge-derived pattern.dir,
+                                // whose sign -- and even axis -- follow the
+                                // reference edge's arbitrary orientation (it sent
+                                // R2900_50's Pattern6 +X->-X and Pattern7
+                                // +Z->-Z). fld 2's Dir is correct for every
+                                // pattern (P1 +Y, P2/P4 -X, P6 +X, P7 +Z); fld 5
+                                // "Direction D" is a DIFFERENT, wrong vector --
+                                // do NOT use it. Fall back to the edge dir only
+                                // for older snapshots that carry no field Dir.
+                                double pdir[3];
+                                if (FieldDir(jf, 2, pdir)) {
+                                    lp.dir1[0] = pdir[0];
+                                    lp.dir1[1] = pdir[1];
+                                    lp.dir1[2] = pdir[2];
+                                } else {
+                                    lp.dir1[0] = patj->at("dir").at(0).get<double>();
+                                    lp.dir1[1] = patj->at("dir").at(1).get<double>();
+                                    lp.dir1[2] = patj->at("dir").at(2).get<double>();
+                                }
                                 int count1  = static_cast<int>(FieldValueById(jf, 3, 2.0));
                                 lp.count1   = (count1 >= 1) ? count1 : 2;
                                 lp.spacing1 = FieldValueById(jf, 4, 0.0) * s;
@@ -1049,29 +1321,36 @@ bool ZwReader::ReadFile(const std::string& path,
                                 pf.type = cadapp::FeatType::LinearPattern;
                                 pf.data = std::move(lp);
 
-                                // Tools = the matched seed AND every other seed
-                                // co-located with it (concentric pins copied as a
-                                // unit). Base = the current running body.
-                                const double* tgt_wc = nullptr;
-                                for (const auto& b : extrude_xy) {
-                                    if (b.id == target) { tgt_wc = b.wc; break; }
-                                }
+                                // Tools = every matched Base seed (seed_ids),
+                                // each expanded to the seeds co-located with it
+                                // (concentric pins copied as a unit), deduped so
+                                // overlapping groups don't double-count. Base =
+                                // the current running body.
+                                std::vector<uint32_t> tool_ids;
+                                auto add_tool = [&](uint32_t t) {
+                                    for (uint32_t e : tool_ids) { if (e == t) return; }
+                                    tool_ids.push_back(t);
+                                };
                                 const double kGroupTol = 1.5;   // mm (concentric
                                                                 // seeds sit ~0 apart)
-                                int n_tool = 0;
-                                if (tgt_wc) {
+                                for (uint32_t seed : seed_ids) {
+                                    const double* sw = nullptr;
                                     for (const auto& b : extrude_xy) {
-                                        double dx = b.wc[0] - tgt_wc[0];
-                                        double dy = b.wc[1] - tgt_wc[1];
-                                        double dz = b.wc[2] - tgt_wc[2];
+                                        if (b.id == seed) { sw = b.wc; break; }
+                                    }
+                                    if (!sw) { add_tool(seed); continue; }
+                                    for (const auto& b : extrude_xy) {
+                                        double dx = b.wc[0] - sw[0];
+                                        double dy = b.wc[1] - sw[1];
+                                        double dz = b.wc[2] - sw[2];
                                         if (dx*dx + dy*dy + dz*dz <= kGroupTol*kGroupTol) {
-                                            PushInput(pf, b.id, cadapp::InputRole::Tool);
-                                            ++n_tool;
+                                            add_tool(b.id);
                                         }
                                     }
                                 }
-                                if (n_tool == 0) {
-                                    PushInput(pf, target, cadapp::InputRole::Tool);
+                                if (tool_ids.empty()) { add_tool(target); }
+                                for (uint32_t t : tool_ids) {
+                                    PushInput(pf, t, cadapp::InputRole::Tool);
                                 }
                             }
                             else   // circular_method (gated above on has_axis_pt)

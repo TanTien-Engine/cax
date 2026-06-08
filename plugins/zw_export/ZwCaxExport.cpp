@@ -257,6 +257,7 @@ struct FieldDump
     std::string type;                       // number/distance/angle/point/entity/text/list/other
     bool        has_num  = false; double num = 0.0;
     bool        has_pt   = false; double pt[3] = { 0.0, 0.0, 0.0 };
+    bool        has_dir  = false; double dir[3] = { 0.0, 0.0, 0.0 };
     bool        has_text = false; std::string text;
     std::vector<EntSig> ents;
     int         list_count = -1;            // VX_FLD_DATA: # top-level tree
@@ -886,6 +887,32 @@ std::vector<FieldDump> DumpFields(int idFtr)
             else
             {
                 d.type = "other";
+            }
+
+            // A "Direction" widget (a pattern's fld 2 "Direction" / fld 5
+            // "Direction D", a revolve axis, ...) stores its resolved UNIT
+            // DIRECTION in the field data's Dir member (isDirection=1), NOT in
+            // Pnt -- cvxDataGetPnt returns zeros for it (that is why fld 5 came
+            // out [0,0,0]). The reader's edge-derived pattern.dir takes the
+            // referenced edge's PARAMETRIC orientation, whose sign (and even
+            // axis) is arbitrary, so the reader prefers this field Dir: it is
+            // ZW3D's true signed pattern direction. Emit it for any field that
+            // carries one. (cvxDataGetAll fills fld_data for scalar/point/dir
+            // fields; it is the nested VX_FLD_DATA *list* that needed the
+            // per-item tree walk, not this.)
+            if (f.fld_data != nullptr) {
+                for (int k = 0; k < f.count; ++k) {
+                    if (f.fld_data[k].isDirection) {
+                        const svxVector& dv = f.fld_data[k].Dir;
+                        if (dv.x != 0.0 || dv.y != 0.0 || dv.z != 0.0) {
+                            d.dir[0] = dv.x;
+                            d.dir[1] = dv.y;
+                            d.dir[2] = dv.z;
+                            d.has_dir = true;
+                            break;
+                        }
+                    }
+                }
             }
 
             out.push_back(std::move(d));
@@ -1632,6 +1659,9 @@ json FieldsToJson(const std::vector<FieldDump>& fields)
         }
         if (d.has_pt) {
             j["pt"] = json::array({ d.pt[0], d.pt[1], d.pt[2] });
+        }
+        if (d.has_dir) {
+            j["dir"] = json::array({ d.dir[0], d.dir[1], d.dir[2] });
         }
         if (d.has_text) {
             j["text"] = d.text;
