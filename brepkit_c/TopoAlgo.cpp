@@ -394,6 +394,19 @@ TopoDS_Shape RefineBopResult(const TopoDS_Shape& raw,
     if (raw.IsNull()) {
         return raw;
     }
+    // A/B gate: BREPKIT_BOP_REFINE=0 skips the ShapeUpgrade_UnifySameDomain
+    // pass, which the RWDI profile showed is ~1.95s -- the dominant first-party
+    // boolean post-cost. Refine merges coplanar BOP fragments (FreeCAD
+    // Refine=true parity) and keeps the face count down, so skipping it changes
+    // topology -> validate against the geo golden (face count/volume) before
+    // making anything permanent. Default ON = current behaviour.
+    static const bool refine_enabled = [] {
+        const char* e = std::getenv("BREPKIT_BOP_REFINE");
+        return !(e && e[0] == '0');
+    }();
+    if (!refine_enabled) {
+        return UnwrapSingleSolid(raw);
+    }
     TopoDS_Shape result = raw;
     try {
         ShapeUpgrade_UnifySameDomain unify(raw,
