@@ -1097,10 +1097,16 @@ class HistGraphBuilder
             var nm    = names[ni]
             var steps = name2step[nm]
 
-            // Only pattern features.
+            // Only pattern features. A pattern shows up one of two ways: the
+            // shared n-ary paths emit a linear_pattern / circular_pattern op
+            // (caught by op name), while a ZW3D onto-running pattern (circular
+            // always; the non-equivariant linear fallback) lowers to per-instance
+            // booleans / dressups with NO pattern op -- those carry a pattern
+            // suffix on the step desc, which only the C++ side can test (Vessel
+            // String has no substring op).
             var is_pat = false
             for (var s in steps) {
-                if (PATTERN_OPS.contains(graph.get_step_op_name(s))) {
+                if (PATTERN_OPS.contains(graph.get_step_op_name(s)) or graph.get_step_is_pattern_instance(s)) {
                     is_pat = true
                 }
             }

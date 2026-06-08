@@ -589,6 +589,27 @@ void w_CalcGraph_get_step_desc()
     ves_set_lstring(0, desc.c_str(), len);
 }
 
+void w_CalcGraph_get_step_is_pattern_instance()
+{
+    auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
+    int step_id = (int)ves_tonumber(1);
+
+    // A ZW3D "onto running body" pattern (circular always; the non-equivariant
+    // linear fallback) lowers to a chain of per-instance booleans / dressups and
+    // NEVER emits a linear_pattern / circular_pattern op -- so the history rebuild
+    // cannot spot it by op name. The Replayer tags every such helper step
+    // feat.name + ":inst" / ":dress" / ":pat" (see ApplyPatternInstance); those
+    // suffixes are pattern-exclusive. Report whether this step carries one, so
+    // encapsulate_patterns can still collapse the whole feature group into a
+    // Subgraph. The test lives here because the Vessel String type has no
+    // substring primitive (same reason get_step_desc strips its suffix in C++).
+    const std::string& desc = cg->GetStepDesc(step_id);
+    bool is_inst = desc.find(":inst")  != std::string::npos
+                || desc.find(":dress") != std::string::npos
+                || desc.find(":pat")   != std::string::npos;
+    ves_set_boolean(0, is_inst);
+}
+
 void w_CalcGraph_claim_step()
 {
     auto cg = ((wrapper::Proxy<brepgraph::CalcGraph>*)ves_toforeign(0))->obj;
@@ -659,6 +680,7 @@ VesselForeignMethodFn BrepGraphBindMethod(const char* signature)
     if (strcmp(signature, "CalcGraph.get_step_op_name(_)") == 0) return w_CalcGraph_get_step_op_name;
     if (strcmp(signature, "CalcGraph.get_step_inputs(_)") == 0) return w_CalcGraph_get_step_inputs;
     if (strcmp(signature, "CalcGraph.get_step_desc(_)") == 0) return w_CalcGraph_get_step_desc;
+    if (strcmp(signature, "CalcGraph.get_step_is_pattern_instance(_)") == 0) return w_CalcGraph_get_step_is_pattern_instance;
     if (strcmp(signature, "CalcGraph.claim_step(_)") == 0) return w_CalcGraph_claim_step;
     if (strcmp(signature, "CalcGraph.is_step_claimed(_)") == 0) return w_CalcGraph_is_step_claimed;
     if (strcmp(signature, "CalcGraph.has_preloaded_history()") == 0) return w_CalcGraph_has_preloaded_history;

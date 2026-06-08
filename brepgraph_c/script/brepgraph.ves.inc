@@ -71,6 +71,7 @@ foreign class CalcGraph
 	foreign get_step_op_name(step_id)
 	foreign get_step_inputs(step_id)
 	foreign get_step_desc(step_id)
+	foreign get_step_is_pattern_instance(step_id)
 	foreign claim_step(step_id)
 	foreign is_step_claimed(step_id)
 	foreign has_preloaded_history()
