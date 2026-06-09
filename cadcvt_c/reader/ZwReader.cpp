@@ -880,24 +880,44 @@ bool ZwReader::ReadFile(const std::string& path,
                     const uint32_t sketch_fid = 1000000u + id;
 
                     // Start S (fld 2) / End E (fld 3): extrude limits measured
-                    // ALONG the sketch normal from the sketch plane. The solid
-                    // spans [S, E]; the profile curves sit ON the plane
-                    // (offset 0), so a non-zero S means the extrude starts OFF
-                    // the plane. Shift the sketch plane by S along its normal
-                    // so the prism begins at S, then extrude the remaining
-                    // |E - S|. (Ignoring S put every such boss |S| too low --
-                    // Extrude3_Boss landed at z[0, 9.78] instead of its true
-                    // [6.05, 15.83], the missing 4.55 being Start S.)
+                    // along the extrude DIRECTION from the sketch plane. The
+                    // solid spans offsets [min(S,E), max(S,E)] along that
+                    // direction; the profile curves sit ON the plane (offset 0).
+                    //
+                    // The direction is NOT simply +normal: ZW3D may grow the
+                    // extrude along -normal (Extrude21's fld 45 dir = -Z while
+                    // its sketch normal = +Z; Extrude20, same S/E, has dir +Z).
+                    // Deriving the flip from the S/E ORDER alone (the old
+                    // `endE < startS`) silently put such a boss on the WRONG
+                    // side -- Extrude21 landed above the body, too high and
+                    // detached. Take the true growth direction from fld 45's
+                    // cached "dir" and resolve its sign vs the sketch normal:
+                    // sign < 0 means the solid grows along -normal. Shift the
+                    // plane to the NEAR face (offset min(S,E) along that signed
+                    // direction), then extrude |E - S|. With sign = +1 (the
+                    // common case, and the fallback when fld 45 has no dir) this
+                    // reduces EXACTLY to the previous result, so every
+                    // already-correct boss is unchanged.
                     double startS = FieldValueById(jf, 2, 0.0);
                     double endE   = FieldValueById(jf, 3, 0.0);
 
                     cadapp::SketchIR sk;
                     sk.name = name + ":profile";
                     BuildSketchFromProfile(*prof, s, sketch_fid, sk);
-                    const double startS_m = startS * s;
-                    sk.plane_origin[0] += startS_m * sk.plane_normal[0];
-                    sk.plane_origin[1] += startS_m * sk.plane_normal[1];
-                    sk.plane_origin[2] += startS_m * sk.plane_normal[2];
+
+                    double edir[3];
+                    double sign = 1.0;
+                    if (FieldDir(jf, 45, edir)) {
+                        double dot = edir[0] * sk.plane_normal[0] +
+                                     edir[1] * sk.plane_normal[1] +
+                                     edir[2] * sk.plane_normal[2];
+                        if (dot < 0.0) { sign = -1.0; }
+                    }
+                    const double near_off = (startS < endE) ? startS : endE;
+                    const double near_m   = near_off * sign * s;
+                    sk.plane_origin[0] += near_m * sk.plane_normal[0];
+                    sk.plane_origin[1] += near_m * sk.plane_normal[1];
+                    sk.plane_origin[2] += near_m * sk.plane_normal[2];
                     out.sketches.push_back(std::move(sk));
 
                     cadapp::FeatPayloadSketch spl;
@@ -909,15 +929,15 @@ bool ZwReader::ReadFile(const std::string& path,
                     sf.data = std::move(spl);
                     out.features.push_back(std::move(sf));
 
-                    // Extrude the remaining span; E below S grows the solid
-                    // the other way along the normal (flip).
+                    // Extrude |E - S| along the signed direction (flip = grow
+                    // along -normal, from fld 45's true direction resolved above).
                     double depth  = std::fabs(endE - startS) * s;
 
                     cadapp::FeatPayloadExtrude epl;
                     epl.sketch_id      = sketch_fid;
                     epl.distance       = depth;
                     epl.end_type       = cadapp::ExtrudeEndType::Blind;
-                    epl.flip_direction = (endE < startS);
+                    epl.flip_direction = (sign < 0.0);
 
                     // fld 14 = ZW3D boolean combine: 0 = new/base, 1 = add
                     // (boss), 2 = remove (cut). A cut rebuilt as a boss just
