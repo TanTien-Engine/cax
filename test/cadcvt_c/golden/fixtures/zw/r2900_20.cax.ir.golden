@@ -394,7 +394,7 @@ sketch 1000003 name=FtAllExt:profile plane_origin=(0.000,0.000,0.006) plane_norm
   geo 4 type=Line constr=0 params=[0.020,-0.007,0.020,-0.007]
   geo 5 type=Line constr=0 params=[0.020,-0.007,0.020,-0.007]
   geo 6 type=Line constr=0 params=[0.020,-0.007,0.020,-0.009]
-sketch 1000004 name=FtAllExt:profile plane_origin=(0.000,0.000,0.016) plane_normal=(0.000,0.000,1.000) plane_xdir=(0.000,1.000,0.000) geos=6 cons=0
+sketch 1000004 name=FtAllExt:profile plane_origin=(0.000,0.000,0.006) plane_normal=(0.000,0.000,1.000) plane_xdir=(0.000,1.000,0.000) geos=6 cons=0
   geo 1 type=Arc constr=0 params=[-0.007,-0.018,0.002,4.3630,4.7124]
   geo 2 type=Arc constr=0 params=[-0.008,-0.019,0.001,4.0752,4.3630]
   geo 3 type=Line constr=0 params=[-0.008,-0.020,-0.008,-0.020]
@@ -404,7 +404,7 @@ sketch 1000004 name=FtAllExt:profile plane_origin=(0.000,0.000,0.016) plane_norm
 sketch 1000006 name=FtAllExt:profile plane_origin=(0.000,-0.010,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=2 cons=0
   geo 1 type=Circle constr=0 params=[0.017,0.009,0.000]
   geo 2 type=Circle constr=0 params=[0.017,0.009,0.001]
-sketch 1000007 name=FtAllExt:profile plane_origin=(0.000,-0.011,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
+sketch 1000007 name=FtAllExt:profile plane_origin=(0.000,-0.010,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
   geo 1 type=Circle constr=0 params=[0.017,0.009,0.000]
 sketch 1000008 name=FtAllExt:profile plane_origin=(0.000,-0.011,0.000) plane_normal=(0.000,-1.000,0.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=0
   geo 1 type=Circle constr=0 params=[0.017,0.009,0.001]
@@ -421,18 +421,18 @@ feat 1000003 name=FtAllExt:profile type=Sketch suppressed=0 payload=sketch sketc
 feat 3 name=FtAllExt type=BossExtrude suppressed=0 payload=extrude sketch_id=1000003 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
   inputs=[2:base]
 feat 1000004 name=FtAllExt:profile type=Sketch suppressed=0 payload=sketch sketch_id=1000004
-feat 4 name=FtAllExt type=CutExtrude suppressed=0 payload=extrude sketch_id=1000004 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=1
+feat 4 name=FtAllExt type=CutExtrude suppressed=0 payload=extrude sketch_id=1000004 dir=(0.000,0.000,1.000) dist=0.010 dist2=0.000 end=0 flip=0
   inputs=[3:base]
 feat 5 name=FtPtnFtr type=LinearPattern suppressed=0 payload=linpat dir1=(0.000,1.000,0.000) count1=10 spacing1=0.003 count2=1 spacing2=0.020
   inputs=[3:tool,4:base]
 feat 1000006 name=FtAllExt:profile type=Sketch suppressed=0 payload=sketch sketch_id=1000006
-feat 6 name=FtAllExt type=BossExtrude suppressed=0 payload=extrude sketch_id=1000006 dir=(0.000,0.000,1.000) dist=0.000 dist2=0.000 end=0 flip=1
+feat 6 name=FtAllExt type=BossExtrude suppressed=0 payload=extrude sketch_id=1000006 dir=(0.000,0.000,1.000) dist=0.000 dist2=0.000 end=0 flip=0
   inputs=[5:base]
 feat 1000007 name=FtAllExt:profile type=Sketch suppressed=0 payload=sketch sketch_id=1000007
-feat 7 name=FtAllExt type=BossExtrude suppressed=0 payload=extrude sketch_id=1000007 dir=(0.000,0.000,1.000) dist=0.000 dist2=0.000 end=0 flip=1
+feat 7 name=FtAllExt type=BossExtrude suppressed=0 payload=extrude sketch_id=1000007 dir=(0.000,0.000,1.000) dist=0.000 dist2=0.000 end=0 flip=0
   inputs=[6:base]
 feat 1000008 name=FtAllExt:profile type=Sketch suppressed=0 payload=sketch sketch_id=1000008
-feat 8 name=FtAllExt type=BossExtrude suppressed=0 payload=extrude sketch_id=1000008 dir=(0.000,0.000,1.000) dist=0.000 dist2=0.000 end=0 flip=1
+feat 8 name=FtAllExt type=BossExtrude suppressed=0 payload=extrude sketch_id=1000008 dir=(0.000,0.000,1.000) dist=0.000 dist2=0.000 end=0 flip=0
   inputs=[7:base]
 feat 9 name=FtChamfers2 type=Chamfer suppressed=0 payload=chamfer d1=0.000 d2=0.000 edges=1
   inputs=[8:base]
