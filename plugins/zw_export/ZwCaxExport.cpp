@@ -373,7 +373,6 @@ struct FeatNode
 #include "zwapi_util.h"                    // vxName, evxErrors, ZW_API_NO_ERROR, svxBndBox, svxPoint/Vector, VX_ENT_*
 #include "zwapi_general_ent.h"             // cvxEntBndBox / cvxEntExists / cvxEntName (feature tree label)
 #include "zwapi_brep_face.h"               // cvxFaceParam / cvxFaceEval (face normal for matching signatures)
-#include "zwapi_brep_shape.h"              // cvxPartInqShapeFaces (DIAG: body face count to test roll-back)
 #include "zwapi_file.h"                    // cvxFileExportInit / cvxFileExport (STEP truth geometry)
 #include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle); ZwEntityMatrixGet
 #include "zwapi_matrix_data.h"             // szwMatrix (sketch insertion-plane world transform)
@@ -960,37 +959,65 @@ std::vector<FieldDump> DumpFields(int idFtr)
     return out;
 }
 
-// The model EDGES a feature consumes as input. For a chamfer / fillet these
-// ARE the picked edges -- their edge-list field is a nested VX_FLD_DATA list
-// DumpFields cannot descend, so read them straight off the feature's input
-// entity set instead (the same cvxPartFtrInqInpEnts path ReadProfile uses for
-// an extrude's standalone sketch, here filtered to VX_ENT_EDGE). History is
-// already rolled to idFtr by the caller -- the in-context state this inquiry
-// needs. Each edge becomes a geometric signature (anchor = edge bbox centre);
-// the ZW3D id is meaningless after the OCCT rebuild, only the geometry is, so
-// the loader matches the chamfer onto the rebuilt body by that anchor.
-std::vector<EntSig> InputEdges(int idFtr)
+// ---- History stop-line positioning -----------------------------------------
+// The export walks the model through history states so each feature is read in
+// the state it actually operated in. ZwHistoryReplay moves the model stop-line
+// (the real roll -- cvxPartHistScrollTo is a no-op for the body: proven on
+// test.Z3PRT, faces stayed 7->7, only ZwHistoryReplay moved it 7->6) and is
+// RELATIVE to the current position (SDK contract: "if the entity is played it
+// rolls back to it; if not played it plays forward to it"). So a single forward
+// sweep -- roll to BEGIN once, then ask for each feature's BEFORE / AFTER
+// position in history order -- only ever plays forward; the body is regenerated
+// once end-to-end, never per-feature (no O(N^2) replay).
+//
+// We read a feature's INPUTS in its BEFORE state (its picked faces/edges are
+// still live -- a dressup hasn't consumed its edge yet, so the input resolves to
+// the ORIGINAL, e.g. box top edge @ (5,0,5) not the chamfer boundary @ (-3,0,5))
+// and its OUTPUTS in its AFTER state (its result shapes exist). This matters
+// because the reader rebuilds incrementally and matches each feature's refs
+// against THAT same per-feature state; reading at the final body would hand it
+// post-consumption / post-modification geometry. The old code did this roll for
+// dressup edges only; here it is uniform for every feature, in one sweep.
+
+void RollBodyToBegin()
 {
-    std::vector<EntSig> out;
-    // A dressup (chamfer / fillet) CONSUMES its picked edge: in the final regen
-    // body the edge is gone, replaced by the chamfer boundary, and EVERY id /
-    // feature-input query resolves to that boundary (a `setback` off the
-    // original). To read the ORIGINAL edge, roll the MODEL back to before this
-    // feature with ZwHistoryReplay -- the REAL roll-back. (cvxPartHistScrollTo
-    // is a no-op for the model: proven on test.Z3PRT, faces stayed 7->7;
-    // ZwHistoryReplay gives 7->6 and the input edge then resolves to the
-    // original -- box top edge id 1550 @ (5,0,5) instead of boundary id 2018 @
-    // (-3,0,5).) Query + read at the rolled-back state, then replay TO_THE_END
-    // to restore the model and re-assert the loop's per-feature eval context.
+    ZwHistoryReplay(nullptr, ZW_HISTORY_REPLAY_TO_BEGIN);   // the single rollback
+}
+
+void RollBodyToEnd()
+{
+    ZwHistoryReplay(nullptr, ZW_HISTORY_REPLAY_TO_THE_END);
+}
+
+// Play the body to just BEFORE / AFTER a feature. Called in history order from
+// the begin, so each call only plays FORWARD (for BEFORE the target feature
+// isn't played yet; AFTER plays exactly this one feature) -- never a rollback.
+// Returns true on success.
+bool RollBody(int idFtr, ezwHistoryModelStopLinePosition pos)
+{
     szwEntityHandle h;
-    bool rolled = false;
+    bool ok = false;
     if (ZwEntityIdTransfer(1, &idFtr, &h) == ZW_API_NO_ERROR) {
-        if (ZwHistoryReplay(&h, ZW_HISTORY_REPLAY_BEFORE_FEATURE) == ZW_API_NO_ERROR) {
-            rolled = true;
-        }
+        ok = (ZwHistoryReplay(&h, pos) == ZW_API_NO_ERROR);
         ZwEntityHandleFree(&h);
     }
+    return ok;
+}
 
+bool RollBodyBefore(int idFtr) { return RollBody(idFtr, ZW_HISTORY_REPLAY_BEFORE_FEATURE); }
+bool RollBodyAfter (int idFtr) { return RollBody(idFtr, ZW_HISTORY_REPLAY_AFTER_FEATURE);  }
+
+// The model EDGES a feature consumes as input, read AT THE CURRENT stop-line --
+// the caller has already rolled the body to this feature's BEFORE state, where a
+// dressup's picked edge is still the original (not the post-chamfer boundary).
+// No rolling here: that is the caller's single forward sweep. Each edge becomes a
+// geometric signature; the ZW3D id is meaningless after the OCCT rebuild, only
+// the geometry the loader matches on survives. (cvxPartFtrInqInpEnts allocates
+// its list for ZwMemoryFree, not the cvxMemFree the older cvxPart* inquiries
+// use -- same as ReadProfile.)
+std::vector<EntSig> InputEdgesAtCurrentState(int idFtr)
+{
+    std::vector<EntSig> out;
     int  cnt = 0;
     int* ids = nullptr;
     if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_EDGE, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr)
@@ -1000,103 +1027,9 @@ std::vector<EntSig> InputEdges(int idFtr)
                 out.push_back(EntitySig(ids[i]));
             }
         }
-        // cvxPartFtrInqInpEnts allocates its list for ZwMemoryFree, not the
-        // cvxMemFree the older cvxPart* inquiries use (same as ReadProfile).
         ZwMemoryFree(reinterpret_cast<void**>(&ids));
     }
-
-    if (rolled) {
-        ZwHistoryReplay(nullptr, ZW_HISTORY_REPLAY_TO_THE_END);  // restore model
-        cvxPartHistScrollTo(idFtr);   // restore the loop's per-feature context
-    }
     return out;
-}
-
-// ---- DIAGNOSTIC (temporary) -------------------------------------------------
-// How does a dressup's input edge resolve across history states? For the first
-// input edge of idFtr it captures: the edge id + bbox-centre AT idFtr (post-
-// dressup); then rolls to idPrevFtr and captures (a) the SAME id's
-// existence/bbox there (does carrying the id across states reach the original
-// edge?), and (b) a fresh cvxPartFtrInqInpEnts at that state (does re-querying
-// reach it?). Lets us SEE which method yields the original edge vs the consumed
-// edge's post-dressup successor, instead of guessing.
-struct EdgeProbe {
-    int    post_id = 0, post_is_edge = 0, post_is_face = 0;
-    double post_anchor[3] = { 0, 0, 0 };
-    int    scroll_rc = -999;
-    int    prev_sameid_edge = 0, prev_sameid_face = 0, prev_sameid_box = 0;
-    double prev_sameid_anchor[3] = { 0, 0, 0 };
-    int    prev_requery_id = 0, prev_requery_edge = 0, prev_requery_face = 0, prev_requery_box = 0;
-    double prev_requery_anchor[3] = { 0, 0, 0 };
-    // Body face count at each state. If the roll-back really changed the model,
-    // post (chamfered) > prev (pre-chamfer); if they're EQUAL the body did NOT
-    // roll back (so the API/usage is the problem, exactly as suspected).
-    int    post_body_faces = -1, prev_body_faces = -1, body_shape_id = 0;
-};
-
-EdgeProbe ProbeInputEdge(int idFtr, int idPrevFtr)
-{
-    EdgeProbe p;
-    auto bbcenter = [](int id, double out[3]) -> bool {
-        svxBndBox b;
-        if (cvxEntBndBox(id, &b) != ZW_API_NO_ERROR) { return false; }
-        out[0] = 0.5 * (b.X.min + b.X.max);
-        out[1] = 0.5 * (b.Y.min + b.Y.max);
-        out[2] = 0.5 * (b.Z.min + b.Z.max);
-        return true;
-    };
-    {
-        int cnt = 0; int* ids = nullptr;
-        if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_EDGE, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr) {
-            if (cnt > 0 && ids[0] > 0) {
-                p.post_id      = ids[0];
-                p.post_is_edge = cvxEntExists(ids[0], VX_ENT_EDGE) ? 1 : 0;
-                p.post_is_face = cvxEntExists(ids[0], VX_ENT_FACE) ? 1 : 0;
-                bbcenter(ids[0], p.post_anchor);
-            }
-            ZwMemoryFree(reinterpret_cast<void**>(&ids));
-        }
-    }
-    // Body shape + its face count at the post (this-feature) state.
-    auto faceCount = [](int shapeId) -> int {
-        if (shapeId <= 0) { return -1; }
-        int  fc   = 0;
-        int* fids = nullptr;
-        if (cvxPartInqShapeFaces(shapeId, &fc, &fids) != ZW_API_NO_ERROR) { return -1; }
-        if (fids != nullptr) { cvxMemFree(reinterpret_cast<void**>(&fids)); }
-        return fc;
-    };
-    {
-        int  cnt = 0; int* sh = nullptr;
-        if (cvxPartInqFtrEnts(idFtr, VX_ENT_SHAPE, &cnt, &sh) == ZW_API_NO_ERROR && sh != nullptr) {
-            if (cnt > 0) { p.body_shape_id = sh[0]; }
-            cvxMemFree(reinterpret_cast<void**>(&sh));
-        }
-        p.post_body_faces = faceCount(p.body_shape_id);
-    }
-
-    if (p.post_id <= 0 || idPrevFtr <= 0) { return p; }
-    p.scroll_rc        = static_cast<int>(cvxPartHistScrollTo(idPrevFtr));
-    // SAME body shape id, counted at the rolled-back state: equal count => the
-    // roll-back did NOT change the model.
-    p.prev_body_faces  = faceCount(p.body_shape_id);
-    p.prev_sameid_edge = cvxEntExists(p.post_id, VX_ENT_EDGE) ? 1 : 0;
-    p.prev_sameid_face = cvxEntExists(p.post_id, VX_ENT_FACE) ? 1 : 0;
-    p.prev_sameid_box  = bbcenter(p.post_id, p.prev_sameid_anchor) ? 1 : 0;
-    {
-        int cnt = 0; int* ids = nullptr;
-        if (cvxPartFtrInqInpEnts(idFtr, VX_ENT_EDGE, &cnt, &ids) == ZW_API_NO_ERROR && ids != nullptr) {
-            if (cnt > 0 && ids[0] > 0) {
-                p.prev_requery_id   = ids[0];
-                p.prev_requery_edge = cvxEntExists(ids[0], VX_ENT_EDGE) ? 1 : 0;
-                p.prev_requery_face = cvxEntExists(ids[0], VX_ENT_FACE) ? 1 : 0;
-                p.prev_requery_box  = bbcenter(ids[0], p.prev_requery_anchor) ? 1 : 0;
-            }
-            ZwMemoryFree(reinterpret_cast<void**>(&ids));
-        }
-    }
-    cvxPartHistScrollTo(idFtr);   // restore
-    return p;
 }
 
 // Export the active part's final solid to a STEP file. This is the
@@ -1875,6 +1808,12 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
     // JSON id (cvxPartInqEntFtr returns a ZW id; the JSON id is the ordinal).
     zwapi::SetJsonIdMap(feats);
 
+    // ONE forward sweep through history. Roll the body to the BEGIN once; from
+    // here every per-feature roll only plays FORWARD (ZwHistoryReplay is relative
+    // to the stop-line and we visit features in history order), so the body is
+    // rebuilt once end-to-end -- no per-feature roll-back-and-replay (no O(N^2)).
+    zwapi::RollBodyToBegin();
+
     // History is linear per part, so the running solid tip is just the
     // previous solid-producing feature's id. Sketches don't advance it.
     uint32_t prev_solid_id = 0;
@@ -1883,10 +1822,16 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
     {
         int fid = feats[i];
 
-        // Roll the history bar to this feature so its data reads in the
-        // state where it executed (see ScrollHistoryTo). Restored to the
-        // end after the loop.
-        int scroll_rc = zwapi::ScrollHistoryTo(fid);
+        // INPUT STATE: play the body forward to just BEFORE this feature, where
+        // its picked faces/edges are still live (a dressup hasn't consumed its
+        // edge yet). Every INPUT-side read below -- params, entity picks,
+        // profile, pattern direction -- happens in this state, so its geometric
+        // anchors match the state the feature actually operated in (the same
+        // state the reader rebuilds and matches against). OUTPUT-side reads later
+        // roll forward to the AFTER state. No cvxPartHistScrollTo here: the body
+        // roll itself sets the read context (mirrors the proven dressup recipe --
+        // ZwHistoryReplay then read, no scroll).
+        bool at_before = zwapi::RollBodyBefore(fid);
 
         FeatNode node;
         node.id   = static_cast<uint32_t>(i + 1);
@@ -1914,6 +1859,9 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         }
         else if (node.kind == FeatKind::Box)
         {
+            // OUTPUT STATE: a Box is a root primitive -- its result shape (read
+            // by ReadShapeMinCorner) only exists once the feature executes.
+            zwapi::RollBodyAfter(fid);
             zwapi::ReadBox(fid, node.box);
             jf["kind"]   = sc::kind::Box;
             jf["length"] = node.box.length;
@@ -1944,23 +1892,23 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             // is 0; -1 from data_rc means "feature data undefined".
             zwapi::FtrProbe probe = zwapi::ProbeFeature(fid);
             json diag;
-            diag["scroll_rc"]   = scroll_rc;
+            diag["roll_before"] = at_before;   // body played to this feat's BEFORE state
             diag["data_rc"]     = probe.data_rc;
             diag["field_count"] = probe.field_count;
 
             std::vector<FieldDump> fields = zwapi::DumpFields(fid);
 
-            // Picked edges in their ORIGINAL geometry. The nested-list ents in
-            // `fields` above were read at THIS feature's own state, where a
-            // dressup has already consumed its edge -> they carry the POST-
-            // dressup boundary edge. InputEdges rolls back to the previous
-            // feature (feats[i-1]) and reads the same edges where they're still
-            // the originals. When the counts line up, overwrite the list-field
-            // ents' anchors with the originals so the reader / TopoRefResolver
-            // matches the true edge instead of the chamfer's new boundary
-            // (which on test.Z3PRT sat at the face centre, tied across 4 edges).
-            const int prev_fid = (i > 0) ? feats[i - 1] : 0;
-            std::vector<EntSig> in_edges = zwapi::InputEdges(fid);  // ZwHistoryReplay roll-back inside
+            // Picked edges in their ORIGINAL geometry. The body is already at
+            // this feature's BEFORE state, so a dressup's edge is still the
+            // original (not yet consumed into a chamfer boundary) -- the nested-
+            // list ents in `fields` above were read in this same state, so they
+            // should already be original. We additionally read the feature's
+            // input edges straight off its input set (the proven cvxPartFtrInq-
+            // InpEnts path) and, when the counts line up, overwrite the list-
+            // field ents' anchors with them, so the reader / TopoRefResolver
+            // matches the true edge instead of any post-dressup boundary (which
+            // on test.Z3PRT sat at the face centre, tied across 4 edges).
+            std::vector<EntSig> in_edges = zwapi::InputEdgesAtCurrentState(fid);
             if (!in_edges.empty())
             {
                 size_t n_list = 0;
@@ -1999,20 +1947,9 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                 diag["geomcopy_rc"] = gc.get_rc;
             }
 
-            // What geometry did this feature actually produce? For features
-            // whose parameters the API won't give us (CdGeomCopy general-
-            // errors above), this is where the real content is.
-            ResultEnts re = zwapi::FeatureResultEnts(fid);
-            if (re.n_shape > 0 || re.n_face > 0 || re.n_curve > 0) {
-                jf["result_ents"] = ResultEntsToJson(re);
-            }
-            diag["n_shape"] = re.n_shape;
-            diag["n_face"]  = re.n_face;
-            diag["n_curve"] = re.n_curve;
-
-            // Feature-level input edges (original geometry, computed above via
-            // the roll-back) -- also emitted standalone as a fallback for the
-            // reader when it can't use the list-field ents.
+            // Feature-level input edges (original geometry, read in this
+            // feature's BEFORE state) -- also emitted standalone as a fallback
+            // for the reader when it can't use the list-field ents.
             if (!in_edges.empty()) {
                 json ea = json::array();
                 for (const auto& e : in_edges) {
@@ -2068,11 +2005,29 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                 diag["pat_candidates"] = std::move(cand_arr);
             }
 
+            // OUTPUT STATE: play the body forward to just AFTER this feature, so
+            // its result shapes/faces exist. The input-side reads above ran in
+            // the BEFORE state; this is the single forward step that actually
+            // builds this feature. Everything below reads its OWN output.
+            bool at_after = zwapi::RollBodyAfter(fid);
+            diag["roll_after"] = at_after;
+
+            // What geometry did this feature actually produce? For features
+            // whose parameters the API won't give us (CdGeomCopy general-
+            // errors above), this is where the real content is.
+            ResultEnts re = zwapi::FeatureResultEnts(fid);
+            if (re.n_shape > 0 || re.n_face > 0 || re.n_curve > 0) {
+                jf["result_ents"] = ResultEntsToJson(re);
+            }
+            diag["n_shape"] = re.n_shape;
+            diag["n_face"]  = re.n_face;
+            diag["n_curve"] = re.n_curve;
+
             // A shape-producing feature whose parameters the API won't give
             // us (e.g. CdGeomCopy, an imported base) needs its OWN geometry
             // as authored input -- export just its result shapes to a
-            // per-feature STEP. The history is rolled to this feature, so
-            // these shapes are its own result. Downstream parametric
+            // per-feature STEP. The body is now rolled to AFTER this feature,
+            // so these shapes are its own result. Downstream parametric
             // features replay on top of this base.
             if (re.n_shape > 0)
             {
@@ -2085,44 +2040,16 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                 diag["feat_step_export_rc"] = fse.export_rc;
             }
 
-            // DIAGNOSTIC: probe how this feature's input edge resolves at its
-            // own state vs one feature back (only does work when there IS an
-            // input edge). Reveals which method reaches the ORIGINAL edge.
-            {
-                zwapi::EdgeProbe ep = zwapi::ProbeInputEdge(fid, prev_fid);
-                if (ep.post_id > 0)
-                {
-                    json jp;
-                    jp["post_id"]            = ep.post_id;
-                    jp["post_is_edge"]       = ep.post_is_edge;
-                    jp["post_is_face"]       = ep.post_is_face;
-                    jp["post_anchor"]        = json::array({ ep.post_anchor[0], ep.post_anchor[1], ep.post_anchor[2] });
-                    jp["scroll_rc"]          = ep.scroll_rc;
-                    jp["prev_sameid_edge"]   = ep.prev_sameid_edge;
-                    jp["prev_sameid_face"]   = ep.prev_sameid_face;
-                    jp["prev_sameid_box"]    = ep.prev_sameid_box;
-                    jp["prev_sameid_anchor"] = json::array({ ep.prev_sameid_anchor[0], ep.prev_sameid_anchor[1], ep.prev_sameid_anchor[2] });
-                    jp["prev_requery_id"]    = ep.prev_requery_id;
-                    jp["prev_requery_edge"]  = ep.prev_requery_edge;
-                    jp["prev_requery_face"]  = ep.prev_requery_face;
-                    jp["prev_requery_box"]   = ep.prev_requery_box;
-                    jp["prev_requery_anchor"]= json::array({ ep.prev_requery_anchor[0], ep.prev_requery_anchor[1], ep.prev_requery_anchor[2] });
-                    jp["post_body_faces"]    = ep.post_body_faces;
-                    jp["prev_body_faces"]    = ep.prev_body_faces;
-                    jp["body_shape_id"]      = ep.body_shape_id;
-                    diag["edge_probe"] = std::move(jp);
-                }
-            }
-
             jf["_diag"] = std::move(diag);
         }
 
         features.push_back(std::move(jf));
     }
 
-    // Restore the history rollback bar to the end (we rolled it back per
-    // feature above to read each in its own context).
-    zwapi::ScrollHistoryTo(feats.back());
+    // Restore: play the body to the end once. Each feature above was read in its
+    // own before/after state during the single forward sweep; this returns the
+    // model to its final state for the whole-part STEP export below.
+    zwapi::RollBodyToEnd();
 
     doc["document"]["name"]     = zwapi::ActivePartName();
     doc["document"]["features"] = std::move(features);
