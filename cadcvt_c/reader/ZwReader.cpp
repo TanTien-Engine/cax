@@ -1723,10 +1723,55 @@ bool ZwReader::ReadFile(const std::string& path,
                         mf.type = cadapp::FeatType::Mirror;
                         mf.data = std::move(pl);
                         mf.ext_strings["zw_type"] = zt;
-                        // Tools = the mirrored originals; Base = running body the
-                        // mirror images fuse onto (AddMirroredOriginals).
-                        for (uint32_t t : mir_tools) {
-                            PushInput(mf, t, cadapp::InputRole::Tool);
+                        // A ZW3D feature-mirror reflects the CUMULATIVE geometry
+                        // the mirrored features added, INCLUDING their fillets /
+                        // chamfers / patterns. The per-original-tool path
+                        // (AddMirroredOriginals) mirrors each feature's raw tool
+                        // solid and silently drops dressups (a fillet has no tool
+                        // solid) -- so the mirror side comes out MISSING its
+                        // rounds. Prefer the Replayer's DELTA path: reflect
+                        // (running body) minus (body BEFORE the first mirrored
+                        // feature), which carries every detail. That pre-body is
+                        // the Base input of the lowest-id reconstructed mirrored
+                        // feature (an opaque feature adds nothing, so the next
+                        // built feature's base is the same body state). Wired as
+                        // Role::PatternTarget (-> Replayer's body_target); since
+                        // ResolvePatternInputs short-circuits on Tool originals,
+                        // the delta and per-tool wirings are mutually exclusive.
+                        // Assumes the mirrored set is the contiguous run of solid
+                        // features since that pre-body (true for R2900_100's
+                        // Mirror1/2); falls back to per-tool when no pre-body is
+                        // resolvable.
+                        uint32_t pre_body = 0;
+                        {
+                            uint32_t lowest = 0xFFFFFFFFu;
+                            for (uint32_t t : mir_tools) {
+                                if (t < lowest) { lowest = t; }
+                            }
+                            for (const auto& f : out.features) {
+                                if (f.id != lowest) { continue; }
+                                for (size_t k = 0; k < f.input_feature_ids.size(); ++k) {
+                                    cadapp::InputRole r =
+                                        (k < f.input_roles.size())
+                                            ? f.input_roles[k]
+                                            : cadapp::InputRole::Base;
+                                    if (r == cadapp::InputRole::Base) {
+                                        pre_body = f.input_feature_ids[k];
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        if (pre_body != 0 && pre_body != id) {
+                            PushInput(mf, pre_body, cadapp::InputRole::PatternTarget);
+                        } else {
+                            // Fallback: per-original-tool mirror (drops dressups,
+                            // but better than the whole-body mirror that an empty
+                            // input set would trigger).
+                            for (uint32_t t : mir_tools) {
+                                PushInput(mf, t, cadapp::InputRole::Tool);
+                            }
                         }
                         PushInput(mf, running_solid_id, cadapp::InputRole::Base);
                         out.features.push_back(std::move(mf));

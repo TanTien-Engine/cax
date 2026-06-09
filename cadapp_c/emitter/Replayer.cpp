@@ -1778,7 +1778,28 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
 
                 auto pi = ResolvePatternInputs(feat, feature_tools,
                                                feature_nodes);
-                if (!pi.originals.empty() && base_node >= 0)
+                if (pi.body_target >= 0 && base_node >= 0)
+                {
+                    // DELTA mirror (ZW3D feature-mirror): reflect the CUMULATIVE
+                    // geometry the mirrored features added -- (base) minus (the
+                    // body before the first mirrored feature) -- so their
+                    // fillets / chamfers / patterns / cuts all come along. The
+                    // per-original-tool path below mirrors raw tool solids and
+                    // silently drops dressups, leaving the mirror side missing
+                    // its rounds. pi.body_target is that pre-originals body,
+                    // wired Role::PatternTarget by the Zw reader; FreeCAD mirrors
+                    // carry only Originals -> the per-tool path. delta =
+                    // cut(base, pre); result = fuse(base, mirror(delta)).
+                    int o_n   = cg->AddConst(origin, "origin");
+                    int n_n   = cg->AddConst(normal, "normal");
+                    int delta = cg->AddOp("cut", {base_node, pi.body_target},
+                                          {}, feat.name + ":delta");
+                    int m_n   = cg->AddOp("mirror", {delta, o_n, n_n},
+                                          {}, feat.name + ":mirror");
+                    node = cg->AddOp("fuse", {base_node, m_n},
+                                     {}, feat.name + ":fuse");
+                }
+                else if (!pi.originals.empty() && base_node >= 0)
                 {
                     node = AddMirroredOriginals(*cg, base_node, pi.originals,
                                                 origin, normal, feat.name);
