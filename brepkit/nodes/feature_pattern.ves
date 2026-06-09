@@ -1,0 +1,115 @@
+import "blueprint.node" for Node
+import "blueprint.pin" for Pin
+import "blueprint.blueprint" for Blueprint
+import "blueprint.node_param" for NodeParam
+import "blueprint.variant" for Variant, VAR_TYPE_NUMBER
+import "blueprint.node_helper" for NodeHelper
+import "brepkit.variant" for VAR_TOPO_SHAPE
+import "maths.vector" for Vector3
+import "brepkit" for TopoAlgo, GlobalConfig
+import "brepgraph.compiler" for Compiler
+
+// FeaturePattern: replicate a seed `tool` on a linear 1D/2D grid and
+// combine ALL instances onto the running body `base` with a SINGLE
+// boolean (op_kind: 0 = fuse / boss, 1 = cut / hole).
+//
+// Unlike chaining LinearPattern -> Cut/Fuse, the tool-pattern AND the
+// boolean fold into ONE op (calc_info "feature_pattern"), so the whole
+// pattern stays a single node through save and history-rebuild instead
+// of expanding into N per-instance boolean nodes. The instance union is
+// computed once and combined against the body in one boolean -- the same
+// optimization the replayer applies, now available natively in modeling.
+//
+// Per-instance dressups (a fillet / chamfer that re-resolves on each
+// instance) are NOT handled here yet: that needs the seed to carry a
+// pick + dressup spec the op re-resolves per instance (the replayer's
+// ApplyPatternInstance path). This node covers the equivariant geometry
+// case; the dressup extension layers on top (extra params + a per-
+// instance resolve loop in TopoAlgo_Ext::FeaturePattern).
+class FeaturePattern is Node
+{
+	init()
+	{
+		super.init()
+
+		this.imports = [
+			Pin(this, "base", VAR_TOPO_SHAPE),
+			Pin(this, "tool", VAR_TOPO_SHAPE),
+		]
+		this.exports = [
+			Pin(this, "shape", VAR_TOPO_SHAPE),
+		]
+
+		this.params.add(NodeParam("op_kind", 0))   // 0 = fuse (boss), 1 = cut (hole)
+		this.params.add(NodeParam("dir1", Vector3(1, 0, 0), { "region" : 1 }))
+		this.params.add(NodeParam("count1", 2))
+		this.params.add(NodeParam("spacing1", 2.0, { "region" : 10 }))
+		this.params.add(NodeParam("dir2", Vector3(0, 1, 0), { "region" : 1 }))
+		this.params.add(NodeParam("count2", 1))
+		this.params.add(NodeParam("spacing2", 0.0, { "region" : 10 }))
+
+		this.layout()
+
+		this.calc_info = {
+			"op"     : "feature_pattern",
+			"inputs" : [0, 1],
+			"params" : [
+				{"name":"op_kind",  "type":"integer"},
+				{"name":"dir1",     "type":"number3"},
+				{"name":"count1",   "type":"integer"},
+				{"name":"spacing1", "type":"number"},
+				{"name":"dir2",     "type":"number3"},
+				{"name":"count2",   "type":"integer"},
+				{"name":"spacing2", "type":"number"},
+			],
+		}
+
+		this.calc_const_refs = nil
+		this.calc_graph_ref = nil
+		this.calc_step_id = -1
+
+		this.op_id = -1
+	}
+
+	on_param_dirty()
+	{
+		super.on_param_dirty()
+		Compiler.update_params(this)
+	}
+
+	on_connection_dirty() {
+		this.calc_step_id = -1
+	}
+
+	calc_value(idx)
+	{
+		var v_base = Blueprint.calc_input_value(this, 0)
+		var v_tool = Blueprint.calc_input_value(this, 1)
+		if (!v_tool) {
+			return v_base   // no seed -> body passes through (may be nil)
+		}
+		if (!v_base) {
+			return nil      // feature pattern needs a body to combine onto
+		}
+
+		var op_kind  = this.query_param("op_kind").value
+		var dir1     = this.query_param("dir1").value
+		var count1   = this.query_param("count1").value
+		var spacing1 = this.query_param("spacing1").value
+		var dir2     = this.query_param("dir2").value
+		var count2   = this.query_param("count2").value
+		var spacing2 = this.query_param("spacing2").value
+
+		if (this.op_id < 0) {
+			this.op_id = GlobalConfig.get_topo_naming().get_next_op_id()
+		}
+
+		var shape = TopoAlgo.feature_pattern(v_base.value, v_tool.value, op_kind, dir1.x, dir1.z, dir1.y, count1, spacing1, dir2.x, dir2.z, dir2.y, count2, spacing2, this.op_id)
+
+		if (shape) {
+			return Variant(VAR_TOPO_SHAPE, shape)
+		} else {
+			return nil
+		}
+	}
+}

@@ -813,6 +813,35 @@ void w_TopoAlgo_circular_pattern()
     brepkit::return_topo_shape(dst);
 }
 
+void w_TopoAlgo_feature_pattern()
+{
+    auto base = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(1))->obj;
+    auto tool = ((wrapper::Proxy<brepkit::TopoShape>*)ves_toforeign(2))->obj;
+
+    int op_kind = (int)ves_tonumber(3);
+
+    sm::vec3 dir1;
+    dir1.x = ves_tonumber(4);
+    dir1.y = ves_tonumber(5);
+    dir1.z = ves_tonumber(6);
+    int count1 = (int)ves_tonumber(7);
+    double spacing1 = ves_tonumber(8);
+
+    sm::vec3 dir2;
+    dir2.x = ves_tonumber(9);
+    dir2.y = ves_tonumber(10);
+    dir2.z = ves_tonumber(11);
+    int count2 = (int)ves_tonumber(12);
+    double spacing2 = ves_tonumber(13);
+
+    uint32_t op_id = (uint32_t)ves_tonumber(14);
+
+    auto naming = brepkit::GlobalConfig::Instance()->GetTopoNaming();
+    auto dst = brepkit::TopoAlgo_Ext::FeaturePattern(
+        base, tool, op_kind, dir1, count1, spacing1, dir2, count2, spacing2, op_id, naming);
+    brepkit::return_topo_shape(dst);
+}
+
 static brepkit::TopoAlgo_Ext::HoleType ParseHoleType(const char* s)
 {
     if (!s) {
@@ -1250,6 +1279,7 @@ VesselForeignMethodFn BrepKitBindMethod(const char* signature)
     if (strcmp(signature, "static TopoAlgo.sweep(_,_,_,_)") == 0) return w_TopoAlgo_sweep;
     if (strcmp(signature, "static TopoAlgo.linear_pattern(_,_,_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_linear_pattern;
     if (strcmp(signature, "static TopoAlgo.circular_pattern(_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_circular_pattern;
+    if (strcmp(signature, "static TopoAlgo.feature_pattern(_,_,_,_,_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_feature_pattern;
     if (strcmp(signature, "static TopoAlgo.hole_wizard(_,_,_,_,_,_,_,_,_,_,_,_,_,_,_)") == 0) return w_TopoAlgo_hole_wizard;
     if (strcmp(signature, "static TopoAlgo.variable_fillet(_,_,_,_)") == 0) return w_TopoAlgo_variable_fillet;
     if (strcmp(signature, "static TopoAlgo.sweep_with_guide(_,_,_,_,_)") == 0) return w_TopoAlgo_sweep_with_guide;

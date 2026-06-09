@@ -46,7 +46,7 @@ var SUPPORTED_OPS = [
     "box", "cylinder", "cone", "sphere", "torus",
     "cut", "fuse", "common",
     "translate", "rotate", "scale", "mirror", "offset",
-    "linear_pattern", "circular_pattern",
+    "linear_pattern", "circular_pattern", "feature_pattern",
     "revolve", "prism",
     "chamfer", "fillet",
 ]

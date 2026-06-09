@@ -8,6 +8,7 @@
 // ============================================================
 
 #include "TopoAlgo_Ext.h"
+#include "TopoAlgo.h"
 #include "TopoShape.h"
 #include "ShapeBuilder.h"
 #include "occt_adapter.h"
@@ -819,6 +820,87 @@ std::shared_ptr<TopoShape> TopoAlgo_Ext::LinearPattern(
     }
 
     return result_shape;
+}
+
+
+// ============================================================
+// FeaturePattern -pattern a seed tool onto a body, folded into
+// one op (instance union once + a single boolean against base)
+// ============================================================
+
+std::shared_ptr<TopoShape> TopoAlgo_Ext::FeaturePattern(
+    const std::shared_ptr<TopoShape>& base,
+    const std::shared_ptr<TopoShape>& tool,
+    int op_kind,
+    const sm::vec3& dir1,
+    int count1,
+    double spacing1,
+    const sm::vec3& dir2,
+    int count2,
+    double spacing2,
+    uint32_t op_id,
+    const std::shared_ptr<brepgraph::TopoNaming>& tn)
+{
+    if (!tool || count1 < 1) {
+        return base;   // nothing to replicate -> body unchanged
+    }
+
+    // Primary direction (zero vec -> single column, count1 ignored).
+    double len1 = std::sqrt(dir1.x * dir1.x + dir1.y * dir1.y + dir1.z * dir1.z);
+    bool has_dir1 = (len1 >= 1e-15);
+    sm::vec3 d1 = has_dir1 ? sm::vec3(dir1.x / len1, dir1.y / len1, dir1.z / len1)
+                           : sm::vec3(0, 0, 0);
+
+    // Secondary direction (optional 2D grid).
+    bool has_dir2 = false;
+    sm::vec3 d2;
+    double len2 = std::sqrt(dir2.x * dir2.x + dir2.y * dir2.y + dir2.z * dir2.z);
+    if (len2 > 1e-15 && count2 > 1) {
+        d2 = sm::vec3(dir2.x / len2, dir2.y / len2, dir2.z / len2);
+        has_dir2 = true;
+    }
+    int eff_count1 = has_dir1 ? count1 : 1;
+    int eff_count2 = has_dir2 ? count2 : 1;
+
+    // Build the seed copies at every grid position (instance 0 is the
+    // seed at its authored place -- re-combining it onto a body that
+    // already contains it is idempotent for fuse / cut).
+    std::vector<TopoDS_Shape> instances;
+    instances.reserve(eff_count1 * eff_count2);
+    for (int i = 0; i < eff_count1; ++i) {
+        for (int j = 0; j < eff_count2; ++j) {
+            if (i == 0 && j == 0) {
+                instances.push_back(tool->GetShape());
+                continue;
+            }
+            double tx = i * spacing1 * d1.x;
+            double ty = i * spacing1 * d1.y;
+            double tz = i * spacing1 * d1.z;
+            if (has_dir2) {
+                tx += j * spacing2 * d2.x;
+                ty += j * spacing2 * d2.y;
+                tz += j * spacing2 * d2.z;
+            }
+            gp_Trsf trsf;
+            trsf.SetTranslation(gp_Vec(tx, ty, tz));
+            BRepBuilderAPI_Transform xform(tool->GetShape(), trsf, Standard_True);
+            instances.push_back(xform.Shape());
+        }
+    }
+
+    // Union all instances ONCE (the optimization), then a SINGLE boolean
+    // against the running body.
+    TopoDS_Shape pattern = FuseInstancesAndUnify(instances);
+    auto pattern_shape = std::make_shared<TopoShape>(pattern);
+
+    if (!base) {
+        return pattern_shape;   // no body -> plain geometry pattern
+    }
+
+    if (op_kind == 1) {
+        return TopoAlgo::Cut(base, pattern_shape, op_id, tn);
+    }
+    return TopoAlgo::Fuse(base, pattern_shape, op_id, tn);
 }
 
 

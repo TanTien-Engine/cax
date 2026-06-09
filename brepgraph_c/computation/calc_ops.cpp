@@ -425,6 +425,36 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		},
 		{false, true, false, false, false});  // is_pattern
 
+	// Feature pattern: replicate a seed `tool` on a linear grid and
+	// combine ALL instances onto `base` with ONE boolean (op_kind:
+	// 0 = fuse / boss, 1 = cut / hole). Folds the tool-pattern + the
+	// boolean into a single op so it survives history-rebuild as one
+	// node instead of expanding into N per-instance booleans.
+	reg.Define("feature_pattern",
+		{"base", "tool", "op_kind", "dir1", "count1", "spacing1", "dir2", "count2", "spacing2"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto bv = ctx.GetShape(0);
+			auto tv = ctx.GetShape(1);
+			if (!tv.shape) return {};
+			if (!bv.shape) return MakeShapeVal(tv.shape);
+			int  op_kind = ctx.Int(2);
+			auto d1 = ctx.GetVec3(3);
+			int  c1 = ctx.Int(4);
+			double s1 = ctx.Num(5);
+			auto d2 = ctx.GetVec3(6);
+			int  c2 = ctx.Int(7);
+			double s2 = ctx.Num(8);
+			auto shp = brepkit::TopoAlgo_Ext::FeaturePattern(bv.shape, tv.shape, op_kind,
+				sm::vec3((float)d1[0], (float)d1[1], (float)d1[2]), c1, s1,
+				sm::vec3((float)d2[0], (float)d2[1], (float)d2[2]), c2, s2,
+				ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		},
+		{});  // self-contained folded op (pattern union + one boolean);
+		      // intentionally NOT flagged is_pattern -- it has two shape
+		      // inputs and an internal boolean, so optimizer passes that
+		      // assume a single-input geometry pattern must not touch it.
+
 	reg.Define("shell", {"shape", "thickness"}, {"faces"},
 		[](EvalCtx& ctx) -> Val {
 			auto sv = ctx.GetShape(0);

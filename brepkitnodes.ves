@@ -17,7 +17,7 @@ Sew, UnifySameDomain,
 // FeaturesTransformed
 Translate, Rotate, Scale, Mirror, GeneralTransform,
 // Pattern
-LinearPattern, CircularPattern,
+LinearPattern, CircularPattern, FeaturePattern,
 // Hole
 HoleWizard,
 // Tools

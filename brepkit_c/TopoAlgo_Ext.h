@@ -152,6 +152,33 @@ public:
         const std::shared_ptr<brepgraph::TopoNaming>& tn);
 
     // ========================================================
+    // Feature Pattern (pattern a seed tool onto a body, folded)
+    // ========================================================
+    //
+    // Replicates `tool` on a linear 1D/2D grid and combines ALL
+    // instances onto `base` with a SINGLE boolean:
+    //   op_kind 0 = fuse (boss / additive)
+    //   op_kind 1 = cut  (hole / subtractive)
+    // This is the replay "compute the instance union once, one boolean
+    // against the body" optimization, but kept as ONE op so a pattern
+    // stays folded through save and history-rebuild (instead of being
+    // expanded into N per-instance boolean nodes). `base` may be null,
+    // in which case the unioned tool instances are returned directly
+    // (behaves like a plain geometry pattern).
+    static std::shared_ptr<TopoShape> FeaturePattern(
+        const std::shared_ptr<TopoShape>& base,
+        const std::shared_ptr<TopoShape>& tool,
+        int op_kind,
+        const sm::vec3& dir1,
+        int count1,
+        double spacing1,
+        const sm::vec3& dir2,
+        int count2,
+        double spacing2,
+        uint32_t op_id,
+        const std::shared_ptr<brepgraph::TopoNaming>& tn);
+
+    // ========================================================
     // Circular Pattern (SW Circular Pattern)
     // ========================================================
     //
