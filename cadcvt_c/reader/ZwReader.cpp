@@ -862,11 +862,20 @@ bool ZwReader::ReadFile(const std::string& path,
                 // profile -> reconstruct as Sketch + BossExtrude, fused onto
                 // the running body (the imported base) when there is one.
                 // A profile with < 3 curves (e.g. the single-line surface
-                // extrude) is left opaque.
+                // extrude) is left opaque. So is a ~ZERO-thickness extrude:
+                // its End E - Start S is ~0 (e.g. Extrude21, whose params fail
+                // to read at the rolled history state -- _diag.data_rc=-10000,
+                // field_count=-1 -- so fld 2/3 default to 0). A zero-distance
+                // prism throws in OCCT (StdFail) and one throw aborts the whole
+                // replay -- it crashed the editor before this guard. Staying
+                // opaque is the safe outcome. (|E - S| is the RAW depth in the
+                // file's length unit; 1e-4 mm is far below any real extrude.)
                 auto prof = jf.find("profile");
                 if (zt == "FtAllExt" && prof != jf.end() &&
                     prof->contains("curves") &&
-                    ProfileExtrudable(prof->at("curves")))
+                    ProfileExtrudable(prof->at("curves")) &&
+                    std::fabs(FieldValueById(jf, 3, 0.0) -
+                              FieldValueById(jf, 2, 0.0)) > 1e-4)
                 {
                     const uint32_t sketch_fid = 1000000u + id;
 

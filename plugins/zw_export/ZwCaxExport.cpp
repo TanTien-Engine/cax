@@ -338,14 +338,18 @@ struct Profile
     // Diagnostics for the "sketch found but 0 curves" case (R2900_100's
     // Extrude21/26/30/31 export n_profile_sketch=1 / n_profile_curve=0, so
     // they reconstruct as opaque). curvelist_rc is the LAST
-    // ZwSketch2DCurveListGet return code and curvelist_cn its reported count:
-    //   rc != 0          -> the API rejected the sketch handle / state
-    //   rc == 0, cn == 0 -> the sketch genuinely exposes no native 2D curves
-    //                       (its profile is reference / projected geometry that
-    //                       ZwSketch2DCurveListGet does not enumerate)
+    // ZwSketch2DCurveListGet return code and curvelist_cn its reported count.
+    // CONFIRMED on R2900_100: rc==0, cn==0 -> the sketch exposes no native 2D
+    // DRAWN curves; its profile is REFERENCE / projected geometry that
+    // ZwSketch2DCurveListGet does not enumerate. The fallback below reads it
+    // via cvxSkInqRefById (reference geometry) / cvxSkInqGeomXById (extended).
+    // ref_cn / geomx_cn record how many curves each fallback found (-1 = the
+    // fallback did not run, i.e. the 2D path already yielded curves).
     // -999 / -1 mean read_sketch_curves never ran (no sketch resolved).
     int    curvelist_rc = -999;
     int    curvelist_cn = -1;
+    int    ref_cn       = -1;
+    int    geomx_cn     = -1;
 };
 
 // One walked feature in history order.
@@ -403,6 +407,14 @@ struct FeatNode
 //   #include "zwapi_sk_cons.h"        // sketch constraints
 //   #include "zwapi_sk_dim.h"         // sketch dimensions
 //   #include "zwapi_cmd_shape_data.h" // extrude parameter struct
+
+#include "zwapi_sk_objs.h"                 // cvxSkInqRefById / cvxSkInqGeomXById
+                                           // (sketch REFERENCE / EXTENDED geometry):
+                                           // ReadProfile's fallback when
+                                           // ZwSketch2DCurveListGet finds no drawn
+                                           // 2D curves -- a reference-geometry
+                                           // profile (R2900_100 Extrude21/26/30/31,
+                                           // confirmed _diag rc==0/cn==0).
 
 namespace zwapi
 {
@@ -1207,12 +1219,59 @@ void ReadProfile(int idFtr, Profile& out)
 {
     // Read every 2D curve of one sketch (by handle) into out.curves. Shared
     // by the built-in-sketch path and the standalone-sketch fallback below.
-    auto read_sketch_curves = [&](szwEntityHandle& skh)
+    // Read one curve (by handle) into out.curves. ZwCurveNURBSDataGet returns
+    // the geometry in the sketch's LOCAL 2D frame (z==0); the reader uses the
+    // x/y components plus the plane block to place it in world. Shared by the
+    // drawn-2D-curve path and the reference-geometry fallback below.
+    auto read_one_curve = [&](szwEntityHandle& ch)
     {
-        // Capture the sketch's world insertion plane once. The curves below
-        // come back in the sketch's LOCAL 2D frame (z==0), so this matrix is
-        // what carries their true world placement. szwMatrix columns:
-        // 1st = x-axis, 3rd = z-axis (normal), 4th = origin/offset.
+        szwCurve cv;
+        if (ZwCurveNURBSDataGet(ch, 0, &cv) != ZW_API_NO_ERROR) {
+            return;
+        }
+        ProfileCurve pc;
+        const auto& I = cv.curveInformation;
+        switch (cv.type)
+        {
+            case ZW_CURVE_LINE:
+                pc.kind = "line";
+                pc.p0[0] = I.line.startPoint.x; pc.p0[1] = I.line.startPoint.y; pc.p0[2] = I.line.startPoint.z;
+                pc.p1[0] = I.line.endPoint.x;   pc.p1[1] = I.line.endPoint.y;   pc.p1[2] = I.line.endPoint.z;
+                break;
+            case ZW_CURVE_ARC:
+                pc.kind = "arc";
+                pc.radius = I.arc.radius;
+                pc.a0 = I.arc.startAngle; pc.a1 = I.arc.endAngle;
+                pc.p0[0] = I.arc.startPoint.x; pc.p0[1] = I.arc.startPoint.y; pc.p0[2] = I.arc.startPoint.z;
+                pc.p1[0] = I.arc.endPoint.x;   pc.p1[1] = I.arc.endPoint.y;   pc.p1[2] = I.arc.endPoint.z;
+                pc.center[0] = I.arc.centerPoint.x; pc.center[1] = I.arc.centerPoint.y; pc.center[2] = I.arc.centerPoint.z;
+                break;
+            case ZW_CURVE_CIRCLE:
+                pc.kind = "circle";
+                pc.radius = I.circle.radius;
+                pc.center[0] = I.circle.centerPoint.x; pc.center[1] = I.circle.centerPoint.y; pc.center[2] = I.circle.centerPoint.z;
+                break;
+            case ZW_CURVE_ELLIPSE2:
+                pc.kind = "ellipse";
+                pc.radius = I.ellipse2.majorAxis;
+                pc.center[0] = I.ellipse2.centerPoint.x; pc.center[1] = I.ellipse2.centerPoint.y; pc.center[2] = I.ellipse2.centerPoint.z;
+                break;
+            default:
+                pc.kind = "nurb";
+                pc.p0[0] = I.nurb.startPoint.x; pc.p0[1] = I.nurb.startPoint.y; pc.p0[2] = I.nurb.startPoint.z;
+                pc.p1[0] = I.nurb.endPoint.x;   pc.p1[1] = I.nurb.endPoint.y;   pc.p1[2] = I.nurb.endPoint.z;
+                break;
+        }
+        out.curves.push_back(pc);
+    };
+
+    // Read every curve of one sketch (id + handle) into out.curves.
+    auto read_sketch_curves = [&](int sketchId, szwEntityHandle& skh)
+    {
+        // Capture the sketch's world insertion plane once. The curves come back
+        // in the sketch's LOCAL 2D frame (z==0), so this matrix carries their
+        // true world placement. szwMatrix columns: 1st = x-axis, 3rd = z-axis
+        // (normal), 4th = origin/offset.
         if (!out.has_plane)
         {
             szwMatrix m;
@@ -1225,56 +1284,63 @@ void ReadProfile(int idFtr, Profile& out)
             }
         }
 
+        // 1) Drawn 2D curves -- the normal sketch profile.
         int              cn      = 0;
         szwEntityHandle* curves  = nullptr;
         int              curveRc = ZwSketch2DCurveListGet(&skh, &cn, &curves);
         out.curvelist_rc = curveRc;       // diag: surface the otherwise-swallowed
         out.curvelist_cn = cn;            // rc/count for the "0 curves" extrudes
-        if (curveRc != ZW_API_NO_ERROR || curves == nullptr) {
-            return;
-        }
-        for (int c = 0; c < cn; ++c)
+        if (curveRc == ZW_API_NO_ERROR && curves != nullptr)
         {
-            szwCurve cv;
-            if (ZwCurveNURBSDataGet(curves[c], 0, &cv) != ZW_API_NO_ERROR) {
-                continue;
+            for (int c = 0; c < cn; ++c) {
+                read_one_curve(curves[c]);
             }
-            ProfileCurve pc;
-            const auto& I = cv.curveInformation;
-            switch (cv.type)
-            {
-                case ZW_CURVE_LINE:
-                    pc.kind = "line";
-                    pc.p0[0] = I.line.startPoint.x; pc.p0[1] = I.line.startPoint.y; pc.p0[2] = I.line.startPoint.z;
-                    pc.p1[0] = I.line.endPoint.x;   pc.p1[1] = I.line.endPoint.y;   pc.p1[2] = I.line.endPoint.z;
-                    break;
-                case ZW_CURVE_ARC:
-                    pc.kind = "arc";
-                    pc.radius = I.arc.radius;
-                    pc.a0 = I.arc.startAngle; pc.a1 = I.arc.endAngle;
-                    pc.p0[0] = I.arc.startPoint.x; pc.p0[1] = I.arc.startPoint.y; pc.p0[2] = I.arc.startPoint.z;
-                    pc.p1[0] = I.arc.endPoint.x;   pc.p1[1] = I.arc.endPoint.y;   pc.p1[2] = I.arc.endPoint.z;
-                    pc.center[0] = I.arc.centerPoint.x; pc.center[1] = I.arc.centerPoint.y; pc.center[2] = I.arc.centerPoint.z;
-                    break;
-                case ZW_CURVE_CIRCLE:
-                    pc.kind = "circle";
-                    pc.radius = I.circle.radius;
-                    pc.center[0] = I.circle.centerPoint.x; pc.center[1] = I.circle.centerPoint.y; pc.center[2] = I.circle.centerPoint.z;
-                    break;
-                case ZW_CURVE_ELLIPSE2:
-                    pc.kind = "ellipse";
-                    pc.radius = I.ellipse2.majorAxis;
-                    pc.center[0] = I.ellipse2.centerPoint.x; pc.center[1] = I.ellipse2.centerPoint.y; pc.center[2] = I.ellipse2.centerPoint.z;
-                    break;
-                default:
-                    pc.kind = "nurb";
-                    pc.p0[0] = I.nurb.startPoint.x; pc.p0[1] = I.nurb.startPoint.y; pc.p0[2] = I.nurb.startPoint.z;
-                    pc.p1[0] = I.nurb.endPoint.x;   pc.p1[1] = I.nurb.endPoint.y;   pc.p1[2] = I.nurb.endPoint.z;
-                    break;
-            }
-            out.curves.push_back(pc);
+            ZwEntityHandleListFree(cn, &curves);
         }
-        ZwEntityHandleListFree(cn, &curves);
+
+        // 2) Fallback: a profile built from REFERENCE / projected geometry has
+        //    no drawn 2D curves (ZwSketch2DCurveListGet -> cn==0) -- R2900_100's
+        //    Extrude21/26/30/31. Those edges live in the sketch's reference set
+        //    (cvxSkInqRefById) and, failing that, its extended geometry
+        //    (cvxSkInqGeomXById). Enumerate by sketch id, transfer each to a
+        //    handle, and read it the same way. Runs ONLY when the drawn path
+        //    found nothing, so the working drawn-sketch extrudes are untouched.
+        if (out.curves.empty() && sketchId > 0)
+        {
+            auto read_by_ids = [&](int rcn, int* rids)
+            {
+                for (int i = 0; i < rcn; ++i)
+                {
+                    if (rids[i] <= 0) { continue; }
+                    szwEntityHandle ch;
+                    if (ZwEntityIdTransfer(1, &rids[i], &ch) != ZW_API_NO_ERROR) {
+                        continue;
+                    }
+                    read_one_curve(ch);
+                    ZwEntityHandleFree(&ch);
+                }
+            };
+
+            int  rcn  = 0;
+            int* rids = nullptr;
+            if (cvxSkInqRefById(sketchId, &rcn, &rids) == ZW_API_NO_ERROR && rids != nullptr)
+            {
+                out.ref_cn = rcn;
+                read_by_ids(rcn, rids);
+                cvxMemFree(reinterpret_cast<void**>(&rids));
+            }
+            if (out.curves.empty())
+            {
+                int  gcn  = 0;
+                int* gids = nullptr;
+                if (cvxSkInqGeomXById(sketchId, &gcn, &gids) == ZW_API_NO_ERROR && gids != nullptr)
+                {
+                    out.geomx_cn = gcn;
+                    read_by_ids(gcn, gids);
+                    cvxMemFree(reinterpret_cast<void**>(&gids));
+                }
+            }
+        }
     };
 
     // 1) Built-in / auxiliary sketches: an extrude that carries its own
@@ -1291,7 +1357,7 @@ void ReadProfile(int idFtr, Profile& out)
             if (ZwEntityIdTransfer(1, &aux[i], &skh) != ZW_API_NO_ERROR) {
                 continue;
             }
-            read_sketch_curves(skh);
+            read_sketch_curves(aux[i], skh);
             ZwEntityHandleFree(&skh);
         }
     }
@@ -1324,7 +1390,7 @@ void ReadProfile(int idFtr, Profile& out)
                 if (ZwEntityIdTransfer(1, &ids[i], &skh) != ZW_API_NO_ERROR) {
                     continue;
                 }
-                read_sketch_curves(skh);
+                read_sketch_curves(ids[i], skh);
                 ZwEntityHandleFree(&skh);
                 ++got;
             }
@@ -2013,6 +2079,12 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             // reported zero -- the discriminator for the eventual fix.
             diag["profile_curvelist_rc"] = pr.curvelist_rc;
             diag["profile_curvelist_cn"] = pr.curvelist_cn;
+            // Fallback diagnostics: how many curves the reference- / extended-
+            // geometry fallback (cvxSkInqRefById / cvxSkInqGeomXById) found
+            // (-1 = the fallback did not run). For the reference-profile
+            // extrudes these reveal which set actually supplied the profile.
+            diag["profile_ref_cn"]   = pr.ref_cn;
+            diag["profile_geomx_cn"] = pr.geomx_cn;
 
             // Pattern (FtPtnFtr): count / spacing / patterned-target are
             // already in the field dump (fld 3 / 4 / 1); the one missing
