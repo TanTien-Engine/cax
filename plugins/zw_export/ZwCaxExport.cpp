@@ -2128,6 +2128,31 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             bool at_after = zwapi::RollBodyAfter(fid);
             diag["roll_after"] = at_after;
 
+            // PARAM FALLBACK (AFTER state): some features' data container is not
+            // readable at the BEFORE state -- R2900_100's Extrude21 returns
+            // cvxPartInqFtrData data_rc=-10000 / field_count=-1 there, so the
+            // BEFORE dump above came back EMPTY and its Start S / End E / draft /
+            // combine scalars were lost; the reader then saw depth 0 and could
+            // only leave it opaque. The feature IS played in this AFTER state, so
+            // its data container is now live -- re-read the fields here when the
+            // BEFORE dump yielded nothing. Scalar params are state-independent;
+            // such an extrude's only ents reference the unchanged base body, so
+            // AFTER-state anchors are equally valid. Features whose BEFORE dump
+            // succeeded keep it untouched (no regression -- a dressup's picked-
+            // edge anchors must stay at the BEFORE state, and those dumps are
+            // non-empty so this never runs for them).
+            if (fields.empty())
+            {
+                std::vector<FieldDump> after_fields = zwapi::DumpFields(fid);
+                zwapi::FtrProbe ap = zwapi::ProbeFeature(fid);
+                diag["data_rc_after"]     = ap.data_rc;
+                diag["field_count_after"] = ap.field_count;
+                if (!after_fields.empty())
+                {
+                    jf["fields"] = FieldsToJson(after_fields);
+                }
+            }
+
             // What geometry did this feature actually produce? For features
             // whose parameters the API won't give us (CdGeomCopy general-
             // errors above), this is where the real content is.
