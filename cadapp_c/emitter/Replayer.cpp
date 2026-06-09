@@ -562,6 +562,147 @@ int ApplyPatternInstance(brepgraph::CalcGraph& cg, int acc,
     return body;
 }
 
+// ============================================================
+// Pattern-instance CLUSTER lowering (perf optimization)
+//
+// The per-instance path threads `acc` (the running body) through one
+// boolean PER pattern copy: acc = fuse(acc, copy_i). Each fuse re-
+// intersects the WHOLE, growing body -- on R2900_50 the body balloons
+// past 1000 faces and the late fuses cost up to ~2s EACH (profiled via
+// BREPKIT_BOP_PROF). Because fuse / cut are associative + commutative
+// and the instance copies occupy mostly DISJOINT regions, the identical
+// union can be built by first fusing the small copies together into a
+// sub-body (each fuse is cheap -- small disjoint shapes), then combining
+// that sub-body onto the base ONCE. N booleans-against-the-big-body
+// become N cheap copy-fuses + 1 big combine.
+//
+// Only applies when every contribution is a TOOL of a single op_kind: a
+// dressup (chamfer / fillet) must re-resolve its anchors on the post-
+// combine body, which the cluster does not expose mid-build, and mixing
+// additive + subtractive tools is order-sensitive when copies overlap.
+// Those cases return -1 -> caller keeps the (correct, slower) per-
+// instance path. Mirrors the already-shipped linear-equivariant n-ary
+// path, but built from the SAME explicit per-copy transforms the per-
+// instance loop uses, so it carries each copy's penetration post_offset
+// and is geometrically identical (only the fuse association changes).
+//
+// Gated by BREPKIT_PATTERN_CLUSTER (default ON; =0 restores per-instance
+// for A/B + regression bisect). `Xs` are the NON-seed instance
+// transforms (the seed copy is already combined into `base`).
+static bool pattern_cluster_on()
+{
+    static const bool on = [] {
+        const char* e = std::getenv("BREPKIT_PATTERN_CLUSTER");
+        return !(e && e[0] == '0');
+    }();
+    return on;
+}
+
+// Diagnostic: which pattern-lowering branch fires + whether clustering is
+// reached. Reuses BREPKIT_BOP_PROF so one env turns on the full picture.
+static bool pat_log_on()
+{
+    static const bool on = [] {
+        const char* e = std::getenv("BREPKIT_BOP_PROF");
+        return e && e[0] && e[0] != '0';
+    }();
+    return on;
+}
+#define PAT_LOG(...) do { if (pat_log_on()) { std::fprintf(stderr, __VA_ARGS__); std::fflush(stderr); } } while (0)
+
+int ApplyPatternClustered(brepgraph::CalcGraph&            cg,
+                          int                              base,
+                          const std::vector<Contribution>& contribs,
+                          const std::vector<InstanceXform>& Xs,
+                          const std::string&               tag)
+{
+    if (contribs.empty() || Xs.empty()) {
+        PAT_LOG("[pat] cluster SKIP empty contribs=%zu Xs=%zu (%s)\n",
+                contribs.size(), Xs.size(), tag.c_str());
+        return -1;
+    }
+    char kind = 0;
+    for (const Contribution& c : contribs) {
+        if (!c.is_tool) {
+            PAT_LOG("[pat] cluster SKIP dressup-present (%s)\n", tag.c_str());
+            return -1;                              // dressup -> per-instance
+        }
+        char k = (c.op_kind == 'c') ? 'c' : 'f';
+        if (kind == 0)      kind = k;
+        else if (kind != k) {
+            PAT_LOG("[pat] cluster SKIP mixed-op_kind (%s)\n", tag.c_str());
+            return -1;                              // mixed add/sub -> per-instance
+        }
+    }
+    PAT_LOG("[pat] cluster APPLIED contribs=%zu Xs=%zu kind=%c (%s)\n",
+            contribs.size(), Xs.size(), kind, tag.c_str());
+    // Fuse every (instance copy, tool) together into one sub-body. cut-
+    // tools are UNIONED here too, then applied as a single cut(base, union)
+    // below -- equivalent to sequential cuts for disjoint instances.
+    int cluster = -1;
+    for (const InstanceXform& X : Xs) {
+        for (const Contribution& c : contribs) {
+            int t = EmitTransform(cg, c.tool_node, X, tag);
+            cluster = (cluster < 0)
+                        ? t
+                        : cg.AddOp("fuse", {cluster, t}, {}, tag + ":cluster");
+        }
+    }
+    if (cluster < 0) return -1;
+    const char* op = (kind == 'c') ? "cut" : "fuse";
+    return cg.AddOp(op, {base, cluster}, {}, tag + ":combine");
+}
+
+// Batch a pattern's per-instance DRESSUPS (fillet / chamfer) into ONE op
+// per dressup contribution. The per-instance path applies fillet(body,
+// edges_i) once PER instance; each call rebuilds the WHOLE (large) body in
+// OCCT's BRepFilletAPI even though it only touches that instance's handful
+// of edges -- measured on R2900_100 as 7 instances x ~5.5s = ~38s, the
+// single biggest cost there (bigger than all booleans on some models).
+// Pattern instances are DISJOINT and share the dressup's radius, so
+// resolving EVERY instance's edges against the same pre-dressup body and
+// filleting them ALL in one op is geometrically equivalent (disjoint edge
+// sets round independently) while rebuilding the body ONCE. The
+// resolve_*_ref ops still resolve per-instance geometry (each edge moved by
+// its X), just against a single shared body node. Mirrors the boolean
+// ApplyPatternClustered; same BREPKIT_PATTERN_CLUSTER gate. `Xs` are ALL
+// instance transforms the per-instance loop would have visited (the
+// equivariant Phase-2 includes the seed i=0).
+int ApplyPatternDressupsBatched(brepgraph::CalcGraph&            cg,
+                                int                              body,
+                                const std::vector<Contribution>& dressups,
+                                const std::vector<InstanceXform>& Xs,
+                                double                           topo_tol,
+                                const std::string&               tag)
+{
+    for (const Contribution& d : dressups) {
+        if (d.is_tool) continue;
+        const double dtol = std::max(topo_tol, 5.0 * d.dress_size);
+        std::vector<int> edge_nodes;
+        edge_nodes.reserve(Xs.size() * d.dress_refs.size());
+        for (const InstanceXform& X : Xs) {
+            for (TopoRefIR ref : d.dress_refs) {
+                TransformRef(ref, X);
+                ref.resolved_uid        = 0;
+                ref.resolved_topo_index = 0;
+                const char* rop = (ref.kind == TopoRefIR::Kind::Face)
+                                    ? "resolve_face_ref" : "resolve_edge_ref";
+                edge_nodes.push_back(
+                    AddResolveRefNode(cg, rop, body, ref, dtol, tag + ":edge"));
+            }
+        }
+        if (edge_nodes.empty()) continue;
+        if (d.dress_kind == FeatType::Fillet) {
+            int r = cg.AddConst(d.dress_size, "radius");
+            body = cg.AddOp("fillet", {body, r}, edge_nodes, tag);
+        } else {
+            int dist = cg.AddConst(d.dress_size, "dist");
+            body = cg.AddOp("chamfer", {body, dist}, edge_nodes, tag);
+        }
+    }
+    return body;
+}
+
 // Unit vector from a raw double[3] direction (matches the normalization
 // the linear/circular pattern ops apply internally).
 brepgraph::Vec3 NormalizedDir(const double v[3])
@@ -745,6 +886,23 @@ void Replayer::SetVersionTree(const std::shared_ptr<brepdb::VersionTree>& vt)
 bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& out)
 {
     out = ReplayResult{};
+
+    if (pat_log_on()) {
+        int npat = 0;
+        for (const auto& f : doc.features) {
+            std::visit([&](const auto& p) {
+                using T = std::decay_t<decltype(p)>;
+                if constexpr (std::is_same_v<T, FeatPayloadLinearPattern> ||
+                              std::is_same_v<T, FeatPayloadCircularPattern> ||
+                              std::is_same_v<T, FeatPayloadMirror> ||
+                              std::is_same_v<T, FeatPayloadMultiTransform>) { ++npat; }
+            }, f.data);
+        }
+        std::fprintf(stderr,
+            "[replay] ENTER analyze_only=%d doc_features=%zu pattern_feats=%d\n",
+            (int)opt.analyze_only, doc.features.size(), npat);
+        std::fflush(stderr);
+    }
 
     if (!m_impl->naming) {
         m_impl->naming = std::make_shared<brepgraph::TopoNaming>();
@@ -1662,6 +1820,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 const bool onto_running =
                     ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
                     && base_node >= 0;
+                PAT_LOG("[pat] LINEAR feat=%s id=%u originals=%zu onto_running=%d "
+                        "base_node=%d count1=%d count2=%d\n",
+                        feat.name.c_str(), feat.id, pi.originals.size(),
+                        (int)onto_running, base_node, (int)p.count1, (int)p.count2);
 
                 if (pi.originals.empty()) {
                     // No Original tool -> pattern the whole body.
@@ -1761,12 +1923,25 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                         + p.dir2[2] * p.dir2[2];
                             int eff2 = (l2sq > 1e-30 && p.count2 > 1)
                                             ? (int)p.count2 : 1;
+                            std::vector<InstanceXform> Xs;
                             for (int i = 0; i < (int)p.count1; ++i) {
                                 for (int j = 0; j < eff2; ++j) {
                                     InstanceXform X;
                                     for (int k = 0; k < 3; ++k)
                                         X.offset[k] = i * p.spacing1 * u1[k]
                                                     + j * p.spacing2 * u2[k];
+                                    Xs.push_back(X);
+                                }
+                            }
+                            // Batch all instances' dressup edges into ONE
+                            // fillet/chamfer per contribution (one body rebuild)
+                            // instead of N. Per-instance fallback under the gate.
+                            if (pattern_cluster_on()) {
+                                acc = ApplyPatternDressupsBatched(
+                                    *cg, acc, dressups, Xs,
+                                    opt.topo_tolerance, feat.name + ":dress");
+                            } else {
+                                for (const InstanceXform& X : Xs) {
                                     acc = ApplyPatternInstance(
                                         *cg, acc, dressups, X,
                                         opt.topo_tolerance,
@@ -1782,7 +1957,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                 + p.dir2[1] * p.dir2[1]
                                 + p.dir2[2] * p.dir2[2];
                     int eff2 = (l2sq > 1e-30 && p.count2 > 1) ? (int)p.count2 : 1;
-                    int acc = base_node;
+                    std::vector<InstanceXform> Xs;
                     for (int i = 0; i < (int)p.count1; ++i) {
                         for (int j = 0; j < eff2; ++j) {
                             if (i == 0 && j == 0) {
@@ -1792,12 +1967,26 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                             for (int k = 0; k < 3; ++k)
                                 X.offset[k] = i * p.spacing1 * u1[k]
                                             + j * p.spacing2 * u2[k];
+                            Xs.push_back(X);
+                        }
+                    }
+                    // Cluster copies + single combine onto base (see
+                    // ApplyPatternClustered); per-instance fallback otherwise.
+                    int clustered = pattern_cluster_on()
+                        ? ApplyPatternClustered(*cg, base_node, contribs, Xs,
+                                                feat.name + ":clust")
+                        : -1;
+                    if (clustered >= 0) {
+                        node = clustered;
+                    } else {
+                        int acc = base_node;
+                        for (const InstanceXform& X : Xs) {
                             acc = ApplyPatternInstance(*cg, acc, contribs, X,
                                                        opt.topo_tolerance,
                                                        feat.name + ":inst");
                         }
+                        node = acc;
                     }
-                    node = acc;
                     }
                 } else {
                     int pat = cg->AddOp("linear_pattern",
@@ -1842,6 +2031,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 const bool onto_running =
                     ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
                     && base_node >= 0;
+                PAT_LOG("[pat] CIRCULAR feat=%s id=%u originals=%zu onto_running=%d "
+                        "base_node=%d count=%d\n",
+                        feat.name.c_str(), feat.id, pi.originals.size(),
+                        (int)onto_running, base_node, (int)p.count);
 
                 if (pi.originals.empty()) {
                     int target = (pi.body_target >= 0) ? pi.body_target
@@ -1870,7 +2063,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     brepgraph::Vec3 pen = {-p.penetration * axis[0],
                                            -p.penetration * axis[1],
                                            -p.penetration * axis[2]};
-                    int acc = base_node;
+                    std::vector<InstanceXform> Xs;
                     for (int i = 1; i < (int)p.count; ++i) {
                         InstanceXform X;
                         X.is_rotation = true;
@@ -1878,11 +2071,27 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         X.axis_dir    = axis;
                         X.angle       = step * i;
                         X.post_offset = pen;
-                        acc = ApplyPatternInstance(*cg, acc, contribs, X,
-                                                   opt.topo_tolerance,
-                                                   feat.name + ":inst");
+                        Xs.push_back(X);
                     }
-                    node = acc;
+                    // Cluster the copies into one sub-body + a single combine
+                    // onto the base instead of N fuses onto the growing body
+                    // (see ApplyPatternClustered). Falls back to per-instance
+                    // when a dressup / mixed op_kind needs the running body.
+                    int clustered = pattern_cluster_on()
+                        ? ApplyPatternClustered(*cg, base_node, contribs, Xs,
+                                                feat.name + ":clust")
+                        : -1;
+                    if (clustered >= 0) {
+                        node = clustered;
+                    } else {
+                        int acc = base_node;
+                        for (const InstanceXform& X : Xs) {
+                            acc = ApplyPatternInstance(*cg, acc, contribs, X,
+                                                       opt.topo_tolerance,
+                                                       feat.name + ":inst");
+                        }
+                        node = acc;
+                    }
 
                     // Register this circular pattern as a reusable TOOL so a
                     // LATER pattern can NEST it -- a pattern of a pattern, e.g.
@@ -2756,9 +2965,12 @@ bool Replayer::ReplayParts(DocumentIR& doc, const ReplayOptions& opt,
         }
     }
     const std::vector<uint32_t> parts = ares.live_feat_ids;
+    PAT_LOG("[parts] ReplayParts: live_parts=%zu doc_features=%zu\n",
+            parts.size(), doc.features.size());
 
     // Nothing to gain from splitting 0 or 1 part -- replay whole serially.
     if (parts.size() <= 1) {
+        PAT_LOG("[parts] -> FALLBACK serial Replay (parts<=1)\n");
         return Replay(doc, opt, out);
     }
 
@@ -2789,8 +3001,10 @@ bool Replayer::ReplayParts(DocumentIR& doc, const ReplayOptions& opt,
 
     if (!disjoint) {
         // Not safely splittable -- replay the whole document serially.
+        PAT_LOG("[parts] -> FALLBACK serial Replay (closures NOT disjoint)\n");
         return Replay(doc, opt, out);
     }
+    PAT_LOG("[parts] -> SPLIT into %zu independent parts\n", parts.size());
 
     std::vector<DocumentIR> subdocs;
     subdocs.reserve(parts.size());

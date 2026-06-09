@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <mutex>
 
 // OCCT
 #include <OSD.hxx>
@@ -76,6 +77,52 @@ static bool ta_log_on()
     return on;
 }
 #define TA_LOG(...) do { if (ta_log_on()) std::fprintf(stderr, __VA_ARGS__); } while (0)
+
+// Per-boolean cost profiler. BREPKIT_BOP_PROF=1 emits one stderr line per
+// Cut / Fuse / Common recording the OCCT boolean Build() time vs the
+// RefineBopResult (ShapeUpgrade_UnifySameDomain) time, with running
+// cumulative totals so the LAST line is the whole-replay summary. This
+// settles "of the ~Xms/boolean, how much is the BOP itself vs the refine
+// pass, and how many booleans run". Off by default = one branch per call.
+// Read once (function-local static -> thread-safe init).
+static bool bop_prof_on()
+{
+    static const bool on = [] {
+        const char* e = std::getenv("BREPKIT_BOP_PROF");
+        return e && e[0] && e[0] != '0';
+    }();
+    return on;
+}
+
+// Cheap face count for the prof line (only called when prof is on).
+static int BopProfFaceCount(const TopoDS_Shape& s)
+{
+    if (s.IsNull()) return 0;
+    int n = 0;
+    for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next()) ++n;
+    return n;
+}
+
+// Accumulate + log one boolean's split. Cumulative state is mutex-guarded
+// because a single part's calc-graph eval may run parallel
+// (CalcGraph::set_parallel); the lock also keeps stderr lines un-interleaved.
+static void bop_prof_log(const char* op, double build_ms, double refine_ms,
+                         int faces_in, int faces_out)
+{
+    static std::mutex mtx;
+    static int        n = 0;
+    static double     cum_build = 0.0, cum_refine = 0.0;
+    std::lock_guard<std::mutex> lk(mtx);
+    ++n;
+    cum_build  += build_ms;
+    cum_refine += refine_ms;
+    std::fprintf(stderr,
+        "[bop_prof] #%d op=%-6s build=%8.1f refine=%8.1f faces=%d->%d "
+        "| cum build=%9.1f refine=%9.1f total=%9.1f\n",
+        n, op, build_ms, refine_ms, faces_in, faces_out,
+        cum_build, cum_refine, cum_build + cum_refine);
+    std::fflush(stderr);
+}
 
 // Fuse fuzzy-retry instrumentation + kill-switch. The retry block in
 // TopoAlgo::Fuse re-runs the FULL boolean up to 3x (fuzzy 1e-5/1e-4/1e-3)
@@ -1454,7 +1501,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     algo.SetArguments(args);
     algo.SetTools(tools);
     algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
+    const auto _bop_t0 = std::chrono::steady_clock::now();
     algo.Build();
+    const auto _bop_t1 = std::chrono::steady_clock::now();
 
     if (!algo.IsDone()) {
         algo.DumpErrors(std::cerr);
@@ -1465,7 +1514,15 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     // Refine=true. See RefineBopResult above for rationale.
     opencascade::handle<BRepTools_History> hist;
     if (tn) hist = algo.History();
+    const auto _ref_t0 = std::chrono::steady_clock::now();
     TopoDS_Shape refined = RefineBopResult(algo.Shape(), hist);
+    if (bop_prof_on()) {
+        using _ms = std::chrono::duration<double, std::milli>;
+        const auto _ref_t1 = std::chrono::steady_clock::now();
+        bop_prof_log("cut", _ms(_bop_t1 - _bop_t0).count(),
+                     _ms(_ref_t1 - _ref_t0).count(),
+                     BopProfFaceCount(algo.Shape()), BopProfFaceCount(refined));
+    }
 
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
@@ -1502,6 +1559,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
 
     const double base_fuzzy =
         ScaledBopFuzzy(s1->GetShape(), s2->GetShape());
+    const auto _bop_t0 = std::chrono::steady_clock::now();
     auto algo = run_fuse(base_fuzzy);
     if (!algo->IsDone()) {
         algo->DumpErrors(std::cerr);
@@ -1591,12 +1649,22 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         std::fflush(stderr);
     }
 
+    const auto _bop_t1 = std::chrono::steady_clock::now();
+
     // Refine: unify coplanar BOP fragments + unwrap a single-SOLID
     // COMPOUND wrapper. Mirrors FreeCAD PartDesign Pad default
     // Refine=true.
     opencascade::handle<BRepTools_History> hist;
     if (tn) hist = algo->History();
+    const auto _ref_t0 = std::chrono::steady_clock::now();
     TopoDS_Shape refined = RefineBopResult(algo->Shape(), hist);
+    if (bop_prof_on()) {
+        using _ms = std::chrono::duration<double, std::milli>;
+        const auto _ref_t1 = std::chrono::steady_clock::now();
+        bop_prof_log("fuse", _ms(_bop_t1 - _bop_t0).count(),
+                     _ms(_ref_t1 - _ref_t0).count(),
+                     BopProfFaceCount(algo->Shape()), BopProfFaceCount(refined));
+    }
 
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
@@ -1623,7 +1691,9 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
     algo.SetArguments(args);
     algo.SetTools(tools);
     algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
+    const auto _bop_t0 = std::chrono::steady_clock::now();
     algo.Build();
+    const auto _bop_t1 = std::chrono::steady_clock::now();
 
     if (!algo.IsDone()) {
         algo.DumpErrors(std::cerr);
@@ -1632,7 +1702,15 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
     // Refine: same rationale as Cut / Fuse.
     opencascade::handle<BRepTools_History> hist;
     if (tn) hist = algo.History();
+    const auto _ref_t0 = std::chrono::steady_clock::now();
     TopoDS_Shape refined = RefineBopResult(algo.Shape(), hist);
+    if (bop_prof_on()) {
+        using _ms = std::chrono::duration<double, std::milli>;
+        const auto _ref_t1 = std::chrono::steady_clock::now();
+        bop_prof_log("common", _ms(_bop_t1 - _bop_t0).count(),
+                     _ms(_ref_t1 - _ref_t0).count(),
+                     BopProfFaceCount(algo.Shape()), BopProfFaceCount(refined));
+    }
 
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
