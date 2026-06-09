@@ -1478,17 +1478,26 @@ bool ZwReader::ReadFile(const std::string& path,
                     }
                 }
 
-                // ZW3D chamfer/fillet (FtChamfers2) -> FeatPayloadChamfer.
-                // The plugin captured the picked edge(s) from the feature's
-                // nested VDATA edge-list as world-mm anchors with their
-                // per-edge setback (fld "ents":[{anchor,num}]), plus a
+                // ZW3D edge dress-up: chamfer (FtChamfers2) -> FeatPayloadChamfer
+                // and fillet/round (FtFillet2) -> FeatPayloadFillet. Both store
+                // the picked edge(s) the same way: the plugin captured them from
+                // the feature's nested VDATA edge-list as world-mm anchors with a
+                // per-edge dimension (fld "ents":[{anchor,num}]) -- num is the
+                // chamfer SETBACK for FtChamfers2 and the fillet RADIUS for
+                // FtFillet2 (R2900_100: chamfer num=0.2 mm, fillet num=1.0/0.2 mm
+                // -- it varies per fillet, confirming num is the radius) -- plus a
                 // feature-level "input_edges" fallback (anchor only). The cax
-                // Replayer applies the dressup itself: it builds a
-                // resolve_edge_ref per anchor (matched to the running body's
-                // edge within ~5x the setback) and a chamfer op -- so there is
-                // no loader/OCCT work here, only the IR mapping.
-                if (zt == "FtChamfers2" && running_solid_id != 0)
+                // Replayer applies the dress-up itself: a resolve_edge_ref per
+                // anchor (matched to the running body's edge within ~5x the
+                // dimension) feeding a "fillet" or "chamfer" op -- so there is no
+                // loader/OCCT work here, only the IR mapping. The Replayer picks
+                // the op purely from the payload variant (FeatPayloadFillet vs
+                // FeatPayloadChamfer), so emitting the right one is all it takes.
+                if ((zt == "FtChamfers2" || zt == "FtFillet2") &&
+                    running_solid_id != 0)
                 {
+                    const bool is_fillet = (zt == "FtFillet2");
+
                     struct Pick { double anc[3] = { 0, 0, 0 };
                                   double num = 0.0; bool has_num = false; };
                     std::vector<Pick> picks;
@@ -1513,7 +1522,7 @@ bool ZwReader::ReadFile(const std::string& path,
                         }
                     };
 
-                    // Prefer the field ents (they carry the per-edge setback);
+                    // Prefer the field ents (they carry the per-edge dimension);
                     // fall back to the feature-level input_edges.
                     auto fit2 = jf.find("fields");
                     if (fit2 != jf.end() && fit2->is_array()) {
@@ -1531,22 +1540,23 @@ bool ZwReader::ReadFile(const std::string& path,
                         }
                     }
 
-                    // Setback: first captured per-edge value, else the field
-                    // distance (fld 3). A 0-distance chamfer would just error
-                    // in OCCT, so fall through to opaque when neither exists.
-                    double setback = 0.0;
+                    // Dimension (chamfer setback / fillet radius): first captured
+                    // per-edge value, else the feature scalar -- chamfer distance
+                    // is fld 3, fillet radius rides on the edge-list field fld 2
+                    // (fld 3 "Relief" is 0 for a plain fillet). A 0-size dress-up
+                    // would just error in OCCT, so fall through to opaque when
+                    // neither source yields a positive value.
+                    double dim = 0.0;
                     for (const auto& pk : picks) {
-                        if (pk.has_num && pk.num > 0.0) { setback = pk.num; break; }
+                        if (pk.has_num && pk.num > 0.0) { dim = pk.num; break; }
                     }
-                    if (setback <= 0.0) {
-                        setback = FieldValueById(jf, 3, 0.0);
+                    if (dim <= 0.0) {
+                        dim = FieldValueById(jf, is_fillet ? 2 : 3, 0.0);
                     }
 
-                    if (!picks.empty() && setback > 0.0)
+                    if (!picks.empty() && dim > 0.0)
                     {
-                        cadapp::FeatPayloadChamfer pl;
-                        pl.distance1 = setback * s;
-                        pl.distance2 = 0.0;          // symmetric (fld 42 Type=0)
+                        std::vector<cadapp::TopoRefIR> edges;
                         for (const auto& pk : picks)
                         {
                             cadapp::TopoRefIR r;
@@ -1554,19 +1564,163 @@ bool ZwReader::ReadFile(const std::string& path,
                             r.point[0] = pk.anc[0] * s;
                             r.point[1] = pk.anc[1] * s;
                             r.point[2] = pk.anc[2] * s;
-                            pl.edges.push_back(r);
+                            edges.push_back(r);
                         }
 
                         cadapp::FeatureIR cf;
                         cf.id   = id;
-                        cf.type = cadapp::FeatType::Chamfer;
                         cf.name = name;
-                        cf.data = std::move(pl);
                         cf.ext_strings["zw_type"] = zt;
-                        // Base = the running body the chamfer dresses; the
+                        if (is_fillet)
+                        {
+                            cadapp::FeatPayloadFillet pl;
+                            pl.radius = dim * s;
+                            pl.edges  = std::move(edges);
+                            cf.type   = cadapp::FeatType::Fillet;
+                            cf.data   = std::move(pl);
+                        }
+                        else
+                        {
+                            cadapp::FeatPayloadChamfer pl;
+                            pl.distance1 = dim * s;
+                            pl.distance2 = 0.0;      // symmetric (fld 42 Type=0)
+                            pl.edges     = std::move(edges);
+                            cf.type      = cadapp::FeatType::Chamfer;
+                            cf.data      = std::move(pl);
+                        }
+                        // Base = the running body the dress-up modifies; the
                         // Replayer resolves the picked edges against it.
                         PushInput(cf, running_solid_id, cadapp::InputRole::Base);
                         out.features.push_back(std::move(cf));
+                        running_solid_id = id;
+                        continue;
+                    }
+                }
+
+                // ZW3D mirror (FtMirrorFtr) -> FeatPayloadMirror. fld 1
+                // "Feature" lists the mirrored features -- each ent carries the
+                // owning feature's JSON id in "feat", the SAME id the reader keys
+                // features by, so they wire straight as Role::Tool originals. fld
+                // 2 "Plane" is the mirror plane: its ent's "anchor" is a point ON
+                // the plane and "normal" its orientation. The plugin emits that
+                // normal for a datum-plane ent via ZwEntityMatrixGet; a snapshot
+                // exported BEFORE that plugin change carries no normal and cannot
+                // define the reflection -> the feature stays opaque. The Replayer
+                // (AddMirroredOriginals) mirrors each built original's tool solid
+                // across the plane and fuses onto the running body.
+                //
+                // GUARD -- avoid a silently-wrong whole-body mirror: when NONE of
+                // a mirror's originals were reconstructed (e.g. R2900_100's
+                // Mirror2 targets the two opaque face-derived extrudes 30/31),
+                // ResolvePatternInputs returns no originals and the Replayer's
+                // mirror arm falls back to mirroring the ENTIRE body across the
+                // plane -- duplicating the whole part. So only emit a Mirror when
+                // at least one mirrored feature actually built; otherwise leave it
+                // opaque (an honest warning beats garbage geometry). NOTE: a
+                // dressup (fillet/chamfer) among the originals is NOT re-applied by
+                // AddMirroredOriginals (it mirrors tool solids, not dressup ops),
+                // so a mirror over a filleted region is reconstructed without those
+                // blends -- a known partial-fidelity limitation.
+                if (zt == "FtMirrorFtr" && running_solid_id != 0)
+                {
+                    auto fields_it = jf.find("fields");
+                    const bool has_fields =
+                        (fields_it != jf.end() && fields_it->is_array());
+
+                    // Mirror plane: first fld 2 ent carrying a non-zero normal.
+                    double porg[3] = { 0.0, 0.0, 0.0 };
+                    double pnrm[3] = { 0.0, 0.0, 0.0 };
+                    bool   has_plane = false;
+                    if (has_fields) {
+                        for (const auto& fd : *fields_it) {
+                            if (JGet<int>(fd, "id", -1) != 2) { continue; }
+                            auto eit = fd.find("ents");
+                            if (eit != fd.end() && eit->is_array()) {
+                                for (const auto& e : *eit) {
+                                    auto nm = e.find("normal");
+                                    auto an = e.find("anchor");
+                                    if (nm == e.end() || !nm->is_array() || nm->size() < 3 ||
+                                        an == e.end() || !an->is_array() || an->size() < 3) {
+                                        continue;
+                                    }
+                                    double nx = nm->at(0).get<double>();
+                                    double ny = nm->at(1).get<double>();
+                                    double nz = nm->at(2).get<double>();
+                                    if (std::fabs(nx) + std::fabs(ny) + std::fabs(nz) < 1e-9) {
+                                        continue;
+                                    }
+                                    porg[0] = an->at(0).get<double>();
+                                    porg[1] = an->at(1).get<double>();
+                                    porg[2] = an->at(2).get<double>();
+                                    pnrm[0] = nx; pnrm[1] = ny; pnrm[2] = nz;
+                                    has_plane = true;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    // Mirrored features: fld 1 ents' "feat" ids that the reader
+                    // already reconstructed as a real (non-opaque) feature.
+                    std::vector<uint32_t> mir_tools;
+                    if (has_plane) {
+                        auto is_built = [&](uint32_t fid) -> bool {
+                            for (const auto& f : out.features) {
+                                if (f.id == fid) {
+                                    return f.type != cadapp::FeatType::Unknown;
+                                }
+                            }
+                            return false;
+                        };
+                        for (const auto& fd : *fields_it) {
+                            if (JGet<int>(fd, "id", -1) != 1) { continue; }
+                            auto eit = fd.find("ents");
+                            if (eit != fd.end() && eit->is_array()) {
+                                for (const auto& e : *eit) {
+                                    auto ft = e.find("feat");
+                                    if (ft == e.end() || !ft->is_number_integer()) {
+                                        continue;
+                                    }
+                                    uint32_t t = static_cast<uint32_t>(ft->get<int>());
+                                    if (t == 0 || !is_built(t)) { continue; }
+                                    bool dup = false;
+                                    for (uint32_t x : mir_tools) { if (x == t) { dup = true; break; } }
+                                    if (!dup) { mir_tools.push_back(t); }
+                                }
+                            }
+                            break;
+                        }
+                    }
+
+                    if (has_plane && !mir_tools.empty())
+                    {
+                        cadapp::FeatPayloadMirror pl;
+                        // origin is positional (mm->IR units); normal is a unit
+                        // direction and stays unscaled.
+                        pl.plane_origin[0] = porg[0] * s;
+                        pl.plane_origin[1] = porg[1] * s;
+                        pl.plane_origin[2] = porg[2] * s;
+                        double nl = std::sqrt(pnrm[0]*pnrm[0] + pnrm[1]*pnrm[1] +
+                                              pnrm[2]*pnrm[2]);
+                        if (nl < 1e-12) { nl = 1.0; }
+                        pl.plane_normal[0] = pnrm[0] / nl;
+                        pl.plane_normal[1] = pnrm[1] / nl;
+                        pl.plane_normal[2] = pnrm[2] / nl;
+
+                        cadapp::FeatureIR mf;
+                        mf.id   = id;
+                        mf.name = name;
+                        mf.type = cadapp::FeatType::Mirror;
+                        mf.data = std::move(pl);
+                        mf.ext_strings["zw_type"] = zt;
+                        // Tools = the mirrored originals; Base = running body the
+                        // mirror images fuse onto (AddMirroredOriginals).
+                        for (uint32_t t : mir_tools) {
+                            PushInput(mf, t, cadapp::InputRole::Tool);
+                        }
+                        PushInput(mf, running_solid_id, cadapp::InputRole::Base);
+                        out.features.push_back(std::move(mf));
                         running_solid_id = id;
                         continue;
                     }

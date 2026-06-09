@@ -334,6 +334,18 @@ struct Profile
     double origin[3] = { 0.0, 0.0, 0.0 };
     double x_dir [3] = { 1.0, 0.0, 0.0 };
     double normal[3] = { 0.0, 0.0, 1.0 };
+
+    // Diagnostics for the "sketch found but 0 curves" case (R2900_100's
+    // Extrude21/26/30/31 export n_profile_sketch=1 / n_profile_curve=0, so
+    // they reconstruct as opaque). curvelist_rc is the LAST
+    // ZwSketch2DCurveListGet return code and curvelist_cn its reported count:
+    //   rc != 0          -> the API rejected the sketch handle / state
+    //   rc == 0, cn == 0 -> the sketch genuinely exposes no native 2D curves
+    //                       (its profile is reference / projected geometry that
+    //                       ZwSketch2DCurveListGet does not enumerate)
+    // -999 / -1 mean read_sketch_curves never ran (no sketch resolved).
+    int    curvelist_rc = -999;
+    int    curvelist_cn = -1;
 };
 
 // One walked feature in history order.
@@ -704,6 +716,30 @@ EntSig EntitySig(int idEnt)
                 s.normal[0] = n.x; s.normal[1] = n.y; s.normal[2] = n.z;
                 s.has_normal = true;
             }
+        }
+    }
+    // A datum PLANE has no face to evaluate, so the face branch above leaves it
+    // with only a bbox-centre anchor and no normal. A mirror / symmetry feature
+    // (FtMirrorFtr) references such a datum as its mirror plane (fld "Plane"),
+    // and the reader needs the plane's NORMAL to reflect across it. Recover it
+    // from the datum's world matrix the same way read_sketch_curves does for a
+    // sketch insertion plane: szwMatrix's z-axis column (zx,zy,zz) is the plane
+    // normal and the offset column (xt,yt,zt) a point ON the plane. (The datum's
+    // bbox centre is already in-plane, so the existing anchor stays valid as the
+    // plane point; we only add the missing normal. A datum AXIS has no single
+    // meaningful normal, but a mirror plane is a datum PLANE, not an axis.)
+    if (!s.has_normal && cvxEntExists(idEnt, VX_ENT_DATUM))
+    {
+        szwEntityHandle h;
+        if (ZwEntityIdTransfer(1, &idEnt, &h) == ZW_API_NO_ERROR)
+        {
+            szwMatrix m;
+            if (ZwEntityMatrixGet(h, &m) == ZW_API_NO_ERROR)
+            {
+                s.normal[0] = m.zx; s.normal[1] = m.zy; s.normal[2] = m.zz;
+                s.has_normal = true;
+            }
+            ZwEntityHandleFree(&h);
         }
     }
     // NOTE: for a curved edge the bbox centre is NOT on the curve (a circular
@@ -1189,9 +1225,12 @@ void ReadProfile(int idFtr, Profile& out)
             }
         }
 
-        int              cn     = 0;
-        szwEntityHandle* curves = nullptr;
-        if (ZwSketch2DCurveListGet(&skh, &cn, &curves) != ZW_API_NO_ERROR || curves == nullptr) {
+        int              cn      = 0;
+        szwEntityHandle* curves  = nullptr;
+        int              curveRc = ZwSketch2DCurveListGet(&skh, &cn, &curves);
+        out.curvelist_rc = curveRc;       // diag: surface the otherwise-swallowed
+        out.curvelist_cn = cn;            // rc/count for the "0 curves" extrudes
+        if (curveRc != ZW_API_NO_ERROR || curves == nullptr) {
             return;
         }
         for (int c = 0; c < cn; ++c)
@@ -1969,6 +2008,11 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             }
             diag["n_profile_sketch"] = pr.n_sketch;
             diag["n_profile_curve"]  = static_cast<int>(pr.curves.size());
+            // When a sketch was found but yielded no curves (the opaque-extrude
+            // case), these say whether ZwSketch2DCurveListGet errored or simply
+            // reported zero -- the discriminator for the eventual fix.
+            diag["profile_curvelist_rc"] = pr.curvelist_rc;
+            diag["profile_curvelist_cn"] = pr.curvelist_cn;
 
             // Pattern (FtPtnFtr): count / spacing / patterned-target are
             // already in the field dump (fld 3 / 4 / 1); the one missing
