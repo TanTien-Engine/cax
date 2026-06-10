@@ -1898,19 +1898,25 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     // patterns that carry a per-instance dressup, or a non-
                     // equivariant tool, fall back to the per-instance expansion.
                     if (all_equivariant) {
-                        // Phase 1: replicate every tool with the shared n-ary
-                        // linear_pattern op and combine each onto the running
-                        // body once -- replaces count1*count2 sequential tool
-                        // booleans with one pattern + one combine per tool.
+                        // Phase 1: replicate every tool with a single
+                        // feature_pattern op -- an n-ary instance union plus ONE
+                        // boolean against the running body, folded into one op.
+                        // Replaces count1*count2 sequential tool booleans, AND
+                        // (vs the old linear_pattern + cut/fuse pair) rebuilds as
+                        // a single FeaturePattern node rather than two nodes.
                         int acc = base_node;
                         for (const auto& c : contribs) {
                             if (!c.is_tool) continue;
-                            int pat = cg->AddOp(
-                                "linear_pattern",
-                                {c.tool_node, d1, c1, s1, d2, c2, s2},
-                                {}, feat.name + ":pat");
-                            const char* op = (c.op_kind == 'c') ? "cut" : "fuse";
-                            acc = cg->AddOp(op, {acc, pat}, {}, feat.name);
+                            // op_kind: 0 = fuse (boss), 1 = cut (hole). Plain
+                            // feat.name desc (no :pat/:inst suffix) keeps a
+                            // no-dressup pattern out of encapsulate_patterns, so
+                            // it stays one clean node on rebuild.
+                            int ok = cg->AddConst(
+                                (c.op_kind == 'c') ? 1 : 0, "op_kind");
+                            acc = cg->AddOp(
+                                "feature_pattern",
+                                {acc, c.tool_node, ok, d1, c1, s1, d2, c2, s2},
+                                {}, feat.name);
                         }
                         // Phase 2: per-instance dressups (chamfer/fillet). All
                         // tools are present on `acc` now and pattern instances
