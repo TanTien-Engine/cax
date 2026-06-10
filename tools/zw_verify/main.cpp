@@ -235,15 +235,42 @@ FaceMatch MatchFacesAB(const std::vector<FaceProbe>& A,
 
 // ---- STEP io --------------------------------------------------------
 
+// True when s is well-formed UTF-8 (ASCII counts). Distinguishes a path
+// that is ALREADY UTF-8 from a system-ANSI (GBK) one, so the ACP
+// round-trip below never mangles a UTF-8 input.
+bool IsValidUtf8(const std::string& s)
+{
+    const auto* p   = reinterpret_cast<const unsigned char*>(s.data());
+    const auto* end = p + s.size();
+    while (p < end)
+    {
+        if (*p < 0x80) { ++p; continue; }
+        int n = 0;
+        if      ((*p & 0xE0) == 0xC0) { n = 1; }
+        else if ((*p & 0xF0) == 0xE0) { n = 2; }
+        else if ((*p & 0xF8) == 0xF0) { n = 3; }
+        else { return false; }
+        if (end - p <= n) { return false; }
+        for (int k = 1; k <= n; ++k) {
+            if ((p[k] & 0xC0) != 0x80) { return false; }
+        }
+        p += n + 1;
+    }
+    return true;
+}
+
 bool LoadStep(const std::string& path, TopoDS_Shape& out, std::string& err)
 {
     // Two narrow-string worlds on Windows: argv and the CRT-based cax
     // readers speak the ANSI code page, but OCCT's OSD_OpenFile decodes
     // char* as UTF-8 -- a GBK Chinese path reaches it as invalid UTF-8
     // and the read fails. fs::path decodes narrow as ACP on MSVC, so a
-    // round-trip through it re-encodes ACP -> UTF-8 for OCCT.
-    const std::string occt_path =
-        std::filesystem::path(path).u8string();
+    // round-trip through it re-encodes ACP -> UTF-8 for OCCT. A path
+    // that is already valid UTF-8 must pass through untouched (the ACP
+    // decode would mangle it).
+    const std::string occt_path = IsValidUtf8(path)
+        ? path
+        : std::filesystem::path(path).u8string();
     STEPControl_Reader rd;
     const IFSelect_ReturnStatus st = rd.ReadFile(occt_path.c_str());
     if (st != IFSelect_RetDone)
@@ -428,8 +455,8 @@ void LoadAuthoredShapes(cadapp::DocumentIR& doc, double unit_scale)
         std::string  err;
         if (!LoadStep(it->second, shp, err))
         {
-            std::printf("INFO authored_step_missing feat=%u path=%s\n",
-                        feat.id, it->second.c_str());
+            std::printf("INFO authored_step_missing feat=%u err=%s\n",
+                        feat.id, err.c_str());
             continue;   // Replayer reports the gap
         }
         shp = ScaleShape(shp, unit_scale);

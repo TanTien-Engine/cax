@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
@@ -64,6 +65,48 @@ namespace cadcvt
 
 namespace
 {
+
+// Re-encode a narrow file path for OCCT, whose OSD_OpenFile decodes
+// char* as UTF-8 on Windows. Paths arriving here are EITHER UTF-8 (an
+// editor .ves scene string) or system-ANSI (argv / ZW3D file APIs on a
+// Chinese locale, i.e. GBK): valid UTF-8 passes through untouched,
+// anything else is decoded from the ANSI code page by MSVC's narrow
+// fs::path constructor and re-encoded as UTF-8. Without this, a GBK
+// path reaches OCCT as invalid UTF-8 and the read fails -- the editor
+// silently skipped every authored per-feature STEP of a Chinese-named
+// ZW3D part.
+inline bool PathIsValidUtf8(const std::string& s)
+{
+    const auto* p   = reinterpret_cast<const unsigned char*>(s.data());
+    const auto* end = p + s.size();
+    while (p < end)
+    {
+        if (*p < 0x80) { ++p; continue; }
+        int n = 0;
+        if      ((*p & 0xE0) == 0xC0) { n = 1; }
+        else if ((*p & 0xF0) == 0xE0) { n = 2; }
+        else if ((*p & 0xF8) == 0xF0) { n = 3; }
+        else { return false; }
+        if (end - p <= n) { return false; }
+        for (int k = 1; k <= n; ++k) {
+            if ((p[k] & 0xC0) != 0x80) { return false; }
+        }
+        p += n + 1;
+    }
+    return true;
+}
+
+inline std::string PathForOcct(const std::string& p)
+{
+#ifdef _WIN32
+    if (PathIsValidUtf8(p)) {
+        return p;
+    }
+    return std::filesystem::path(p).u8string();
+#else
+    return p;
+#endif
+}
 
 struct FreeCadLoaderState
 {
@@ -1325,7 +1368,10 @@ void w_ZwLoader_load()
             continue;
         }
         STEPControl_Reader rd;
-        if (rd.ReadFile(it->second.c_str()) != IFSelect_RetDone) {
+        if (rd.ReadFile(PathForOcct(it->second).c_str()) != IFSelect_RetDone) {
+            std::fprintf(stderr,
+                         "[ZwLoad] authored STEP unreadable (feat %u): %s\n",
+                         feat.id, it->second.c_str());
             continue;   // missing/unreadable -> Replayer reports the gap
         }
         rd.TransferRoots();

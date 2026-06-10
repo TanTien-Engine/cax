@@ -2362,7 +2362,11 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                 const std::string fstep = FeatStepPath(out_path, node.id);
                 zwapi::StepExportResult fse = zwapi::ExportFeatureShapesStep(fid, fstep);
                 if (fse.ok) {
-                    jf["geometry"] = BaseName(fstep);
+                    // ToUtf8: out_path can be GBK (ZW3D file dialog / batch
+                    // queue); raw GBK would hit dump()'s error_handler::replace
+                    // and turn into unrecoverable U+FFFD mojibake -- the reader
+                    // then can't resolve the sibling STEP by its recorded name.
+                    jf["geometry"] = ToUtf8(BaseName(fstep).c_str());
                 }
                 diag["feat_step_init_rc"]   = fse.init_rc;
                 diag["feat_step_export_rc"] = fse.export_rc;
@@ -2393,7 +2397,7 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                     zwapi::StepExportResult se = zwapi::ExportPartStep(spath);
                     if (se.ok)
                     {
-                        js["step"] = BaseName(spath);
+                        js["step"] = ToUtf8(BaseName(spath).c_str());
                     }
                     js["step_rc"] = se.export_rc;
                 }
@@ -2430,14 +2434,14 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         }
         zwapi::StepExportResult se = zwapi::ExportPartStep(step_path);
         if (se.ok) {
-            doc["geometry"] = BaseName(step_path);
+            doc["geometry"] = ToUtf8(BaseName(step_path).c_str());
         }
         // Diagnostic: surface why a STEP export failed (best-effort, so a
         // failure is otherwise silent). ZW_API_NO_ERROR is 0.
         json gdiag;
         gdiag["init_rc"]   = se.init_rc;
         gdiag["export_rc"] = se.export_rc;
-        gdiag["path"]      = step_path;
+        gdiag["path"]      = ToUtf8(step_path.c_str());
         doc["geometry_diag"] = std::move(gdiag);
     }
 
