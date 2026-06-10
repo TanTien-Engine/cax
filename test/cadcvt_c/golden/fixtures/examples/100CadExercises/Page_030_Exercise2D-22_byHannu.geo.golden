@@ -1,3 +1,3 @@
 geo solids=1 shells=1 faces=48 edges=119 verts=73
 bbox min=(-0.06,-0.05,0.00) max=(0.04,0.10,0.01)
-mass area=0.01599232 volume=0.00004528
+mass area=0.01599233 volume=0.00004528
