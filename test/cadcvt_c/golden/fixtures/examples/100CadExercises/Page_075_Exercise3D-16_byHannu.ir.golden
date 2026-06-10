@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=8
+sketch 9 name=Sketch_Path plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=8
   geo 1 type=Arc constr=0 params=[0.225,0.000,0.225,3.1416,3.9270]
   geo 2 type=Line constr=1 params=[0.000,0.000,0.225,0.000]
   geo 3 type=Line constr=1 params=[0.225,0.000,0.066,-0.159]
@@ -39,7 +39,7 @@ sketch 17 name=Sketch004 plane_origin=(0.066,-0.159,0.000) plane_normal=(0.707,-
   con 22 type=Coincident a=11:2 b=10:2 value=0.000 driving=1
   con 23 type=CircleDiameter a=10:0 b=4294967295:0 value=0.088 driving=1
   con 24 type=CircleDiameter a=11:0 b=4294967295:0 value=0.130 driving=1
-feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 9 name=Sketch_Path type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=10 spine_sketch_id=9
   inputs=[0:base]

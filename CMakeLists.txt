@@ -455,7 +455,7 @@ source_group("cadcvt\\reader\\zw" FILES ${cadcvt__reader_zw})
 if(CADCVT_ZW_DEPS_OK)
     message(STATUS "cadcvt: ZwReader enabled")
 else()
-    message(STATUS "cadcvt: ZwReader disabled (run: git submodule update --init thirdparty/nlohmann)")
+    message(STATUS "cadcvt: ZwReader disabled (run: git submodule update --init thirdparty/nlohmann, then re-run cmake)")
 endif()
 
 

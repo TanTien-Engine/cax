@@ -1,3 +1,1 @@
-geo solids=1 shells=1 faces=94 edges=203 verts=110
-bbox min=(-0.05,-0.01,-0.02) max=(0.04,0.02,0.02)
-mass area=0.00997932 volume=0.00003082
+geo REPLAY_THREW exception=ChFi3d_Builder:only 2 faces

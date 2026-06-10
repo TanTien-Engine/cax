@@ -1875,8 +1875,11 @@ bool ZwReader::ReadFile(const std::string& path,
     (void)path;
     (void)out;
     if (err_msg) {
-        *err_msg = "ZwReader: not built (nlohmann/json missing; run: "
-                   "git submodule update --init thirdparty/nlohmann)";
+        *err_msg = "ZwReader: not built (nlohmann/json was missing at CMake "
+                   "configure time; run: git submodule update --init "
+                   "thirdparty/nlohmann, then RE-RUN cmake configure and "
+                   "rebuild -- pulling the submodule alone does not "
+                   "re-enable the reader in an already-configured build)";
     }
     return false;
 }

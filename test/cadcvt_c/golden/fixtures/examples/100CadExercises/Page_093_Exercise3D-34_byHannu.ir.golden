@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=47
+sketch 9 name=Sketch_Side plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=47
   geo 14 type=Line constr=0 params=[0.000,0.000,-0.048,0.000]
   geo 15 type=Line constr=0 params=[-0.048,0.000,-0.048,-0.012]
   geo 16 type=Line constr=0 params=[-0.048,-0.012,-0.024,-0.012]
@@ -112,7 +112,7 @@ sketch 10 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=10 dir=(0.000,0.000,1.000) dist=0.012 dist2=0.018 end=0 flip=0
   inputs=[0:base]
-feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 9 name=Sketch_Side type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 12 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.020 dist2=0.020 end=0 flip=1
   inputs=[11:base]
 feat 13 name=Chamfer type=Chamfer suppressed=0 payload=chamfer d1=0.002 d2=0.000 edges=4

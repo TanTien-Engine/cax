@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 5 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=16
+sketch 5 name=Interior Profile plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=16
   geo 1 type=Arc constr=0 params=[0.000,0.008,0.002,1.5708,2.3562]
   geo 2 type=Line constr=0 params=[0.000,0.010,0.000,0.010]
   geo 3 type=Arc constr=0 params=[0.000,0.008,0.002,0.7854,1.5708]
@@ -32,7 +32,7 @@ sketch 5 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   con 14 type=Coincident a=14:1 b=15:3 value=0.000 driving=1
   con 15 type=Coincident a=15:1 b=16:3 value=0.000 driving=1
   con 16 type=Coincident a=16:1 b=1:3 value=0.000 driving=1
-sketch 6 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
+sketch 6 name=V Hole plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
   geo 17 type=Arc constr=0 params=[0.015,-0.002,0.001,3.8047,6.2832]
   geo 18 type=Line constr=0 params=[0.014,-0.002,0.015,-0.003]
   geo 19 type=Arc constr=0 params=[0.013,0.000,0.003,4.1715,5.2533]
@@ -71,7 +71,7 @@ sketch 6 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.0
   con 33 type=Coincident a=33:1 b=34:3 value=0.000 driving=1
   con 34 type=Coincident a=34:1 b=35:3 value=0.000 driving=1
   con 35 type=Coincident a=35:1 b=17:3 value=0.000 driving=1
-sketch 7 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
+sketch 7 name=U Hole plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
   geo 36 type=Arc constr=0 params=[-0.013,0.000,0.003,4.1715,5.2533]
   geo 37 type=Line constr=0 params=[-0.015,-0.003,-0.014,-0.002]
   geo 38 type=Arc constr=0 params=[-0.015,-0.002,0.001,2.2339,5.6200]
@@ -110,7 +110,7 @@ sketch 7 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.0
   con 52 type=Coincident a=52:1 b=53:3 value=0.000 driving=1
   con 53 type=Coincident a=53:1 b=54:3 value=0.000 driving=1
   con 54 type=Coincident a=54:1 b=36:3 value=0.000 driving=1
-sketch 8 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=88 cons=96
+sketch 8 name=Extrusion Profile plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=88 cons=96
   geo 55 type=Arc constr=0 params=[0.008,-0.012,0.001,4.7124,6.2832]
   geo 56 type=Arc constr=0 params=[0.008,-0.012,0.001,0.0000,1.5708]
   geo 57 type=Line constr=0 params=[0.008,-0.010,0.006,-0.010]
@@ -299,7 +299,7 @@ feat 1 name=Wire type=Unknown suppressed=0 payload=other
 feat 2 name=Wire001 type=Unknown suppressed=0 payload=other
 feat 3 name=Wire002 type=Unknown suppressed=0 payload=other
 feat 4 name=Wire003 type=Unknown suppressed=0 payload=other
-feat 5 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=5
-feat 6 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=6
-feat 7 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=7
-feat 8 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=8
+feat 5 name=Interior Profile type=Sketch suppressed=0 payload=sketch sketch_id=5
+feat 6 name=V Hole type=Sketch suppressed=0 payload=sketch sketch_id=6
+feat 7 name=U Hole type=Sketch suppressed=0 payload=sketch sketch_id=7
+feat 8 name=Extrusion Profile type=Sketch suppressed=0 payload=sketch sketch_id=8

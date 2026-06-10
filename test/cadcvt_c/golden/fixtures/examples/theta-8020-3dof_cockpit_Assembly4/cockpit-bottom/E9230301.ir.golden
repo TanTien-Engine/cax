@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 7 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
+sketch 7 name=VV Hole plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
   geo 179 type=Arc constr=0 params=[-0.002,-0.002,0.001,2.2339,5.6200]
   geo 180 type=Line constr=0 params=[-0.002,-0.001,-0.003,-0.002]
   geo 181 type=Arc constr=0 params=[0.000,0.000,0.003,2.6007,3.6825]
@@ -38,7 +38,7 @@ sketch 7 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,
   con 195 type=Coincident a=195:1 b=196:3 value=0.000 driving=1
   con 196 type=Coincident a=196:1 b=197:3 value=0.000 driving=1
   con 197 type=Coincident a=197:1 b=179:3 value=0.000 driving=1
-sketch 8 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
+sketch 8 name=U Hole plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
   geo 160 type=Arc constr=0 params=[0.000,0.025,0.003,5.7423,6.2832]
   geo 161 type=Line constr=0 params=[0.003,0.023,0.002,0.024]
   geo 162 type=Arc constr=0 params=[0.002,0.023,0.001,0.0000,0.9077]
@@ -77,7 +77,7 @@ sketch 8 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.0
   con 176 type=Coincident a=176:1 b=177:3 value=0.000 driving=1
   con 177 type=Coincident a=177:1 b=178:3 value=0.000 driving=1
   con 178 type=Coincident a=178:1 b=160:3 value=0.000 driving=1
-sketch 9 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=16
+sketch 9 name=U-VV Interior Profile plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=16
   geo 144 type=Arc constr=0 params=[-0.008,0.012,0.002,3.1416,3.9270]
   geo 145 type=Line constr=0 params=[-0.010,0.013,-0.010,0.012]
   geo 146 type=Arc constr=0 params=[-0.008,0.013,0.002,2.3562,3.1416]
@@ -110,7 +110,7 @@ sketch 9 name=Sketch002 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.0
   con 157 type=Coincident a=157:1 b=158:3 value=0.000 driving=1
   con 158 type=Coincident a=158:1 b=159:3 value=0.000 driving=1
   con 159 type=Coincident a=159:1 b=144:3 value=0.000 driving=1
-sketch 10 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=16
+sketch 10 name=VV-V Interior Profile plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=16 cons=16
   geo 128 type=Arc constr=0 params=[-0.008,-0.013,0.002,3.1416,3.9270]
   geo 129 type=Line constr=0 params=[-0.010,-0.012,-0.010,-0.013]
   geo 130 type=Arc constr=0 params=[-0.008,-0.012,0.002,2.3562,3.1416]
@@ -143,7 +143,7 @@ sketch 10 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   con 141 type=Coincident a=141:1 b=142:3 value=0.000 driving=1
   con 142 type=Coincident a=142:1 b=143:3 value=0.000 driving=1
   con 143 type=Coincident a=143:1 b=128:3 value=0.000 driving=1
-sketch 11 name=Sketch004 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
+sketch 11 name=V Hole plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=19 cons=19
   geo 109 type=Arc constr=0 params=[-0.002,-0.028,0.001,2.2339,5.6200]
   geo 110 type=Line constr=0 params=[-0.002,-0.027,-0.003,-0.027]
   geo 111 type=Arc constr=0 params=[0.000,-0.025,0.003,2.6007,3.6825]
@@ -182,7 +182,7 @@ sketch 11 name=Sketch004 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   con 125 type=Coincident a=125:1 b=126:3 value=0.000 driving=1
   con 126 type=Coincident a=126:1 b=127:3 value=0.000 driving=1
   con 127 type=Coincident a=127:1 b=109:3 value=0.000 driving=1
-sketch 12 name=Sketch005 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=108 cons=108
+sketch 12 name=Extrusion Profile plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=108 cons=108
   geo 1 type=Arc constr=0 params=[0.004,0.037,0.001,1.5708,4.7124]
   geo 2 type=Line constr=0 params=[0.004,0.036,0.006,0.036]
   geo 3 type=Arc constr=0 params=[0.006,0.035,0.001,0.0000,1.5708]
@@ -399,24 +399,24 @@ sketch 12 name=Sketch005 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.
   con 106 type=Coincident a=106:3 b=107:1 value=0.000 driving=1
   con 107 type=Coincident a=107:3 b=108:1 value=0.000 driving=1
   con 108 type=Coincident a=108:3 b=1:1 value=0.000 driving=1
-feat 12 name=Sketch005 type=Sketch suppressed=0 payload=sketch sketch_id=12
+feat 12 name=Extrusion Profile type=Sketch suppressed=0 payload=sketch sketch_id=12
 feat 21 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=12 dir=(0.000,0.000,1.000) dist=0.972 dist2=0.000 end=0 flip=0
   inputs=[0:base]
-feat 11 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=11
-feat 22 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+feat 11 name=V Hole type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 22 name=V Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
   inputs=[21:base]
-feat 10 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=10
-feat 23 name=Pocket001 type=CutExtrude suppressed=0 payload=extrude sketch_id=10 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[22:base]
-feat 9 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=9
-feat 24 name=Pocket002 type=CutExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[23:base]
-feat 8 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=8
-feat 25 name=Pocket003 type=CutExtrude suppressed=0 payload=extrude sketch_id=8 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[24:base]
-feat 7 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=7
-feat 26 name=Pocket004 type=CutExtrude suppressed=0 payload=extrude sketch_id=7 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[25:base]
+feat 10 name=VV-V Interior Profile type=Sketch suppressed=0 payload=sketch sketch_id=10
+feat 23 name=VV-V Interior Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=10 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+  inputs=[21:base]
+feat 9 name=U-VV Interior Profile type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 24 name=U-VV Interior Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+  inputs=[21:base]
+feat 8 name=U Hole type=Sketch suppressed=0 payload=sketch sketch_id=8
+feat 25 name=U Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=8 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+  inputs=[21:base]
+feat 7 name=VV Hole type=Sketch suppressed=0 payload=sketch sketch_id=7
+feat 26 name=VV Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=7 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
+  inputs=[21:base]
 feat 1 name=Wire type=Unknown suppressed=0 payload=other
 feat 2 name=Wire001 type=Unknown suppressed=0 payload=other
 feat 3 name=Wire002 type=Unknown suppressed=0 payload=other

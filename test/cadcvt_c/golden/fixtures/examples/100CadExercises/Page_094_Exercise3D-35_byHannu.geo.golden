@@ -1,3 +1,1 @@
-geo solids=1 shells=1 faces=40 edges=108 verts=72
-bbox min=(-0.04,-0.01,0.00) max=(0.04,0.01,0.04)
-mass area=0.00399826 volume=0.00000747
+geo REPLAY_THREW exception=Not wire!

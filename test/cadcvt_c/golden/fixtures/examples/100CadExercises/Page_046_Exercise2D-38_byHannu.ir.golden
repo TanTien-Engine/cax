@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=10
+sketch 9 name=Sketch_Path plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=10
   geo 1 type=Arc constr=0 params=[0.000,0.000,0.035,0.0000,1.5708]
   geo 2 type=Line constr=1 params=[0.035,0.000,0.035,-0.023]
   geo 3 type=Line constr=1 params=[0.000,0.035,-0.053,0.035]
@@ -85,7 +85,7 @@ sketch 23 name=Sketch006 plane_origin=(-0.053,0.000,0.000) plane_normal=(-1.000,
   con 53 type=PointOnLine a=23:1 b=22:0 value=0.000 driving=1
   con 54 type=DistanceX a=20:2 b=22:2 value=0.030 driving=1
   con 55 type=DistanceX a=4294967295:1 b=20:2 value=0.035 driving=1
-feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
+feat 9 name=Sketch_Path type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 10 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 11 name=AdditivePipe type=Sweep suppressed=0 payload=sweep profile_sketch_id=10 spine_sketch_id=9
   inputs=[0:base]

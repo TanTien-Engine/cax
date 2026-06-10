@@ -1,5 +1,5 @@
 doc source=freecad
-sketch 22 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=3
+sketch 22 name=Length plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=1 cons=3
   geo 1 type=Line constr=0 params=[0.000,0.000,0.125,0.000]
   con 1 type=Horizontal a=1:0 b=4294967295:0 value=0.000 driving=1
   con 2 type=DistanceX a=1:1 b=1:3 value=0.125 driving=1
@@ -257,7 +257,7 @@ feat 14 name=constr_Cuve type=Unknown suppressed=0 payload=other
 feat 16 name=constr_Bague type=Unknown suppressed=0 payload=other
 feat 18 name=constr_Screw_CHC_1 type=Unknown suppressed=0 payload=other
 feat 20 name=constr_Screw_CHC_2 type=Unknown suppressed=0 payload=other
-feat 22 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=22
+feat 22 name=Length type=Sketch suppressed=0 payload=sketch sketch_id=22
 feat 23 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=23
 feat 24 name=Sketch003 type=Sketch suppressed=0 payload=sketch sketch_id=24
 feat 25 name=Sketch004 type=Sketch suppressed=0 payload=sketch sketch_id=25
