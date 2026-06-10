@@ -80,9 +80,11 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -389,6 +391,8 @@ struct FeatNode
 #include "zwapi_util.h"                    // vxName, evxErrors, ZW_API_NO_ERROR, svxBndBox, svxPoint/Vector, VX_ENT_*
 #include "zwapi_general_ent.h"             // cvxEntBndBox / cvxEntExists / cvxEntName (feature tree label)
 #include "zwapi_brep_face.h"               // cvxFaceParam / cvxFaceEval (face normal for matching signatures)
+#include "zwapi_brep_shape.h"              // cvxPartInqShapes / cvxPartInqShapeFaces / cvxPartInqShapeEdges /
+                                           // cvxPartInqShapeMass (per-feature cumulative _state truth)
 #include "zwapi_file.h"                    // cvxFileExportInit / cvxFileExport (STEP truth geometry)
 #include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle); ZwEntityMatrixGet
 #include "zwapi_matrix_data.h"             // szwMatrix (sketch insertion-plane world transform)
@@ -1142,6 +1146,90 @@ StepExportResult ExportFeatureShapesStep(int idFtr, const std::string& path)
     return r;
 }
 
+// Cumulative whole-part state at the CURRENT history stop-line: shape /
+// face / edge counts, world AABB, and (optionally) summed mass props.
+// Captured right after each feature executes, this is the per-step truth
+// the zw_verify bisect replays against -- the converted prefix 1..K must
+// reproduce exactly this state. Counts and bbox are id-list inquiries
+// (cheap); mass properties recompute integrals per shape, so they hide
+// behind `with_mass` (CAX_FEAT_STATE=2). Units are the part's native mm.
+struct StateSnap
+{
+    bool   ok       = false;
+    int    n_shape  = 0, n_face = 0, n_edge = 0;
+    bool   has_box  = false;
+    double bmin[3]  = {0, 0, 0}, bmax[3] = {0, 0, 0};
+    bool   has_mass = false;
+    double area     = 0.0, volume = 0.0;
+};
+
+StateSnap CaptureStateSnap(bool with_mass)
+{
+    StateSnap s;
+    int  cnt = 0;
+    int* ids = nullptr;
+    // NULL file / part = active part. A part whose first features haven't
+    // produced a body yet legitimately reports zero shapes.
+    if (cvxPartInqShapes(nullptr, nullptr, &cnt, &ids) != ZW_API_NO_ERROR) {
+        return s;
+    }
+    s.ok      = true;
+    s.n_shape = cnt;
+    for (int i = 0; i < cnt && ids != nullptr; ++i)
+    {
+        int  n   = 0;
+        int* sub = nullptr;
+        if (cvxPartInqShapeFaces(ids[i], &n, &sub) == ZW_API_NO_ERROR && sub != nullptr)
+        {
+            s.n_face += n;
+            cvxMemFree(reinterpret_cast<void**>(&sub));
+        }
+        n   = 0;
+        sub = nullptr;
+        if (cvxPartInqShapeEdges(ids[i], &n, &sub) == ZW_API_NO_ERROR && sub != nullptr)
+        {
+            s.n_edge += n;
+            cvxMemFree(reinterpret_cast<void**>(&sub));
+        }
+
+        svxBndBox bb;
+        if (cvxEntBndBox(ids[i], &bb) == ZW_API_NO_ERROR)
+        {
+            if (!s.has_box)
+            {
+                s.bmin[0] = bb.X.min; s.bmin[1] = bb.Y.min; s.bmin[2] = bb.Z.min;
+                s.bmax[0] = bb.X.max; s.bmax[1] = bb.Y.max; s.bmax[2] = bb.Z.max;
+                s.has_box = true;
+            }
+            else
+            {
+                s.bmin[0] = std::min(s.bmin[0], bb.X.min);
+                s.bmin[1] = std::min(s.bmin[1], bb.Y.min);
+                s.bmin[2] = std::min(s.bmin[2], bb.Z.min);
+                s.bmax[0] = std::max(s.bmax[0], bb.X.max);
+                s.bmax[1] = std::max(s.bmax[1], bb.Y.max);
+                s.bmax[2] = std::max(s.bmax[2], bb.Z.max);
+            }
+        }
+
+        if (with_mass)
+        {
+            svxMassProp mp;
+            // density 0 = the shape's default; Area / Volume don't depend on it.
+            if (cvxPartInqShapeMass(ids[i], 0.0, &mp) == ZW_API_NO_ERROR)
+            {
+                s.area    += mp.Area;
+                s.volume  += mp.Volume;
+                s.has_mass = true;
+            }
+        }
+    }
+    if (ids != nullptr) {
+        cvxMemFree(reinterpret_cast<void**>(&ids));
+    }
+    return s;
+}
+
 // Read an external-geometry-copy feature (CdGeomCopy) via its dedicated
 // typed inquiry -- its source reference lives there, not in the generic
 // field container. Bridges the Vx int feature id to the new-API
@@ -1853,6 +1941,97 @@ std::string FeatStepPath(const std::string& out_path, uint32_t id)
     return p + ".feat" + std::to_string(id) + ".step";
 }
 
+// Sibling path for a CUMULATIVE state STEP (the whole part right after
+// feature <id>): "<out without .json>.state<id>.step". Distinct from
+// FeatStepPath, which exports only the shapes one feature created.
+std::string StateStepPath(const std::string& out_path, uint32_t id)
+{
+    std::string p = out_path;
+    const std::string js = ".json";
+    if (p.size() >= js.size() &&
+        p.compare(p.size() - js.size(), js.size(), js) == 0)
+    {
+        p = p.substr(0, p.size() - js.size());
+    }
+    return p + ".state" + std::to_string(id) + ".step";
+}
+
+json StateSnapToJson(const zwapi::StateSnap& s)
+{
+    json j;
+    j["n_shape"] = s.n_shape;
+    j["n_face"]  = s.n_face;
+    j["n_edge"]  = s.n_edge;
+    if (s.has_box)
+    {
+        j["bbox"] = json::array({ s.bmin[0], s.bmin[1], s.bmin[2],
+                                  s.bmax[0], s.bmax[1], s.bmax[2] });
+    }
+    if (s.has_mass)
+    {
+        j["area"]   = s.area;     // mm^2
+        j["volume"] = s.volume;   // mm^3
+    }
+    return j;
+}
+
+// Per-feature state capture config, from the environment (read once per
+// export -- ZW3D inherits the env of whoever launched it, e.g. drive.ps1):
+//   CAX_FEAT_STATE       0 = off, 1 = counts + bbox (the default),
+//                        2 = also mass properties (area / volume; heavier:
+//                        ZW3D re-integrates each shape at every feature)
+//   CAX_FEAT_STATE_STEP  "" (default, off), "all", or a comma list of
+//                        1-based feature ordinals -- exports the CUMULATIVE
+//                        part body as .state<K>.step at those stops, for
+//                        face-level diffing of a bisected feature.
+struct StateConfig
+{
+    int               mode = 1;
+    bool              step_all = false;
+    std::vector<long> step_ids;
+
+    static StateConfig FromEnv()
+    {
+        StateConfig c;
+        if (const char* m = std::getenv("CAX_FEAT_STATE"))
+        {
+            if (*m != '\0') { c.mode = std::atoi(m); }
+        }
+        if (const char* s = std::getenv("CAX_FEAT_STATE_STEP"))
+        {
+            std::string v(s);
+            if (v == "all" || v == "ALL")
+            {
+                c.step_all = true;
+            }
+            else
+            {
+                std::string tok;
+                for (char ch : v + ",")
+                {
+                    if (ch == ',')
+                    {
+                        if (!tok.empty()) { c.step_ids.push_back(std::atol(tok.c_str())); }
+                        tok.clear();
+                    }
+                    else { tok += ch; }
+                }
+            }
+        }
+        return c;
+    }
+
+    bool WantStep(uint32_t id) const
+    {
+        if (step_all) { return true; }
+        for (long v : step_ids)
+        {
+            if (v == static_cast<long>(id)) { return true; }
+        }
+        return false;
+    }
+};
+
 // Open a file for binary writing through a Unicode-safe path. ZW3D's C API
 // returns paths in UTF-8; the CRT's narrow std::fopen opens them in the
 // ANSI code page, so a Chinese (or any non-ASCII) part name fails to open
@@ -1913,6 +2092,9 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
     // JSON id (cvxPartInqEntFtr returns a ZW id; the JSON id is the ordinal).
     zwapi::SetJsonIdMap(feats);
 
+    // Per-feature cumulative state capture (CAX_FEAT_STATE / _STEP env).
+    const StateConfig state_cfg = StateConfig::FromEnv();
+
     // ONE forward sweep through history. Roll the body to the BEGIN once; from
     // here every per-feature roll only plays FORWARD (ZwHistoryReplay is relative
     // to the stop-line and we visit features in history order), so the body is
@@ -1937,6 +2119,10 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         // roll itself sets the read context (mirrors the proven dressup recipe --
         // ZwHistoryReplay then read, no scroll).
         bool at_before = zwapi::RollBodyBefore(fid);
+
+        // Set by any branch that already played the body to this feature's
+        // AFTER state, so the state capture at the loop tail doesn't roll twice.
+        bool rolled_after = false;
 
         FeatNode node;
         node.id   = static_cast<uint32_t>(i + 1);
@@ -1966,7 +2152,7 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         {
             // OUTPUT STATE: a Box is a root primitive -- its result shape (read
             // by ReadShapeMinCorner) only exists once the feature executes.
-            zwapi::RollBodyAfter(fid);
+            rolled_after = zwapi::RollBodyAfter(fid);
             zwapi::ReadBox(fid, node.box);
             jf["kind"]   = sc::kind::Box;
             jf["length"] = node.box.length;
@@ -2127,6 +2313,7 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             // builds this feature. Everything below reads its OWN output.
             bool at_after = zwapi::RollBodyAfter(fid);
             diag["roll_after"] = at_after;
+            rolled_after       = at_after;
 
             // PARAM FALLBACK (AFTER state): some features' data container is not
             // readable at the BEFORE state -- R2900_100's Extrude21 returns
@@ -2182,6 +2369,36 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             }
 
             jf["_diag"] = std::move(diag);
+        }
+
+        // Cumulative state truth at this feature's AFTER position: what the
+        // WHOLE part looks like once features 1..i+1 have executed. This is
+        // the per-step baseline zw_verify's --bisect replays against; without
+        // it, localizing a divergence means exporting a STEP per probe. The
+        // roll is forward-only (the sweep invariant holds: the next
+        // iteration's RollBodyBefore still only plays forward).
+        if (state_cfg.mode > 0)
+        {
+            if (!rolled_after)
+            {
+                rolled_after = zwapi::RollBodyAfter(fid);
+            }
+            zwapi::StateSnap ss = zwapi::CaptureStateSnap(state_cfg.mode >= 2);
+            if (ss.ok)
+            {
+                json js = StateSnapToJson(ss);
+                if (state_cfg.WantStep(node.id))
+                {
+                    const std::string spath = StateStepPath(out_path, node.id);
+                    zwapi::StepExportResult se = zwapi::ExportPartStep(spath);
+                    if (se.ok)
+                    {
+                        js["step"] = BaseName(spath);
+                    }
+                    js["step_rc"] = se.export_rc;
+                }
+                jf["_state"] = std::move(js);
+            }
         }
 
         features.push_back(std::move(jf));
