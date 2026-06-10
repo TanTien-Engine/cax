@@ -53,9 +53,9 @@ feat 13 name=Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=12 di
 feat 14 name=Page type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawPage
 feat 15 name=Template type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawSVGTemplate
 feat 16 name=ProjGroup type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroup
-feat 17 name=ProjItem type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
-feat 18 name=ProjItem002 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
-feat 19 name=ProjItem003 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 17 name=Front type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 18 name=Top type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 19 name=FrontTopRight type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
 feat 20 name=Dimension type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
 feat 21 name=Dimension001 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
 feat 22 name=Dimension002 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension

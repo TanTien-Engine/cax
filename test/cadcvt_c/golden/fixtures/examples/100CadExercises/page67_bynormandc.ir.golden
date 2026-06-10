@@ -96,10 +96,10 @@ feat 22 name=Fillet type=Fillet suppressed=0 payload=fillet radius=0.025 edges=4
 feat 23 name=Page type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawPage
 feat 24 name=Template type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawSVGTemplate
 feat 25 name=ProjGroup type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroup
-feat 26 name=ProjItem type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
-feat 27 name=ProjItem002 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
-feat 28 name=View type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewPart
-feat 29 name=ProjItem003 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 26 name=Front type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 27 name=Top type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
+feat 28 name=Isometric type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewPart
+feat 29 name=Right type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawProjGroupItem
 feat 30 name=Dimension type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
 feat 31 name=Dimension001 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension
 feat 32 name=Dimension002 type=Unknown suppressed=0 payload=opaque freecad_type=TechDraw::DrawViewDimension

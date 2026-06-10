@@ -38,7 +38,7 @@ sketch 9 name=Sketch plane_origin=(0.000,0.000,0.000) plane_normal=(-1.000,0.000
   con 25 type=PointOnLine a=1:2 b=4294967295:0 value=0.000 driving=1
   con 26 type=DistanceX a=1:2 b=4294967295:1 value=0.058 driving=1
   con 27 type=DistanceX a=1:2 b=4:2 value=0.030 driving=1
-sketch 11 name=Sketch001 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=11
+sketch 11 name=Sketch_Bend plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,0.000,1.000) plane_xdir=(1.000,0.000,0.000) geos=3 cons=11
   geo 12 type=Line constr=0 params=[-0.008,0.058,0.045,0.058]
   geo 13 type=Line constr=0 params=[0.080,0.023,0.080,0.000]
   geo 14 type=Arc constr=0 params=[0.045,0.023,0.035,0.0000,1.5708]
@@ -132,7 +132,7 @@ sketch 14 name=Sketch003 plane_origin=(0.000,0.000,0.000) plane_normal=(0.000,-1
   con 90 type=Tangent a=34:3 b=33:1 value=-1.571 driving=1
   con 91 type=Tangent a=30:3 b=34:1 value=-1.571 driving=1
 feat 9 name=Sketch type=Sketch suppressed=0 payload=sketch sketch_id=9
-feat 11 name=Sketch001 type=Sketch suppressed=0 payload=sketch sketch_id=11
+feat 11 name=Sketch_Bend type=Sketch suppressed=0 payload=sketch sketch_id=11
 feat 10 name=Pad type=BossExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.008 dist2=0.000 end=0 flip=0
   inputs=[0:base]
 feat 12 name=Sketch002 type=Sketch suppressed=0 payload=sketch sketch_id=12
