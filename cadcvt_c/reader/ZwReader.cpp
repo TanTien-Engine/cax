@@ -2098,8 +2098,48 @@ bool ZwReader::ReadFile(const std::string& path,
                                 break;
                             }
                         }
-                        if (pre_body != 0 && pre_body != id) {
+                        // Mirrors whose authored contribution is TINY
+                        // (result_ents: no new shapes, a handful of faces)
+                        // take the per-tool path. The delta path reflects
+                        // cut(body@post, body@pre), and when the running
+                        // body carries standalone pattern instances those
+                        // survive the cut untouched and get mirrored
+                        // wholesale -- R2900's Mirror8 is +6 faces in the
+                        // truth, but its delta tool came out 95 solids /
+                        // 2373 faces and the fuse ground >1000 s of CPU.
+                        // Mirroring the originals' raw tool solids loses
+                        // their dressups, which at this scale is a couple
+                        // of faces -- the honest trade. Big mirrors
+                        // (Mirror1: +298 faces) keep the delta path so
+                        // their fillets / chamfers come along.
+                        bool small_mirror = false;
+                        {
+                            auto re = jf.find("result_ents");
+                            if (re != jf.end()) {
+                                small_mirror =
+                                    JGet<int>(*re, "n_face", 0) <= 50;
+                            }
+                        }
+                        if (!small_mirror && pre_body != 0 && pre_body != id) {
                             PushInput(mf, pre_body, cadapp::InputRole::PatternTarget);
+                            // Bound the delta: the SECOND PatternTarget is the
+                            // body tip at the HIGHEST mirrored feature, so the
+                            // Replayer reflects cut(post, pre) -- the mirrored
+                            // features' own contribution -- instead of
+                            // cut(running body, pre). Without it a mirror of
+                            // far-upstream features reflects every feature
+                            // built since. When the mirrored set IS the
+                            // contiguous tail before the mirror, post == the
+                            // mirror's own base and the lowering is identical
+                            // to the unbounded form.
+                            uint32_t highest = 0;
+                            for (uint32_t t : mir_tools) {
+                                if (t > highest) { highest = t; }
+                            }
+                            if (highest != 0 && highest != pre_body) {
+                                PushInput(mf, highest,
+                                          cadapp::InputRole::PatternTarget);
+                            }
                         } else {
                             // Fallback: per-original-tool mirror (drops dressups,
                             // but better than the whole-body mirror that an empty

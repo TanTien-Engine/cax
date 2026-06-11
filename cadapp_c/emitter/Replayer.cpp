@@ -301,6 +301,15 @@ struct PatternInputs
 {
     std::vector<FeatureToolInfo> originals;
     int                          body_target = -1;
+    // Second Role::PatternTarget, when the reader wires one: the body
+    // tip right AFTER the last mirrored feature. The mirror delta is
+    // then cut(body_target2, body_target) -- the mirrored features'
+    // own contribution -- instead of cut(running body, body_target),
+    // which drags every feature built since into the mirror when the
+    // mirrored set lies far upstream (R2900's Mirror7 mirrors early
+    // features off a 97-solid history slice; the unbounded delta fuse
+    // ground >1000 s of CPU). -1 when absent.
+    int                          body_target2 = -1;
 };
 
 PatternInputs ResolvePatternInputs(
@@ -314,10 +323,10 @@ PatternInputs ResolvePatternInputs(
         return out;
     }
 
-    // First Role::PatternTarget entry resolves to the target body.
-    // Only Draft polar Arrays emit this today; the loop tolerates
-    // extra inputs of other roles (e.g. a future body-owned Draft
-    // Array could carry both Role::Base for its body chain and
+    // First Role::PatternTarget entry resolves to the target body;
+    // a second one (ZW mirror bounded delta) to body_target2. The
+    // loop tolerates extra inputs of other roles (e.g. a body-owned
+    // Draft Array carrying Role::Base for its body chain alongside
     // Role::PatternTarget for its Base link).
     for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
     {
@@ -329,13 +338,18 @@ PatternInputs ResolvePatternInputs(
         }
         uint32_t tid = feat.input_feature_ids[i];
         if (tid == 0u || tid == 0xFFFFFFFFu) {
-            break;
+            continue;
         }
         auto fit = feature_nodes.find(tid);
-        if (fit != feature_nodes.end()) {
-            out.body_target = fit->second;
+        if (fit == feature_nodes.end()) {
+            continue;
         }
-        break;
+        if (out.body_target < 0) {
+            out.body_target = fit->second;
+        } else {
+            out.body_target2 = fit->second;
+            break;
+        }
     }
     return out;
 }
@@ -1819,18 +1833,29 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 if (pi.body_target >= 0 && base_node >= 0)
                 {
                     // DELTA mirror (ZW3D feature-mirror): reflect the CUMULATIVE
-                    // geometry the mirrored features added -- (base) minus (the
-                    // body before the first mirrored feature) -- so their
-                    // fillets / chamfers / patterns / cuts all come along. The
+                    // geometry the mirrored features added -- so their fillets /
+                    // chamfers / patterns / cuts all come along. The
                     // per-original-tool path below mirrors raw tool solids and
                     // silently drops dressups, leaving the mirror side missing
-                    // its rounds. pi.body_target is that pre-originals body,
+                    // its rounds. pi.body_target is the pre-originals body,
                     // wired Role::PatternTarget by the Zw reader; FreeCAD mirrors
-                    // carry only Originals -> the per-tool path. delta =
-                    // cut(base, pre); result = fuse(base, mirror(delta)).
+                    // carry only Originals -> the per-tool path.
+                    //
+                    // The delta's MINUEND is the body tip right after the LAST
+                    // mirrored feature (pi.body_target2) when the reader wired
+                    // it -- the mirrored features' own contribution, bounded.
+                    // Falling back to base_node (the running body NOW) is only
+                    // correct when the mirrored set is the contiguous tail
+                    // right before the mirror; for a mirror of features far
+                    // upstream it drags the whole intervening history into the
+                    // reflection (R2900: a 97-solid delta whose fuse ground
+                    // >1000 s of CPU). delta = cut(post, pre); result =
+                    // fuse(base, mirror(delta)).
                     int o_n   = cg->AddConst(origin, "origin");
                     int n_n   = cg->AddConst(normal, "normal");
-                    int delta = cg->AddOp("cut", {base_node, pi.body_target},
+                    int post  = (pi.body_target2 >= 0) ? pi.body_target2
+                                                       : base_node;
+                    int delta = cg->AddOp("cut", {post, pi.body_target},
                                           {}, feat.name + ":delta");
                     int m_n   = cg->AddOp("mirror", {delta, o_n, n_n},
                                           {}, feat.name + ":mirror");
@@ -1844,8 +1869,43 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
                 else if (base_node >= 0)
                 {
-                    node = AddMirrorWithOriginal(*cg, base_node, origin, normal,
-                                                  feat.name);
+                    // The whole-body fallback is ONLY for mirrors that wired
+                    // no specific scope at all (FreeCAD's "mirror the body").
+                    // A mirror that NAMED its features via Role::Tool inputs
+                    // but whose tools all failed to resolve (e.g. every
+                    // original is a tool-less BakedShape / dressup) must NOT
+                    // silently widen to the whole body: R2900's Mirror5 is
+                    // +0 faces in the truth, the whole-body mirror burned
+                    // 18 s AND seeded ~95 mirrored pattern-instance solids
+                    // that the NEXT mirror's delta dragged into a >1000 s
+                    // fuse. Skipping is both honest and chain-safe -- the
+                    // base flows through untouched.
+                    bool wired_tools = false;
+                    for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+                    {
+                        InputRole role = (i < feat.input_roles.size())
+                                            ? feat.input_roles[i]
+                                            : InputRole::Base;
+                        if (role == InputRole::Tool) {
+                            wired_tools = true;
+                            break;
+                        }
+                    }
+                    if (wired_tools)
+                    {
+                        if (!out.err_msg.empty()) {
+                            out.err_msg += "; ";
+                        }
+                        out.err_msg += "mirror " + feat.name +
+                            " originals resolved no tool solids; body "
+                            "continues without the mirror";
+                        node = base_node;
+                    }
+                    else
+                    {
+                        node = AddMirrorWithOriginal(*cg, base_node, origin,
+                                                     normal, feat.name);
+                    }
                 }
                 else
                 {

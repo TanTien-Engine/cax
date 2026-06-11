@@ -769,7 +769,7 @@ feat 48 name=Pattern9 type=LinearPattern suppressed=0 payload=linpat dir1=(0.000
 feat 49 name=Pattern10 type=LinearPattern suppressed=0 payload=linpat dir1=(0.000,-0.267,0.964) count1=4 spacing1=0.001 count2=1 spacing2=0.020
   inputs=[42:tool,43:tool,44:tool,45:tool,47:base]
 feat 50 name=Mirror1 type=Mirror suppressed=0 payload=mirror plane_o=(0.005,-0.009,0.017) plane_n=(-1.000,0.000,0.000)
-  inputs=[38:target,49:base]
+  inputs=[38:target,49:target,49:base]
 feat 1000051 name=Extrude30_Boss:profile type=Sketch suppressed=0 payload=sketch sketch_id=1000051
 feat 51 name=Extrude30_Boss type=BossExtrude suppressed=0 payload=extrude sketch_id=1000051 dir=(0.000,0.000,1.000) dist=0.001 dist2=0.000 end=0 flip=0
   inputs=[50:base]
@@ -777,7 +777,7 @@ feat 1000052 name=Extrude31_Boss:profile type=Sketch suppressed=0 payload=sketch
 feat 52 name=Extrude31_Boss type=BossExtrude suppressed=0 payload=extrude sketch_id=1000052 dir=(0.000,0.000,1.000) dist=0.001 dist2=0.000 end=0 flip=0
   inputs=[51:base]
 feat 53 name=Mirror2 type=Mirror suppressed=0 payload=mirror plane_o=(0.005,-0.009,0.017) plane_n=(-1.000,0.000,0.000)
-  inputs=[50:target,52:base]
+  inputs=[52:tool,51:tool,52:base]
 feat 1000054 name=Extrude32_Boss:profile type=Sketch suppressed=0 payload=sketch sketch_id=1000054
 feat 54 name=Extrude32_Boss type=BossExtrude suppressed=0 payload=extrude sketch_id=1000054 dir=(0.000,0.000,1.000) dist=0.007 dist2=0.000 end=0 flip=0
   inputs=[53:base]
