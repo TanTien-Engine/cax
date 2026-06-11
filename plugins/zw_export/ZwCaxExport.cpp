@@ -1239,6 +1239,42 @@ std::vector<CurveGeo> ReadFieldCurves(int idFtr, int fld_id,
     }
     cvxFldDataFree(numFld, &flds);
 
+    // Nested VDATA tree fallback: an extrude's "Profile P" (fld 1) keeps
+    // its picks one or more levels down a sub-container tree, invisible
+    // to the flat fld_data rows above -- the same shape the chamfer /
+    // fillet edge lists have. Walk it with the per-item API.
+    if (ids.empty())
+    {
+        int  count = 0;
+        int* items = nullptr;
+        if (cvxDataGetItemList(idData, fld_id, &count, &items) ==
+                ZW_API_NO_ERROR && items != nullptr)
+        {
+            std::vector<int> tree_ids;
+            double           sb     = 0.0;
+            bool             has_sb = false;
+            for (int k = 0; k < count; ++k) {
+                CollectVDataTree(items[k], tree_ids, sb, has_sb, 0);
+            }
+            cvxMemFree(reinterpret_cast<void**>(&items));
+            for (int tid : tree_ids)
+            {
+                if (tid <= 0) { continue; }
+                bool dup = false;
+                for (int e : ids) { if (e == tid) { dup = true; break; } }
+                if (dup) { continue; }
+                ids.push_back(tid);
+                parents.push_back(0);
+                if (rows != nullptr)
+                {
+                    FieldEntRow r;
+                    r.idEntity = tid;
+                    rows->push_back(r);
+                }
+            }
+        }
+    }
+
     for (size_t idx = 0; idx < ids.size(); ++idx)
     {
         const int id     = ids[idx];
@@ -1328,6 +1364,95 @@ std::vector<CurveGeo> ReadFieldCurves(int idFtr, int fld_id,
             }
         }
         out.push_back(std::move(g));
+    }
+    return out;
+}
+
+// Decode one curvilinear entity into a CurveGeo, NO transform: region-
+// boundary members come back in the profile sketch's LOCAL frame, which
+// is exactly the space profile.curves already live in.
+bool CurveGeoFromId(int id, CurveGeo& g)
+{
+    svxCurve crv = {};
+    if (cvxPartInqCurve(id, 0, &crv) != ZW_API_NO_ERROR) {
+        return false;
+    }
+    g.type = static_cast<int>(crv.Type);
+    if (crv.Type == VX_CRV_LINE)
+    {
+        g.p0[0] = crv.P1.x; g.p0[1] = crv.P1.y; g.p0[2] = crv.P1.z;
+        g.p1[0] = crv.P2.x; g.p1[1] = crv.P2.y; g.p1[2] = crv.P2.z;
+    }
+    else if (crv.Type == VX_CRV_ARC || crv.Type == VX_CRV_CIRCLE)
+    {
+        const svxMatrix& m = crv.Frame;   // axes as ROWS
+        g.origin[0] = m.xt; g.origin[1] = m.yt; g.origin[2] = m.zt;
+        g.xaxis[0]  = m.xx; g.xaxis[1]  = m.xy; g.xaxis[2]  = m.xz;
+        g.yaxis[0]  = m.yx; g.yaxis[1]  = m.yy; g.yaxis[2]  = m.yz;
+        g.radius    = crv.R;
+        g.a1        = crv.A1;
+        g.a2        = crv.A2;
+    }
+    else if (crv.Type == VX_CRV_NURB)
+    {
+        g.degree   = crv.T.degree;
+        g.rational = (crv.P.rat != 0);
+        g.cp_dim   = crv.P.dim;
+        if (crv.T.knots != nullptr && crv.T.num_knots > 0) {
+            g.knots.assign(crv.T.knots, crv.T.knots + crv.T.num_knots);
+        }
+        if (crv.P.coord != nullptr && crv.P.num_cp > 0 && crv.P.dim > 0) {
+            g.cps.assign(crv.P.coord,
+                         crv.P.coord + crv.P.num_cp * crv.P.dim);
+        }
+    }
+    cvxCurveFree(&crv);
+    return true;
+}
+
+// REGION-pick profile decode. An extrude's "Profile P" (fld 1) is a
+// region pick whose entity is a CURVE LIST: the EVALUATED boundary of
+// the picked region(s) -- outer loop AND island cutouts that exist in
+// NEITHER the drawn-2D nor the reference curve set (R2900's Extrude48
+// rect carries its tower / tab cutouts only here; without them the
+// replay extruded a solid 13k mm^3 block over a +2.4k truth). Resolve
+// fld 1's entity rows, try cvxPartInqCrvList on each, and read every
+// member curve (sketch-local coords, same space as profile.curves).
+std::vector<CurveGeo> ReadProfileRegionCurves(int idFtr, int* n_list)
+{
+    std::vector<CurveGeo> out;
+    if (n_list != nullptr) { *n_list = 0; }
+
+    std::vector<FieldEntRow> rows;
+    std::vector<CurveGeo> direct = ReadFieldCurves(idFtr, 1, &rows);
+    for (const FieldEntRow& r : rows)
+    {
+        int id = (r.idEntity > 0) ? r.idEntity : r.path_last;
+        if (id <= 0) { continue; }
+        int         cnt   = 0;
+        svxEntPick* picks = nullptr;
+        if (cvxPartInqCrvList(id, &cnt, &picks) != ZW_API_NO_ERROR ||
+            picks == nullptr)
+        {
+            continue;
+        }
+        if (n_list != nullptr) { ++(*n_list); }
+        for (int k = 0; k < cnt; ++k)
+        {
+            if (picks[k].idEntity <= 0) { continue; }
+            CurveGeo g;
+            if (CurveGeoFromId(picks[k].idEntity, g)) {
+                out.push_back(std::move(g));
+            }
+        }
+        cvxMemFree(reinterpret_cast<void**>(&picks));
+    }
+    // The picks may BE the boundary curves directly (no list entity):
+    // ReadFieldCurves already decoded them (sketch-local, parent 0 from
+    // the tree walk -> no transform); let the reader's closed-loop gate
+    // judge usability.
+    if (out.empty() && !direct.empty()) {
+        out = std::move(direct);
     }
     return out;
 }
@@ -1675,7 +1800,11 @@ void ReadProfile(int idFtr, Profile& out)
                 read_by_ids(rcn, rids);
                 cvxMemFree(reinterpret_cast<void**>(&rids));
             }
-            if (out.curves.size() == n_drawn)
+            // Extended geometry is read UNCONDITIONALLY too (it used to be
+            // gated on "ref found nothing"): a region-pick sketch keeps its
+            // island boundaries split across BOTH sets -- E48's ref set has
+            // only E47's projected outline, the cutout loops live in the
+            // extended set.
             {
                 int  gcn  = 0;
                 int* gids = nullptr;
@@ -2657,6 +2786,29 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             // extrudes these reveal which set actually supplied the profile.
             diag["profile_ref_cn"]   = pr.ref_cn;
             diag["profile_geomx_cn"] = pr.geomx_cn;
+
+            // Region-pick profile (FtAllExt): fld 1's entity can be a curve
+            // list = the EVALUATED region boundary, outer loop plus island
+            // cutouts that no sketch curve set carries. Emitted separately
+            // as "profile_region" (sketch-local coords, same space as
+            // profile.curves); the reader prefers it when it forms closed
+            // loops.
+            if (type == "FtAllExt")
+            {
+                int n_list = 0;
+                std::vector<zwapi::CurveGeo> region =
+                    zwapi::ReadProfileRegionCurves(fid, &n_list);
+                if (!region.empty())
+                {
+                    json ra = json::array();
+                    for (const auto& g : region) {
+                        ra.push_back(CurveGeoToJson(g));
+                    }
+                    jf["profile_region"] = std::move(ra);
+                }
+                diag["region_lists"]  = n_list;
+                diag["region_curves"] = static_cast<int>(region.size());
+            }
 
             // Sweep (FtAllSwp1): the path is a point-on-curve pick in fld 2
             // whose generic dump keeps only the pick POINT -- without the
