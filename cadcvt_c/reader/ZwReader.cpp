@@ -649,9 +649,22 @@ void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
     }
 
     const double kDegToRad = 3.14159265358979323846 / 180.0;
+    // Reference / projected curves ("ref":true, from cvxSkInqRefById) are
+    // tagged by the exporter and SKIPPED whenever drawn curves exist: a
+    // sketch's reference set can hold construction junk alongside real
+    // inner loops, and consuming it blindly is riskier than the known gap
+    // (Extrude48's cutouts) it would close. A profile with NO drawn curves
+    // at all (R2900_100 Extrude21-style reference-only profiles) keeps
+    // using the ref curves -- they are the whole profile there.
+    bool has_drawn = false;
+    for (const auto& c : *cit)
+    {
+        if (!JGet<bool>(c, "ref", false)) { has_drawn = true; break; }
+    }
     uint32_t gid = 1;
     for (const auto& c : *cit)
     {
+        if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
         const std::string ck = JStr(c, "kind", "");
         if (ck == "line")
         {
@@ -692,7 +705,18 @@ bool ProfileExtrudable(const json& curves)
     if (!curves.is_array()) {
         return false;
     }
-    const size_t n = curves.size();
+    // Effective-curve rule (see BuildSketchFromProfile): tagged reference
+    // curves don't count when drawn curves exist.
+    bool   has_drawn = false;
+    size_t n         = 0;
+    for (const auto& c : curves)
+    {
+        if (!JGet<bool>(c, "ref", false)) { has_drawn = true; break; }
+    }
+    for (const auto& c : curves)
+    {
+        if (!(has_drawn && JGet<bool>(c, "ref", false))) { ++n; }
+    }
     if (n >= 3) {
         return true;            // unchanged: the existing multi-curve path
     }
@@ -706,6 +730,7 @@ bool ProfileExtrudable(const json& curves)
     std::vector<std::array<double, 2>> ends;
     for (const auto& c : curves)
     {
+        if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
         const std::string k = JStr(c, "kind", "");
         if (k == "circle" || k == "ellipse") {
             ++closed_loops;
@@ -759,10 +784,19 @@ bool ProfileFormsClosedLoops(const json& curves, double tol)
     if (!curves.is_array() || curves.empty()) {
         return false;
     }
+    // Same effective-curve rule as BuildSketchFromProfile: tagged
+    // reference curves are skipped whenever drawn curves exist, so the
+    // gate judges exactly the set the sketch will be built from.
+    bool has_drawn = false;
+    for (const auto& c : curves)
+    {
+        if (!JGet<bool>(c, "ref", false)) { has_drawn = true; break; }
+    }
     int closed_loops = 0;
     std::vector<std::array<double, 2>> ends;
     for (const auto& c : curves)
     {
+        if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
         const std::string k = JStr(c, "kind", "");
         if (k == "circle" || k == "ellipse") {
             ++closed_loops;
@@ -1326,6 +1360,180 @@ bool ZwReader::ReadFile(const std::string& path,
                     }
                 }
 
+                // ZW3D sweep (FtAllSwp1) -> profile Sketch + spine Sketch +
+                // FeatPayloadSweep. The profile rides the same "profile"
+                // block as an extrude's; the PATH comes from the exporter's
+                // "path" dump (fld 2's point-on-curve pick resolved to
+                // world-mm curve geometry via cvxPartInqCurve). V1 handles a
+                // single-segment line or arc spine -- R2900's five sweeps
+                // are exactly that (pin tubes and a 4 mm elbow). The spine
+                // becomes its own synthetic planar sketch: a line along the
+                // sketch X axis, or an arc centred in a plane spanned by the
+                // exported frame axes; the Replayer's existing Sweep arm
+                // (profile face swept along the spine wire, fused as a boss)
+                // does the rest. Multi-segment / NURBS paths stay opaque.
+                if (zt == "FtAllSwp1" && prof != jf.end() &&
+                    prof->contains("curves") &&
+                    ProfileFormsClosedLoops(prof->at("curves"), 1e-4) &&
+                    running_solid_id != 0)
+                {
+                    auto pit = jf.find("path");
+                    const json* pc = (pit != jf.end() && pit->is_array() &&
+                                      pit->size() == 1)
+                                         ? &pit->at(0)
+                                         : nullptr;
+                    const std::string pk = pc ? JStr(*pc, "kind", "") : "";
+
+                    cadapp::SketchIR spine;
+                    bool spine_ok = false;
+                    if (pk == "line" && pc->contains("p0") && pc->contains("p1"))
+                    {
+                        double p0[3], p1[3];
+                        for (int k = 0; k < 3; ++k) {
+                            p0[k] = pc->at("p0").at(k).get<double>();
+                            p1[k] = pc->at("p1").at(k).get<double>();
+                        }
+                        double dx[3] = { p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2] };
+                        double len = std::sqrt(dx[0]*dx[0] + dx[1]*dx[1] +
+                                               dx[2]*dx[2]);
+                        if (len > 1e-9)
+                        {
+                            for (int k = 0; k < 3; ++k) {
+                                spine.plane_origin[k] = p0[k] * s;
+                                spine.plane_x_dir[k]  = dx[k] / len;
+                            }
+                            // Any unit normal perpendicular to the line works:
+                            // the wire is 1D, the plane only orients the frame.
+                            double n[3];
+                            if (std::fabs(spine.plane_x_dir[2]) < 0.9) {
+                                n[0] = -spine.plane_x_dir[1];
+                                n[1] =  spine.plane_x_dir[0];
+                                n[2] =  0.0;
+                            } else {
+                                n[0] =  0.0;
+                                n[1] = -spine.plane_x_dir[2];
+                                n[2] =  spine.plane_x_dir[1];
+                            }
+                            double nl = std::sqrt(n[0]*n[0] + n[1]*n[1] +
+                                                  n[2]*n[2]);
+                            // Sketch normal = plane Z; x_dir is plane X. The
+                            // wire lives along X so this cross frame is valid.
+                            spine.plane_normal[0] = n[0] / nl;
+                            spine.plane_normal[1] = n[1] / nl;
+                            spine.plane_normal[2] = n[2] / nl;
+                            spine.geos.push_back(cadapp::SkGeoIR::Line(
+                                1, 0.0, 0.0, len * s, 0.0));
+                            spine_ok = true;
+                        }
+                    }
+                    else if (pk == "arc" && pc->contains("center") &&
+                             pc->contains("x_dir") && pc->contains("y_dir") &&
+                             pc->contains("radius"))
+                    {
+                        double C[3], X[3], Y[3];
+                        for (int k = 0; k < 3; ++k) {
+                            C[k] = pc->at("center").at(k).get<double>();
+                            X[k] = pc->at("x_dir").at(k).get<double>();
+                            Y[k] = pc->at("y_dir").at(k).get<double>();
+                        }
+                        double R  = JGet<double>(*pc, "radius", 0.0);
+                        double a0 = JGet<double>(*pc, "a0", 0.0)
+                                  * 3.14159265358979323846 / 180.0;
+                        double a1 = JGet<double>(*pc, "a1", 0.0)
+                                  * 3.14159265358979323846 / 180.0;
+                        if (R > 1e-9 && std::fabs(a1 - a0) > 1e-9)
+                        {
+                            for (int k = 0; k < 3; ++k) {
+                                spine.plane_origin[k] = C[k] * s;
+                                spine.plane_x_dir[k]  = X[k];
+                            }
+                            spine.plane_normal[0] = X[1]*Y[2] - X[2]*Y[1];
+                            spine.plane_normal[1] = X[2]*Y[0] - X[0]*Y[2];
+                            spine.plane_normal[2] = X[0]*Y[1] - X[1]*Y[0];
+                            spine.geos.push_back(cadapp::SkGeoIR::Arc(
+                                1, 0.0, 0.0, R * s, a0, a1));
+                            spine_ok = true;
+                        }
+                    }
+
+                    // Whole-sketch path ("path_sketch": insertion plane +
+                    // 2D curve chain; R2900 Sweep2 = one line, Sweep4 =
+                    // 4 lines + 2 arcs). Reuse the profile-sketch builder
+                    // -- the chain becomes the spine sketch's geometry.
+                    // Circles are rejected: a closed spine sweep is a
+                    // different animal and none of the corpus needs it.
+                    if (!spine_ok)
+                    {
+                        auto psit = jf.find("path_sketch");
+                        if (psit != jf.end() && psit->is_object() &&
+                            psit->contains("curves") &&
+                            psit->at("curves").is_array() &&
+                            !psit->at("curves").empty())
+                        {
+                            bool chain_ok = true;
+                            for (const auto& c : psit->at("curves"))
+                            {
+                                const std::string k = JStr(c, "kind", "");
+                                if (k != "line" && k != "arc") {
+                                    chain_ok = false;
+                                    break;
+                                }
+                            }
+                            if (chain_ok)
+                            {
+                                BuildSketchFromProfile(*psit, s, 0, spine);
+                                spine_ok = !spine.geos.empty();
+                            }
+                        }
+                    }
+
+                    if (spine_ok)
+                    {
+                        const uint32_t prof_fid  = 1000000u + id;
+                        const uint32_t spine_fid = 1500000u + id;
+
+                        cadapp::SketchIR psk;
+                        psk.name = name + ":profile";
+                        BuildSketchFromProfile(*prof, s, prof_fid, psk);
+                        out.sketches.push_back(std::move(psk));
+                        cadapp::FeatPayloadSketch pspl;
+                        pspl.sketch_id = prof_fid;
+                        cadapp::FeatureIR psf;
+                        psf.id   = prof_fid;
+                        psf.type = cadapp::FeatType::Sketch;
+                        psf.name = name + ":profile";
+                        psf.data = std::move(pspl);
+                        out.features.push_back(std::move(psf));
+
+                        spine.feature_id = spine_fid;
+                        spine.name       = name + ":spine";
+                        out.sketches.push_back(std::move(spine));
+                        cadapp::FeatPayloadSketch sspl;
+                        sspl.sketch_id = spine_fid;
+                        cadapp::FeatureIR ssf;
+                        ssf.id   = spine_fid;
+                        ssf.type = cadapp::FeatType::Sketch;
+                        ssf.name = name + ":spine";
+                        ssf.data = std::move(sspl);
+                        out.features.push_back(std::move(ssf));
+
+                        cadapp::FeatPayloadSweep swp;
+                        swp.profile_sketch_id = prof_fid;
+                        cadapp::FeatureIR sf;
+                        sf.id   = id;
+                        sf.name = name;
+                        sf.type = cadapp::FeatType::Sweep;
+                        sf.data = std::move(swp);
+                        sf.ext_strings["zw_type"]        = zt;
+                        sf.ext_params["spine_sketch_id"] = (double)spine_fid;
+                        sf.ext_params["sweep_solid"]     = 1.0;
+                        PushInput(sf, running_solid_id, cadapp::InputRole::Base);
+                        out.features.push_back(std::move(sf));
+                        running_solid_id = id;
+                        continue;
+                    }
+                }
+
                 // ZW3D revolve (FtAllRev) -> Sketch + BossRevolve / CutRevolve.
                 // The profile is captured exactly like an extrude's
                 // (profile.curves on profile.plane); the difference is the boss
@@ -1531,8 +1739,21 @@ bool ZwReader::ReadFile(const std::string& path,
                     //     circle-fitting the exported solid's pins.
                     // A circular pattern with no axis pick point stays OPAQUE.
                     auto patj = jf.find("pattern");
-                    bool   is_circular     = FieldValueById(jf, 10, 0.0) > 0.5 ||
-                                             FieldValueById(jf, 28, 0.0) > 1e-6;
+                    // fld 10 is the method enum (0 = linear, 1 = circular)
+                    // and is AUTHORITATIVE when the dump carries it. fld 28
+                    // "Diameter" is only a backstop for old snapshots with
+                    // no fld 10: like fld 4's stale draft angle and fld 12's
+                    // stale spacing angle, it holds the LAST dialog value
+                    // even on a linear pattern -- R2900's Pattern12 (a plain
+                    // 2 x 46 mm +Z linear copy of the pin tower) carries a
+                    // stale Diameter=8.2 and was silently rebuilt as a 24-deg
+                    // CIRCULAR pattern: copies 39 mm off bbox, +23% phantom
+                    // volume, the dominant error of the whole part.
+                    double f10 = FieldValueById(jf, 10, -1.0);
+                    bool   is_circular     = (f10 >= 0.0)
+                                               ? (f10 > 0.5)
+                                               : (FieldValueById(jf, 28, 0.0)
+                                                      > 1e-6);
                     bool   linear_method   = !is_circular;
                     bool   circular_method = is_circular;
                     double axis_pt[3] = { 0.0, 0.0, 0.0 };

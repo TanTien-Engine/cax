@@ -1030,6 +1030,31 @@ int main(int argc, char** argv)
                 r2t.matched, r2t.total, t2r.matched, t2r.total);
             check(r2t.matched == r2t.total && t2r.matched == t2r.total,
                   "face_match", buf);
+            // Same unmatched-face DETAIL dump as the full mode -- a
+            // prefix compare against a state<K>.step is exactly where
+            // the displacement forensics happen, and it had no output.
+            const auto dump = [detail_cap](const char* tag,
+                                           const std::vector<int>& idxs,
+                                           const std::vector<FaceProbe>& probes)
+            {
+                const size_t cap = (detail_cap > 0) ? (size_t)detail_cap : 12;
+                for (size_t k = 0; k < idxs.size() && k < cap; ++k)
+                {
+                    const int i = idxs[k];
+                    std::printf("DETAIL %s idx=%d centre=(%.6g,%.6g,%.6g) "
+                                "area=%.6g n=(%.3f,%.3f,%.3f)\n",
+                                tag, i, probes[i].centre.X(),
+                                probes[i].centre.Y(), probes[i].centre.Z(),
+                                probes[i].area,
+                                probes[i].normal.X(), probes[i].normal.Y(),
+                                probes[i].normal.Z());
+                }
+                if (idxs.size() > cap)
+                    std::printf("DETAIL %s ... and %zu more\n",
+                                tag, idxs.size() - cap);
+            };
+            dump("unmatched_replay_face", r2t.unmatched, pr);
+            dump("unmatched_truth_face",  t2r.unmatched, pt);
         }
         std::printf("VERDICT %s %s\n", pass ? "PASS" : "FAIL", json_path.c_str());
         return pass ? 0 : 1;

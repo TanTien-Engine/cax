@@ -315,6 +315,15 @@ struct ProfileCurve
     double center[3] = { 0.0, 0.0, 0.0 };   // arc/circle/ellipse centre
     double radius    = 0.0;
     double a0 = 0.0, a1 = 0.0;              // arc start/end angle (degrees)
+    bool   is_ref    = false;               // reference / projected geometry
+                                            // (cvxSkInqRefById / GeomXById),
+                                            // not a drawn 2D curve. A sketch
+                                            // can use these as INNER loops:
+                                            // R2900 Extrude48's rect carries
+                                            // its tower/hex cutouts only
+                                            // here, and dropping them made
+                                            // the replay extrude a SOLID
+                                            // block (+8.9 cm^3).
 };
 
 // An extrude/revolve profile: the curves of the feature's built-in
@@ -771,12 +780,16 @@ EntSig EntitySig(int idEnt)
                                 * 3.14159265358979323846 / 180.0;
                 const double c  = std::cos(am);
                 const double sn = std::sin(am);
-                // Frame: X axis (xx,yx,zx), Y axis (xy,yy,zy), origin
-                // (xt,yt,zt) = arc centre. P = O + R(cos*X + sin*Y).
+                // Frame axes are stored as ROWS: X = (xx,xy,xz), Y =
+                // (yx,yy,yz), origin (xt,yt,zt) = arc centre. P = O +
+                // R(cos*X + sin*Y). Verified empirically on R2900
+                // Fillet6's cylinder rim: the column reading put the
+                // radial offset into the rim plane's NORMAL component
+                // (anchor y 82.27 vs the rim plane's y 92.73).
                 const svxMatrix& m = crv.Frame;
-                s.anchor[0] = m.xt + crv.R * (c * m.xx + sn * m.xy);
-                s.anchor[1] = m.yt + crv.R * (c * m.yx + sn * m.yy);
-                s.anchor[2] = m.zt + crv.R * (c * m.zx + sn * m.zy);
+                s.anchor[0] = m.xt + crv.R * (c * m.xx + sn * m.yx);
+                s.anchor[1] = m.yt + crv.R * (c * m.xy + sn * m.yy);
+                s.anchor[2] = m.zt + crv.R * (c * m.xz + sn * m.yz);
             }
             cvxCurveFree(&crv);
         }
@@ -1128,6 +1141,197 @@ std::vector<EntSig> InputEdgesAtCurrentState(int idFtr)
     return out;
 }
 
+// One curvilinear entity captured as world-mm geometry. Analytic when
+// ZW3D classifies it (line / arc / circle), raw NURBS otherwise.
+struct CurveGeo
+{
+    int    type = 0;                  // evxCurveType
+    double p0[3] = { 0, 0, 0 };       // line start
+    double p1[3] = { 0, 0, 0 };       // line end
+    double origin[3] = { 0, 0, 0 };   // arc/circle centre (Frame origin)
+    double xaxis[3]  = { 1, 0, 0 };   // Frame X axis
+    double yaxis[3]  = { 0, 1, 0 };   // Frame Y axis
+    double radius = 0.0;
+    double a1 = 0.0, a2 = 0.0;        // arc start/end angles (degrees)
+    int                 degree = 0;   // NURB
+    bool                rational = false;
+    int                 cp_dim = 0;   // coords per control point (1-4)
+    std::vector<double> knots;
+    std::vector<double> cps;          // num_cp * cp_dim raw coords
+};
+
+// Per-row probe of a field's entity picks; rides _diag so a path whose
+// rows carry NEITHER idEntity nor entPath (R2900 Sweep2/4) is visible
+// from the snapshot instead of just "n_path_curve=0".
+struct FieldEntRow
+{
+    int idEntity   = 0;
+    int idParent   = 0;
+    int path_count = 0;
+    int path_last  = 0;
+    int isPntOnCrv = 0;
+};
+
+// Read every curvilinear entity referenced by field `fld_id` of feature
+// `idFtr` -- e.g. a sweep's "Path P2" point-on-curve pick, whose svxData
+// rows carry the picked curve in idEntity (the generic field dump keeps
+// only the pick POINT, which is useless for rebuilding the spine). Must
+// run in the feature's BEFORE state, where the path curve is live.
+// cvxPartInqCurve accepts both wireframe curves and brep edges.
+//
+// A SKETCH-member curve comes back in the sketch's LOCAL frame (z == 0;
+// R2900's Sweep1/5 lines landed at z=0 while their pins live at y~20):
+// when the pick row names a parent, transform by the parent's world
+// matrix (axes as rows, axis-major names: X=(xx,xy,xz), O=(xt,yt,zt) --
+// same convention the datum-plane normal recovery uses).
+std::vector<CurveGeo> ReadFieldCurves(int idFtr, int fld_id,
+                                      std::vector<FieldEntRow>* rows = nullptr)
+{
+    std::vector<CurveGeo> out;
+    int idData = 0;
+    if (cvxPartInqFtrData(idFtr, 0, &idData) != ZW_API_NO_ERROR) {
+        return out;
+    }
+
+    int         numFld = 0;
+    svxFldData* flds   = nullptr;
+    if (cvxDataGetAll(idData, &numFld, &flds) != ZW_API_NO_ERROR ||
+        flds == nullptr)
+    {
+        return out;
+    }
+    std::vector<int> ids;
+    std::vector<int> parents;
+    for (int i = 0; i < numFld; ++i)
+    {
+        if (flds[i].fld_id != fld_id || flds[i].fld_data == nullptr) {
+            continue;
+        }
+        for (int k = 0; k < flds[i].count; ++k)
+        {
+            const svxData& sd = flds[i].fld_data[k];
+            if (rows != nullptr)
+            {
+                FieldEntRow r;
+                r.idEntity   = sd.idEntity;
+                r.idParent   = sd.idParent;
+                r.path_count = sd.entPath.Count;
+                r.path_last  = (sd.entPath.Count > 0 &&
+                                sd.entPath.Count <= V_PP_LEN)
+                                   ? sd.entPath.Id[sd.entPath.Count - 1]
+                                   : 0;
+                r.isPntOnCrv = sd.isPntOnCrv;
+                rows->push_back(r);
+            }
+            int id = sd.idEntity;
+            // A pick NESTED inside another object leaves idEntity 0 and
+            // carries the route in entPath; the LAST path element is
+            // the child entity to act upon (svxEntPath doc).
+            if (id <= 0 && sd.entPath.Count > 0 &&
+                sd.entPath.Count <= V_PP_LEN) {
+                id = sd.entPath.Id[sd.entPath.Count - 1];
+            }
+            if (id <= 0) { continue; }
+            bool dup = false;
+            for (int e : ids) { if (e == id) { dup = true; break; } }
+            if (!dup) { ids.push_back(id); parents.push_back(sd.idParent); }
+        }
+    }
+    cvxFldDataFree(numFld, &flds);
+
+    for (size_t idx = 0; idx < ids.size(); ++idx)
+    {
+        const int id     = ids[idx];
+        const int parent = parents[idx];
+        svxCurve crv = {};
+        if (cvxPartInqCurve(id, 0, &crv) != ZW_API_NO_ERROR) {
+            continue;
+        }
+        CurveGeo g;
+        g.type = static_cast<int>(crv.Type);
+        if (crv.Type == VX_CRV_LINE)
+        {
+            g.p0[0] = crv.P1.x; g.p0[1] = crv.P1.y; g.p0[2] = crv.P1.z;
+            g.p1[0] = crv.P2.x; g.p1[1] = crv.P2.y; g.p1[2] = crv.P2.z;
+        }
+        else if (crv.Type == VX_CRV_ARC || crv.Type == VX_CRV_CIRCLE)
+        {
+            // Frame axes as ROWS (see the SnapEnt edge-anchor note).
+            const svxMatrix& m = crv.Frame;
+            g.origin[0] = m.xt; g.origin[1] = m.yt; g.origin[2] = m.zt;
+            g.xaxis[0]  = m.xx; g.xaxis[1]  = m.xy; g.xaxis[2]  = m.xz;
+            g.yaxis[0]  = m.yx; g.yaxis[1]  = m.yy; g.yaxis[2]  = m.yz;
+            g.radius    = crv.R;
+            g.a1        = crv.A1;
+            g.a2        = crv.A2;
+        }
+        else if (crv.Type == VX_CRV_NURB)
+        {
+            g.degree   = crv.T.degree;
+            g.rational = (crv.P.rat != 0);
+            g.cp_dim   = crv.P.dim;
+            if (crv.T.knots != nullptr && crv.T.num_knots > 0) {
+                g.knots.assign(crv.T.knots, crv.T.knots + crv.T.num_knots);
+            }
+            if (crv.P.coord != nullptr && crv.P.num_cp > 0 && crv.P.dim > 0) {
+                g.cps.assign(crv.P.coord,
+                             crv.P.coord + crv.P.num_cp * crv.P.dim);
+            }
+        }
+        cvxCurveFree(&crv);
+
+        // Sketch-local -> world. Only when the pick row named a parent
+        // whose world matrix is available and non-identity; top-level 3D
+        // curves (parent 0, e.g. Sweep3's elbow arc) are world already.
+        if (parent > 0)
+        {
+            szwEntityHandle ph;
+            if (ZwEntityIdTransfer(1, &parent, &ph) == ZW_API_NO_ERROR)
+            {
+                szwMatrix m;
+                if (ZwEntityMatrixGet(ph, &m) == ZW_API_NO_ERROR &&
+                    !m.identity)
+                {
+                    auto xpnt = [&](double p[3]) {
+                        const double x = p[0], y = p[1], z = p[2];
+                        p[0] = m.xt + x*m.xx + y*m.yx + z*m.zx;
+                        p[1] = m.yt + x*m.xy + y*m.yy + z*m.zy;
+                        p[2] = m.zt + x*m.xz + y*m.yz + z*m.zz;
+                    };
+                    auto xvec = [&](double v[3]) {
+                        const double x = v[0], y = v[1], z = v[2];
+                        v[0] = x*m.xx + y*m.yx + z*m.zx;
+                        v[1] = x*m.xy + y*m.yy + z*m.zy;
+                        v[2] = x*m.xz + y*m.yz + z*m.zz;
+                    };
+                    if (g.type == 1) {
+                        xpnt(g.p0);
+                        xpnt(g.p1);
+                    } else if (g.type == 2 || g.type == 3) {
+                        xpnt(g.origin);
+                        xvec(g.xaxis);
+                        xvec(g.yaxis);
+                    } else if (g.type == 4 && g.cp_dim >= 3) {
+                        const int n = static_cast<int>(g.cps.size()) / g.cp_dim;
+                        for (int c = 0; c < n; ++c) {
+                            double* cp = &g.cps[(size_t)c * g.cp_dim];
+                            double  w  = (g.rational && g.cp_dim >= 4)
+                                           ? cp[3] : 1.0;
+                            if (w == 0.0) { w = 1.0; }
+                            double p[3] = { cp[0]/w, cp[1]/w, cp[2]/w };
+                            xpnt(p);
+                            cp[0] = p[0]*w; cp[1] = p[1]*w; cp[2] = p[2]*w;
+                        }
+                    }
+                }
+                ZwEntityHandleFree(&ph);
+            }
+        }
+        out.push_back(std::move(g));
+    }
+    return out;
+}
+
 // Export the active part's final solid to a STEP file. This is the
 // universal geometry baseline (correct for ALL features regardless of
 // whether we parametrise them) and the "truth" geometry used downstream
@@ -1341,6 +1545,53 @@ ResultEnts FeatureResultEnts(int idFtr)
     return r;
 }
 
+// Read one curve (by handle) into `sink`. ZwCurveNURBSDataGet returns
+// the geometry in the sketch's LOCAL 2D frame (z==0); the reader uses the
+// x/y components plus the plane block to place it in world. Shared by the
+// drawn-2D-curve path, the reference-geometry fallback, and the sweep
+// path-sketch read.
+void ReadCurveByHandle(szwEntityHandle& ch, std::vector<ProfileCurve>& sink)
+{
+    szwCurve cv;
+    if (ZwCurveNURBSDataGet(ch, 0, &cv) != ZW_API_NO_ERROR) {
+        return;
+    }
+    ProfileCurve pc;
+    const auto& I = cv.curveInformation;
+    switch (cv.type)
+    {
+        case ZW_CURVE_LINE:
+            pc.kind = "line";
+            pc.p0[0] = I.line.startPoint.x; pc.p0[1] = I.line.startPoint.y; pc.p0[2] = I.line.startPoint.z;
+            pc.p1[0] = I.line.endPoint.x;   pc.p1[1] = I.line.endPoint.y;   pc.p1[2] = I.line.endPoint.z;
+            break;
+        case ZW_CURVE_ARC:
+            pc.kind = "arc";
+            pc.radius = I.arc.radius;
+            pc.a0 = I.arc.startAngle; pc.a1 = I.arc.endAngle;
+            pc.p0[0] = I.arc.startPoint.x; pc.p0[1] = I.arc.startPoint.y; pc.p0[2] = I.arc.startPoint.z;
+            pc.p1[0] = I.arc.endPoint.x;   pc.p1[1] = I.arc.endPoint.y;   pc.p1[2] = I.arc.endPoint.z;
+            pc.center[0] = I.arc.centerPoint.x; pc.center[1] = I.arc.centerPoint.y; pc.center[2] = I.arc.centerPoint.z;
+            break;
+        case ZW_CURVE_CIRCLE:
+            pc.kind = "circle";
+            pc.radius = I.circle.radius;
+            pc.center[0] = I.circle.centerPoint.x; pc.center[1] = I.circle.centerPoint.y; pc.center[2] = I.circle.centerPoint.z;
+            break;
+        case ZW_CURVE_ELLIPSE2:
+            pc.kind = "ellipse";
+            pc.radius = I.ellipse2.majorAxis;
+            pc.center[0] = I.ellipse2.centerPoint.x; pc.center[1] = I.ellipse2.centerPoint.y; pc.center[2] = I.ellipse2.centerPoint.z;
+            break;
+        default:
+            pc.kind = "nurb";
+            pc.p0[0] = I.nurb.startPoint.x; pc.p0[1] = I.nurb.startPoint.y; pc.p0[2] = I.nurb.startPoint.z;
+            pc.p1[0] = I.nurb.endPoint.x;   pc.p1[1] = I.nurb.endPoint.y;   pc.p1[2] = I.nurb.endPoint.z;
+            break;
+    }
+    sink.push_back(pc);
+}
+
 // Read an extrude/revolve feature's PROFILE: the curves of its built-in
 // sketch(es). cvxPartFtrInqAuxFtrs gives the feature's auxiliary
 // (built-in) sketches; ZwSketch2DCurveListGet enumerates each sketch's
@@ -1349,52 +1600,9 @@ ResultEnts FeatureResultEnts(int idFtr)
 // plane resolution needed to see its shape.
 void ReadProfile(int idFtr, Profile& out)
 {
-    // Read every 2D curve of one sketch (by handle) into out.curves. Shared
-    // by the built-in-sketch path and the standalone-sketch fallback below.
-    // Read one curve (by handle) into out.curves. ZwCurveNURBSDataGet returns
-    // the geometry in the sketch's LOCAL 2D frame (z==0); the reader uses the
-    // x/y components plus the plane block to place it in world. Shared by the
-    // drawn-2D-curve path and the reference-geometry fallback below.
     auto read_one_curve = [&](szwEntityHandle& ch)
     {
-        szwCurve cv;
-        if (ZwCurveNURBSDataGet(ch, 0, &cv) != ZW_API_NO_ERROR) {
-            return;
-        }
-        ProfileCurve pc;
-        const auto& I = cv.curveInformation;
-        switch (cv.type)
-        {
-            case ZW_CURVE_LINE:
-                pc.kind = "line";
-                pc.p0[0] = I.line.startPoint.x; pc.p0[1] = I.line.startPoint.y; pc.p0[2] = I.line.startPoint.z;
-                pc.p1[0] = I.line.endPoint.x;   pc.p1[1] = I.line.endPoint.y;   pc.p1[2] = I.line.endPoint.z;
-                break;
-            case ZW_CURVE_ARC:
-                pc.kind = "arc";
-                pc.radius = I.arc.radius;
-                pc.a0 = I.arc.startAngle; pc.a1 = I.arc.endAngle;
-                pc.p0[0] = I.arc.startPoint.x; pc.p0[1] = I.arc.startPoint.y; pc.p0[2] = I.arc.startPoint.z;
-                pc.p1[0] = I.arc.endPoint.x;   pc.p1[1] = I.arc.endPoint.y;   pc.p1[2] = I.arc.endPoint.z;
-                pc.center[0] = I.arc.centerPoint.x; pc.center[1] = I.arc.centerPoint.y; pc.center[2] = I.arc.centerPoint.z;
-                break;
-            case ZW_CURVE_CIRCLE:
-                pc.kind = "circle";
-                pc.radius = I.circle.radius;
-                pc.center[0] = I.circle.centerPoint.x; pc.center[1] = I.circle.centerPoint.y; pc.center[2] = I.circle.centerPoint.z;
-                break;
-            case ZW_CURVE_ELLIPSE2:
-                pc.kind = "ellipse";
-                pc.radius = I.ellipse2.majorAxis;
-                pc.center[0] = I.ellipse2.centerPoint.x; pc.center[1] = I.ellipse2.centerPoint.y; pc.center[2] = I.ellipse2.centerPoint.z;
-                break;
-            default:
-                pc.kind = "nurb";
-                pc.p0[0] = I.nurb.startPoint.x; pc.p0[1] = I.nurb.startPoint.y; pc.p0[2] = I.nurb.startPoint.z;
-                pc.p1[0] = I.nurb.endPoint.x;   pc.p1[1] = I.nurb.endPoint.y;   pc.p1[2] = I.nurb.endPoint.z;
-                break;
-        }
-        out.curves.push_back(pc);
+        ReadCurveByHandle(ch, out.curves);
     };
 
     // Read every curve of one sketch (id + handle) into out.curves.
@@ -1430,15 +1638,21 @@ void ReadProfile(int idFtr, Profile& out)
             ZwEntityHandleListFree(cn, &curves);
         }
 
-        // 2) Fallback: a profile built from REFERENCE / projected geometry has
-        //    no drawn 2D curves (ZwSketch2DCurveListGet -> cn==0) -- R2900_100's
-        //    Extrude21/26/30/31. Those edges live in the sketch's reference set
-        //    (cvxSkInqRefById) and, failing that, its extended geometry
-        //    (cvxSkInqGeomXById). Enumerate by sketch id, transfer each to a
-        //    handle, and read it the same way. Runs ONLY when the drawn path
-        //    found nothing, so the working drawn-sketch extrudes are untouched.
-        if (out.curves.empty() && sketchId > 0)
+        // 2) REFERENCE / projected geometry. Two distinct roles:
+        //    - a profile with NO drawn 2D curves at all is built entirely
+        //      from reference geometry (R2900_100's Extrude21/26/30/31);
+        //    - a profile WITH drawn curves can still use reference curves
+        //      as its INNER loops -- R2900's Extrude48 draws only the
+        //      outer rect, its tower/hex cutouts are projected edges, and
+        //      dropping them made the replay extrude a solid block
+        //      (+8.9 cm^3, the part's largest error). So the reference
+        //      set is now read ALWAYS and the curves it contributes are
+        //      TAGGED is_ref: the reader uses untagged curves as the
+        //      authoritative profile and decides per-loop whether a ref
+        //      loop is a real cutout.
+        if (sketchId > 0)
         {
+            const size_t n_drawn = out.curves.size();
             auto read_by_ids = [&](int rcn, int* rids)
             {
                 for (int i = 0; i < rcn; ++i)
@@ -1461,7 +1675,7 @@ void ReadProfile(int idFtr, Profile& out)
                 read_by_ids(rcn, rids);
                 cvxMemFree(reinterpret_cast<void**>(&rids));
             }
-            if (out.curves.empty())
+            if (out.curves.size() == n_drawn)
             {
                 int  gcn  = 0;
                 int* gids = nullptr;
@@ -1471,6 +1685,9 @@ void ReadProfile(int idFtr, Profile& out)
                     read_by_ids(gcn, gids);
                     cvxMemFree(reinterpret_cast<void**>(&gids));
                 }
+            }
+            for (size_t i = n_drawn; i < out.curves.size(); ++i) {
+                out.curves[i].is_ref = true;
             }
         }
     };
@@ -1532,6 +1749,87 @@ void ReadProfile(int idFtr, Profile& out)
             ZwMemoryFree(reinterpret_cast<void**>(&ids));
         }
     }
+}
+
+// Read one SKETCH entity (by id) as a Profile: insertion plane + 2D
+// curves. A sweep whose path is a whole SKETCH pick (R2900 Sweep2/4:
+// fld 2's entity is the path sketch itself, so cvxPartInqCurve fails on
+// it) gets its spine geometry from here. Drawn 2D curves only -- a path
+// sketch is hand-drawn, not reference geometry.
+bool ReadSketchProfileById(int sketchId, Profile& out)
+{
+    if (sketchId <= 0) {
+        return false;
+    }
+    szwEntityHandle skh;
+    if (ZwEntityIdTransfer(1, &sketchId, &skh) != ZW_API_NO_ERROR) {
+        return false;
+    }
+    szwMatrix m;
+    if (ZwEntityMatrixGet(skh, &m) == ZW_API_NO_ERROR)
+    {
+        out.origin[0] = m.xt; out.origin[1] = m.yt; out.origin[2] = m.zt;
+        out.x_dir[0]  = m.xx; out.x_dir[1]  = m.xy; out.x_dir[2]  = m.xz;
+        out.normal[0] = m.zx; out.normal[1] = m.zy; out.normal[2] = m.zz;
+        out.has_plane = true;
+    }
+    int              cn     = 0;
+    szwEntityHandle* curves = nullptr;
+    int rc = ZwSketch2DCurveListGet(&skh, &cn, &curves);
+    out.curvelist_rc = rc;
+    out.curvelist_cn = cn;
+    if (rc == ZW_API_NO_ERROR && curves != nullptr)
+    {
+        for (int c = 0; c < cn; ++c) {
+            ReadCurveByHandle(curves[c], out.curves);
+        }
+        ZwEntityHandleListFree(cn, &curves);
+    }
+    // Reference / extended-geometry fallback, same as ReadProfile's: a
+    // path sketch built from PROJECTED geometry has no drawn 2D curves
+    // (R2900 Sweep2's path sketch came back empty here).
+    if (out.curves.empty())
+    {
+        auto read_by_ids = [&](int rcn, int* rids)
+        {
+            for (int i = 0; i < rcn; ++i)
+            {
+                if (rids[i] <= 0) { continue; }
+                szwEntityHandle ch;
+                if (ZwEntityIdTransfer(1, &rids[i], &ch) != ZW_API_NO_ERROR) {
+                    continue;
+                }
+                ReadCurveByHandle(ch, out.curves);
+                ZwEntityHandleFree(&ch);
+            }
+        };
+        int  rcn  = 0;
+        int* rids = nullptr;
+        if (cvxSkInqRefById(sketchId, &rcn, &rids) == ZW_API_NO_ERROR &&
+            rids != nullptr)
+        {
+            out.ref_cn = rcn;
+            read_by_ids(rcn, rids);
+            cvxMemFree(reinterpret_cast<void**>(&rids));
+        }
+        if (out.curves.empty())
+        {
+            int  gcn  = 0;
+            int* gids = nullptr;
+            if (cvxSkInqGeomXById(sketchId, &gcn, &gids) == ZW_API_NO_ERROR &&
+                gids != nullptr)
+            {
+                out.geomx_cn = gcn;
+                read_by_ids(gcn, gids);
+                cvxMemFree(reinterpret_cast<void**>(&gids));
+            }
+        }
+    }
+    if (!out.curves.empty()) {
+        out.n_sketch = 1;
+    }
+    ZwEntityHandleFree(&skh);
+    return !out.curves.empty();
 }
 
 // A pattern's DIRECTION comes from a referenced entity, NOT a scalar field
@@ -1944,9 +2242,53 @@ json ProfileToJson(const Profile& pr)
             jc["a0"] = c.a0;
             jc["a1"] = c.a1;
         }
+        if (c.is_ref)
+        {
+            jc["ref"] = true;
+        }
         arr.push_back(std::move(jc));
     }
     j["curves"] = std::move(arr);
+    return j;
+}
+
+// World-mm 3D curve (a sweep path segment). Distinct from ProfileToJson's
+// sketch-local 2D encoding: these are absolute-space curves with their own
+// frame, consumed by the reader to synthesize a spine.
+json CurveGeoToJson(const zwapi::CurveGeo& g)
+{
+    json j;
+    switch (g.type)
+    {
+    case 1:   // VX_CRV_LINE
+        j["kind"] = "line";
+        j["p0"]   = json::array({ g.p0[0], g.p0[1], g.p0[2] });
+        j["p1"]   = json::array({ g.p1[0], g.p1[1], g.p1[2] });
+        break;
+    case 2:   // VX_CRV_ARC
+    case 3:   // VX_CRV_CIRCLE
+        j["kind"]   = (g.type == 2) ? "arc" : "circle";
+        j["center"] = json::array({ g.origin[0], g.origin[1], g.origin[2] });
+        j["x_dir"]  = json::array({ g.xaxis[0], g.xaxis[1], g.xaxis[2] });
+        j["y_dir"]  = json::array({ g.yaxis[0], g.yaxis[1], g.yaxis[2] });
+        j["radius"] = g.radius;
+        if (g.type == 2) {
+            j["a0"] = g.a1;
+            j["a1"] = g.a2;
+        }
+        break;
+    case 4:   // VX_CRV_NURB
+        j["kind"]     = "nurbs";
+        j["degree"]   = g.degree;
+        j["rational"] = g.rational;
+        j["cp_dim"]   = g.cp_dim;
+        j["knots"]    = g.knots;
+        j["cps"]      = g.cps;
+        break;
+    default:
+        j["kind"] = "unknown";
+        break;
+    }
     return j;
 }
 
@@ -2315,6 +2657,75 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
             // extrudes these reveal which set actually supplied the profile.
             diag["profile_ref_cn"]   = pr.ref_cn;
             diag["profile_geomx_cn"] = pr.geomx_cn;
+
+            // Sweep (FtAllSwp1): the path is a point-on-curve pick in fld 2
+            // whose generic dump keeps only the pick POINT -- without the
+            // curve geometry the reader cannot rebuild the spine and the
+            // whole sweep is dropped (R2900 lost 5 sweeps plus every fillet
+            // that blends a pin into the swept surface). Resolve fld 2's
+            // entity rows to world-mm curve geometry here, still in the
+            // BEFORE state where the path curve is live.
+            if (type == "FtAllSwp1")
+            {
+                std::vector<zwapi::FieldEntRow> rows;
+                std::vector<zwapi::CurveGeo>    path =
+                    zwapi::ReadFieldCurves(fid, 2, &rows);
+                if (!path.empty())
+                {
+                    json pa = json::array();
+                    for (const auto& g : path) {
+                        pa.push_back(CurveGeoToJson(g));
+                    }
+                    jf["path"] = std::move(pa);
+                }
+                else if (!rows.empty())
+                {
+                    // fld 2 references a whole SKETCH (cvxPartInqCurve
+                    // fails on it): the path is that sketch's curve
+                    // chain -- R2900's Sweep2 (one line) and Sweep4
+                    // (4 lines + 2 arcs, an S-bend).
+                    int sk_id = (rows[0].idEntity > 0) ? rows[0].idEntity
+                                                       : rows[0].path_last;
+                    Profile pp;
+                    if (zwapi::ReadSketchProfileById(sk_id, pp)) {
+                        jf["path_sketch"] = ProfileToJson(pp);
+                    }
+                }
+                diag["n_path_curve"] = static_cast<int>(path.size());
+                json ra = json::array();
+                for (const auto& r : rows)
+                {
+                    json rj;
+                    rj["ent"]    = r.idEntity;
+                    rj["parent"] = r.idParent;
+                    rj["pcnt"]   = r.path_count;
+                    rj["plast"]  = r.path_last;
+                    rj["on_crv"] = r.isPntOnCrv;
+                    ra.push_back(std::move(rj));
+                }
+                diag["path_rows"] = std::move(ra);
+
+                // Profile P1 (fld 1): the generic ReadProfile below merges
+                // EVERY input sketch -- on Sweep4 that contaminated the
+                // profile with the path sketch's 6 chain curves. When
+                // fld 1's pick resolves to a sketch of its own, emit THAT
+                // sketch alone as the profile (overrides the merged read).
+                {
+                    std::vector<zwapi::FieldEntRow> prows;
+                    zwapi::ReadFieldCurves(fid, 1, &prows);
+                    if (!prows.empty())
+                    {
+                        int pk_id = (prows[0].idEntity > 0)
+                                        ? prows[0].idEntity
+                                        : prows[0].path_last;
+                        Profile pf;
+                        if (zwapi::ReadSketchProfileById(pk_id, pf)) {
+                            jf["profile"] = ProfileToJson(pf);
+                            diag["profile_from_fld1"] = true;
+                        }
+                    }
+                }
+            }
 
             // Pattern (FtPtnFtr): count / spacing / patterned-target are
             // already in the field dump (fld 3 / 4 / 1); the one missing
