@@ -14,6 +14,8 @@
 #include <geoshape/Circle.h>
 #include <geoshape/Arc.h>
 
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepGProp.hxx>
@@ -38,6 +40,8 @@
 #include <ShapeAnalysis_FreeBounds.hxx>
 #include <ShapeFix_Face.hxx>
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 
 namespace cadapp
@@ -138,6 +142,19 @@ TopoDS_Edge BuildEdgeFromShape(const gs::Shape2D& shape,
 // without merging unrelated endpoints in a tightly-packed sketch.
 constexpr double kWireStitchTol = 1.0e-5;
 
+// The absolute floor above is tuned for METRE space. An import that
+// keeps native units (ZW3D at unit_scale=1 stays in mm) carries the
+// same RELATIVE endpoint drift on coordinates 1000x larger, so a
+// fixed 1e-5 splits a closed profile into fragments (R2900's
+// Extrude44 saw-tooth ring has ~7e-5 mm gaps between its reference
+// curves; the broken wire stitched into 8 bogus closed sub-loops,
+// the prism became 8 slivers, and the following fuse emptied the
+// running body). Scale the tolerance with the sketch's own extent:
+// 10 ppm of the edge set's bbox diagonal. For typical metre-space
+// sketches (diag < 1) the relative term is below the absolute floor,
+// so FreeCAD-path behaviour is unchanged.
+constexpr double kRelWireStitchTol = 1.0e-5;
+
 // Chain solved edges into one or more closed wires. Multiple wires
 // indicate a sketch with holes or disconnected loops; the caller is
 // responsible for assembling them into a single face.
@@ -159,12 +176,29 @@ BuildWiresFromSolved(const cadapp::SketchBridge::GeoShapes& solved,
 	}
 	if (edges_seq->IsEmpty()) return Handle(TopTools_HSequenceOfShape)();
 
+	// Scale-aware stitch tolerance: absolute floor for metre-space
+	// solver drift, relative term for native-unit (mm) imports whose
+	// drift scales with the coordinates. See kRelWireStitchTol above.
+	double stitch_tol = kWireStitchTol;
+	{
+		Bnd_Box bb;
+		for (int i = 1; i <= edges_seq->Length(); ++i)
+			BRepBndLib::Add(edges_seq->Value(i), bb);
+		if (!bb.IsVoid()) {
+			double x0, y0, z0, x1, y1, z1;
+			bb.Get(x0, y0, z0, x1, y1, z1);
+			const double dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+			const double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
+			stitch_tol = std::max(stitch_tol, diag * kRelWireStitchTol);
+		}
+	}
+
 	Handle(TopTools_HSequenceOfShape) wires_seq;
 	// shared=Standard_False: chain by endpoint distance, not by
 	// shared TVertex identity. Our edges are built fresh from
 	// gp_Pnt's, so no shared vertices exist yet.
 	ShapeAnalysis_FreeBounds::ConnectEdgesToWires(
-		edges_seq, kWireStitchTol, Standard_False, wires_seq);
+		edges_seq, stitch_tol, Standard_False, wires_seq);
 	return wires_seq;
 }
 

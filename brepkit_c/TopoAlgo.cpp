@@ -1649,6 +1649,36 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         std::fflush(stderr);
     }
 
+    // A fuse whose base operand HAS solids can never legitimately produce
+    // an EMPTY result, yet BRepAlgoAPI_Fuse does exactly that (IsDone, no
+    // errors, bare empty COMPOUND) on some pathological tools -- R2900's
+    // Extrude44 fused an 8-sliver prism (fragmented saw-tooth profile)
+    // onto the running body and the WHOLE body came back empty, wiping
+    // every feature built so far. Retry with escalated fuzzy looking for
+    // ANY solid-bearing result before falling into the last-resort guard
+    // below.
+    if (algo->IsDone() && !algo->Shape().IsNull() &&
+        CountSolids(algo->Shape()) == 0 &&
+        CountSolids(s1->GetShape()) > 0)
+    {
+        int ran = 0, ok = 0;
+        for (double fuzzy : {base_fuzzy * 10.0, base_fuzzy * 100.0,
+                             base_fuzzy * 1000.0}) {
+            auto retry = run_fuse(fuzzy);
+            ++ran;
+            if (retry->IsDone() && !retry->Shape().IsNull() &&
+                CountSolids(retry->Shape()) > 0) {
+                algo = std::move(retry);
+                ++ok;
+                break;
+            }
+        }
+        std::fprintf(stderr,
+            "[bop_retry] op_id=%u EMPTY fuse result  ran=%d recovered=%d\n",
+            op_id, ran, ok);
+        std::fflush(stderr);
+    }
+
     const auto _bop_t1 = std::chrono::steady_clock::now();
 
     // Refine: unify coplanar BOP fragments + unwrap a single-SOLID
@@ -1666,11 +1696,32 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
                      BopProfFaceCount(algo->Shape()), BopProfFaceCount(refined));
     }
 
+    // Last-resort guard: never hand an empty fuse downstream when the
+    // base had solids. One failed boolean must not erase the running
+    // body -- before this guard, R2900's chain died at Extrude44 and the
+    // document emitted only a handful of post-collapse fragments
+    // ("nothing displayed" in the editor). Keep the operands side by
+    // side instead: locally-unmerged geometry beats a vanished part.
+    // The operands' TShapes (and their TopoNaming entries) are reused
+    // verbatim, so downstream geometric edge/face resolution still works;
+    // skip tn->Update, whose history maps into the dropped empty result.
+    bool fused_fallback = false;
+    if ((refined.IsNull() || CountSolids(refined) == 0) &&
+        CountSolids(s1->GetShape()) > 0)
+    {
+        std::fprintf(stderr,
+            "[fuse] op_id=%u empty result; keeping unmerged operands\n",
+            op_id);
+        std::fflush(stderr);
+        refined = ShapeBuilder::MakeCompound({ s1, s2 })->GetShape();
+        fused_fallback = true;
+    }
+
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, s2->GetShape()); }
 
     brepgraph::TopoNaming::PidMap pid_map;
-    if (tn)
+    if (tn && !fused_fallback)
     {
         auto old_shp = ShapeBuilder::MakeCompound({ s1, s2 });
         pid_map = tn->Update(hist, refined, old_shp->GetShape(), op_id);

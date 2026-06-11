@@ -715,6 +715,14 @@ if(CAX_BUILD_BRP_DIFF AND CADCVT_FREECAD_DEPS_OK)
     add_subdirectory(tools/brp_diff)
 endif()
 
+option(CAX_BUILD_ZW_VERIFY "Build zw_verify: diff a replayed .cax.json against its ZW3D .cax.step truth" ON)
+
+if(CAX_BUILD_ZW_VERIFY AND CADCVT_FREECAD_DEPS_OK)
+    # Replays via the cax lib (ZwReader needs nlohmann, replay needs OCCT)
+    # -- the FreeCAD-deps gate covers both, same as the golden harness.
+    add_subdirectory(tools/zw_verify)
+endif()
+
 ################################################################################
 # Optional demo executables
 ################################################################################

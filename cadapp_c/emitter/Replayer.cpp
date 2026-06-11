@@ -10,6 +10,8 @@
 #include <BRep_Builder.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepTools.hxx>
+#include <TopAbs.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopoDS_Compound.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
@@ -2593,6 +2595,39 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                  "(node %d -> %d)\n",
                                  feat.name.c_str(), feat.id, node, sub);
                     node = sub;
+                }
+            }
+
+            // Dead-feature substitution: a feature that evaluates to
+            // NOTHING (null Val, or a shape with no solids) while sitting
+            // on a non-empty base must not poison the chain -- every
+            // downstream boolean would inherit the nothing, the running
+            // body silently vanishes, and the document emits only
+            // whatever post-collapse fragments rebuilt from scratch
+            // (R2900: one fragmented-profile boss erased 68 features of
+            // work and the editor displayed an empty viewport). Fall back
+            // to the base node: the body continues WITHOUT this feature,
+            // and the gap is reported in err_msg like a skipped feature.
+            else if (!opt.analyze_only && base_node >= 0 && node != base_node)
+            {
+                auto val = cg->Eval(node);
+                auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
+                bool dead = !sv || !sv->shape ||
+                            sv->shape->GetShape().IsNull();
+                if (!dead)
+                {
+                    TopExp_Explorer ex(sv->shape->GetShape(), TopAbs_SOLID);
+                    dead = !ex.More();
+                }
+                if (dead)
+                {
+                    if (!out.err_msg.empty()) {
+                        out.err_msg += "; ";
+                    }
+                    out.err_msg += "feature " + feat.name +
+                                   " evaluated to no solid; chain continues "
+                                   "without it";
+                    node = base_node;
                 }
             }
 

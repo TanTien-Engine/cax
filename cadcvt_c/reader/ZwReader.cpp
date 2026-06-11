@@ -32,6 +32,7 @@
 #include <nlohmann/json.hpp>
 
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -99,6 +100,77 @@ std::ifstream OpenInputBinary(const std::string& path)
     }
 #endif
     return std::ifstream(path, std::ios::binary);
+}
+
+// Existence probe with the same dual-codepage decode OpenInputBinary uses
+// (UTF-8 first, ANSI fallback), so a GBK path from argv and a UTF-8 path
+// from a .ves scene string both resolve.
+bool FileExists(const std::string& path)
+{
+    if (path.empty()) {
+        return false;
+    }
+#ifdef _WIN32
+    auto widen = [](const std::string& p, UINT cp, DWORD flags) -> std::wstring
+    {
+        int n = ::MultiByteToWideChar(cp, flags, p.data(), (int)p.size(),
+                                      nullptr, 0);
+        if (n <= 0) {
+            return std::wstring();
+        }
+        std::wstring w((size_t)n, L'\0');
+        ::MultiByteToWideChar(cp, flags, p.data(), (int)p.size(), w.data(), n);
+        return w;
+    };
+    std::wstring w = widen(path, CP_UTF8, MB_ERR_INVALID_CHARS);
+    if (w.empty()) {
+        w = widen(path, CP_ACP, 0);
+    }
+    if (w.empty()) {
+        return false;
+    }
+    const DWORD attrs = ::GetFileAttributesW(w.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES &&
+           !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    std::ifstream probe(path, std::ios::binary);
+    return (bool)probe;
+#endif
+}
+
+// Resolve a feature's sibling STEP ("<part>.cax.feat<id>.step"). The
+// exporter records it as a basename in the JSON, but a GBK part name that
+// passed through the exporter's UTF-8 sanitiser comes back as U+FFFD
+// mojibake -- the original bytes are unrecoverable and the recorded name
+// matches no file. The sibling path is fully DERIVABLE from the snapshot's
+// own path (same naming scheme, same directory), so use the recorded name
+// when it resolves and fall back to the derived sibling otherwise.
+std::string ResolveFeatStepPath(const std::string& doc_path,
+                                const std::string& doc_dir,
+                                const std::string& recorded,
+                                uint32_t id)
+{
+    const std::string rec_path = doc_dir + recorded;
+    if (FileExists(rec_path)) {
+        return rec_path;
+    }
+    std::string base = doc_path;
+    const std::string js = ".json";
+    if (base.size() >= js.size())
+    {
+        std::string tail = base.substr(base.size() - js.size());
+        for (auto& c : tail) {
+            c = (char)std::tolower((unsigned char)c);
+        }
+        if (tail == js) {
+            base.resize(base.size() - js.size());
+        }
+    }
+    std::string derived = base + ".feat" + std::to_string(id) + ".step";
+    if (FileExists(derived)) {
+        return derived;
+    }
+    return rec_path;   // keep the recorded name for error reporting
 }
 
 // ---- small JSON accessors ----------------------------------------------
@@ -641,6 +713,60 @@ bool ProfileExtrudable(const json& curves)
     return closed_loops > 0 || !ends.empty();
 }
 
+// True when the profile's curves chain into closed loop(s): every open
+// endpoint pairs with exactly one other within tol (raw profile units,
+// mm). Self-closing circles/ellipses count on their own. Used by the
+// revolve arm: an open profile cannot bound a revolved solid, and a
+// near-closed one whose gaps exceed the sketch stitch tolerance
+// fragments into slivers that poison the body chain (R2900's
+// Revolve6_Base carries reference-curve gaps of ~5e-3 mm) -- falling
+// through to the authored-STEP fallback is strictly better.
+bool ProfileFormsClosedLoops(const json& curves, double tol)
+{
+    if (!curves.is_array() || curves.empty()) {
+        return false;
+    }
+    int closed_loops = 0;
+    std::vector<std::array<double, 2>> ends;
+    for (const auto& c : curves)
+    {
+        const std::string k = JStr(c, "kind", "");
+        if (k == "circle" || k == "ellipse") {
+            ++closed_loops;
+            continue;
+        }
+        auto p0 = c.find("p0");
+        auto p1 = c.find("p1");
+        if (p0 == c.end() || p1 == c.end() ||
+            !p0->is_array() || !p1->is_array() ||
+            p0->size() < 2 || p1->size() < 2) {
+            return false;
+        }
+        ends.push_back({ p0->at(0).get<double>(), p0->at(1).get<double>() });
+        ends.push_back({ p1->at(0).get<double>(), p1->at(1).get<double>() });
+    }
+    std::vector<bool> used(ends.size(), false);
+    for (size_t i = 0; i < ends.size(); ++i)
+    {
+        if (used[i]) { continue; }
+        bool matched = false;
+        for (size_t j = i + 1; j < ends.size(); ++j)
+        {
+            if (used[j]) { continue; }
+            if (std::fabs(ends[i][0] - ends[j][0]) < tol &&
+                std::fabs(ends[i][1] - ends[j][1]) < tol) {
+                used[i] = used[j] = true;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched) {
+            return false;
+        }
+    }
+    return closed_loops > 0 || !ends.empty();
+}
+
 } // namespace
 
 ZwReader::ZwReader() = default;
@@ -851,7 +977,8 @@ bool ZwReader::ReadFile(const std::string& path,
                         f.name = name;
                         f.data = std::move(pl);
                         f.ext_strings["zw_type"]     = zt;
-                        f.ext_strings["zw_geometry"] = doc_dir + geo->get<std::string>();
+                        f.ext_strings["zw_geometry"] = ResolveFeatStepPath(
+                            path, doc_dir, geo->get<std::string>(), id);
                         out.features.push_back(std::move(f));
                         running_solid_id = id;
                         continue;
@@ -1033,6 +1160,120 @@ bool ZwReader::ReadFile(const std::string& path,
                     continue;
                 }
 
+                // ZW3D cylinder primitive (FtAllCyl) -> circle-profile Sketch
+                // + Boss/CutExtrude. fld 1 "Center" is the base circle's
+                // centre (world mm), fld 2 "Radius" / fld 3 "Length" the
+                // size, fld 11 carries the axis direction, and fld 14 the
+                // boolean combine (0 = new/base, 1 = add, 2 = remove).
+                // Lowered through the same Sketch+Extrude path as FtAllExt
+                // (not a PrimCylinder payload) so the pattern machinery
+                // keeps working: the footprint registered below is what
+                // lets a later FtPtnFtr map its anchor back to this
+                // cylinder (R2900's Pattern13/18 copy cylinder bosses).
+                if (zt == "FtAllCyl")
+                {
+                    double ctr[3]  = { 0.0, 0.0, 0.0 };
+                    double axis[3] = { 0.0, 0.0, 1.0 };
+                    const double radius = FieldValueById(jf, 2, 0.0);
+                    const double length = FieldValueById(jf, 3, 0.0);
+                    if (FieldPoint(jf, 1, ctr) && radius > 1e-9 &&
+                        std::fabs(length) > 1e-6)
+                    {
+                        FieldDir(jf, 11, axis);   // stays +Z when absent
+                        double al = std::sqrt(axis[0]*axis[0] +
+                                              axis[1]*axis[1] +
+                                              axis[2]*axis[2]);
+                        if (al < 1e-12) {
+                            axis[0] = 0.0; axis[1] = 0.0; axis[2] = 1.0;
+                            al = 1.0;
+                        }
+                        axis[0] /= al; axis[1] /= al; axis[2] /= al;
+
+                        // Any unit vector perpendicular to the axis works as
+                        // the sketch frame's x_dir -- the profile is a full
+                        // circle, so rotation about the axis is immaterial.
+                        double ux[3];
+                        if (std::fabs(axis[2]) < 0.9) {
+                            ux[0] = -axis[1]; ux[1] = axis[0]; ux[2] = 0.0;
+                        } else {
+                            ux[0] = 0.0; ux[1] = -axis[2]; ux[2] = axis[1];
+                        }
+                        double ul = std::sqrt(ux[0]*ux[0] + ux[1]*ux[1] +
+                                              ux[2]*ux[2]);
+                        ux[0] /= ul; ux[1] /= ul; ux[2] /= ul;
+
+                        const uint32_t sketch_fid = 1000000u + id;
+                        cadapp::SketchIR sk;
+                        sk.feature_id = sketch_fid;
+                        sk.name = name + ":profile";
+                        sk.plane_origin[0] = ctr[0] * s;
+                        sk.plane_origin[1] = ctr[1] * s;
+                        sk.plane_origin[2] = ctr[2] * s;
+                        sk.plane_x_dir[0]  = ux[0];
+                        sk.plane_x_dir[1]  = ux[1];
+                        sk.plane_x_dir[2]  = ux[2];
+                        sk.plane_normal[0] = axis[0];
+                        sk.plane_normal[1] = axis[1];
+                        sk.plane_normal[2] = axis[2];
+                        sk.geos.push_back(cadapp::SkGeoIR::Circle(
+                            1, 0.0, 0.0, radius * s));
+                        out.sketches.push_back(std::move(sk));
+
+                        cadapp::FeatPayloadSketch spl;
+                        spl.sketch_id = sketch_fid;
+                        cadapp::FeatureIR sf;
+                        sf.id   = sketch_fid;
+                        sf.type = cadapp::FeatType::Sketch;
+                        sf.name = name + ":profile";
+                        sf.data = std::move(spl);
+                        out.features.push_back(std::move(sf));
+
+                        cadapp::FeatPayloadExtrude epl;
+                        epl.sketch_id      = sketch_fid;
+                        epl.distance       = std::fabs(length) * s;
+                        epl.end_type       = cadapp::ExtrudeEndType::Blind;
+                        epl.flip_direction = (length < 0.0);
+
+                        const bool is_cut =
+                            std::fabs(FieldValueById(jf, 14, 1.0) - 2.0) < 0.5;
+                        cadapp::FeatureIR ef;
+                        ef.id   = id;
+                        ef.type = is_cut ? cadapp::FeatType::CutExtrude
+                                         : cadapp::FeatType::BossExtrude;
+                        ef.name = name;
+                        ef.data = std::move(epl);
+                        if (running_solid_id != 0) {
+                            PushInput(ef, running_solid_id,
+                                      cadapp::InputRole::Base);
+                        }
+
+                        // Footprint (plane frame + circle box, raw mm) so a
+                        // later pattern's anchor maps back to this cylinder.
+                        {
+                            ExtrudeFootprint fp;
+                            fp.id = id;
+                            double vd[3] = {
+                                axis[1]*ux[2] - axis[2]*ux[1],
+                                axis[2]*ux[0] - axis[0]*ux[2],
+                                axis[0]*ux[1] - axis[1]*ux[0],
+                            };
+                            for (int k = 0; k < 3; ++k) {
+                                fp.origin[k] = ctr[k];
+                                fp.udir[k]   = ux[k];
+                                fp.vdir[k]   = vd[k];
+                                fp.wc[k]     = ctr[k];
+                            }
+                            fp.umin = -radius; fp.umax = radius;
+                            fp.vmin = -radius; fp.vmax = radius;
+                            extrude_xy.push_back(fp);
+                        }
+
+                        out.features.push_back(std::move(ef));
+                        running_solid_id = id;
+                        continue;
+                    }
+                }
+
                 // ZW3D revolve (FtAllRev) -> Sketch + BossRevolve / CutRevolve.
                 // The profile is captured exactly like an extrude's
                 // (profile.curves on profile.plane); the difference is the boss
@@ -1053,7 +1294,8 @@ bool ZwReader::ReadFile(const std::string& path,
                 // no profile line carries the axis point (the axis is a datum we
                 // cannot resolve reader-side), fall through to opaque.
                 if (zt == "FtAllRev" && prof != jf.end() &&
-                    prof->contains("curves") && prof->at("curves").is_array())
+                    prof->contains("curves") &&
+                    ProfileFormsClosedLoops(prof->at("curves"), 1e-4))
                 {
                     double axpt[3] = { 0.0, 0.0, 0.0 };
                     if (FieldPoint(jf, 2, axpt))
@@ -1122,6 +1364,29 @@ bool ZwReader::ReadFile(const std::string& path,
                                 axis_dir[0] = du[0];
                                 axis_dir[1] = du[1];
                                 axis_dir[2] = du[2];
+                            }
+                        }
+
+                        // No profile line carries the axis point -- the axis
+                        // is EXTERNAL to the profile (R2900's Revolve3 spins
+                        // a D-section about a remote -Y axis). The plugin
+                        // caches the true direction on fld 2 itself ("Axis A"
+                        // carries dir alongside pt); take it as fallback. The
+                        // line-fit stays primary so every snapshot that
+                        // resolved before resolves identically.
+                        if (best_d >= 1e-3)
+                        {
+                            double fdir[3];
+                            if (FieldDir(jf, 2, fdir)) {
+                                double fl = std::sqrt(fdir[0]*fdir[0] +
+                                                      fdir[1]*fdir[1] +
+                                                      fdir[2]*fdir[2]);
+                                if (fl > 1e-12) {
+                                    axis_dir[0] = fdir[0] / fl;
+                                    axis_dir[1] = fdir[1] / fl;
+                                    axis_dir[2] = fdir[2] / fl;
+                                    best_d = 0.0;
+                                }
                             }
                         }
 
@@ -1796,6 +2061,41 @@ bool ZwReader::ReadFile(const std::string& path,
                         PushInput(mf, running_solid_id, cadapp::InputRole::Base);
                         out.features.push_back(std::move(mf));
                         running_solid_id = id;
+                        continue;
+                    }
+                }
+
+                // Authored-geometry fallback: the plugin dumps a per-feature
+                // STEP for any feature whose result is a standalone SHAPE
+                // entity (result_ents.n_shape >= 1 -- e.g. a base feature
+                // opening a new body). When the parametric arms above could
+                // not reconstruct the feature, that STEP is still the exact
+                // authored geometry -- surface it as a BakedShape body root
+                // instead of dropping the feature (R2900's Revolve6_Base
+                // ring, whose reference-curve profile doesn't close).
+                // running_solid_id is NOT advanced: the shape is an
+                // independent body and the main chain must keep fusing onto
+                // the body it was already building.
+                {
+                    auto geo = jf.find("geometry");
+                    int  n_shape = 0;
+                    auto re = jf.find("result_ents");
+                    if (re != jf.end()) {
+                        n_shape = JGet<int>(*re, "n_shape", 0);
+                    }
+                    if (geo != jf.end() && geo->is_string() &&
+                        !geo->get<std::string>().empty() && n_shape >= 1)
+                    {
+                        cadapp::FeatPayloadBakedShape pl;
+                        cadapp::FeatureIR f;
+                        f.id   = id;
+                        f.type = cadapp::FeatType::BakedShape;
+                        f.name = name;
+                        f.data = std::move(pl);
+                        f.ext_strings["zw_type"]     = zt;
+                        f.ext_strings["zw_geometry"] = ResolveFeatStepPath(
+                            path, doc_dir, geo->get<std::string>(), id);
+                        out.features.push_back(std::move(f));
                         continue;
                     }
                 }
