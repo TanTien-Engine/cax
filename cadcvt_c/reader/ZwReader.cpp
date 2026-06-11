@@ -694,6 +694,263 @@ void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
     }
 }
 
+// ---- Region-pick hole import ("projection donor") ----------------------
+//
+// A ZW3D region-pick extrude (R2900 Extrude48) draws only its OUTER loop;
+// the island cutouts are regions of ANOTHER feature's profile projected
+// into the sketch view. The only static trace is the donor's outer loop
+// in the reference set ("ref":true curves). Recover the holes by finding
+// the PRECEDING profile whose outer loop is congruent to a ref loop and
+// importing its inner closed loops (reprojected into this sketch's frame)
+// as holes. Old snapshots carry no ref tags -> all of this is a no-op.
+
+struct ProfFrame
+{
+    double o[3] = { 0, 0, 0 };
+    double x[3] = { 1, 0, 0 };
+    double n[3] = { 0, 0, 1 };
+    double v[3] = { 0, 1, 0 };   // n cross x
+};
+
+ProfFrame FrameFromProfile(const json& prof)
+{
+    ProfFrame f;
+    auto pl = prof.find("plane");
+    if (pl != prof.end() && pl->is_object())
+    {
+        auto rd3 = [&](const char* key, double d[3]) {
+            auto a = pl->find(key);
+            if (a != pl->end() && a->is_array() && a->size() == 3) {
+                d[0] = a->at(0).get<double>();
+                d[1] = a->at(1).get<double>();
+                d[2] = a->at(2).get<double>();
+            }
+        };
+        rd3("origin", f.o);
+        rd3("x_dir",  f.x);
+        rd3("normal", f.n);
+    }
+    f.v[0] = f.n[1]*f.x[2] - f.n[2]*f.x[1];
+    f.v[1] = f.n[2]*f.x[0] - f.n[0]*f.x[2];
+    f.v[2] = f.n[0]*f.x[1] - f.n[1]*f.x[0];
+    return f;
+}
+
+// 2D endpoints of a profile curve in its own sketch frame. Circles /
+// ellipses are self-closed (returns false; caller treats them as loops).
+bool CurveEnds2D(const json& c, double e0[2], double e1[2])
+{
+    const std::string k = JStr(c, "kind", "");
+    if (k == "line" || k == "nurb")
+    {
+        auto p0 = c.find("p0");
+        auto p1 = c.find("p1");
+        if (p0 == c.end() || p1 == c.end() ||
+            !p0->is_array() || !p1->is_array() ||
+            p0->size() < 2 || p1->size() < 2) {
+            return false;
+        }
+        e0[0] = p0->at(0).get<double>(); e0[1] = p0->at(1).get<double>();
+        e1[0] = p1->at(0).get<double>(); e1[1] = p1->at(1).get<double>();
+        return true;
+    }
+    if (k == "arc")
+    {
+        auto ctr = c.find("center");
+        if (ctr == c.end() || !ctr->is_array() || ctr->size() < 2) {
+            return false;
+        }
+        const double cx = ctr->at(0).get<double>();
+        const double cy = ctr->at(1).get<double>();
+        const double r  = JGet<double>(c, "radius", 0.0);
+        const double d  = 3.14159265358979323846 / 180.0;
+        const double a0 = JGet<double>(c, "a0", 0.0) * d;
+        const double a1 = JGet<double>(c, "a1", 0.0) * d;
+        e0[0] = cx + r * std::cos(a0); e0[1] = cy + r * std::sin(a0);
+        e1[0] = cx + r * std::cos(a1); e1[1] = cy + r * std::sin(a1);
+        return true;
+    }
+    return false;   // circle / ellipse: self-closed
+}
+
+// Chain a subset of curves (by index) into closed loops by greedy
+// endpoint matching. Self-closed curves are their own loops. Open
+// chains are DROPPED (construction junk like datum axis lines).
+std::vector<std::vector<int>> ChainClosedLoops(const json&            curves,
+                                               const std::vector<int>& idxs,
+                                               double                  tol)
+{
+    std::vector<std::vector<int>> loops;
+    std::vector<int>              open;
+    for (int i : idxs)
+    {
+        const std::string k = JStr(curves.at(i), "kind", "");
+        if (k == "circle" || k == "ellipse") {
+            loops.push_back({ i });
+        } else {
+            open.push_back(i);
+        }
+    }
+    std::vector<bool> used(open.size(), false);
+    for (size_t s = 0; s < open.size(); ++s)
+    {
+        if (used[s]) { continue; }
+        double e0[2], e1[2];
+        if (!CurveEnds2D(curves.at(open[s]), e0, e1)) { used[s] = true; continue; }
+        std::vector<int> loop{ open[s] };
+        used[s] = true;
+        double head[2] = { e0[0], e0[1] };
+        double tail[2] = { e1[0], e1[1] };
+        bool grew = true;
+        while (grew)
+        {
+            // closed?
+            if (std::fabs(head[0]-tail[0]) < tol &&
+                std::fabs(head[1]-tail[1]) < tol && loop.size() >= 2) {
+                break;
+            }
+            grew = false;
+            for (size_t t = 0; t < open.size(); ++t)
+            {
+                if (used[t]) { continue; }
+                double f0[2], f1[2];
+                if (!CurveEnds2D(curves.at(open[t]), f0, f1)) { used[t] = true; continue; }
+                if (std::fabs(tail[0]-f0[0]) < tol && std::fabs(tail[1]-f0[1]) < tol) {
+                    tail[0] = f1[0]; tail[1] = f1[1];
+                } else if (std::fabs(tail[0]-f1[0]) < tol && std::fabs(tail[1]-f1[1]) < tol) {
+                    tail[0] = f0[0]; tail[1] = f0[1];
+                } else {
+                    continue;
+                }
+                loop.push_back(open[t]);
+                used[t] = true;
+                grew = true;
+                break;
+            }
+        }
+        const bool closed = std::fabs(head[0]-tail[0]) < tol &&
+                            std::fabs(head[1]-tail[1]) < tol &&
+                            (loop.size() >= 2 || JStr(curves.at(loop[0]), "kind", "") == "arc");
+        if (closed) {
+            loops.push_back(std::move(loop));
+        }
+    }
+    return loops;
+}
+
+// 2D bbox of a loop (curve endpoints + arc/circle extremes approximated
+// by centre +- r -- exact enough for congruence / containment gating).
+void LoopBBox2D(const json& curves, const std::vector<int>& loop,
+                double mn[2], double mx[2])
+{
+    mn[0] = mn[1] = 1e300;
+    mx[0] = mx[1] = -1e300;
+    auto add = [&](double x, double y) {
+        mn[0] = std::min(mn[0], x); mn[1] = std::min(mn[1], y);
+        mx[0] = std::max(mx[0], x); mx[1] = std::max(mx[1], y);
+    };
+    for (int i : loop)
+    {
+        const json& c = curves.at(i);
+        const std::string k = JStr(c, "kind", "");
+        if (k == "circle" || k == "ellipse" || k == "arc")
+        {
+            auto ctr = c.find("center");
+            if (ctr != c.end() && ctr->is_array() && ctr->size() >= 2)
+            {
+                const double r = JGet<double>(c, "radius", 0.0);
+                if (k == "arc")
+                {
+                    // endpoints only (an arc's bbox needs quadrant checks;
+                    // endpoints + the centre disc bound is good enough for
+                    // gating, and full circles don't take this path).
+                    double e0[2], e1[2];
+                    if (CurveEnds2D(c, e0, e1)) { add(e0[0], e0[1]); add(e1[0], e1[1]); }
+                }
+                else
+                {
+                    add(ctr->at(0).get<double>() - r, ctr->at(1).get<double>() - r);
+                    add(ctr->at(0).get<double>() + r, ctr->at(1).get<double>() + r);
+                }
+            }
+        }
+        else
+        {
+            double e0[2], e1[2];
+            if (CurveEnds2D(c, e0, e1)) { add(e0[0], e0[1]); add(e1[0], e1[1]); }
+        }
+    }
+}
+
+// Reproject one profile curve from frame A's 2D coords into frame B's.
+// Planes must be parallel; handles in-plane rotation AND mirroring
+// (R2900: E47's frame is x_dir (1,0,0) normal -Y, E48's x_dir (-1,0,0)
+// normal +Y -- a pure mirror in u). Arc sweeps are kept CCW by swapping
+// the angle pair under a mirror.
+json ReprojectCurve(const json& c, const ProfFrame& A, const ProfFrame& B)
+{
+    auto to3 = [&](const double uv[2], double p[3]) {
+        for (int k = 0; k < 3; ++k) {
+            p[k] = A.o[k] + uv[0]*A.x[k] + uv[1]*A.v[k];
+        }
+    };
+    auto to2 = [&](const double p[3], double uv[2]) {
+        double d[3] = { p[0]-B.o[0], p[1]-B.o[1], p[2]-B.o[2] };
+        uv[0] = d[0]*B.x[0] + d[1]*B.x[1] + d[2]*B.x[2];
+        uv[1] = d[0]*B.v[0] + d[1]*B.v[1] + d[2]*B.v[2];
+    };
+    // Images of A's axes in B's 2D frame (unit for parallel planes).
+    double xa[2] = {
+        A.x[0]*B.x[0] + A.x[1]*B.x[1] + A.x[2]*B.x[2],
+        A.x[0]*B.v[0] + A.x[1]*B.v[1] + A.x[2]*B.v[2] };
+    double va[2] = {
+        A.v[0]*B.x[0] + A.v[1]*B.x[1] + A.v[2]*B.x[2],
+        A.v[0]*B.v[0] + A.v[1]*B.v[1] + A.v[2]*B.v[2] };
+    const bool   mirrored = (xa[0]*va[1] - xa[1]*va[0]) < 0.0;
+    const double theta    = std::atan2(xa[1], xa[0]);
+    const double kRad     = 3.14159265358979323846 / 180.0;
+
+    json out = c;
+    out.erase("ref");
+    const std::string k = JStr(c, "kind", "");
+    auto xpt = [&](const char* key) {
+        auto it = c.find(key);
+        if (it == c.end() || !it->is_array() || it->size() < 2) { return; }
+        double uv[2] = { it->at(0).get<double>(), it->at(1).get<double>() };
+        double p3[3], nuv[2];
+        to3(uv, p3);
+        to2(p3, nuv);
+        out[key] = json::array({ nuv[0], nuv[1], 0.0 });
+    };
+    xpt("p0");
+    xpt("p1");
+    xpt("center");
+    if (k == "arc")
+    {
+        const double a0 = JGet<double>(c, "a0", 0.0) * kRad;
+        const double a1 = JGet<double>(c, "a1", 0.0) * kRad;
+        double n0, n1;
+        if (!mirrored) { n0 = a0 + theta;  n1 = a1 + theta; }
+        else           { n0 = theta - a1;  n1 = theta - a0; }
+        out["a0"] = n0 / kRad;
+        out["a1"] = n1 / kRad;
+    }
+    return out;
+}
+
+// Planes parallel AND origins separated only along the normal -> the
+// projection along the normal is the identity map of the part space.
+bool FramesProjectionAligned(const ProfFrame& A, const ProfFrame& B)
+{
+    const double dot = A.n[0]*B.n[0] + A.n[1]*B.n[1] + A.n[2]*B.n[2];
+    if (std::fabs(std::fabs(dot) - 1.0) > 1e-6) { return false; }
+    double d[3] = { A.o[0]-B.o[0], A.o[1]-B.o[1], A.o[2]-B.o[2] };
+    // remove the normal component; the rest must vanish
+    const double along = d[0]*B.n[0] + d[1]*B.n[1] + d[2]*B.n[2];
+    for (int k = 0; k < 3; ++k) { d[k] -= along * B.n[k]; }
+    return (d[0]*d[0] + d[1]*d[1] + d[2]*d[2]) < 1e-6;
+}
+
 // A ZW3D extrude (FtAllExt) yields a SOLID only when its profile bounds a
 // closed region. The historic guard "curves >= 3" rejected the single-line
 // surface extrude correctly, but ALSO dropped perfectly good 1-2 curve solid
@@ -933,6 +1190,17 @@ bool ZwReader::ReadFile(const std::string& path,
     };
     std::vector<ExtrudeFootprint> extrude_xy;
 
+    // Profiles of already-processed extrudes, for the region-pick hole
+    // import: a later extrude whose ref loop matches one of these outer
+    // loops pulls the donor's inner loops in as holes. Pointers into the
+    // parsed document json (stable for the lifetime of ReadFile).
+    struct PriorProfile
+    {
+        const json* curves = nullptr;
+        ProfFrame   frame;
+    };
+    std::vector<PriorProfile> prior_profiles;
+
     // Records which prior pattern consumed a given seed feature, keyed by the
     // seed's feature id -> the pattern's feature id. Lets a LATER pattern that
     // copies the same seed nest the prior pattern's RESULT (e.g. Pattern4 over
@@ -1095,9 +1363,132 @@ bool ZwReader::ReadFile(const std::string& path,
                     double startS = FieldValueById(jf, 2, 0.0);
                     double endE   = FieldValueById(jf, 3, 0.0);
 
+                    // Region-pick hole import. When the sketch carries ref
+                    // loops (projected geometry) and one of them is congruent
+                    // to a PRECEDING profile's outer loop, that profile is the
+                    // projection donor: its inner closed loops, reprojected
+                    // into this frame and lying strictly inside our drawn
+                    // outer loop, are this region's island cutouts (R2900
+                    // Extrude48: a plain rect whose tower / window cutouts
+                    // exist only in Extrude47's profile; without them the
+                    // replay extruded a solid 13k mm^3 block, +14% part
+                    // volume). Snapshots without ref tags skip all of this.
+                    json        eff_prof;
+                    const json* use_prof = &*prof;
+                    {
+                        const json& cv = prof->at("curves");
+                        std::vector<int> drawn_idx, ref_idx;
+                        for (int i = 0; i < (int)cv.size(); ++i) {
+                            if (JGet<bool>(cv.at(i), "ref", false)) {
+                                ref_idx.push_back(i);
+                            } else {
+                                drawn_idx.push_back(i);
+                            }
+                        }
+                        if (!ref_idx.empty() && !drawn_idx.empty())
+                        {
+                            const ProfFrame us = FrameFromProfile(*prof);
+                            double omn[2], omx[2];   // our drawn outer bbox
+                            LoopBBox2D(cv, drawn_idx, omn, omx);
+                            json holes = json::array();
+                            for (const auto& rl :
+                                 ChainClosedLoops(cv, ref_idx, 0.05))
+                            {
+                                double rmn[2], rmx[2];
+                                LoopBBox2D(cv, rl, rmn, rmx);
+                                for (const auto& pp : prior_profiles)
+                                {
+                                    if (!FramesProjectionAligned(pp.frame, us)) {
+                                        continue;
+                                    }
+                                    // donor loops, reprojected lazily
+                                    std::vector<int> all;
+                                    for (int i = 0; i < (int)pp.curves->size(); ++i) {
+                                        if (!JGet<bool>(pp.curves->at(i), "ref", false)) {
+                                            all.push_back(i);
+                                        }
+                                    }
+                                    auto dloops = ChainClosedLoops(*pp.curves, all, 0.05);
+                                    // find the donor loop congruent to the
+                                    // ref loop (bbox match in OUR frame)
+                                    int match = -1;
+                                    std::vector<json> proj(dloops.size());
+                                    for (int li = 0; li < (int)dloops.size(); ++li)
+                                    {
+                                        json pl = json::array();
+                                        for (int ci : dloops[li]) {
+                                            pl.push_back(ReprojectCurve(
+                                                pp.curves->at(ci), pp.frame, us));
+                                        }
+                                        proj[li] = std::move(pl);
+                                        std::vector<int> pidx((size_t)proj[li].size());
+                                        for (int q = 0; q < (int)pidx.size(); ++q) pidx[q] = q;
+                                        double pmn[2], pmx[2];
+                                        LoopBBox2D(proj[li], pidx, pmn, pmx);
+                                        if (std::fabs(pmn[0]-rmn[0]) < 0.05 &&
+                                            std::fabs(pmn[1]-rmn[1]) < 0.05 &&
+                                            std::fabs(pmx[0]-rmx[0]) < 0.05 &&
+                                            std::fabs(pmx[1]-rmx[1]) < 0.05) {
+                                            match = li;
+                                        }
+                                    }
+                                    if (match < 0) { continue; }
+                                    // import every OTHER donor loop strictly
+                                    // inside our drawn outer bbox as a hole
+                                    for (int li = 0; li < (int)dloops.size(); ++li)
+                                    {
+                                        if (li == match) { continue; }
+                                        std::vector<int> pidx((size_t)proj[li].size());
+                                        for (int q = 0; q < (int)pidx.size(); ++q) pidx[q] = q;
+                                        double pmn[2], pmx[2];
+                                        LoopBBox2D(proj[li], pidx, pmn, pmx);
+                                        if (pmn[0] > omn[0] - 0.01 && pmx[0] < omx[0] + 0.01 &&
+                                            pmn[1] > omn[1] - 0.01 && pmx[1] < omx[1] + 0.01)
+                                        {
+                                            for (auto& pc : proj[li]) {
+                                                holes.push_back(pc);
+                                            }
+                                        }
+                                    }
+                                    break;   // first matching donor wins
+                                }
+                            }
+                            if (!holes.empty())
+                            {
+                                // NOTE: the region BETWEEN the imported loops
+                                // (R2900: the tower disc bridged by the four
+                                // window arcs, ~3.5k mm^3 = the residual
+                                // +5.6% at feat 77) is excluded by ZW3D too.
+                                // TWO attempts to recover it failed and are
+                                // recorded so they are not re-walked blindly:
+                                // (1) shared-support circle as a raw extra
+                                // hole -- tangent inner wires poisoned the
+                                // prism/fuse (a body vanished, vol -31%);
+                                // (2) same circle + face-BOP union of
+                                // touching holes in WiresToFace -- still
+                                // -31% / fragmented solids (suspect
+                                // reprojection precision at the tangencies
+                                // or union outer-wire orientation). Needs an
+                                // exact 2D arrangement union of the cutout
+                                // loops.
+                                eff_prof = *prof;
+                                json eff = json::array();
+                                for (int i : drawn_idx) { eff.push_back(cv.at(i)); }
+                                for (auto& h : holes)   { eff.push_back(std::move(h)); }
+                                eff_prof["curves"] = std::move(eff);
+                                use_prof = &eff_prof;
+                            }
+                        }
+                    }
+
                     cadapp::SketchIR sk;
                     sk.name = name + ":profile";
-                    BuildSketchFromProfile(*prof, s, sketch_fid, sk);
+                    BuildSketchFromProfile(*use_prof, s, sketch_fid, sk);
+
+                    // Register this profile as a potential projection donor
+                    // for later region-pick extrudes (drawn curves only).
+                    prior_profiles.push_back({ &prof->at("curves"),
+                                               FrameFromProfile(*prof) });
 
                     double edir[3];
                     double sign = 1.0;
