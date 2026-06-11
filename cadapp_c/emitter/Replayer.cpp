@@ -1678,8 +1678,17 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 } else {
                     dressup_size = p.distance1;
                 }
-                double dressup_tol = std::max(opt.topo_tolerance,
-                                              5.0 * dressup_size);
+                // The 5% headroom on top of the 5x envelope absorbs
+                // boundary casualties: an anchor whose edge a prior
+                // dressup shrank drifts to JUST past the round number
+                // (R2900_100: Fillet2's edge at 1.03mm vs the 1.0mm
+                // floor, Chamfer3's two edges at 5.0003mm vs 5.0mm --
+                // three silently un-blended edges for want of 3 per
+                // mille). The resolver still picks the single nearest
+                // candidate, so the slack only admits the match it
+                // already found, not a different edge.
+                double dressup_tol = 1.05 * std::max(opt.topo_tolerance,
+                                                     5.0 * dressup_size);
 
                 std::vector<int> edge_nodes;
                 edge_nodes.reserve(p.edges.size());
@@ -2755,6 +2764,30 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                    " evaluated to no solid; chain continues "
                                    "without it";
                     node = base_node;
+                }
+                // A dressup whose output IS its input is a silent no-op:
+                // TopoAlgo::Fillet/Chamfer return the input shape when
+                // every OCCT attempt failed (R2900_100 Fillet4: 16 edges
+                // requested, batch + refined + per-edge all failed, body
+                // byte-identical). The op node differs from base_node, so
+                // only the evaluated TShape identity reveals it. Both
+                // evals are cached at this point; the check is free.
+                else if (!dead && (feat.type == FeatType::Fillet ||
+                                   feat.type == FeatType::Chamfer))
+                {
+                    auto bval = cg->Eval(base_node);
+                    auto* bsv = std::get_if<brepgraph::ShapeVal>(&bval);
+                    if (bsv && bsv->shape &&
+                        sv->shape->GetShape().IsSame(bsv->shape->GetShape()))
+                    {
+                        if (!out.err_msg.empty()) {
+                            out.err_msg += "; ";
+                        }
+                        out.err_msg += "dressup " + feat.name +
+                                       " applied no blends (every OCCT "
+                                       "attempt failed or no edge resolved); "
+                                       "body unchanged";
+                    }
                 }
             }
 

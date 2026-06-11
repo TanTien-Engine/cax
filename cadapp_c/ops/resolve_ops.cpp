@@ -48,9 +48,12 @@ ShapeVal ResolveOne(EvalCtx& ctx, TopAbs_ShapeEnum kind)
 		double dist = resolved.empty()
 			? -1.0
 			: resolved[0].match_dist;
+		// %.6g, not %.4f: a borderline miss (R2900_100 Fillet2 sat at
+		// best_dist 0.0010 == tol 0.0010 under %.4f) needs the real
+		// digits to tell "just over" from "way off".
 		std::fprintf(stderr,
 			"[resolve_%s] MISS ref_pt=(%.4f,%.4f,%.4f) "
-			"best_dist=%.4f tol=%.4f\n",
+			"best_dist=%.6g tol=%.6g\n",
 			(kind == TopAbs_FACE) ? "face" : "edge",
 			ref->point[0], ref->point[1], ref->point[2],
 			dist, tolerance);
