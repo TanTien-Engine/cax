@@ -397,6 +397,8 @@ struct FeatNode
 #include "zwapi_entity.h"                  // ZwEntityIdTransfer / ZwEntityHandleFree (int id -> szwEntityHandle); ZwEntityMatrixGet
 #include "zwapi_matrix_data.h"             // szwMatrix (sketch insertion-plane world transform)
 #include "zwapi_datum.h"                   // ZwDatumAxisDirectionGet (pattern direction axis -> unit vector)
+#include "zwapi_brep_edge.h"               // cvxPartInqEdgeCrv (on-curve edge anchor for SnapEnt)
+#include "zwapi_part_objs.h"               // cvxCurveFree
 #include "zwapi_dataexchange.h"            // ZwExternalGeometryCopyDataGet/Free, szwExternalGeometryCopyData (CdGeomCopy)
 #include "zwapi_part_opts.h"               // cvxPartHistScrollTo (roll the history bar to read a feature in context)
 #include "zwapi_history.h"                 // ZwHistoryReplay + ezwHistoryModelStopLinePosition (the real history roll-back)
@@ -734,6 +736,51 @@ EntSig EntitySig(int idEnt)
             }
         }
     }
+    else if (s.kind == "edge")
+    {
+        // ON-CURVE anchor for curved edges. The bbox-centre fallback above
+        // sits R/2 (half-circle) to a FULL RADIUS (full circle) off an arc's
+        // curve -- far past the resolver tolerance of a small dressup
+        // (R2900: 0.5 mm fillets on R 2.4..10.5 mm rims got tol 2.6 mm, so
+        // Fillet6/10 MISSed outright and Fillet7/Chamfer6 resolved a WRONG
+        // nearby edge). cvxPartInqEdgeCrv answers on the same consumed-state
+        // entity that cvxEntBndBox does, and lines/arcs/circles come back
+        // ANALYTIC: the arc's mid-angle point (or the line midpoint) is
+        // exactly ON the curve, which is what TopoRefResolver scores by.
+        // NURB edges keep the bbox centre -- no cheap exact eval, and the
+        // reader side has an arc-aware disc fallback for legacy snapshots.
+        svxCurve crv = {};
+        if (cvxPartInqEdgeCrv(idEnt, 0, &crv) == ZW_API_NO_ERROR)
+        {
+            if (crv.Type == VX_CRV_LINE)
+            {
+                s.anchor[0] = 0.5 * (crv.P1.x + crv.P2.x);
+                s.anchor[1] = 0.5 * (crv.P1.y + crv.P2.y);
+                s.anchor[2] = 0.5 * (crv.P1.z + crv.P2.z);
+            }
+            else if ((crv.Type == VX_CRV_ARC || crv.Type == VX_CRV_CIRCLE) &&
+                     crv.R > 0.0)
+            {
+                double a1 = crv.A1;
+                double a2 = crv.A2;
+                if (crv.Type == VX_CRV_CIRCLE && std::fabs(a2 - a1) < 1e-9) {
+                    a2 = a1 + 360.0;   // degenerate full-circle range
+                }
+                if (a2 < a1) { a2 += 360.0; }
+                const double am = 0.5 * (a1 + a2)
+                                * 3.14159265358979323846 / 180.0;
+                const double c  = std::cos(am);
+                const double sn = std::sin(am);
+                // Frame: X axis (xx,yx,zx), Y axis (xy,yy,zy), origin
+                // (xt,yt,zt) = arc centre. P = O + R(cos*X + sin*Y).
+                const svxMatrix& m = crv.Frame;
+                s.anchor[0] = m.xt + crv.R * (c * m.xx + sn * m.xy);
+                s.anchor[1] = m.yt + crv.R * (c * m.yx + sn * m.yy);
+                s.anchor[2] = m.zt + crv.R * (c * m.zx + sn * m.zy);
+            }
+            cvxCurveFree(&crv);
+        }
+    }
     // A datum PLANE has no face to evaluate, so the face branch above leaves it
     // with only a bbox-centre anchor and no normal. A mirror / symmetry feature
     // (FtMirrorFtr) references such a datum as its mirror plane (fld "Plane"),
@@ -758,16 +805,13 @@ EntSig EntitySig(int idEnt)
             ZwEntityHandleFree(&h);
         }
     }
-    // NOTE: for a curved edge the bbox centre is NOT on the curve (a circular
-    // rim's centre is a full radius off it), and TopoRefResolver scores edges
-    // by point-to-curve distance -- so this anchor is only "good enough"
-    // within the resolver tolerance (~5x the dressup setback), not tight. A
-    // tighter on-edge point would need a curve eval, but the picked edge of a
-    // chamfer/fillet is CONSUMED at this (the feature's own) state, so it is
-    // not reliably curve-evaluable here; rolling back to make it live does NOT
-    // help either, because entity ids are scroll-state-local (the id would
-    // then point at a different entity). bbox-centre via ZW3D's historical
-    // resolution is the pragmatic, proven anchor.
+    // NOTE: the bbox centre remains the fallback anchor when the edge branch
+    // above could not improve it (cvxPartInqEdgeCrv failed, or a NURB edge).
+    // For a curved edge the bbox centre is NOT on the curve (a circular rim's
+    // centre is up to a full radius off it) while TopoRefResolver scores
+    // edges by point-to-curve distance -- the reader compensates with an
+    // arc-aware disc fallback, but an analytic on-curve anchor (edge branch
+    // above) is always preferred when ZW3D will answer the curve inquiry.
     return s;
 }
 

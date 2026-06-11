@@ -577,6 +577,39 @@ bool FieldEntAnchor(const json& jf, int fld_id, double out[3])
     return false;
 }
 
+// OWNING feature id ("feat", from cvxPartInqEntFtr) of the first entity of
+// field fld_id. 0 when the field / ents / feat key is absent. The linear
+// pattern branch already prefers this over geometric anchor matching; the
+// circular branch needs it too -- R2900's Pattern13 carries an fld 1 anchor
+// (a consumed-state bbox centre) 12 mm off its own seed's footprint, so
+// match_anchor() rejects every candidate even though the dump names the
+// seed feature outright.
+uint32_t FieldEntFeat(const json& jf, int fld_id)
+{
+    auto fit = jf.find("fields");
+    if (fit == jf.end() || !fit->is_array()) {
+        return 0;
+    }
+    for (const auto& fd : *fit)
+    {
+        auto idit = fd.find("id");
+        if (idit == fd.end() || !idit->is_number() || idit->get<int>() != fld_id) {
+            continue;
+        }
+        auto eit = fd.find("ents");
+        if (eit == fd.end() || !eit->is_array() || eit->empty()) {
+            return 0;
+        }
+        auto ft = eit->at(0).find("feat");
+        if (ft == eit->at(0).end() || !ft->is_number_integer()) {
+            return 0;
+        }
+        int v = ft->get<int>();
+        return (v > 0) ? static_cast<uint32_t>(v) : 0;
+    }
+    return 0;
+}
+
 // Build a SketchIR from a ZW3D extrude's built-in profile ("profile" block).
 // The curves are in the sketch's LOCAL 2D frame (u,v with z==0 on the plane),
 // so they map straight onto the SketchIR's 2D plane coords; the "plane" block
@@ -1554,10 +1587,27 @@ bool ZwReader::ReadFile(const std::string& path,
 
                         // First Base (fld 1) ent -> seed. Drives the gate and,
                         // for a circular pattern, the rotation axis (taken from
-                        // this one footprint's normal).
+                        // this one footprint's normal). Prefer the OWNING
+                        // feature id the plugin resolved (same rationale as the
+                        // linear seed loop below): fld 1 anchors are consumed-
+                        // state bbox centres and can sit far from the seed's
+                        // own footprint (R2900 Pattern13: 12 mm off Extrude46,
+                        // so match_anchor() returned 0 and the pattern was
+                        // silently dropped as opaque type=0). The feat id is
+                        // only trusted when a footprint was registered for it:
+                        // the circular branch derives its rotation axis from
+                        // that footprint's plane normal.
                         double anc[3] = { 0.0, 0.0, 0.0 };
                         uint32_t target = 0;
-                        if (FieldEntAnchor(jf, 1, anc)) {
+                        {
+                            uint32_t tf = FieldEntFeat(jf, 1);
+                            if (tf != 0) {
+                                for (const auto& b : extrude_xy) {
+                                    if (b.id == tf) { target = tf; break; }
+                                }
+                            }
+                        }
+                        if (target == 0 && FieldEntAnchor(jf, 1, anc)) {
                             target = match_anchor(anc);
                         }
 
@@ -2113,12 +2163,35 @@ bool ZwReader::ReadFile(const std::string& path,
                         // (Mirror1: +298 faces) keep the delta path so
                         // their fillets / chamfers come along.
                         bool small_mirror = false;
+                        int  re_nshape    = 0;
                         {
                             auto re = jf.find("result_ents");
                             if (re != jf.end()) {
                                 small_mirror =
                                     JGet<int>(*re, "n_face", 0) <= 50;
+                                re_nshape = JGet<int>(*re, "n_shape", 0);
                             }
+                        }
+                        // Boolean=none mirror: the copies came out as NEW
+                        // standalone bodies (n_shape > 0), the running body
+                        // is untouched. R2900's Mirror5/Mirror6 copy
+                        // Revolve4's three open SHEETS -- ZW3D keeps them
+                        // free forever. Wire Tools only: no Base, and the
+                        // chain tip does not advance, exactly like the
+                        // standalone pattern case. Gated to small mirrors:
+                        // a mixed mirror that both spawns a body AND grows
+                        // the running one (Mirror9: n_shape=1, n_face=212)
+                        // keeps the delta path -- losing its one free copy
+                        // is the lesser error than dropping 200 fused
+                        // faces.
+                        const bool standalone_mirror =
+                            re_nshape > 0 && small_mirror;
+                        if (standalone_mirror) {
+                            for (uint32_t t : mir_tools) {
+                                PushInput(mf, t, cadapp::InputRole::Tool);
+                            }
+                            out.features.push_back(std::move(mf));
+                            continue;
                         }
                         if (!small_mirror && pre_body != 0 && pre_body != id) {
                             PushInput(mf, pre_body, cadapp::InputRole::PatternTarget);

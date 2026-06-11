@@ -16,8 +16,11 @@
 #include <TopoDS_Vertex.hxx>
 #include <TopExp.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
+#include <GeomAbs_CurveType.hxx>
+#include <gp_Circ.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Dir.hxx>
+#include <gp_Vec.hxx>
 
 #include <algorithm>
 #include <cmath>
@@ -225,6 +228,66 @@ std::vector<ResolvedRef> TopoRefResolver::Resolve(const TopoDS_Shape&           
                     double meas_diff = std::fabs(len - ref.measure)
                                      / std::max(len, ref.measure);
                     s += 0.0005 * meas_diff;
+                }
+
+                // Disc tier for circular edges. ZW3D edge refs are the
+                // edge's world BBOX CENTRE (zw_export SnapEnt): exact
+                // for straight edges (midpoint, on-curve) but for an
+                // ARC it sits INSIDE the circle -- R/2 off the curve
+                // for a half circle, a full radius for a full circle.
+                // R2900's 0.5 mm dressups get tol = 5x0.5x1.05 =
+                // 2.6 mm while their rims are R 2.4..10.5 mm, so the
+                // plain curve metric either MISSes (Fillet6: best
+                // 6.1 mm) or, worse, resolves a different edge that
+                // happens to pass nearer the centre point (Fillet7
+                // grabbed a side wall line 1.36 mm from the rim's
+                // centre; OCCT then fails the blend). For a candidate
+                // circle whose plane contains the ref and whose disc
+                // contains it radially, score by IN-PLANE evidence
+                // instead: plane offset dominates (kills the
+                // coplanar-rim-one-level-down grab, e.g. Chamfer6's
+                // z-1.5 bottom edge vs its z-2.5 top rim), then
+                // distance from centre (an adjacent boss's rim
+                // contains the ref too, but only the OWN rim's centre
+                // is near it), then distance to the curve itself
+                // (concentric rims share centre+plane, e.g. Chamfer4
+                // anchor at 2.35 between r=4.7 and r=10.83). Engaged
+                // only for ANCHOR-ONLY refs (no measure, no tangent):
+                // the ZW reader emits exactly that, while FreeCAD / SW
+                // refs carry the arc length and a true on-curve
+                // midpoint, where this heuristic can only mis-steer
+                // (unguarded it flipped Page_074's geo golden). Also
+                // only when the ref is NOT essentially on the curve.
+                // d_rad <= 0.75R: bbox centres of arcs >= 120 deg;
+                // smaller arcs sit near the curve and the plain
+                // metric already wins them.
+                const bool anchor_only_ref =
+                    ref.measure <= 0.0 &&
+                    ref.normal[0] == 0.0 && ref.normal[1] == 0.0 &&
+                    ref.normal[2] == 0.0;
+                if (anchor_only_ref && s > 1e-4 &&
+                    !BRep_Tool::Degenerated(e))
+                {
+                    BRepAdaptor_Curve bc(e);
+                    if (bc.GetType() == GeomAbs_Circle)
+                    {
+                        gp_Circ circ = bc.Circle();
+                        double  R    = circ.Radius();
+                        gp_Pnt  C    = circ.Location();
+                        gp_Dir  N    = circ.Axis().Direction();
+                        gp_Vec  v(C, ref_pt);
+                        double  d_plane = std::fabs(v.Dot(gp_Vec(N)));
+                        gp_Vec  v_in    = v - gp_Vec(N) * v.Dot(gp_Vec(N));
+                        double  d_rad   = v_in.Magnitude();
+                        if (d_plane <= tolerance &&
+                            d_rad   <= 0.75 * R + tolerance)
+                        {
+                            double disc = d_plane
+                                        + 0.05 * d_rad
+                                        + 0.01 * std::fabs(R - d_rad);
+                            if (disc < s) s = disc;
+                        }
+                    }
                 }
 
                 if (s < r.match_dist)

@@ -1867,6 +1867,45 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     node = AddMirroredOriginals(*cg, base_node, pi.originals,
                                                 origin, normal, feat.name);
                 }
+                else if (!pi.originals.empty())
+                {
+                    // STANDALONE mirror (no Base wired): ZW3D reported the
+                    // mirror created NEW free bodies (result_ents.n_shape > 0)
+                    // rather than growing the running body -- R2900's
+                    // Mirror5/Mirror6 copy Revolve4's three open revolve
+                    // SHEETS, which ZW3D keeps as separate sheet bodies
+                    // forever (the final part is 5 solids + 6 shells).
+                    // Mirror each original's tool and emit the copies as
+                    // this feature's own standalone output; the running
+                    // body is untouched (the reader did not advance the
+                    // chain tip). No fuse against the base: booleans
+                    // between the solid chain and sheet bodies are
+                    // hazardous and ZW3D does not merge them either.
+                    int o_n = cg->AddConst(origin, "origin");
+                    int n_n = cg->AddConst(normal, "normal");
+                    int acc = -1;
+                    for (size_t i = 0; i < pi.originals.size(); ++i)
+                    {
+                        int m_n = cg->AddOp(
+                            "mirror",
+                            {pi.originals[i].tool_node, o_n, n_n}, {},
+                            feat.name + ":orig" + std::to_string(i) +
+                                ":mirror");
+                        acc = (acc < 0)
+                            ? m_n
+                            : cg->AddOp("fuse", {acc, m_n}, {},
+                                        feat.name + ":combine");
+                    }
+                    node = acc;
+                    // Register the copies as this mirror's tool so a
+                    // mirror-of-a-mirror (R2900 Mirror6 mirrors Mirror5)
+                    // resolves its original.
+                    FeatureToolInfo ti;
+                    ti.tool_node = node;
+                    ti.base_node = -1;
+                    ti.op_kind   = '0';
+                    feature_tools[feat.id] = ti;
+                }
                 else if (base_node >= 0)
                 {
                     // The whole-body fallback is ONLY for mirrors that wired
@@ -2696,6 +2735,18 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 {
                     node = cg->AddConst(auth_it->second,
                                         "baked_" + feat.name);
+                    // The baked shape IS the feature's authored tool --
+                    // register it so a mirror / pattern naming this
+                    // feature as an original can multiply it. R2900's
+                    // Mirror5 mirrors Revolve4_Base, an open-profile
+                    // revolve that only reconstructs as a BakedShape
+                    // (three revolve sheets); without this record the
+                    // mirror resolved no originals and was skipped.
+                    FeatureToolInfo ti;
+                    ti.tool_node = node;
+                    ti.base_node = base_node;
+                    ti.op_kind   = '0';
+                    feature_tools[feat.id] = ti;
                 }
                 else
                 {
@@ -3015,6 +3066,15 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             const auto* lp_free =
                 std::get_if<FeatPayloadLinearPattern>(&feat.data);
             const bool free_pattern = (lp_free != nullptr) && !lp_free->fuse;
+            // A standalone mirror (no Base wired -- ZW3D Boolean=none,
+            // result is new free bodies) only COPIES its originals; the
+            // original bodies stay emitted alongside the copies (R2900:
+            // Revolve4's three sheets coexist with Mirror5's and
+            // Mirror6's mirrored sets in the final part). Same rule as
+            // the free pattern's Tool exception below.
+            const bool free_mirror =
+                std::get_if<FeatPayloadMirror>(&feat.data) != nullptr &&
+                base_node < 0;
             for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
             {
                 InputRole role = (i < feat.input_roles.size())
@@ -3024,7 +3084,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     role == InputRole::PatternTarget) {
                     continue;
                 }
-                if (free_pattern && role == InputRole::Tool) {
+                if ((free_pattern || free_mirror) &&
+                    role == InputRole::Tool) {
                     continue;
                 }
                 uint32_t iid = feat.input_feature_ids[i];

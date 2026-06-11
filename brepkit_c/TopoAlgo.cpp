@@ -1596,6 +1596,15 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
         leaf_edges.size(), retry_round);
 
     if (ok_count == 0) {
+        // Unconditional (not TA_LOG), parity with the FILLET warning: a
+        // chamfer that was asked for N edges and changed NOTHING is a
+        // conversion defect, not a debug detail. R2900's Chamfer4/6/10/11
+        // no-opped through batch + per-edge and the only trace was the
+        // Replayer's IsSame catch-all far downstream.
+        std::fprintf(stderr,
+            "[CHAMFER] op_id=%u WARNING: all paths failed, body UNCHANGED "
+            "(%zu edges requested, dist=%g)\n",
+            op_id, leaf_edges.size(), dist);
         return shape;
     }
 

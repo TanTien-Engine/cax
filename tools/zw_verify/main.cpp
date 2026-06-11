@@ -305,42 +305,44 @@ bool LoadStep(const std::string& path, TopoDS_Shape& out, std::string& err)
     // GEOMETRIC_CURVE_SET of 593 free curves -- exactly the surplus over
     // the kernel's own edge count, and the source of a phantom 0.253mm
     // bbox bulge (free curves add no faces, so volume / area / face
-    // matching never noticed). Keep only the SOLID content; fall back to
-    // shells for a surface part; report what was dropped.
+    // matching never noticed). Drop ONLY the faceless children. An
+    // earlier version kept solids exclusively, which silently discarded
+    // every SHEET body too -- on the full R2900 part ZW3D exports the
+    // MAIN body itself as an open SHELL_BASED_SURFACE_MODEL (5 closed
+    // solids = 1003 faces vs 6 open shells = 1852 faces incl. the main
+    // body), so the "truth" the metrics ran against was missing most of
+    // the part. Open sheet bodies are real geometry: keep them, and
+    // report the sheet count so a solid/sheet classification gap
+    // between the kernels stays visible.
     {
         // A top-level child is "free wireframe" when it contains no face
         // (the curve set arrives as a nested compound of edges, so the
         // shape TYPE alone cannot tell it from the body's compound).
-        int n_free = 0;
+        int n_free = 0, n_sheet = 0, kept = 0;
+        TopoDS_Compound comp;
+        BRep_Builder    bb;
+        bb.MakeCompound(comp);
         for (TopoDS_Iterator it(s); it.More(); it.Next())
         {
             TopExp_Explorer f(it.Value(), TopAbs_FACE);
-            if (!f.More()) ++n_free;
+            if (!f.More()) { ++n_free; continue; }
+            bb.Add(comp, it.Value());
+            ++kept;
+            TopExp_Explorer so(it.Value(), TopAbs_SOLID);
+            if (!so.More()) ++n_sheet;
         }
-        if (n_free > 0)
+        if (n_free > 0 && kept > 0)
         {
-            TopAbs_ShapeEnum keep = TopAbs_SOLID;
-            {
-                TopExp_Explorer ex(s, TopAbs_SOLID);
-                if (!ex.More()) keep = TopAbs_SHELL;
-            }
-            TopoDS_Compound comp;
-            BRep_Builder    bb;
-            bb.MakeCompound(comp);
-            int kept = 0;
-            for (TopExp_Explorer ex(s, keep); ex.More(); ex.Next())
-            {
-                bb.Add(comp, ex.Current());
-                ++kept;
-            }
-            if (kept > 0)
-            {
-                std::printf("INFO truth_filtered kept=%d %s, dropped %d "
-                            "faceless top-level entities (free wireframe)\n",
-                            kept, keep == TopAbs_SOLID ? "solids" : "shells",
-                            n_free);
-                s = comp;
-            }
+            std::printf("INFO truth_filtered kept=%d face-carrying bodies "
+                        "(%d sheet), dropped %d faceless top-level entities "
+                        "(free wireframe)\n",
+                        kept, n_sheet, n_free);
+            s = comp;
+        }
+        else if (n_sheet > 0)
+        {
+            std::printf("INFO truth_sheets %d of %d top-level bodies are "
+                        "open sheets (kept)\n", n_sheet, kept);
         }
     }
 
