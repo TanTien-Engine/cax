@@ -12,6 +12,8 @@
 #include <BRepGProp.hxx>
 
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <sstream>
 
 // ============================================================
@@ -115,6 +117,13 @@ std::string FingerprintShape(const std::shared_ptr<brepkit::TopoShape>& shape,
     GProp_GProps vol_props;
     BRepGProp::VolumeProperties(s, vol_props);
     double volume = vol_props.Mass();
+
+    // Flake triage hook: the replay is not bit-deterministic (see the
+    // tolerant-compare note in golden_main.cpp), so when a mass value
+    // flips at the printed precision, this shows the raw jitter.
+    if (std::getenv("CAX_GEO_RAW")) {
+        std::fprintf(stderr, "[geo_raw] area=%.17g volume=%.17g\n", area, volume);
+    }
 
     os << "mass"
        << " area=" << Num(area, opt.volume_decimals)

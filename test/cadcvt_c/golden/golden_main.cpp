@@ -148,6 +148,146 @@ void PrintDiff(const std::string& expected, const std::string& actual)
     }
 }
 
+// ---- Tolerant snapshot comparison --------------------------------
+//
+// The geometry replay is not bit-deterministic: OCCT booleans and
+// ShapeUpgrade_UnifySameDomain iterate pointer-hashed shape maps, so
+// seam geometry drifts ~1e-9 between runs of the SAME binary
+// (measured on Page_058_Exercise2D-50: four distinct surface areas
+// spanning 5e-9; persists with SetRunParallel(false), so it is heap
+// layout, not thread scheduling). When a fixture's area or volume
+// happens to sit on the 8-decimal rounding boundary, the last
+// printed digit flips run to run and refreshing the golden only
+// inverts which runs fail.
+//
+// So "mass" lines compare numerically, tolerating ONE unit in the
+// last printed decimal; every other line stays an exact string
+// match. Counts, bbox and failure messages are exact on purpose: at
+// their coarser precision a 1-unit drift is a real regression, not
+// jitter.
+
+// Parse a plain fixed-point decimal ("12.345", "-0.00000001") into
+// sign-applied integer digits plus the decimal count, so printed
+// values compare in exact integer arithmetic.
+bool ParseFixed(const std::string& s, long long& digits, int& decimals)
+{
+    digits   = 0;
+    decimals = 0;
+    if (s.empty() || s.size() > 18) {
+        return false;
+    }
+    size_t i   = 0;
+    bool   neg = false;
+    if (s[0] == '-' || s[0] == '+') {
+        neg = (s[0] == '-');
+        i = 1;
+    }
+    bool any = false;
+    bool dot = false;
+    for (; i < s.size(); ++i)
+    {
+        char c = s[i];
+        if (c == '.') {
+            if (dot) {
+                return false;
+            }
+            dot = true;
+            continue;
+        }
+        if (c < '0' || c > '9') {
+            return false;
+        }
+        digits = digits * 10 + (c - '0');
+        if (dot) {
+            ++decimals;
+        }
+        any = true;
+    }
+    if (!any) {
+        return false;
+    }
+    if (neg) {
+        digits = -digits;
+    }
+    return true;
+}
+
+// "area=0.07770097" vs "area=0.07770098": same key, same decimal
+// count, values within one unit of the last printed decimal.
+bool TokenWithinOneUlp(const std::string& e, const std::string& a)
+{
+    if (e == a) {
+        return true;
+    }
+    size_t ek = e.find('=');
+    size_t ak = a.find('=');
+    if (ek == std::string::npos || ak == std::string::npos || ek != ak) {
+        return false;
+    }
+    if (e.compare(0, ek + 1, a, 0, ak + 1) != 0) {
+        return false;
+    }
+    long long ed, ad;
+    int       edec, adec;
+    if (!ParseFixed(e.substr(ek + 1), ed, edec) ||
+        !ParseFixed(a.substr(ak + 1), ad, adec) ||
+        edec != adec)
+    {
+        return false;
+    }
+    long long d = ed - ad;
+    return d >= -1 && d <= 1;
+}
+
+bool MassLinesEquivalent(const std::string& e, const std::string& a)
+{
+    std::istringstream es(e);
+    std::istringstream as(a);
+    std::string et, at;
+    for (;;)
+    {
+        bool eg = (bool)(es >> et);
+        bool ag = (bool)(as >> at);
+        if (eg != ag) {
+            return false;
+        }
+        if (!eg) {
+            return true;
+        }
+        if (!TokenWithinOneUlp(et, at)) {
+            return false;
+        }
+    }
+}
+
+bool SnapshotsEquivalent(const std::string& expected, const std::string& actual)
+{
+    if (expected == actual) {
+        return true;
+    }
+    std::istringstream es(expected);
+    std::istringstream as(actual);
+    std::string el, al;
+    for (;;)
+    {
+        bool eg = (bool)std::getline(es, el);
+        bool ag = (bool)std::getline(as, al);
+        if (eg != ag) {
+            return false;
+        }
+        if (!eg) {
+            return true;
+        }
+        if (el == al) {
+            continue;
+        }
+        bool both_mass = el.rfind("mass ", 0) == 0 && al.rfind("mass ", 0) == 0;
+        if (!both_mass || !MassLinesEquivalent(el, al)) {
+            return false;
+        }
+    }
+}
+
 // Lower-cased file extension (no dot), for fixture-kind dispatch.
 std::string LowerExt(const fs::path& p)
 {
@@ -281,6 +421,17 @@ CaseResult ProcessFixture(const fs::path& fixture, const Options& o)
     {
         if (o.update)
         {
+            // Don't churn a golden whose only delta is the tolerated
+            // last-digit mass jitter -- rewriting it would merely
+            // invert which runs of a boundary-straddling fixture
+            // print which value.
+            std::string existing;
+            if (ReadTextFile(golden, existing) &&
+                SnapshotsEquivalent(existing, snapshot))
+            {
+                std::printf("[update] %s [%s] (unchanged)\n", cr.name.c_str(), layer);
+                return;
+            }
             WriteTextFile(golden, snapshot);
             std::printf("[update] %s [%s]\n", cr.name.c_str(), layer);
             return;
@@ -292,7 +443,7 @@ CaseResult ProcessFixture(const fs::path& fixture, const Options& o)
             cr.passed = false;
             return;
         }
-        if (expected != snapshot)
+        if (!SnapshotsEquivalent(expected, snapshot))
         {
             std::printf("[FAIL]   %s [%s]\n", cr.name.c_str(), layer);
             PrintDiff(expected, snapshot);
