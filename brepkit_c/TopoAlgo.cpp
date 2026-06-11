@@ -183,6 +183,25 @@ static int bop_retry_mode()
     return mode;
 }
 
+// Run the Fuse / Cut / Common BOPs with OCCT's internal parallelism
+// (intersection + DS-filler stages fan out via OSD_Parallel). The win
+// concentrates exactly where this codebase hurts: one big body against a
+// many-solid tool compound -- R2900_100's pattern-ring fuse is 27 s
+// single-threaded and dominated by pairwise face intersections that
+// parallelize cleanly. The result topology is identical (RunParallel
+// only schedules independent sub-tasks; verified against the geo
+// goldens). TopoAlgo_Ext::FuseInstancesAndUnify already runs parallel;
+// this brings the primary booleans in line. BREPKIT_BOP_PARALLEL=0
+// reverts to serial for A/B.
+static bool bop_parallel()
+{
+    static const bool on = [] {
+        const char* e = std::getenv("BREPKIT_BOP_PARALLEL");
+        return !(e && e[0] == '0');
+    }();
+    return on;
+}
+
 // Wrap one OCCT Build() call in Win32 SEH so a ChFi3d access
 // violation (Page_045_Exercise2D-37_byHannu's chamfer hits one
 // in ChFi3d_IsInFront on vertex-corner stripes) becomes a "Build
@@ -1755,6 +1774,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     algo.SetArguments(args);
     algo.SetTools(tools);
     algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
+    algo.SetRunParallel(bop_parallel());
     const auto _bop_t0 = std::chrono::steady_clock::now();
     algo.Build();
     const auto _bop_t1 = std::chrono::steady_clock::now();
@@ -1807,6 +1827,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         a->SetArguments(args);
         a->SetTools(tools);
         a->SetFuzzyValue(fuzzy);
+        a->SetRunParallel(bop_parallel());
         a->Build();
         return a;
     };
@@ -1996,6 +2017,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
     algo.SetArguments(args);
     algo.SetTools(tools);
     algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
+    algo.SetRunParallel(bop_parallel());
     const auto _bop_t0 = std::chrono::steady_clock::now();
     algo.Build();
     const auto _bop_t1 = std::chrono::steady_clock::now();
