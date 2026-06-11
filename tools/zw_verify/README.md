@@ -38,19 +38,35 @@ $zv = "D:\projects\tantien-cad\out\thirdparty\cax\tools\zw_verify\RelWithDebInfo
 # 4) 指定/全部前缀逐个探测（穷举版，绕过二分的单调性假设）
 & $zv part.cax.json --states 4,16,21,47
 & $zv part.cax.json --states all
+
+# 5) 深挖：导出全部不匹配面（带质心+面积+法向），做位移聚类 / 结构取证
+& $zv part.cax.json --detail-cap 400 > full.log
 ```
 
 ## 输出协议（行式、可机读）
 
 ```
 INFO  features=56 opaque=56 states=56 ...
+INFO  truth_filtered kept=1 solids ...  # 真值 STEP 里的自由线框已被剔除（ZW3D
+                                        # "导出所有对象"会带上参考曲线，只污染
+                                        # bbox/边数，不影响体积面积）
+INFO  replay_msg <...>                  # 重放的软诊断：被静默跳过/无效果的特征
+                                        # （如 dressup applied no blends）——
+                                        # 有这行必须追查，它就是"哪步丢了"
 CHECK <name> <ok|bad> <详情>           # 全量比对的各项检查
 STATE feat=K solids=.. faces=.. vol=..  # 重放出的前缀状态（米制）
 TRUTHSTATE feat=K n_shape=.. vol=..     # 插件记录的真值状态（已折算成米制）
-PROBE feat=K verdict=good|bad <原因>    # 单点判定
+PROBE feat=K verdict=good|bad topo=a/b  # 单点判定；topo 列是体数差（仅参考，
+                                        # 独立体阵列在被吸收前 topo 合法不同）
 BISECT first_bad=K last_good=J name=.. zw_type=..
+DETAIL unmatched_*_face idx=.. centre=(..) area=.. n=(..)   # 不匹配面明细
 VERDICT PASS|FAIL <json>
 ```
+
+stderr 另有低层诊断（不进协议，但排障必看）：
+`[resolve_edge] MISS`（修饰边解析失败：锚点漂移超容差）、
+`[FILLET]/[DPRISM] WARNING`（OCCT 失败回退）、`CAX_GEO_LOG=1` 开全量
+`[FILLET]` 逐边日志（含 etol/vtol 公差）。
 
 退出码：0 = PASS / bisect 完成；1 = FAIL；2 = 用法或 IO 错误。
 
