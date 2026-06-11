@@ -3155,6 +3155,24 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         }
     }
 
+    // CAX_EMIT_LOG=1: print the emission ledger -- every live candidate
+    // with its node id; the duplicate-body class of bug (R2900 towers
+    // emitted standalone AND fused into the running body) is visible
+    // here as two live feat_ids whose evaluated shapes overlap.
+    static const bool kEmitLog = [] {
+        const char* e = std::getenv("CAX_EMIT_LOG");
+        return e != nullptr && e[0] != '\0' && e[0] != '0';
+    }();
+    if (kEmitLog) {
+        std::fprintf(stderr, "[emit] candidates=%zu live=%zu\n",
+                     output_candidates.size(), live_nodes.size());
+        for (const auto& ln : live_nodes) {
+            std::fprintf(stderr, "[emit]   live feat=%u node=%d\n",
+                         ln.second, ln.first);
+        }
+        std::fflush(stderr);
+    }
+
     // Publish the surviving part feat_ids (emission order) regardless of
     // analyze_only -- ReplayParts uses this to split the document.
     out.live_feat_ids.reserve(live_nodes.size());
