@@ -407,16 +407,16 @@ feat 22 name=V Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=11 
   inputs=[21:base]
 feat 10 name=VV-V Interior Profile type=Sketch suppressed=0 payload=sketch sketch_id=10
 feat 23 name=VV-V Interior Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=10 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[21:base]
+  inputs=[22:base]
 feat 9 name=U-VV Interior Profile type=Sketch suppressed=0 payload=sketch sketch_id=9
 feat 24 name=U-VV Interior Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=9 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[21:base]
+  inputs=[23:base]
 feat 8 name=U Hole type=Sketch suppressed=0 payload=sketch sketch_id=8
 feat 25 name=U Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=8 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[21:base]
+  inputs=[24:base]
 feat 7 name=VV Hole type=Sketch suppressed=0 payload=sketch sketch_id=7
 feat 26 name=VV Pocket type=CutExtrude suppressed=0 payload=extrude sketch_id=7 dir=(0.000,0.000,1.000) dist=0.005 dist2=0.000 end=1 flip=0
-  inputs=[21:base]
+  inputs=[25:base]
 feat 1 name=Wire type=Unknown suppressed=0 payload=other
 feat 2 name=Wire001 type=Unknown suppressed=0 payload=other
 feat 3 name=Wire002 type=Unknown suppressed=0 payload=other

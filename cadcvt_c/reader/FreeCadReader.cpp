@@ -5535,8 +5535,17 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         // TopoAlgo -- Page_037's Thickness AV is the prototype
         // case). No-op for archives that don't store a brep for
         // this feature (sketches, container-only entries, etc.).
+        // All three by-name maps below are keyed by the INTERNAL object
+        // name (pending.name): m_feat_brep_path comes from Document.xml
+        // object entries, name_to_body from container child lists, and
+        // m_name_to_material from GuiDocument.xml ViewProvider names.
+        // feat.name is the user-facing Label since the display-name
+        // switch and must not be used as a key -- a renamed object
+        // ("Fillet001 (Solid)", "8020-4015") would silently lose its
+        // authored brep / body chain / material (the Piston-class
+        // assembly fixtures replayed to NULL exactly this way).
         if (m_zip) {
-            auto bp_it = m_feat_brep_path.find(feat.name);
+            auto bp_it = m_feat_brep_path.find(pending.name);
             if (bp_it != m_feat_brep_path.end()) {
                 TopoDS_Shape authored;
                 if (LoadAuthoredShape(m_zip, bp_it->second, authored)
@@ -5568,7 +5577,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         // node=-1).
         if (feat.type != FeatType::Sketch)
         {
-            auto nb_it = name_to_body.find(feat.name);
+            auto nb_it = name_to_body.find(pending.name);
             if (nb_it != name_to_body.end()) {
                 body_prev_id[nb_it->second] = feat.id;
             }
@@ -5580,7 +5589,7 @@ bool FreeCadReader::ParseDocumentXml(const char*  xml_data,
         // generated .FCStd lacking GuiDocument.xml) leaves
         // feat.material at the default present=false.
         {
-            auto mit = m_name_to_material.find(feat.name);
+            auto mit = m_name_to_material.find(pending.name);
             if (mit != m_name_to_material.end()) {
                 feat.material = mit->second;
             }
