@@ -56,6 +56,28 @@
 
 #ifdef _MSC_VER
 #  include <excpt.h>
+#  include <float.h>
+#endif
+
+// OSD::SetSignal(Standard_True) unmasks hardware floating-point traps
+// (zero-divide / invalid / overflow) PROCESS-WIDE so that ChFi3d's
+// internal FP faults surface as catchable exceptions instead of
+// silently corrupting the fillet. But the unmask outlives the op: the
+// next sketch solve anywhere in the process (planegcs evaluates
+// gradients that legitimately divide by zero and expects a quiet NaN)
+// then traps, and the trap surfaces as a bogus
+// "device or resource busy" system_error from deep inside the
+// exception-dispatch machinery. Scope the unmask to the dressup op:
+// save the exception-mask bits on entry, restore them on any exit.
+#ifdef _MSC_VER
+struct FpTrapScope
+{
+    unsigned int saved = 0;
+    FpTrapScope()  { _controlfp_s(&saved, 0, 0); }
+    ~FpTrapScope() { unsigned int tmp; _controlfp_s(&tmp, saved, _MCW_EM); }
+};
+#else
+struct FpTrapScope {};
 #endif
 
 // Verbose geometry-eval diagnostics ([FILLET] / [CHAMFER] / [SPLIT_BODY]
@@ -513,7 +535,10 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
     // again. MSVC also needs /EHa for catch(...) to wrap SEH; if
     // your build uses /EHsc the catch below misses raw SEH even
     // after this call -- in that case force the per-edge path with
-    // the env var below.
+    // the env var below. FpTrapScope re-masks the FP traps when this
+    // function exits -- leaving them unmasked poisons later sketch
+    // solves (see the struct comment).
+    FpTrapScope fp_trap_scope;
     OSD::SetSignal(Standard_True);
 
     // Escape hatch: BRepKit_FILLET_FORCE_SINGLE=1 skips the batch
@@ -847,7 +872,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         op_id, leaf_edges.size());
 
     auto edge_geom_str = [](const TopoDS_Edge& e) -> std::string {
-        char buf[256];
+        char buf[320];
         if (BRep_Tool::Degenerated(e)) { return "DEGENERATE"; }
         try {
             BRepAdaptor_Curve curve(e);
@@ -858,13 +883,23 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
             gp_Pnt p_end   = curve.Value(l);
             GProp_GProps props;
             BRepGProp::LinearProperties(e, props);
+            // Edge + worst vertex tolerance: ChFi3d refuses a blend whose
+            // radius is comparable to the local tolerance (a fuse-seam
+            // edge bumped to ~1e-4 m kills a 2e-4 m fillet), and that
+            // failure mode is invisible without these numbers.
+            double e_tol = BRep_Tool::Tolerance(e);
+            double v_tol = 0.0;
+            for (TopExp_Explorer vx(e, TopAbs_VERTEX); vx.More(); vx.Next()) {
+                v_tol = std::max(
+                    v_tol, BRep_Tool::Tolerance(TopoDS::Vertex(vx.Current())));
+            }
             std::snprintf(buf, sizeof(buf),
                 "mid=(%.4f,%.4f,%.4f) start=(%.4f,%.4f,%.4f) "
-                "end=(%.4f,%.4f,%.4f) len=%.4f",
+                "end=(%.4f,%.4f,%.4f) len=%.4f etol=%.3g vtol=%.3g",
                 p_mid.X(), p_mid.Y(), p_mid.Z(),
                 p_start.X(), p_start.Y(), p_start.Z(),
                 p_end.X(), p_end.Y(), p_end.Z(),
-                props.Mass());
+                props.Mass(), e_tol, v_tol);
             return buf;
         } catch (...) {
             return "UNREADABLE";
@@ -1111,6 +1146,15 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         leaf_edges.size(), retry_round);
 
     if (ok_count == 0) {
+        // Unconditional (not TA_LOG): a fillet that was asked for N edges
+        // and changed NOTHING is a conversion defect, not a debug detail.
+        // R2900_100's Fillet4 no-opped through every path -- batch,
+        // refined-input, per-edge x2 modes -- and the only symptom was a
+        // byte-identical body two metrics later.
+        std::fprintf(stderr,
+            "[FILLET] op_id=%u WARNING: all paths failed, body UNCHANGED "
+            "(%zu edges requested, radius=%g)\n",
+            op_id, leaf_edges.size(), radius);
         return shape;
     }
 
@@ -1133,6 +1177,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Chamfer(const std::shared_ptr<TopoShape>& s
     // scaffolding: convert SEH to Standard_Failure, dedup leaf edges,
     // try batch then per-edge fallback. See Fillet for the rationale
     // on each step; this function is intentionally parallel to it.
+    FpTrapScope fp_trap_scope;
     OSD::SetSignal(Standard_True);
 
     // Build-stamp probe: if the user sees this line in stderr, the
