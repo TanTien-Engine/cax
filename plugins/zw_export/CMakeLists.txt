@@ -117,9 +117,49 @@ if(MSVC)
         MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 endif()
 
+# ---- CaxBatch.dll: same plugin, alternate DLL/entry name ----
+# ZW3D derives the entry points from the DLL base name, and Windows
+# locks a loaded DLL's file. When a long-lived interactive ZW3D holds
+# CaxExport.dll open, this identically-featured twin (CaxBatchInit /
+# CaxBatchExit) can still be installed fresh and loaded by a second
+# ZW3D instance -- which is how the unattended CAX_BATCH_QUEUE batch
+# runs without disturbing the user's session. Same sources, only the
+# exported entry names differ.
+add_library(CaxBatch MODULE
+    ZwCaxPlugin.cpp
+    ZwCaxExport.cpp
+)
+
+set_target_properties(CaxBatch PROPERTIES
+    OUTPUT_NAME "CaxBatch"
+    PREFIX ""
+)
+
+target_compile_definitions(CaxBatch PRIVATE
+    CAX_PLUGIN_INIT=CaxBatchInit
+    CAX_PLUGIN_EXIT=CaxBatchExit
+)
+
+target_include_directories(CaxBatch PRIVATE
+    "${CAX_ROOT}"
+    "${CAX_NLOHMANN_DIR}"
+    "${ZW_INCLUDE_DIR}"
+)
+
+target_link_libraries(CaxBatch PRIVATE "${ZW_IMPORT_LIB}")
+
+if(MSVC)
+    target_compile_definitions(CaxBatch PRIVATE _CRT_SECURE_NO_WARNINGS)
+    set_property(TARGET CaxBatch PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+endif()
+
 # Convenience: `cmake --install` drops CaxExport.dll into ZW3D's apilibs
 # folder so it auto-loads on the next ZW3D start. Skipped if that folder
-# is not writable / not present.
+# is not writable / not present. CaxBatch is deliberately NOT installed:
+# auto-loading both twins would double-register every command and fire
+# the batch autostart twice; copy it in by hand for a one-off batch and
+# remove it after.
 if(EXISTS "${ZW_APILIBS_DIR}")
     install(TARGETS CaxExport RUNTIME DESTINATION "${ZW_APILIBS_DIR}"
                               LIBRARY DESTINATION "${ZW_APILIBS_DIR}")
