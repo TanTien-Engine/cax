@@ -71,6 +71,14 @@ struct FeatPayloadExtrude
     bool           is_thin        = false;
     double         thin_thickness = 0.0;
 
+    // Draft (taper) angle in RADIANS; > 0 shrinks the section along the
+    // extrusion direction (ZW3D "Draft angle" semantics -- R2900_100's
+    // Extrude21 tapers a 5mm plate inward by 5 deg, 0.44mm per wall at
+    // the top; ignoring it left +105mm^3 of phantom material). 0 = the
+    // plain prism. Only honored on one-sided Blind extrudes; combined
+    // with up-to ends / thin walls it is dropped with an err_msg note.
+    double         draft          = 0.0;
+
     // UpToSurface / UpToVertex targets. Single ref each side.
     TopoRefIR end1_target;
     TopoRefIR end2_target;

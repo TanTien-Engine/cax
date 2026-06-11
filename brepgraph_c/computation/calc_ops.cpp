@@ -255,6 +255,19 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		});
 
+	// Drafted prism: `angle` radians, > 0 shrinks the section along the
+	// extrusion (ZW3D Draft semantics; see TopoAlgo::DPrism).
+	reg.Define("dprism", {"face", "direction", "angle"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto dir = ctx.GetVec3(1);
+			double angle = ctx.Num(2);
+			auto shp = brepkit::TopoAlgo::DPrism(
+				sv.shape, dir[0], dir[1], dir[2], angle, ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp);
+		});
+
 	reg.Define("extrude_ex",
 		{"face", "direction", "dist1", "dist2", "end1", "end2", "ref"}, {},
 		[](EvalCtx& ctx) -> Val {

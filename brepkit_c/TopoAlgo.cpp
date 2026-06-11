@@ -42,6 +42,11 @@
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepAdaptor_Surface.hxx>
+#include <BRepOffsetAPI_MakeOffset.hxx>
+#include <BRepOffsetAPI_ThruSections.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepTools.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepTools_History.hxx>
 #include <Standard_Failure.hxx>
@@ -1495,6 +1500,115 @@ std::shared_ptr<TopoShape> TopoAlgo::Prism(const std::shared_ptr<TopoShape>& fac
     }
     auto dst = std::make_shared<brepkit::TopoShape>(prism.Shape());
     commit_to_vt(tn, vt, face, dst, pid_map, "prism");
+    return dst;
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::DPrism(const std::shared_ptr<TopoShape>& face, double x, double y, double z,
+                                            double angle,
+                                            uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
+                                            const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    const double height = std::sqrt(x * x + y * y + z * z);
+    if (std::fabs(angle) < 1e-12 || height < 1e-12) {
+        return Prism(face, x, y, z, op_id, tn, vt);
+    }
+
+    TopoDS_Shape fs = face->GetShape();
+    TopoDS_Face  spine;
+    if (fs.ShapeType() == TopAbs_FACE) {
+        spine = TopoDS::Face(fs);
+    } else {
+        TopExp_Explorer ex(fs, TopAbs_FACE);
+        if (ex.More()) {
+            spine = TopoDS::Face(ex.Current());
+        }
+    }
+
+    bool   planar = false;
+    gp_Dir n;
+    if (!spine.IsNull()) {
+        BRepAdaptor_Surface surf(spine);
+        if (surf.GetType() == GeomAbs_Plane) {
+            n = surf.Plane().Axis().Direction();
+            if (spine.Orientation() == TopAbs_REVERSED) {
+                n.Reverse();
+            }
+            planar = true;
+        }
+    }
+    if (!planar) {
+        std::fprintf(stderr,
+            "[DPRISM] op_id=%u WARNING: non-planar profile, draft %.4g rad "
+            "dropped; falling back to straight prism\n", op_id, angle);
+        return Prism(face, x, y, z, op_id, tn, vt);
+    }
+
+    // Single-loop profiles only for now: BRepOffsetAPI_MakeOffset on a
+    // multi-wire face offsets the holes too, but pairing each offset
+    // loop back to its source for the loft is bookkeeping this case
+    // does not need yet (R2900_100's drafted plate is one rectangle).
+    int nwires = 0;
+    for (TopExp_Explorer wx(spine, TopAbs_WIRE); wx.More(); wx.Next()) {
+        ++nwires;
+    }
+    if (nwires != 1) {
+        std::fprintf(stderr,
+            "[DPRISM] op_id=%u WARNING: profile has %d wires, draft "
+            "%.4g rad dropped; falling back to straight prism\n",
+            op_id, nwires, angle);
+        return Prism(face, x, y, z, op_id, tn, vt);
+    }
+
+    // Build the tapered solid as a ruled loft between the profile wire
+    // and a copy offset IN PLANE by -h*tan(angle) (shrink: ZW3D's
+    // positive draft) and translated to the far end. Exact for line /
+    // arc profiles; GeomAbs_Intersection keeps sharp corners sharp
+    // (Arc would round the offset rectangle's corners). This stays
+    // inside TKOffset, which every cax consumer already links --
+    // LocOpe_DPrism would have pulled TKFeat into the whole link tree.
+    TopoDS_Shape result;
+    try {
+        const TopoDS_Wire w0 = BRepTools::OuterWire(spine);
+
+        BRepOffsetAPI_MakeOffset off(spine, GeomAbs_Intersection);
+        off.Perform(-height * std::tan(angle));
+        TopoDS_Wire w1;
+        for (TopExp_Explorer ex(off.Shape(), TopAbs_WIRE); ex.More(); ex.Next()) {
+            w1 = TopoDS::Wire(ex.Current());
+            break;
+        }
+        if (!w1.IsNull()) {
+            gp_Trsf t;
+            t.SetTranslation(gp_Vec(x, y, z));
+            w1 = TopoDS::Wire(
+                BRepBuilderAPI_Transform(w1, t, /*Copy=*/true).Shape());
+
+            BRepOffsetAPI_ThruSections loft(/*isSolid=*/Standard_True,
+                                            /*ruled=*/Standard_True);
+            loft.AddWire(w0);
+            loft.AddWire(w1);
+            loft.Build();
+            if (loft.IsDone()) {
+                result = loft.Shape();
+            }
+        }
+    } catch (...) {
+    }
+
+    if (result.IsNull()) {
+        std::fprintf(stderr,
+            "[DPRISM] op_id=%u WARNING: offset/loft failed (h=%.4g "
+            "angle=%.4g rad); falling back to straight prism\n",
+            op_id, height, angle);
+        return Prism(face, x, y, z, op_id, tn, vt);
+    }
+
+    // No incremental TopoNaming history on the drafted path (LocOpe
+    // exposes its generated-shape maps differently from BRepBuilderAPI
+    // and chaining them is not worth it yet); commit the geometry and
+    // let downstream refs resolve geometrically.
+    auto dst = std::make_shared<brepkit::TopoShape>(result);
+    commit_to_vt(tn, vt, face, dst, {}, "dprism");
     return dst;
 }
 

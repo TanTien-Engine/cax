@@ -30,6 +30,17 @@ public:
 		const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 
+	// Drafted (tapered) prism: extrude the planar face along (x,y,z) with
+	// the lateral walls tilted by `angle` radians; angle > 0 shrinks the
+	// section along the extrusion direction (ZW3D "Draft angle" -- see
+	// FeatPayloadExtrude::draft). Falls back to the straight Prism with a
+	// stderr WARN when the face is not planar or LocOpe_DPrism refuses.
+	static std::shared_ptr<TopoShape> DPrism(const std::shared_ptr<TopoShape>& face, double x, double y, double z,
+		double angle,
+		uint32_t op_id = 0,
+		const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+
 	static std::shared_ptr<TopoShape> Split(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);

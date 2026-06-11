@@ -1066,6 +1066,18 @@ bool ZwReader::ReadFile(const std::string& path,
                     epl.end_type       = cadapp::ExtrudeEndType::Blind;
                     epl.flip_direction = (sign < 0.0);
 
+                    // Draft angle: fld 4 holds the LAST dialog value even
+                    // when drafting is off -- R2900_100 carries stale 45s
+                    // on four undrafted extrudes. fld 46 is the enable
+                    // toggle (1 only on Extrude21, whose truth walls tilt
+                    // by exactly sin(5 deg)); gate on it, never on the
+                    // angle alone.
+                    if (std::fabs(FieldValueById(jf, 46, 0.0)) > 0.5)
+                    {
+                        epl.draft = FieldValueById(jf, 4, 0.0)
+                                  * 3.14159265358979323846 / 180.0;
+                    }
+
                     // fld 14 = ZW3D boolean combine: 0 = new/base, 1 = add
                     // (boss), 2 = remove (cut). A cut rebuilt as a boss just
                     // fuses material already inside the body -> "no visible
@@ -1233,6 +1245,13 @@ bool ZwReader::ReadFile(const std::string& path,
                         epl.distance       = std::fabs(length) * s;
                         epl.end_type       = cadapp::ExtrudeEndType::Blind;
                         epl.flip_direction = (length < 0.0);
+                        // fld 46 gates the draft; fld 4 alone is the
+                        // stale dialog value (see the profile branch).
+                        if (std::fabs(FieldValueById(jf, 46, 0.0)) > 0.5)
+                        {
+                            epl.draft = FieldValueById(jf, 4, 0.0)
+                                      * 3.14159265358979323846 / 180.0;
+                        }
 
                         const bool is_cut =
                             std::fabs(FieldValueById(jf, 14, 1.0) - 2.0) < 0.5;

@@ -1145,6 +1145,15 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 int tool_n;
                 if (p.end_type != ExtrudeEndType::Blind || two_sided)
                 {
+                    // extrude_ex has no draft input; an up-to / two-sided
+                    // extrude that ALSO tapers is not representable yet.
+                    if (std::fabs(p.draft) > 1e-12)
+                    {
+                        if (!out.err_msg.empty()) out.err_msg += "; ";
+                        out.err_msg += "extrude " + feat.name +
+                            " combines a draft angle with up-to/two-sided "
+                            "ends; draft dropped";
+                    }
                     brepgraph::Vec3 dir = {sign * world_dir[0],
                                           sign * world_dir[1],
                                           sign * world_dir[2]};
@@ -1167,7 +1176,20 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     double dz = world_dir[2] * p.distance * sign;
                     brepgraph::Vec3 dir = {dx, dy, dz};
                     int dir_n = cg->AddConst(dir, "direction");
-                    tool_n = cg->AddOp("prism", {face_n, dir_n}, {}, feat.name);
+                    if (std::fabs(p.draft) > 1e-12)
+                    {
+                        // Drafted one-sided blind extrude (R2900_100's
+                        // Extrude21: 5 deg over a 5mm plate -- ignoring
+                        // the taper left +105mm^3 of phantom material).
+                        int a_n = cg->AddConst(p.draft, "draft");
+                        tool_n  = cg->AddOp("dprism", {face_n, dir_n, a_n},
+                                            {}, feat.name);
+                    }
+                    else
+                    {
+                        tool_n = cg->AddOp("prism", {face_n, dir_n},
+                                           {}, feat.name);
+                    }
                 }
 
                 // Track the extrude tool so a downstream pattern with

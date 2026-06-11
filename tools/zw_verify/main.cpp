@@ -665,6 +665,7 @@ int main(int argc, char** argv)
     double      rel_tol   = 1e-4;   // volume/area/bbox, relative
     double      face_tol  = 1e-4;   // face centroid match, fraction of bbox diag
     long        max_feat  = -1;     // --max-feat K: prefix replay
+    long        detail_cap = 12;    // unmatched-face DETAIL lines per side
     bool        bisect    = false;
 
     for (int i = 1; i < argc; ++i)
@@ -673,6 +674,7 @@ int main(int argc, char** argv)
         if (a == "--step" && i + 1 < argc)           step_path  = argv[++i];
         else if (a == "--rel-tol" && i + 1 < argc)   rel_tol    = std::atof(argv[++i]);
         else if (a == "--face-tol" && i + 1 < argc)  face_tol   = std::atof(argv[++i]);
+        else if (a == "--detail-cap" && i + 1 < argc) detail_cap = std::atol(argv[++i]);
         else if (a == "--max-feat" && i + 1 < argc)  max_feat   = std::atol(argv[++i]);
         else if (a == "--states" && i + 1 < argc)    states_arg = argv[++i];
         else if (a == "--dump" && i + 1 < argc)      dump_path  = argv[++i];
@@ -1029,16 +1031,22 @@ int main(int argc, char** argv)
         check(r2t.matched == r2t.total && t2r.matched == t2r.total,
               "face_match", buf);
 
-        const auto dump = [](const char* tag, const std::vector<int>& idxs,
-                             const std::vector<FaceProbe>& probes)
+        const auto dump = [detail_cap](const char* tag, const std::vector<int>& idxs,
+                                       const std::vector<FaceProbe>& probes)
         {
-            const size_t cap = 12;   // enough to localize; full list is noise
+            // 12 is enough to localize; --detail-cap N raises it for full
+            // displacement clustering (pairing every unmatched truth face
+            // with its nearest unmatched replay face offline).
+            const size_t cap = (detail_cap > 0) ? (size_t)detail_cap : 12;
             for (size_t k = 0; k < idxs.size() && k < cap; ++k)
             {
                 const int i = idxs[k];
-                std::printf("DETAIL %s idx=%d centre=(%.6g,%.6g,%.6g) area=%.6g\n",
+                std::printf("DETAIL %s idx=%d centre=(%.6g,%.6g,%.6g) area=%.6g "
+                            "n=(%.3f,%.3f,%.3f)\n",
                             tag, i, probes[i].centre.X(), probes[i].centre.Y(),
-                            probes[i].centre.Z(), probes[i].area);
+                            probes[i].centre.Z(), probes[i].area,
+                            probes[i].normal.X(), probes[i].normal.Y(),
+                            probes[i].normal.Z());
             }
             if (idxs.size() > cap)
                 std::printf("DETAIL %s ... and %zu more\n", tag, idxs.size() - cap);

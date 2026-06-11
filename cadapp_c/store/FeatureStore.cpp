@@ -269,6 +269,7 @@ void Encode(const FeatPayloadExtrude& p, BlobWriter& w)
     w.TopoRef(p.end1_target);
     w.Bool(p.has_end2_target);
     w.TopoRef(p.end2_target);
+    w.F64(p.draft);
 }
 
 void Encode(const FeatPayloadRevolve& p, BlobWriter& w)
@@ -533,6 +534,7 @@ void Decode(BlobReader& r, FeatPayloadExtrude& p)
     p.end1_target     = r.TopoRef();
     p.has_end2_target = r.Bool();
     p.end2_target     = r.TopoRef();
+    p.draft           = r.F64();
 }
 
 void Decode(BlobReader& r, FeatPayloadRevolve& p)
