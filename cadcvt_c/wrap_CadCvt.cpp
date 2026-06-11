@@ -102,7 +102,10 @@ inline std::string PathForOcct(const std::string& p)
     if (PathIsValidUtf8(p)) {
         return p;
     }
-    return std::filesystem::path(p).u8string();
+    // u8string() returns std::u8string under C++20 but std::string under
+    // C++17; rebuild through iterators so this TU compiles as either.
+    const auto u8 = std::filesystem::path(p).u8string();
+    return std::string(u8.begin(), u8.end());
 #else
     return p;
 #endif

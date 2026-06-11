@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // plugins/zw_export/ZwCaxExport.cpp
 //
 // ZW3D plugin-side exporter. Runs INSIDE ZW3D (loaded as a DLL via
@@ -2366,7 +2366,7 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                     // queue); raw GBK would hit dump()'s error_handler::replace
                     // and turn into unrecoverable U+FFFD mojibake -- the reader
                     // then can't resolve the sibling STEP by its recorded name.
-                    jf["geometry"] = ToUtf8(BaseName(fstep).c_str());
+                    jf["geometry"] = zwapi::ToUtf8(BaseName(fstep).c_str());
                 }
                 diag["feat_step_init_rc"]   = fse.init_rc;
                 diag["feat_step_export_rc"] = fse.export_rc;
@@ -2397,7 +2397,7 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                     zwapi::StepExportResult se = zwapi::ExportPartStep(spath);
                     if (se.ok)
                     {
-                        js["step"] = ToUtf8(BaseName(spath).c_str());
+                        js["step"] = zwapi::ToUtf8(BaseName(spath).c_str());
                     }
                     js["step_rc"] = se.export_rc;
                 }
@@ -2434,14 +2434,14 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         }
         zwapi::StepExportResult se = zwapi::ExportPartStep(step_path);
         if (se.ok) {
-            doc["geometry"] = ToUtf8(BaseName(step_path).c_str());
+            doc["geometry"] = zwapi::ToUtf8(BaseName(step_path).c_str());
         }
         // Diagnostic: surface why a STEP export failed (best-effort, so a
         // failure is otherwise silent). ZW_API_NO_ERROR is 0.
         json gdiag;
         gdiag["init_rc"]   = se.init_rc;
         gdiag["export_rc"] = se.export_rc;
-        gdiag["path"]      = ToUtf8(step_path.c_str());
+        gdiag["path"]      = zwapi::ToUtf8(step_path.c_str());
         doc["geometry_diag"] = std::move(gdiag);
     }
 
