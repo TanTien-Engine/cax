@@ -74,10 +74,14 @@
 #include <IFSelect_ReturnStatus.hxx>
 #include <TopAbs.hxx>
 #include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Face.hxx>
+#include <TopoDS_Iterator.hxx>
 #include <TopoDS_Shape.hxx>
+#include <BRep_Builder.hxx>
 #include <gp_Trsf.hxx>
 
 #include <nlohmann/json.hpp>
@@ -291,6 +295,51 @@ bool LoadStep(const std::string& path, TopoDS_Shape& out, std::string& err)
         err = "STEP transfer produced a null shape: " + path;
         return false;
     }
+
+    // ZW3D's whole-part export ("all objects") rides the part's visible
+    // wireframe along: R2900_100's truth STEP carries one solid PLUS a
+    // GEOMETRIC_CURVE_SET of 593 free curves -- exactly the surplus over
+    // the kernel's own edge count, and the source of a phantom 0.253mm
+    // bbox bulge (free curves add no faces, so volume / area / face
+    // matching never noticed). Keep only the SOLID content; fall back to
+    // shells for a surface part; report what was dropped.
+    {
+        // A top-level child is "free wireframe" when it contains no face
+        // (the curve set arrives as a nested compound of edges, so the
+        // shape TYPE alone cannot tell it from the body's compound).
+        int n_free = 0;
+        for (TopoDS_Iterator it(s); it.More(); it.Next())
+        {
+            TopExp_Explorer f(it.Value(), TopAbs_FACE);
+            if (!f.More()) ++n_free;
+        }
+        if (n_free > 0)
+        {
+            TopAbs_ShapeEnum keep = TopAbs_SOLID;
+            {
+                TopExp_Explorer ex(s, TopAbs_SOLID);
+                if (!ex.More()) keep = TopAbs_SHELL;
+            }
+            TopoDS_Compound comp;
+            BRep_Builder    bb;
+            bb.MakeCompound(comp);
+            int kept = 0;
+            for (TopExp_Explorer ex(s, keep); ex.More(); ex.Next())
+            {
+                bb.Add(comp, ex.Current());
+                ++kept;
+            }
+            if (kept > 0)
+            {
+                std::printf("INFO truth_filtered kept=%d %s, dropped %d "
+                            "faceless top-level entities (free wireframe)\n",
+                            kept, keep == TopAbs_SOLID ? "solids" : "shells",
+                            n_free);
+                s = comp;
+            }
+        }
+    }
+
     out = s;
     return true;
 }
