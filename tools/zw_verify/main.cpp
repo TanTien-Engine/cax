@@ -179,6 +179,49 @@ VolArea VolumeAndArea(const TopoDS_Shape& s)
 // sheet accounting noise. Used by the STEP comparisons (both sides);
 // the _state probes keep the whole-compound number because ZW3D's own
 // per-shape mass bookkeeping includes its sheets the same way.
+// One "INFO solid_<side>" line per solid (vol + bbox + shell count).
+// Shared by the full compare and the --max-feat --step prefix compare.
+// A solid with >1 shell carries internal voids; each shell's signed
+// flux volume is printed so a hollowed body (R2900: funnel cavities
+// sewn into the main housing) is measurable directly.
+void SolidRoster(const char* side, const TopoDS_Shape& s)
+{
+    int i = 0;
+    for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next(), ++i)
+    {
+        GProp_GProps g;
+        BRepGProp::VolumeProperties(ex.Current(), g);
+        Bnd_Box bb;
+        BRepBndLib::Add(ex.Current(), bb);
+        double x0=0, y0=0, z0=0, x1=0, y1=0, z1=0;
+        if (!bb.IsVoid()) bb.Get(x0, y0, z0, x1, y1, z1);
+        int nshell = 0;
+        for (TopExp_Explorer sx(ex.Current(), TopAbs_SHELL); sx.More();
+             sx.Next())
+            ++nshell;
+        std::printf("INFO solid_%s i=%d vol=%.6g shells=%d "
+                    "bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                    side, i, g.Mass(), nshell, x0, y0, z0, x1, y1, z1);
+        if (nshell > 1)
+        {
+            int j = 0;
+            for (TopExp_Explorer sx(ex.Current(), TopAbs_SHELL); sx.More();
+                 sx.Next(), ++j)
+            {
+                GProp_GProps sg;
+                BRepGProp::VolumeProperties(sx.Current(), sg);
+                Bnd_Box sb;
+                BRepBndLib::Add(sx.Current(), sb);
+                double a0=0, b0=0, c0=0, a1=0, b1=0, c1=0;
+                if (!sb.IsVoid()) sb.Get(a0, b0, c0, a1, b1, c1);
+                std::printf("INFO   shell_%s i=%d j=%d vol=%.6g "
+                            "bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                            side, i, j, sg.Mass(), a0, b0, c0, a1, b1, c1);
+            }
+        }
+    }
+}
+
 double SolidsVolume(const TopoDS_Shape& s)
 {
     double v = 0.0;
@@ -420,6 +463,8 @@ struct FeatState
 {
     bool   has      = false;
     int    n_shape  = -1, n_face = -1, n_edge = -1;
+    int    n_blanked = 0;    // of n_shape, hidden construction bodies --
+                             // counted by _state, absent from any STEP
     bool   has_box  = false;
     double bmin[3]  = {0,0,0}, bmax[3] = {0,0,0};
     bool   has_mass = false;
@@ -472,6 +517,7 @@ SnapshotStats ScanSnapshot(const std::string& json_path)
             m.state.n_shape = s->value("n_shape", -1);
             m.state.n_face  = s->value("n_face", -1);
             m.state.n_edge  = s->value("n_edge", -1);
+            m.state.n_blanked = s->value("n_blanked", 0);
             auto bb = s->find("bbox");
             if (bb != s->end() && bb->is_array() && bb->size() == 6)
             {
@@ -650,6 +696,18 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
     std::string  err;
     if (!ReplayShape(doc, shape, err))
     {
+        // Empty-vs-empty is agreement, not failure: a prefix of pure
+        // wireframe/datum features (02-ear opens with 16 of them) has no
+        // body on EITHER side -- truth _state records 0 shapes. Only call
+        // it a divergence when the truth says geometry should exist.
+        if (fm.state.has && fm.state.n_shape == 0)
+        {
+            std::printf("PROBE feat=%u verdict=good reason=both_empty "
+                        "name=%s\n", fm.id, fm.name.c_str());
+            out.ran  = true;
+            out.good = true;
+            return out;
+        }
         std::printf("PROBE feat=%u verdict=bad reason=replay_failed %s\n",
                     fm.id, err.c_str());
         out.ran  = true;   // a replay failure IS a divergence verdict
@@ -681,9 +739,10 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
         const double dz = tmax[2] - tmin[2];
         tdiag = std::sqrt(dx*dx + dy*dy + dz*dz);
     }
-    std::printf("TRUTHSTATE feat=%u n_shape=%d n_face=%d n_edge=%d "
-                "vol=%.9g area=%.9g bbox=(%.6g,%.6g,%.6g)(%.6g,%.6g,%.6g)\n",
-                fm.id, st.n_shape, st.n_face, st.n_edge,
+    std::printf("TRUTHSTATE feat=%u n_shape=%d n_blanked=%d n_face=%d "
+                "n_edge=%d vol=%.9g area=%.9g "
+                "bbox=(%.6g,%.6g,%.6g)(%.6g,%.6g,%.6g)\n",
+                fm.id, st.n_shape, st.n_blanked, st.n_face, st.n_edge,
                 st.has_mass ? st.volume * s3 : -1.0,
                 st.has_mass ? st.area * s2 : -1.0,
                 tmin[0], tmin[1], tmin[2], tmax[0], tmax[1], tmax[2]);
@@ -702,7 +761,11 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
     if (st.n_shape >= 0 && c.solids != st.n_shape)
     {
         topo = "topo=" + std::to_string(c.solids) + "/" +
-               std::to_string(st.n_shape) + " ";
+               std::to_string(st.n_shape);
+        if (st.n_blanked > 0) {
+            topo += "(bl" + std::to_string(st.n_blanked) + ")";
+        }
+        topo += " ";
     }
     if (st.has_box && tdiag > 0.0)
     {
@@ -734,6 +797,43 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
             char buf[64];
             std::snprintf(buf, sizeof buf, "vol_rel=%.3g ", rel);
             why += buf;
+        }
+    }
+    else if (st.has_mass && st.volume < 0.0)
+    {
+        // Open-shell state: the recorded "volume" is signed flux, whose
+        // sign convention is the kernel's own (face orientation). Report
+        // the magnitude divergence but never let it decide -- area below
+        // is the orientation-independent sheet metric.
+        const double tv  = std::fabs(st.volume * s3);
+        const double rv  = std::fabs(va.volume);
+        const double rel = tv > 0.0 ? std::fabs(rv - tv) / tv : 0.0;
+        if (rel > rel_tol)
+        {
+            char buf[64];
+            std::snprintf(buf, sizeof buf, "flux_rel=%.3g(info) ", rel);
+            why += buf;
+        }
+    }
+    if (st.has_mass && st.area > 0.0)
+    {
+        // Surface area: orientation-independent, and on a sheet-only
+        // state (truth volume <= 0) the only strong metric -- bbox can
+        // stay put while a skin grows a whole new patch inside it. On
+        // solid states it stays informational: cross-kernel face splits
+        // carry ~0.3% area noise (R2900) that volume+bbox don't.
+        const double ta  = st.area * s2;
+        const double rel = std::fabs(va.area - ta) / ta;
+        if (rel > rel_tol)
+        {
+            char buf[64];
+            const bool decides = (st.volume <= 0.0);
+            std::snprintf(buf, sizeof buf, "area_rel=%.3g%s ", rel,
+                          decides ? "" : "(info)");
+            why += buf;
+            if (decides) {
+                good = false;
+            }
         }
     }
 
@@ -1057,6 +1157,11 @@ int main(int argc, char** argv)
             std::snprintf(buf, sizeof buf, "replay=%.9g truth=%.9g rel=%.3g",
                           rv, tv, dv);
             check(dv <= rel_tol, "volume", buf);
+            // Per-solid roster, both sides -- same as the full compare;
+            // a prefix vs state<K>.step is exactly where a duplicated /
+            // missing body needs to be visible per solid.
+            SolidRoster("replay", shape);
+            SolidRoster("truth",  truth);
         }
         {
             const auto pr = CollectFaceProbes(shape);
@@ -1198,24 +1303,8 @@ int main(int argc, char** argv)
                     FreeSheetCount(replayed), FreeSheetCount(truth));
         // Per-solid roster, both sides: an extra / misplaced body shows
         // up here by volume + bbox instead of needing face clustering.
-        auto roster = [](const char* side, const TopoDS_Shape& s)
-        {
-            int i = 0;
-            for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next(), ++i)
-            {
-                GProp_GProps g;
-                BRepGProp::VolumeProperties(ex.Current(), g);
-                Bnd_Box bb;
-                BRepBndLib::Add(ex.Current(), bb);
-                double x0=0, y0=0, z0=0, x1=0, y1=0, z1=0;
-                if (!bb.IsVoid()) bb.Get(x0, y0, z0, x1, y1, z1);
-                std::printf("INFO solid_%s i=%d vol=%.6g "
-                            "bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
-                            side, i, g.Mass(), x0, y0, z0, x1, y1, z1);
-            }
-        };
-        roster("replay", replayed);
-        roster("truth",  truth);
+        SolidRoster("replay", replayed);
+        SolidRoster("truth",  truth);
     }
     {
         const double da = std::fabs(vr.area - vt.area) /
