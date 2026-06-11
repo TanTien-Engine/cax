@@ -699,6 +699,20 @@ Val Evaluator::EvalNode(IRGraph& g, NRef ref,
 	if (desc && desc->eval)
 	{
 		EvalCtx ctx{resolved, nd->fixed_input_count, tn, nd->op_id};
+		// CAX_EVAL_BEGIN=1: announce each op BEFORE it runs. The [eval]
+		// line below only prints on completion, so when one boolean
+		// grinds for minutes the log goes silent exactly when you need
+		// to know which op is grinding. Flushed so a kill -9 (or an
+		// impatient operator) still leaves the culprit's name behind.
+		static const bool eval_begin = [] {
+			const char* e = std::getenv("CAX_EVAL_BEGIN");
+			return e && e[0] && e[0] != '0';
+		}();
+		if (eval_begin) {
+			std::fprintf(stderr, "[eval-begin] op=%s op_id=%u node=%d\n",
+			             nd->op_name.c_str(), nd->op_id, ref.id);
+			std::fflush(stderr);
+		}
 		// Per-op self-time (this op's own work; inputs already resolved
 		// above). Only fires on a real recompute, never on a cache hit,
 		// so it attributes the replay cost feature-by-feature. Threshold

@@ -27,6 +27,7 @@
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
+#include <BOPAlgo_GlueEnum.hxx>
 #include <BOPAlgo_Splitter.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
@@ -1774,7 +1775,15 @@ std::shared_ptr<TopoShape> TopoAlgo::Cut(const std::shared_ptr<TopoShape>& s1, c
     algo.SetArguments(args);
     algo.SetTools(tools);
     algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
-    algo.SetRunParallel(bop_parallel());
+    // Same big-pair OBB filtering + parallelism as Fuse: small ops stay
+    // serial so the golden corpus keeps its byte-stable ordering, big
+    // pairs fan out via OSD_Parallel (BREPKIT_BOP_PARALLEL=0 reverts to
+    // serial for A/B). See the rationale in Fuse.
+    if (BopProfFaceCount(s1->GetShape()) +
+        BopProfFaceCount(s2->GetShape()) > 600) {
+        algo.SetUseOBB(Standard_True);
+        algo.SetRunParallel(bop_parallel());
+    }
     const auto _bop_t0 = std::chrono::steady_clock::now();
     algo.Build();
     const auto _bop_t1 = std::chrono::steady_clock::now();
@@ -1816,18 +1825,36 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
                                           uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
                                           const std::shared_ptr<brepdb::VersionTree>& vt)
 {
+    // Big-pair booleans get OCCT's OBB filtering -- tight oriented boxes
+    // prune the cross-seam face-pair candidates that conservative AABBs
+    // keep (every face near a mirror plane has an AABB crossing it), and
+    // the pruning is DETERMINISTIC -- plus OCCT-internal parallelism
+    // (intersection + DS-filler stages fan out via OSD_Parallel;
+    // BREPKIT_BOP_PARALLEL=0 reverts to serial for A/B). Small ops stay
+    // serial: keeping the golden corpus' face ordering byte-stable is
+    // worth more there than the microseconds parallelism would buy.
+    const int faces_s1 = BopProfFaceCount(s1->GetShape());
+    const int faces_s2 = BopProfFaceCount(s2->GetShape());
+    const bool big_pair = (faces_s1 + faces_s2) > 600;
+
     // 1e-6 m fuzzy absorbs precision noise so face-coincident operands
     // (e.g. an extruded pad with an r=R cylindrical hole fused against
     // an annulus whose inner radius is also R) intersect correctly
     // rather than silently returning an empty COMPOUND.
-    auto run_fuse = [&](double fuzzy) {
+    auto run_fuse = [&](double fuzzy, bool glue = false) {
         auto a = std::make_unique<BRepAlgoAPI_Fuse>();
         TopTools_ListOfShape args;  args.Append(s1->GetShape());
         TopTools_ListOfShape tools; tools.Append(s2->GetShape());
         a->SetArguments(args);
         a->SetTools(tools);
         a->SetFuzzyValue(fuzzy);
-        a->SetRunParallel(bop_parallel());
+        if (glue) {
+            a->SetGlue(BOPAlgo_GlueShift);
+        }
+        if (big_pair) {
+            a->SetUseOBB(Standard_True);
+            a->SetRunParallel(bop_parallel());
+        }
         a->Build();
         return a;
     };
@@ -1835,7 +1862,87 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
     const double base_fuzzy =
         ScaledBopFuzzy(s1->GetShape(), s2->GetShape());
     const auto _bop_t0 = std::chrono::steady_clock::now();
-    auto algo = run_fuse(base_fuzzy);
+
+    // ---- Mirror-seam GLUE fast path ----
+    //
+    // Fusing a body with its mirrored half is the document's single
+    // most expensive boolean (R2900: two ~2400-face halves, >12 min of
+    // CPU in one BRepAlgoAPI_Fuse) because the general BOP intersects
+    // every face pair across the seam. But a mirror seam is EXACTLY
+    // the case BOPAlgo_GlueShift was built for: the operands touch
+    // only on coincident faces in one plane, no real intersections
+    // exist. Detection is geometric and conservative: both operands
+    // big, and their AABBs overlap only in a slab no thicker than a
+    // few fuzzy widths (true plane contact; a pattern instance pushed
+    // 0.02 mm INTO the body fails this gate by an order of magnitude).
+    // The glue result is accepted only when it actually merged
+    // (fewer solids than the operand sum) and its volume equals the
+    // operand sum to 1e-8 relative -- non-overlapping operands fuse to
+    // exactly vol1+vol2, anything glue got wrong shows up there.
+    // Any rejection falls through to the standard full fuse.
+    std::unique_ptr<BRepAlgoAPI_Fuse> algo;
+    if (big_pair)
+    {
+        Bnd_Box b1, b2;
+        BRepBndLib::Add(s1->GetShape(), b1);
+        BRepBndLib::Add(s2->GetShape(), b2);
+        if (!b1.IsVoid() && !b2.IsVoid())
+        {
+            double x1a, y1a, z1a, x1b, y1b, z1b;
+            double x2a, y2a, z2a, x2b, y2b, z2b;
+            b1.Get(x1a, y1a, z1a, x1b, y1b, z1b);
+            b2.Get(x2a, y2a, z2a, x2b, y2b, z2b);
+            const double ox = std::min(x1b, x2b) - std::max(x1a, x2a);
+            const double oy = std::min(y1b, y2b) - std::max(y1a, y2a);
+            const double oz = std::min(z1b, z2b) - std::max(z1a, z2a);
+            const double slab = std::min({ ox, oy, oz });
+            if (slab <= 8.0 * base_fuzzy)
+            {
+                auto glued = run_fuse(base_fuzzy, /*glue=*/true);
+                if (glued->IsDone() && !glued->Shape().IsNull())
+                {
+                    const int ns1 = CountSolids(s1->GetShape());
+                    const int ns2 = CountSolids(s2->GetShape());
+                    const int nsr = CountSolids(glued->Shape());
+                    double v1 = 0.0, v2 = 0.0, vr = 0.0;
+                    try {
+                        GProp_GProps g1, g2, gr;
+                        BRepGProp::VolumeProperties(s1->GetShape(), g1);
+                        BRepGProp::VolumeProperties(s2->GetShape(), g2);
+                        BRepGProp::VolumeProperties(glued->Shape(), gr);
+                        v1 = g1.Mass(); v2 = g2.Mass(); vr = gr.Mass();
+                    } catch (...) { vr = 0.0; }
+                    const double vsum = v1 + v2;
+                    const double vrel = (vsum > 0.0)
+                        ? std::fabs(vr - vsum) / vsum : 1.0;
+                    if (nsr > 0 && nsr < ns1 + ns2 && vrel <= 1e-8)
+                    {
+                        std::fprintf(stderr,
+                            "[fuse] op_id=%u GLUE seam fast path ok "
+                            "(faces %d+%d, solids %d+%d->%d, "
+                            "vol_rel=%.2e)\n",
+                            op_id, faces_s1, faces_s2, ns1, ns2, nsr,
+                            vrel);
+                        std::fflush(stderr);
+                        algo = std::move(glued);
+                    }
+                    else
+                    {
+                        std::fprintf(stderr,
+                            "[fuse] op_id=%u GLUE attempt rejected "
+                            "(solids %d+%d->%d, vol_rel=%.2e); full "
+                            "fuse\n",
+                            op_id, ns1, ns2, nsr, vrel);
+                        std::fflush(stderr);
+                    }
+                }
+            }
+        }
+    }
+
+    if (!algo) {
+        algo = run_fuse(base_fuzzy);
+    }
     if (!algo->IsDone()) {
         algo->DumpErrors(std::cerr);
     }
@@ -1936,9 +2043,18 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         CountSolids(algo->Shape()) == 0 &&
         CountSolids(s1->GetShape()) > 0)
     {
+        // Escalation is capped for big pairs: each retry re-runs the
+        // full boolean, and on a many-hundred-face body one pass is
+        // already minutes -- quadrupling that for a recovery that
+        // rarely succeeds past 10x is how a slow load becomes a
+        // "hung" one. Small bodies keep the full 10/100/1000 ladder.
+        std::vector<double> ladder = { base_fuzzy * 10.0 };
+        if (!big_pair) {
+            ladder.push_back(base_fuzzy * 100.0);
+            ladder.push_back(base_fuzzy * 1000.0);
+        }
         int ran = 0, ok = 0;
-        for (double fuzzy : {base_fuzzy * 10.0, base_fuzzy * 100.0,
-                             base_fuzzy * 1000.0}) {
+        for (double fuzzy : ladder) {
             auto retry = run_fuse(fuzzy);
             ++ran;
             if (retry->IsDone() && !retry->Shape().IsNull() &&
@@ -2017,7 +2133,12 @@ std::shared_ptr<TopoShape> TopoAlgo::Common(const std::shared_ptr<TopoShape>& s1
     algo.SetArguments(args);
     algo.SetTools(tools);
     algo.SetFuzzyValue(ScaledBopFuzzy(s1->GetShape(), s2->GetShape()));
-    algo.SetRunParallel(bop_parallel());
+    // Same big-pair OBB + parallelism gate as Cut / Fuse.
+    if (BopProfFaceCount(s1->GetShape()) +
+        BopProfFaceCount(s2->GetShape()) > 600) {
+        algo.SetUseOBB(Standard_True);
+        algo.SetRunParallel(bop_parallel());
+    }
     const auto _bop_t0 = std::chrono::steady_clock::now();
     algo.Build();
     const auto _bop_t1 = std::chrono::steady_clock::now();
