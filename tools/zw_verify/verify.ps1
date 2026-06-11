@@ -26,15 +26,25 @@ $cmd = @($Json)
 if ($Bisect) { $cmd += '--bisect' }
 $cmd += $Args
 
-& $exe.FullName @cmd
+# PS 5.1: with ErrorActionPreference=Stop, a native exe's FIRST stderr line
+# (zw_verify emits [eval] timing diagnostics there) becomes a terminating
+# ErrorRecord and kills the script. All protocol lines go to stdout, so
+# relax the preference around the call and drop the stderr noise; run the
+# exe directly if you want the timings.
+$ErrorActionPreference = 'Continue'
+& $exe.FullName @cmd 2>$null
 $code = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
 
 if ($code -eq 1 -and -not $Bisect) {
     # FAIL: bisect right away when the snapshot has per-feature truth.
     $hasState = Select-String -Path $Json -Pattern '"_state"' -Quiet
     if ($hasState) {
         Write-Host "`n--- FAIL with _state truth present: bisecting ---`n"
-        & $exe.FullName $Json --bisect
+        $ErrorActionPreference = 'Continue'
+        & $exe.FullName $Json --bisect 2>$null
+        $code = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
     } else {
         Write-Host "`nSnapshot has no _state blocks. Re-export with the new CaxExport.dll"
         Write-Host "(optionally CAX_FEAT_STATE=2 for volume truth, CAX_FEAT_STATE_STEP=K1,K2"
