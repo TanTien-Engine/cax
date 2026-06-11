@@ -1468,6 +1468,41 @@ struct StepExportResult
     int  export_rc = -999;
 };
 
+// cvxFileExport, like cvxFileOpen (ToAcp in ZwCaxPlugin.cpp), decodes its
+// path argument in the system ANSI code page: handing it UTF-8 makes a
+// Chinese DIRECTORY fail with -242 (the misread directory doesn't exist;
+// every HW主要案例 truth STEP was silently dropped this way) and a Chinese
+// file NAME land as a mojibake-named file even when the directory is
+// ASCII (the R2900 .state<K>.step family). Re-encode to ACP when the path
+// is valid UTF-8; pass it through unchanged when it already isn't (older
+// SDKs hand back GBK) or a character has no ACP representation.
+std::string StepPathForApi(const std::string& path)
+{
+#ifdef _WIN32
+    int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                   path.c_str(), -1, nullptr, 0);
+    if (wlen <= 0) {
+        return path;   // not valid UTF-8 -> assume already ANSI
+    }
+    std::wstring w(static_cast<size_t>(wlen), L'\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                        path.c_str(), -1, &w[0], wlen);
+    BOOL lost = FALSE;
+    int alen = WideCharToMultiByte(CP_ACP, 0, w.c_str(), -1,
+                                   nullptr, 0, nullptr, &lost);
+    if (alen <= 0 || lost) {
+        return path;   // no ACP form -- let ZW3D try the raw bytes
+    }
+    std::string acp(static_cast<size_t>(alen), '\0');
+    WideCharToMultiByte(CP_ACP, 0, w.c_str(), -1, &acp[0], alen,
+                        nullptr, nullptr);
+    acp.resize(strlen(acp.c_str()));
+    return acp;
+#else
+    return path;
+#endif
+}
+
 StepExportResult ExportPartStep(const std::string& path)
 {
     StepExportResult r;
@@ -1477,7 +1512,8 @@ StepExportResult ExportPartStep(const std::string& path)
         return r;
     }
     data.ExportType = 0;   // 0 = all objects
-    r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, path.c_str(), &data));
+    const std::string api_path = StepPathForApi(path);
+    r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, api_path.c_str(), &data));
     r.ok = (r.export_rc == ZW_API_NO_ERROR);
     return r;
 }
@@ -1511,7 +1547,8 @@ StepExportResult ExportFeatureShapesStep(int idFtr, const std::string& path)
         data.ExportType = 1;        // specified entities
         data.EntCnt     = cnt;
         data.EntList    = ents;     // the feature's result shape ids
-        r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, path.c_str(), &data));
+        const std::string api_path = StepPathForApi(path);
+        r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, api_path.c_str(), &data));
         r.ok = (r.export_rc == ZW_API_NO_ERROR);
     }
 
