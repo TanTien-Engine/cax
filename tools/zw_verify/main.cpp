@@ -127,7 +127,13 @@ Box BBox(const TopoDS_Shape& s)
     Box b;
     if (s.IsNull()) return b;
     Bnd_Box bb;
-    BRepBndLib::Add(s, bb);
+    // AddOptimal, not Add: Add bounds a B-spline by its control polygon,
+    // overshooting curved extremes by tens of um -- enough to fake a
+    // divergence against ZW3D's exact kernel bbox (R2900_100 probe 48
+    // showed 23.6um of pure method bias on a verified-identical pattern).
+    // Exact geometry, no triangulation, no tolerance padding.
+    BRepBndLib::AddOptimal(s, bb, /*useTriangulation=*/Standard_False,
+                           /*useShapeTolerance=*/Standard_False);
     if (bb.IsVoid()) return b;
     bb.Get(b.mn[0], b.mn[1], b.mn[2], b.mx[0], b.mx[1], b.mx[2]);
     b.valid = true;
@@ -587,10 +593,17 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
     bool        good = true;
     std::string why;
 
+    // Body count is reported as a TOPOLOGY signal but does not decide the
+    // geometry verdict: ZW3D patterns legitimately leave instances as
+    // standalone bodies until a later feature merges them, while the
+    // replay's pattern op fuses immediately -- a representational gap, not
+    // a placement error (R2900_100 Pattern9: 1 vs 4 bodies with instance
+    // geometry verified identical). Bisect on geometry; read the topo
+    // column to see where body-structure fidelity is lost.
+    std::string topo;
     if (st.n_shape >= 0 && c.solids != st.n_shape)
     {
-        good = false;
-        why += "solids=" + std::to_string(c.solids) + "/" +
+        topo = "topo=" + std::to_string(c.solids) + "/" +
                std::to_string(st.n_shape) + " ";
     }
     if (st.has_box && tdiag > 0.0)
@@ -629,9 +642,9 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
     // WARN-grade signal only (kernel face-split differences are legal).
     const int dfaces = (st.n_face >= 0) ? c.faces - st.n_face : 0;
 
-    std::printf("PROBE feat=%u verdict=%s %sdfaces=%d name=%s\n",
-                fm.id, good ? "good" : "bad", why.c_str(), dfaces,
-                fm.name.c_str());
+    std::printf("PROBE feat=%u verdict=%s %s%sdfaces=%d name=%s\n",
+                fm.id, good ? "good" : "bad", why.c_str(), topo.c_str(),
+                dfaces, fm.name.c_str());
     out.good = good;
     return out;
 }
