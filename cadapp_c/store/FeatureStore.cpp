@@ -355,6 +355,7 @@ void Encode(const FeatPayloadLinearPattern& p, BlobWriter& w)
     w.Vec3(p.dir2);
     w.I32(p.count2);
     w.F64(p.spacing2);
+    w.Bool(p.fuse);
 }
 
 void Encode(const FeatPayloadCircularPattern& p, BlobWriter& w)
@@ -618,6 +619,7 @@ void Decode(BlobReader& r, FeatPayloadLinearPattern& p)
     r.Vec3(p.dir2);
     p.count2   = r.I32();
     p.spacing2 = r.F64();
+    p.fuse     = r.Bool();
 }
 
 void Decode(BlobReader& r, FeatPayloadCircularPattern& p)

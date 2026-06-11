@@ -192,12 +192,9 @@ struct FeatPayloadLinearPattern
     // copies stay free until a later boolean absorbs them -- R2900_100's
     // Pattern9 holds 3 free bodies for exactly one feature, truth
     // n_shape 1 -> 4 -> 1). false = standalone copies; true = the
-    // classic fuse-onto-base. NOT serialized by FeatureStore yet: the
-    // FEAT_VERSION 3 payload encoding is fixed-format and the header
-    // check rejects any other version, so adding a byte would orphan
-    // every existing save (TODO fold into FEAT_VERSION 4). The flag is
-    // re-derived from the snapshot on every cax.json import, which is
-    // where it matters.
+    // classic fuse-onto-base. Serialized by FeatureStore (the format
+    // restarted at FEAT_VERSION 1 when this landed) and re-derived from
+    // the snapshot on every cax.json import.
     bool    fuse       = true;
 };
 

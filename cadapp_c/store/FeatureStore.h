@@ -78,7 +78,10 @@ struct FeatureEntry
 #pragma pack(pop)
 
 static constexpr uint32_t FEAT_MAGIC   = 0x54414546;   // 'F','E','A','T' little-endian
-static constexpr uint32_t FEAT_VERSION = 3;
+// Format restarted at 1 (2026-06: LinearPattern grew the fuse flag and
+// no documents in the wild predate this, so the 2/3 lineage was reset
+// rather than bumped -- the header check is strict equality either way).
+static constexpr uint32_t FEAT_VERSION = 1;
 
 
 // ============================================================
