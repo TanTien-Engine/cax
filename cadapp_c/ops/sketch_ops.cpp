@@ -15,9 +15,12 @@
 #include <geoshape/Arc.h>
 
 #include <Bnd_Box.hxx>
+#include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepTools.hxx>
+#include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <BRepGProp.hxx>
 #include <BRepTopAdaptor_FClass2d.hxx>
 #include <BRep_Builder.hxx>
@@ -316,13 +319,96 @@ std::shared_ptr<brepkit::TopoShape> WiresToFace(
 		BRepBuilderAPI_MakeFace mk(plane, recs[i].wire);
 		if (!mk.IsDone()) continue;
 
+		std::vector<size_t> holes;
 		for (size_t j = 0; j < recs.size(); ++j)
 		{
 			if (i == j) continue;
 			if (recs[j].depth != recs[i].depth + 1) continue;
 			if (recs[j].area >= recs[i].area) continue;
 			if (PointInsideFace(*recs[i].cls, plane, recs[j].sample))
-				mk.Add(recs[j].wire);
+				holes.push_back(j);
+		}
+
+		// Holes that TOUCH (tangent or overlapping boundaries) cannot be
+		// installed as separate inner wires: MakeFace tolerates them but
+		// the prism/fuse downstream falls apart (R2900 Extrude48's four
+		// window loops are tangent to the synthesized tower circle; the
+		// raw install silently lost a body). Union each touching group
+		// first: face-level fuse, then UnifySameDomain -- the fuse alone
+		// only SPLITS coplanar faces at their intersections, leaving
+		// fragments whose outer wires still overlap (that fragment
+		// install was the second failed attempt) -- and install the
+		// unified face's outer wire(s). Disjoint holes (the overwhelming
+		// majority: every bbox group is a singleton) take exactly the
+		// path they always did.
+		if (holes.size() > 1)
+		{
+			std::vector<Bnd_Box> boxes(holes.size());
+			for (size_t k = 0; k < holes.size(); ++k)
+			{
+				BRepBndLib::Add(recs[holes[k]].face, boxes[k]);
+				boxes[k].Enlarge(1e-6);
+			}
+			std::vector<int> grp(holes.size());
+			for (size_t k = 0; k < holes.size(); ++k) grp[k] = (int)k;
+			bool changed = true;
+			while (changed)
+			{
+				changed = false;
+				for (size_t a = 0; a < holes.size(); ++a)
+					for (size_t b = a + 1; b < holes.size(); ++b)
+					{
+						if (grp[a] == grp[b]) continue;
+						if (boxes[a].IsOut(boxes[b])) continue;
+						const int from = std::max(grp[a], grp[b]);
+						const int to   = std::min(grp[a], grp[b]);
+						for (size_t c = 0; c < holes.size(); ++c)
+							if (grp[c] == from) grp[c] = to;
+						changed = true;
+					}
+			}
+			for (size_t a = 0; a < holes.size(); ++a)
+			{
+				if (grp[a] != (int)a) continue;   // group leaders only
+				std::vector<size_t> members;
+				for (size_t c = 0; c < holes.size(); ++c)
+					if (grp[c] == (int)a) members.push_back(holes[c]);
+				if (members.size() == 1)
+				{
+					mk.Add(recs[members[0]].wire);
+					continue;
+				}
+				TopoDS_Shape acc = recs[members[0]].face;
+				bool ok = true;
+				for (size_t m = 1; m < members.size() && ok; ++m)
+				{
+					BRepAlgoAPI_Fuse f(acc, recs[members[m]].face);
+					if (!f.IsDone() || f.Shape().IsNull()) { ok = false; break; }
+					acc = f.Shape();
+				}
+				if (ok)
+				{
+					// Merge the coplanar fragments the fuse left behind;
+					// without this the union is a patchwork whose outer
+					// wires still share the tangent arcs.
+					ShapeUpgrade_UnifySameDomain unify(acc, true, true, false);
+					unify.Build();
+					if (!unify.Shape().IsNull()) acc = unify.Shape();
+				}
+				if (!ok)
+				{
+					// BOP failed: fall back to the raw install (the
+					// historical behavior) rather than dropping holes.
+					for (size_t m : members) mk.Add(recs[m].wire);
+					continue;
+				}
+				for (TopExp_Explorer fx(acc, TopAbs_FACE); fx.More(); fx.Next())
+					mk.Add(BRepTools::OuterWire(TopoDS::Face(fx.Current())));
+			}
+		}
+		else if (holes.size() == 1)
+		{
+			mk.Add(recs[holes[0]].wire);
 		}
 
 		// FixOrientation flips CW wires so the face normal lines up

@@ -1455,22 +1455,58 @@ bool ZwReader::ReadFile(const std::string& path,
                             }
                             if (!holes.empty())
                             {
-                                // NOTE: the region BETWEEN the imported loops
-                                // (R2900: the tower disc bridged by the four
-                                // window arcs, ~3.5k mm^3 = the residual
-                                // +5.6% at feat 77) is excluded by ZW3D too.
-                                // TWO attempts to recover it failed and are
-                                // recorded so they are not re-walked blindly:
-                                // (1) shared-support circle as a raw extra
-                                // hole -- tangent inner wires poisoned the
-                                // prism/fuse (a body vanished, vol -31%);
-                                // (2) same circle + face-BOP union of
-                                // touching holes in WiresToFace -- still
-                                // -31% / fragmented solids (suspect
-                                // reprojection precision at the tangencies
-                                // or union outer-wire orientation). Needs an
-                                // exact 2D arrangement union of the cutout
-                                // loops.
+                                // The region BETWEEN the imported loops (the
+                                // tower disc bridged by the four window arcs,
+                                // ~3.5k mm^3 on R2900) is excluded by ZW3D
+                                // too: when several imported loops carry arcs
+                                // of one shared support circle, emit the full
+                                // circle as one more hole. It only SHARES
+                                // BOUNDARY with the window loops; the face
+                                // builder unions touching holes (face fuse +
+                                // UnifySameDomain -- the fuse alone leaves
+                                // coplanar fragments whose wires still
+                                // overlap; installing those raw was the
+                                // failure mode of the first two attempts).
+                                {
+                                    struct ArcSup { double cx, cy, r; int n; };
+                                    std::vector<ArcSup> sups;
+                                    for (const auto& h : holes)
+                                    {
+                                        if (JStr(h, "kind", "") != "arc") { continue; }
+                                        auto ctr = h.find("center");
+                                        if (ctr == h.end() || !ctr->is_array() ||
+                                            ctr->size() < 2) { continue; }
+                                        const double cx = ctr->at(0).get<double>();
+                                        const double cy = ctr->at(1).get<double>();
+                                        const double r  = JGet<double>(h, "radius", 0.0);
+                                        bool found = false;
+                                        for (auto& sp : sups)
+                                        {
+                                            if (std::fabs(sp.cx-cx) < 0.01 &&
+                                                std::fabs(sp.cy-cy) < 0.01 &&
+                                                std::fabs(sp.r-r)   < 0.01)
+                                            {
+                                                ++sp.n;
+                                                found = true;
+                                                break;
+                                            }
+                                        }
+                                        if (!found) { sups.push_back({cx, cy, r, 1}); }
+                                    }
+                                    for (const auto& sp : sups)
+                                    {
+                                        if (sp.n < 2) { continue; }
+                                        if (sp.cx - sp.r <= omn[0] || sp.cx + sp.r >= omx[0] ||
+                                            sp.cy - sp.r <= omn[1] || sp.cy + sp.r >= omx[1]) {
+                                            continue;
+                                        }
+                                        json circ;
+                                        circ["kind"]   = "circle";
+                                        circ["center"] = json::array({ sp.cx, sp.cy, 0.0 });
+                                        circ["radius"] = sp.r;
+                                        holes.push_back(std::move(circ));
+                                    }
+                                }
                                 eff_prof = *prof;
                                 json eff = json::array();
                                 for (int i : drawn_idx) { eff.push_back(cv.at(i)); }
