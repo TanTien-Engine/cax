@@ -5,6 +5,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -300,6 +301,29 @@ using CommitFn  = std::function<uint32_t(uint32_t nref_id, const Val& val,
 using RestoreFn = std::function<Val(uint32_t vt_node_id,
                                     const std::shared_ptr<TopoNaming>& tn)>;
 
+// Capacity of the evaluator's shape-result LRU. The old 64 thrashed badly
+// on real imports: R2900_100's replay graph evaluates ~600 distinct ops
+// (~900 shape-bearing nodes), and on the one-shot Replayer path -- which
+// wires no RestoreFn -- every eviction recomputes the producing boolean.
+// Measured on that fixture: 231 redundant re-evals, 22 s of a 117 s replay.
+// 1024 holds every state of that model class with headroom; OCCT booleans
+// share unmodified TShapes with their inputs, so the marginal memory per
+// cached state is the modified region, not a full body copy.
+// CAX_SHAPE_CACHE_CAP overrides for A/B or memory-constrained runs.
+inline size_t ShapeCacheCapacity()
+{
+	static const size_t cap = [] {
+		if (const char* e = std::getenv("CAX_SHAPE_CACHE_CAP")) {
+			long v = std::strtol(e, nullptr, 10);
+			if (v > 0) {
+				return (size_t)v;
+			}
+		}
+		return (size_t)1024;
+	}();
+	return cap;
+}
+
 class Evaluator
 {
 public:
@@ -335,7 +359,7 @@ public:
 
 private:
 	const OpRegistry& m_reg;
-	mutable LruCache<Val> m_shape_cache{64};
+	mutable LruCache<Val> m_shape_cache{ShapeCacheCapacity()};
 	CommitFn  m_commit_fn;
 	RestoreFn m_restore_fn;
 	size_t m_hits = 0, m_misses = 0;
