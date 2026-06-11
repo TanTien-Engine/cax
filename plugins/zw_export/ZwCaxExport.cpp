@@ -255,6 +255,11 @@ struct EntSig
     // the owner isn't a history feature in the exported list.
     bool        has_feat   = false;
     int         feat       = 0;
+    // Blanked (hidden) in ZW3D. Construction skins in surface-modeling
+    // parts are routinely blanked once consumed; the STEP translator
+    // excludes them by default (VX_EXCLUDE_BLANKED), so downstream truth
+    // comparisons need to know which result shapes are invisible.
+    bool        blanked    = false;
 };
 
 // One field of a feature's data container, read generically. fld_id is
@@ -711,6 +716,7 @@ EntSig EntitySig(int idEnt)
     if (cvxEntExists(idEnt, VX_ENT_FACE)) { s.kind = "face"; }
     else if (cvxEntExists(idEnt, VX_ENT_EDGE)) { s.kind = "edge"; }
     else { s.kind = "ent"; }
+    s.blanked = (cvxEntIsBlanked(idEnt) == 1);
 
     int owner_fid = 0;
     if (cvxPartInqEntFtr(idEnt, &owner_fid) == ZW_API_NO_ERROR) {
@@ -1466,7 +1472,71 @@ struct StepExportResult
     bool ok = false;
     int  init_rc   = -999;
     int  export_rc = -999;
+    long bytes     = -1;     // written file size (post-export stat)
+    bool empty     = false;  // rc==0 but no face/solid payload in the file
 };
+
+// UTF-8 first, ANSI fallback -- same dual decode OpenWriteBinary uses for
+// the JSON; needed because the path handed in here may already be ACP.
+std::wstring WidenAnyPath(const std::string& path)
+{
+    UINT cp  = CP_UTF8;
+    int  len = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS,
+                                   path.c_str(), -1, nullptr, 0);
+    if (len <= 0)
+    {
+        cp  = CP_ACP;
+        len = MultiByteToWideChar(cp, 0, path.c_str(), -1, nullptr, 0);
+    }
+    if (len <= 0) {
+        return std::wstring();
+    }
+    std::wstring w(static_cast<size_t>(len), L'\0');
+    MultiByteToWideChar(cp, (cp == CP_UTF8) ? MB_ERR_INVALID_CHARS : 0,
+                        path.c_str(), -1, &w[0], len);
+    while (!w.empty() && w.back() == L'\0') {
+        w.pop_back();
+    }
+    return w;
+}
+
+// cvxFileExport reports rc=0 even when the translator dropped every
+// entity: pre-ExcludeGeom-fix, blanked bodies produced 1.6KB header-only
+// skeletons that read back as null shapes -- and the json pointed the
+// reader at them as authored truth. Trust the file, not the rc: stat it
+// and require an actual face/solid entity in the DATA section before the
+// caller may record it as geometry.
+void VerifyStepPayload(const std::string& api_path, StepExportResult& r)
+{
+    const std::wstring w = WidenAnyPath(api_path);
+    if (w.empty()) {
+        return;
+    }
+    FILE* f = _wfopen(w.c_str(), L"rb");
+    if (!f) {
+        return;
+    }
+    std::fseek(f, 0, SEEK_END);
+    const long sz = std::ftell(f);
+    r.bytes = sz;
+    // Big files always carry payload; only sniff the small ones.
+    if (sz >= 0 && sz < 262144)
+    {
+        std::string buf(static_cast<size_t>(sz), '\0');
+        std::fseek(f, 0, SEEK_SET);
+        const size_t got = std::fread(&buf[0], 1, buf.size(), f);
+        buf.resize(got);
+        const bool has_payload =
+            buf.find("ADVANCED_FACE") != std::string::npos ||
+            buf.find("MANIFOLD_SOLID_BREP") != std::string::npos;
+        if (!has_payload)
+        {
+            r.empty = true;
+            r.ok    = false;
+        }
+    }
+    std::fclose(f);
+}
 
 // cvxFileExport, like cvxFileOpen (ToAcp in ZwCaxPlugin.cpp), decodes its
 // path argument in the system ANSI code page: handing it UTF-8 makes a
@@ -1515,6 +1585,9 @@ StepExportResult ExportPartStep(const std::string& path)
     const std::string api_path = StepPathForApi(path);
     r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, api_path.c_str(), &data));
     r.ok = (r.export_rc == ZW_API_NO_ERROR);
+    if (r.ok) {
+        VerifyStepPayload(api_path, r);
+    }
     return r;
 }
 
@@ -1547,9 +1620,18 @@ StepExportResult ExportFeatureShapesStep(int idFtr, const std::string& path)
         data.ExportType = 1;        // specified entities
         data.EntCnt     = cnt;
         data.EntList    = ents;     // the feature's result shape ids
+        // Init defaults to VX_EXCLUDE_BLANKED -- which silently drops the
+        // very bodies this export exists to capture (surface-modeling
+        // parts blank consumed construction skins; 02-ear wrote 16
+        // header-only featN.steps this way). We listed the ids explicitly:
+        // export them all, visible or not.
+        data.ExcludeGeom = 0;
         const std::string api_path = StepPathForApi(path);
         r.export_rc = static_cast<int>(cvxFileExport(VX_EXPORT_TYPE_STEP, api_path.c_str(), &data));
         r.ok = (r.export_rc == ZW_API_NO_ERROR);
+        if (r.ok) {
+            VerifyStepPayload(api_path, r);
+        }
     }
 
     cvxMemFree(reinterpret_cast<void**>(&ents));
@@ -1567,6 +1649,7 @@ struct StateSnap
 {
     bool   ok       = false;
     int    n_shape  = 0, n_face = 0, n_edge = 0;
+    int    n_blanked = 0;   // of n_shape, how many are blanked (hidden)
     bool   has_box  = false;
     double bmin[3]  = {0, 0, 0}, bmax[3] = {0, 0, 0};
     bool   has_mass = false;
@@ -1587,6 +1670,9 @@ StateSnap CaptureStateSnap(bool with_mass)
     s.n_shape = cnt;
     for (int i = 0; i < cnt && ids != nullptr; ++i)
     {
+        if (cvxEntIsBlanked(ids[i]) == 1) {
+            ++s.n_blanked;
+        }
         int  n   = 0;
         int* sub = nullptr;
         if (cvxPartInqShapeFaces(ids[i], &n, &sub) == ZW_API_NO_ERROR && sub != nullptr)
@@ -2311,6 +2397,9 @@ json EntSigToJson(const EntSig& e)
     if (e.has_feat) {
         j["feat"] = e.feat;   // JSON ordinal id of the OWNING feature
     }
+    if (e.blanked) {
+        j["blanked"] = true;  // hidden construction geometry in ZW3D
+    }
     return j;
 }
 
@@ -2514,6 +2603,9 @@ json StateSnapToJson(const zwapi::StateSnap& s)
     j["n_shape"] = s.n_shape;
     j["n_face"]  = s.n_face;
     j["n_edge"]  = s.n_edge;
+    if (s.n_blanked > 0) {
+        j["n_blanked"] = s.n_blanked;   // hidden construction bodies, absent
+    }                                   // from any STEP the translator writes
     if (s.has_box)
     {
         j["bbox"] = json::array({ s.bmin[0], s.bmin[1], s.bmin[2],
@@ -3014,6 +3106,13 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                 }
                 diag["feat_step_init_rc"]   = fse.init_rc;
                 diag["feat_step_export_rc"] = fse.export_rc;
+                diag["feat_step_bytes"]     = fse.bytes;
+                if (fse.empty) {
+                    // rc said OK but the translator wrote a hollow file
+                    // (no face/solid payload); "geometry" stays unset so
+                    // the reader does a clean opaque-skip, not BakedShape.
+                    diag["feat_step_empty"] = true;
+                }
             }
 
             jf["_diag"] = std::move(diag);
@@ -3085,6 +3184,10 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
         json gdiag;
         gdiag["init_rc"]   = se.init_rc;
         gdiag["export_rc"] = se.export_rc;
+        gdiag["bytes"]     = se.bytes;
+        if (se.empty) {
+            gdiag["empty"] = true;
+        }
         gdiag["path"]      = zwapi::ToUtf8(step_path.c_str());
         doc["geometry_diag"] = std::move(gdiag);
     }
