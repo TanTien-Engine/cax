@@ -496,6 +496,14 @@ bool ReplayShape(const cadapp::DocumentIR& doc_in,
             err = res.err_msg.empty() ? "null shape" : res.err_msg;
             return false;
         }
+        // The Replayer accumulates soft diagnostics in err_msg even on
+        // success -- dropped dressups, dead-feature substitutions, rigid
+        // pattern warnings. Those are exactly the "this feature silently
+        // no-opped" trail (R2900_100's Fillet4), so surface them.
+        if (!res.err_msg.empty())
+        {
+            std::printf("INFO replay_msg %s\n", res.err_msg.c_str());
+        }
         out = res.shape->GetShape();
         return true;
     }
