@@ -1151,6 +1151,101 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         leaf_edges.size(), retry_round);
 
     if (ok_count == 0) {
+        // ---- Scaled-space rescue ----
+        //
+        // Every attempt so far ran at the document's native scale.
+        // ChFi3d works against ABSOLUTE Precision::Confusion (1e-7),
+        // so at metre scale a 0.2 mm fillet chasing 0.5 mm corner
+        // edges sits a bare 3 decades above the precision floor and
+        // the corner solves collapse -- while the IDENTICAL body at
+        // mm scale fillets cleanly in one batch call (R2900_100
+        // Fillet4: 16 edges, r=2e-4 m, every path above fails;
+        // unit_scale=1 import, same op, batch Rational succeeds in
+        // 150 ms). Re-run the batch fillet in a scaled-up copy of
+        // the body and scale the result back. TopoNaming bookkeeping
+        // is skipped, exactly like the refined-input and per-edge
+        // paths above.
+        const double target_extent = 300.0;   // land in mm-like numbers
+        double k = 1.0;
+        if (input_extent > 0.0) {
+            k = std::pow(10.0, std::round(std::log10(target_extent /
+                                                     input_extent)));
+        }
+        if (k >= 10.0)
+        {
+            try
+            {
+                gp_Trsf t_up;
+                t_up.SetScale(gp_Pnt(0.0, 0.0, 0.0), k);
+                BRepBuilderAPI_Transform up(shape->GetShape(), t_up,
+                                            /*Copy=*/Standard_True);
+
+                std::vector<TopoDS_Edge> scaled_edges;
+                scaled_edges.reserve(leaf_edges.size());
+                for (const auto& e : leaf_edges) {
+                    const TopoDS_Shape& se = up.ModifiedShape(e);
+                    if (!se.IsNull() &&
+                        se.ShapeType() == TopAbs_EDGE) {
+                        scaled_edges.push_back(TopoDS::Edge(se));
+                    }
+                }
+
+                auto try_scaled = [&](ChFi3d_FilletShape mode,
+                                      TopoDS_Shape& out_shape) -> bool {
+                    BRepFilletAPI_MakeFillet f(up.Shape());
+                    f.SetFilletShape(mode);
+                    for (const auto& e : scaled_edges) {
+                        f.Add(radius * k, e);
+                    }
+                    int r = -1;
+                    try { r = seh_safe_build(&f); }
+                    catch (...) { r = -1; }
+                    if (r != 1) return false;
+                    TopoDS_Shape fs = UnwrapSingleSolid(f.Shape());
+                    // Same self-intersecting-blend guard as the batch
+                    // path, in scaled units.
+                    Bnd_Box b;
+                    BRepBndLib::Add(fs, b);
+                    if (b.IsVoid()) return false;
+                    double xmin, ymin, zmin, xmax, ymax, zmax;
+                    b.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+                    double ext = std::max({ xmax - xmin, ymax - ymin,
+                                            zmax - zmin });
+                    if (ext > (input_extent * k + 2.0 * radius * k) * 10.0) {
+                        return false;
+                    }
+                    out_shape = fs;
+                    return true;
+                };
+
+                TopoDS_Shape scaled_result;
+                if (!scaled_edges.empty() &&
+                    (try_scaled(ChFi3d_Rational, scaled_result) ||
+                     try_scaled(ChFi3d_QuasiAngular, scaled_result)))
+                {
+                    gp_Trsf t_down;
+                    t_down.SetScale(gp_Pnt(0.0, 0.0, 0.0), 1.0 / k);
+                    BRepBuilderAPI_Transform down(scaled_result, t_down,
+                                                  /*Copy=*/Standard_True);
+                    TopoDS_Shape back = UnwrapSingleSolid(down.Shape());
+                    if (!back.IsNull())
+                    {
+                        TA_LOG(
+                            "[FILLET] op_id=%u scaled-space rescue OK "
+                            "(k=%g, %zu/%zu edges)\n",
+                            op_id, k, scaled_edges.size(),
+                            leaf_edges.size());
+                        auto dst = std::make_shared<brepkit::TopoShape>(back);
+                        commit_to_vt(tn, vt, shape, dst, {}, "fillet");
+                        return dst;
+                    }
+                }
+            }
+            catch (...) {
+                // fall through to the WARNING below
+            }
+        }
+
         // Unconditional (not TA_LOG): a fillet that was asked for N edges
         // and changed NOTHING is a conversion defect, not a debug detail.
         // R2900_100's Fillet4 no-opped through every path -- batch,
@@ -1158,8 +1253,8 @@ std::shared_ptr<TopoShape> TopoAlgo::Fillet(const std::shared_ptr<TopoShape>& sh
         // byte-identical body two metrics later.
         std::fprintf(stderr,
             "[FILLET] op_id=%u WARNING: all paths failed, body UNCHANGED "
-            "(%zu edges requested, radius=%g)\n",
-            op_id, leaf_edges.size(), radius);
+            "(%zu edges requested, radius=%g, scaled retry k=%g)\n",
+            op_id, leaf_edges.size(), radius, k);
         return shape;
     }
 
