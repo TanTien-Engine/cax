@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 
@@ -1896,7 +1897,43 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
             const double oy = std::min(y1b, y2b) - std::max(y1a, y2a);
             const double oz = std::min(z1b, z2b) - std::max(z1a, z2a);
             const double slab = std::min({ ox, oy, oz });
-            if (slab <= 8.0 * base_fuzzy)
+
+            // Gate decision + operand stats, unconditional for big
+            // pairs: when one of these grinds for minutes the log
+            // otherwise says nothing about WHY the fast path didn't
+            // take it.
+            std::fprintf(stderr,
+                "[fuse] op_id=%u big_pair faces=%d+%d solids=%d+%d "
+                "overlap=(%.4g,%.4g,%.4g) slab=%.4g gate=%.4g\n",
+                op_id, faces_s1, faces_s2,
+                CountSolids(s1->GetShape()), CountSolids(s2->GetShape()),
+                ox, oy, oz, slab, 8.0 * base_fuzzy);
+            std::fflush(stderr);
+
+            // CAX_BOP_DUMP=1: write the operands of every big-pair
+            // fuse to CWD so a pathological pair can be re-run in
+            // isolation (zw_verify --fuse-probe a.brep b.brep)
+            // instead of re-replaying an 8-minute document prefix
+            // per experiment.
+            static const bool bop_dump = [] {
+                const char* e = std::getenv("CAX_BOP_DUMP");
+                return e && e[0] && e[0] != '0';
+            }();
+            if (bop_dump) {
+                char fn[64];
+                std::snprintf(fn, sizeof fn, "bop_%u_a.brep", op_id);
+                BRepTools::Write(s1->GetShape(), fn);
+                std::snprintf(fn, sizeof fn, "bop_%u_b.brep", op_id);
+                BRepTools::Write(s2->GetShape(), fn);
+            }
+
+            // CAX_FUSE_GLUE=force: bypass the slab gate (offline
+            // --fuse-probe experiments on dumped operand pairs).
+            static const bool force_glue = [] {
+                const char* e = std::getenv("CAX_FUSE_GLUE");
+                return e && std::strcmp(e, "force") == 0;
+            }();
+            if (slab <= 8.0 * base_fuzzy || force_glue)
             {
                 auto glued = run_fuse(base_fuzzy, /*glue=*/true);
                 if (glued->IsDone() && !glued->Shape().IsNull())

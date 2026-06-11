@@ -62,10 +62,13 @@
 #include "cadcvt_c/reader/ZwReader.h"
 #include "cadapp_c/emitter/Replayer.h"
 #include "cadapp_c/resolve/TopoGeomUtils.h"
+#include "brepkit_c/TopoAlgo.h"
 #include "brepkit_c/TopoShape.h"
+#include "brepgraph_c/computation/CalcGraph.h"
 
 #include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
+#include <BRepTools.hxx>
 #include <BRepGProp.hxx>
 #include <Bnd_Box.hxx>
 #include <GProp_GProps.hxx>
@@ -87,6 +90,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -716,6 +720,72 @@ int main(int argc, char** argv)
     long        max_feat  = -1;     // --max-feat K: prefix replay
     long        detail_cap = 12;    // unmatched-face DETAIL lines per side
     bool        bisect    = false;
+
+    // --fuse-probe a.brep b.brep: re-run ONE boolean pair in isolation.
+    // CAX_BOP_DUMP=1 makes TopoAlgo::Fuse write every big-pair fuse's
+    // operands to bop_<id>_{a,b}.brep; this mode loads such a pair and
+    // calls the SAME TopoAlgo::Fuse, so a pathological boolean can be
+    // iterated on in seconds instead of re-replaying an 8-minute
+    // document prefix per experiment. Honors the same env knobs
+    // (BREPKIT_BOP_PARALLEL, CAX_GEO_LOG, BREPKIT_BOP_PROF).
+    if (argc == 4 && std::strcmp(argv[1], "--fuse-probe") == 0)
+    {
+        TopoDS_Shape a, b;
+        BRep_Builder bb;
+        if (!BRepTools::Read(a, argv[2], bb) || a.IsNull()) {
+            std::fprintf(stderr, "cannot read %s\n", argv[2]);
+            return 2;
+        }
+        if (!BRepTools::Read(b, argv[3], bb) || b.IsNull()) {
+            std::fprintf(stderr, "cannot read %s\n", argv[3]);
+            return 2;
+        }
+        auto ta = std::make_shared<brepkit::TopoShape>(a);
+        auto tb = std::make_shared<brepkit::TopoShape>(b);
+        const auto t0 = std::chrono::steady_clock::now();
+        auto r = brepkit::TopoAlgo::Fuse(ta, tb, /*op_id=*/9999,
+                                         nullptr, nullptr);
+        const double ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - t0).count();
+        const Counts c = CountSubs(r ? r->GetShape() : TopoDS_Shape());
+        const VolArea va = VolumeAndArea(r ? r->GetShape() : TopoDS_Shape());
+        std::printf("FUSEPROBE ms=%.1f solids=%d faces=%d vol=%.9g\n",
+                    ms, c.solids, c.faces, va.volume);
+        return 0;
+    }
+
+    // --dump-steps: build the calc graph (analyze_only -- no geometry
+    // eval) and list every step's op + design-intent desc. Correlates
+    // a grinding [eval-begin] op with the FEATURE whose lowering
+    // emitted it ("Mirror6:delta", "Pattern16:fuse", ...) without
+    // paying for a single boolean.
+    if (argc >= 3 && std::strcmp(argv[1], "--dump-steps") == 0)
+    {
+        cadcvt::ZwReader rd;
+        if (std::getenv("CAX_ZW_SCALE1")) rd.SetUnitScale(1.0);
+        cadapp::DocumentIR d;
+        std::string e;
+        if (!rd.ReadFile(argv[2], d, &e)) {
+            std::fprintf(stderr, "reader failed: %s\n", e.c_str());
+            return 2;
+        }
+        cadapp::Replayer      rp;
+        cadapp::ReplayOptions o;
+        o.analyze_only = true;
+        cadapp::ReplayResult  rr;
+        if (!rp.Replay(d, o, rr) || !rr.calc_graph) {
+            std::fprintf(stderr, "analyze replay failed: %s\n",
+                         rr.err_msg.c_str());
+            return 2;
+        }
+        const auto& cg = *rr.calc_graph;
+        for (size_t sid = 0; sid < cg.GetHistorySize(); ++sid) {
+            std::printf("STEP %zu op=%s desc=%s\n", sid,
+                        cg.GetStepOpName((int)sid).c_str(),
+                        cg.GetStepDesc((int)sid).c_str());
+        }
+        return 0;
+    }
 
     for (int i = 1; i < argc; ++i)
     {
