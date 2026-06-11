@@ -1196,6 +1196,26 @@ int main(int argc, char** argv)
         check(dv <= rel_tol, "volume", buf);
         std::printf("INFO count_sheets replay=%d truth=%d\n",
                     FreeSheetCount(replayed), FreeSheetCount(truth));
+        // Per-solid roster, both sides: an extra / misplaced body shows
+        // up here by volume + bbox instead of needing face clustering.
+        auto roster = [](const char* side, const TopoDS_Shape& s)
+        {
+            int i = 0;
+            for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next(), ++i)
+            {
+                GProp_GProps g;
+                BRepGProp::VolumeProperties(ex.Current(), g);
+                Bnd_Box bb;
+                BRepBndLib::Add(ex.Current(), bb);
+                double x0=0, y0=0, z0=0, x1=0, y1=0, z1=0;
+                if (!bb.IsVoid()) bb.Get(x0, y0, z0, x1, y1, z1);
+                std::printf("INFO solid_%s i=%d vol=%.6g "
+                            "bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                            side, i, g.Mass(), x0, y0, z0, x1, y1, z1);
+            }
+        };
+        roster("replay", replayed);
+        roster("truth",  truth);
     }
     {
         const double da = std::fabs(vr.area - vt.area) /
