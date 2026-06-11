@@ -978,6 +978,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     std::map<std::string, size_t>     body_candidate_idx;
     std::set<uint32_t>                consumed_feat_ids;
 
+    // Boolean=none pattern features whose free copies are still waiting
+    // for a later boolean to absorb them (ZW3D merges every body the new
+    // geometry touches; see the absorb block after the visit).
+    std::vector<uint32_t>             pending_standalone;
+
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
         auto& feat = doc.features[i];
@@ -1848,7 +1853,129 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         feat.name.c_str(), feat.id, pi.originals.size(),
                         (int)onto_running, base_node, (int)p.count1, (int)p.count2);
 
-                if (pi.originals.empty()) {
+                // ZW3D Boolean=none: the copies are STANDALONE bodies. The
+                // running body is untouched (the reader emitted no Base
+                // link, so base_node is -1 and the chain tip stays on the
+                // pre-pattern feature); the copies become this feature's
+                // own output candidate and live free until a later boolean
+                // absorbs them (see the pending_standalone block after the
+                // visit). Build the NON-seed instance set: shift the seed
+                // tool by one step, then pattern it count1-1 times -- the
+                // union holds exactly the count1-1 new copies, while the
+                // live seed stays where it is, inside the running body
+                // (R2900_100 Pattern9: truth n_shape 1 -> 4 -> 1).
+                if (!p.fuse)
+                {
+                    auto contribs = AssembleContributions(
+                        feat, feature_tools, feature_dressups);
+                    bool has_tool = false;
+                    for (const auto& c : contribs) {
+                        if (!c.is_tool) continue;
+                        has_tool = true;
+                        if (!c.equivariant) {
+                            if (!out.err_msg.empty()) out.err_msg += "; ";
+                            out.err_msg += "standalone pattern " + feat.name +
+                                " replicates a non-Blind (up-to) extrude by "
+                                "rigid transform; geometry may be wrong";
+                        }
+                    }
+                    if (!has_tool) {
+                        step_ok = false;
+                        if (!out.err_msg.empty()) out.err_msg += "; ";
+                        out.err_msg += "standalone pattern " + feat.name +
+                                       " resolved no seed tool";
+                        return;
+                    }
+
+                    brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
+                    // A 2D grid can't drop just the (0,0) cell from one
+                    // n-ary pattern op; approximate with the full grid (one
+                    // copy coincides with the live seed) and say so.
+                    const bool grid = (p.count2 > 1);
+                    if (grid) {
+                        if (!out.err_msg.empty()) out.err_msg += "; ";
+                        out.err_msg += "standalone GRID pattern " + feat.name +
+                            " approximated with a seed-coincident copy";
+                    }
+
+                    int U = -1;
+                    for (const auto& c : contribs) {
+                        if (!c.is_tool) continue;
+                        int pat = -1;
+                        if (grid || p.count1 < 2) {
+                            pat = cg->AddOp("linear_pattern",
+                                            {c.tool_node, d1, c1, s1, d2, c2, s2},
+                                            {}, feat.name + ":free");
+                        } else {
+                            brepgraph::Vec3 step = {p.spacing1 * u1[0],
+                                                    p.spacing1 * u1[1],
+                                                    p.spacing1 * u1[2]};
+                            int off = cg->AddConst(step, "step1");
+                            int sh  = cg->AddOp("translate",
+                                                {c.tool_node, off}, {},
+                                                feat.name + ":shift");
+                            int c1m = cg->AddConst((int)p.count1 - 1, "count1m1");
+                            pat = cg->AddOp("linear_pattern",
+                                            {sh, d1, c1m, s1, d2, c2, s2},
+                                            {}, feat.name + ":free");
+                        }
+                        U = (U < 0) ? pat
+                                    : cg->AddOp("fuse", {U, pat}, {},
+                                                feat.name + ":free_union");
+                    }
+
+                    // Per-instance dressups (chamfer / fillet on the seed)
+                    // replicate onto each free copy with the anchors moved
+                    // by the copy's offset -- same machinery as the fused
+                    // path's Phase 2, run on the free union instead of the
+                    // running body.
+                    std::vector<Contribution> dressups;
+                    for (const auto& c : contribs)
+                        if (!c.is_tool) dressups.push_back(c);
+                    if (!dressups.empty()) {
+                        brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
+                        double l2sq = p.dir2[0] * p.dir2[0]
+                                    + p.dir2[1] * p.dir2[1]
+                                    + p.dir2[2] * p.dir2[2];
+                        int eff2 = (l2sq > 1e-30 && p.count2 > 1)
+                                        ? (int)p.count2 : 1;
+                        std::vector<InstanceXform> Xs;
+                        for (int i = 0; i < (int)p.count1; ++i) {
+                            for (int j = 0; j < eff2; ++j) {
+                                if (!grid && i == 0 && j == 0) continue;
+                                InstanceXform X;
+                                for (int k = 0; k < 3; ++k)
+                                    X.offset[k] = i * p.spacing1 * u1[k]
+                                                + j * p.spacing2 * u2[k];
+                                Xs.push_back(X);
+                            }
+                        }
+                        if (pattern_cluster_on()) {
+                            U = ApplyPatternDressupsBatched(
+                                *cg, U, dressups, Xs,
+                                opt.topo_tolerance, feat.name + ":dress");
+                        } else {
+                            for (const InstanceXform& X : Xs) {
+                                U = ApplyPatternInstance(
+                                    *cg, U, dressups, X,
+                                    opt.topo_tolerance, feat.name + ":dress");
+                            }
+                        }
+                    }
+
+                    node = U;
+                    // A later pattern that nests THIS one (seed_to_pattern)
+                    // multiplies the free copies, mirroring the circular
+                    // arm's ring registration.
+                    FeatureToolInfo ti;
+                    ti.tool_node   = U;
+                    ti.base_node   = -1;
+                    ti.op_kind     = 'f';
+                    ti.equivariant = true;
+                    feature_tools[feat.id] = ti;
+                    pending_standalone.push_back(feat.id);
+                }
+                else if (pi.originals.empty()) {
                     // No Original tool -> pattern the whole body.
                     if (base_node < 0) {
                         step_ok = false;
@@ -2631,6 +2758,34 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
 
+            // ZW3D Boolean=add absorbs every free body the new geometry
+            // touches. Approximation: the next solid feature that booleans
+            // onto the running body fuses ALL pending standalone pattern
+            // bodies (R2900_100: Pattern10 merges Pattern9's three copies;
+            // truth n_shape goes 4 -> 1 at exactly that step). A dressup
+            // never absorbs -- ZW3D would not merge on a fillet/chamfer --
+            // and the standalone pattern itself is excluded by its
+            // base_node == -1. If nothing ever absorbs them, the copies
+            // stay separate output candidates, which is also what ZW3D
+            // shows for a part that never merges its bodies.
+            if (!pending_standalone.empty() && base_node >= 0 && node >= 0 &&
+                node != base_node &&
+                feat.type != FeatType::Fillet &&
+                feat.type != FeatType::Chamfer &&
+                feat.type != FeatType::Sketch)
+            {
+                for (uint32_t sid : pending_standalone) {
+                    auto fit = feature_nodes.find(sid);
+                    if (fit == feature_nodes.end() || fit->second < 0) {
+                        continue;
+                    }
+                    node = cg->AddOp("fuse", {node, fit->second}, {},
+                                     feat.name + ":absorb");
+                    consumed_feat_ids.insert(sid);
+                }
+                pending_standalone.clear();
+            }
+
             feature_nodes[feat.id] = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
@@ -2735,6 +2890,16 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             //     upstream's geometry but produces independent
             //     output (sketch supports, datum parents). Not
             //     consumed by definition.
+            //
+            //   Tool on a standalone (Boolean=none) pattern -- the
+            //     pattern only COPIES its seed; the seed remains part
+            //     of the running body, which must stay an emitted
+            //     candidate. Consuming it here erased the whole body
+            //     from R2900_100's prefix-48 state (Pattern9's Tool
+            //     list names Fillet5, the body tip at that point).
+            const auto* lp_free =
+                std::get_if<FeatPayloadLinearPattern>(&feat.data);
+            const bool free_pattern = (lp_free != nullptr) && !lp_free->fuse;
             for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
             {
                 InputRole role = (i < feat.input_roles.size())
@@ -2742,6 +2907,9 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                     : InputRole::Base;
                 if (role == InputRole::Reference ||
                     role == InputRole::PatternTarget) {
+                    continue;
+                }
+                if (free_pattern && role == InputRole::Tool) {
                     continue;
                 }
                 uint32_t iid = feat.input_feature_ids[i];

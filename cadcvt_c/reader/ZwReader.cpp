@@ -1642,6 +1642,12 @@ bool ZwReader::ReadFile(const std::string& path,
                             pf.id   = id;
                             pf.name = name;
 
+                            // Boolean=none patterns (copies stay standalone
+                            // bodies): no Base link, the running body is not
+                            // touched and the chain tip does not advance. Set
+                            // by the linear branch from result_ents.n_shape.
+                            bool standalone = false;
+
                             if (linear_method)
                             {
                                 cadapp::FeatPayloadLinearPattern lp;
@@ -1671,6 +1677,24 @@ bool ZwReader::ReadFile(const std::string& path,
                                 int count2  = static_cast<int>(FieldValueById(jf, 6, 1.0));
                                 lp.count2   = (count2 >= 1) ? count2 : 1;
                                 lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
+
+                                // Boolean = none: the pattern's copies came out
+                                // as NEW standalone shapes (result_ents.n_shape
+                                // counts bodies the feature created -- a fusing
+                                // pattern only grows faces on the running body,
+                                // n_shape stays 0). R2900_100 Pattern9: 4x1
+                                // copies -> n_shape=3, ZW3D truth holds 4 free
+                                // bodies until the next boolean absorbs them.
+                                {
+                                    int re_nshape = 0;
+                                    auto reit = jf.find("result_ents");
+                                    if (reit != jf.end() && reit->is_object()) {
+                                        re_nshape = JGet<int>(*reit, "n_shape", 0);
+                                    }
+                                    lp.fuse = (re_nshape <= 0);
+                                }
+                                standalone = !lp.fuse;
+
                                 pf.type = cadapp::FeatType::LinearPattern;
                                 pf.data = std::move(lp);
 
@@ -1755,8 +1779,10 @@ bool ZwReader::ReadFile(const std::string& path,
                                 consumed_seeds = { target };
                             }
 
-                            PushInput(pf, running_solid_id, cadapp::InputRole::Base);
-                            pf.ext_params["pattern_onto_running"] = 1.0;
+                            if (!standalone) {
+                                PushInput(pf, running_solid_id, cadapp::InputRole::Base);
+                                pf.ext_params["pattern_onto_running"] = 1.0;
+                            }
 
                             // Record which pattern consumed each raw seed so a
                             // LATER pattern copying the same seed nests THIS
@@ -1766,7 +1792,12 @@ bool ZwReader::ReadFile(const std::string& path,
                             }
 
                             out.features.push_back(std::move(pf));
-                            running_solid_id = id;
+                            // A standalone pattern's copies live beside the
+                            // body; the next feature still chains onto the
+                            // pre-pattern tip.
+                            if (!standalone) {
+                                running_solid_id = id;
+                            }
                             continue;
                         }
                     }

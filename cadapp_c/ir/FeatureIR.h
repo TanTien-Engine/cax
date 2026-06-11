@@ -186,6 +186,19 @@ struct FeatPayloadLinearPattern
     double  dir2[3]    = { 0.0, 1.0, 0.0 };
     int32_t count2     = 1;       // 1 = single direction
     double  spacing2   = 0.0;
+
+    // ZW3D patterns carry a Boolean setting; "none" leaves every copy a
+    // STANDALONE body instead of fusing it onto the running body (the
+    // copies stay free until a later boolean absorbs them -- R2900_100's
+    // Pattern9 holds 3 free bodies for exactly one feature, truth
+    // n_shape 1 -> 4 -> 1). false = standalone copies; true = the
+    // classic fuse-onto-base. NOT serialized by FeatureStore yet: the
+    // FEAT_VERSION 3 payload encoding is fixed-format and the header
+    // check rejects any other version, so adding a byte would orphan
+    // every existing save (TODO fold into FEAT_VERSION 4). The flag is
+    // re-derived from the snapshot on every cax.json import, which is
+    // where it matters.
+    bool    fuse       = true;
 };
 
 struct FeatPayloadCircularPattern
