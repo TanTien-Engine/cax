@@ -30,6 +30,7 @@
 #include <TopoDS_Iterator.hxx>
 #include <BRep_Builder.hxx>
 #include <TopExp_Explorer.hxx>
+#include <BOPAlgo_BuilderSolid.hxx>
 #include <BOPAlgo_GlueEnum.hxx>
 #include <BOPAlgo_MakerVolume.hxx>
 #include <BOPAlgo_Splitter.hxx>
@@ -68,6 +69,7 @@
 #include <GProp_GProps.hxx>
 #include <BRep_Tool.hxx>
 #include <Precision.hxx>
+#include <Message_ProgressIndicator.hxx>
 
 #ifdef _MSC_VER
 #  include <excpt.h>
@@ -2099,10 +2101,10 @@ TrimSideResult TrimOneSide(const TopoDS_Shape& arg, const TopoDS_Shape& cutter,
             }
         }
     }
-    for (const TopoDS_Shape& r : riders) {
-        builder.Add(kept, r);
+    for (const TopoDS_Shape& rd : riders) {
+        builder.Add(kept, rd);
     }
-    TopoDS_Shape out_shape = kept;
+    r.shape = kept;
     {
         TopoDS_Iterator solo(kept);
         if (solo.More())
@@ -2497,7 +2499,35 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
         CountSolids(algo->Shape()) > 1 &&
         BboxesOverlap(s1->GetShape(), s2->GetShape());
 
-    if (is_retry_candidate && bop_retry_mode() != 0)
+    // Big-pair zero-yield guard. Each retry re-pays the FULL boolean,
+    // and on a 1000+ face body that is ~1s per attempt -- yet across
+    // every profiled run of the big-import corpus AND the golden suite
+    // the escalation has never once been accepted on a big pair
+    // (112/112 retry bursts ended accepted=0; r2900_100 alone wasted
+    // ~3s/run on ops 77/78/418/419). The gap the retry exists for
+    // (Page_033's sub-fuzzy seam) is a small-model artifact that
+    // ScaledBopFuzzy now bridges at base fuzzy. Cap the rescue to
+    // pairs small enough that a wasted burst is noise; the skip is
+    // logged below so a future counter-example is visible in forensics.
+    // BREPKIT_BOP_RETRY_MAXFACES tunes the cap (0 = uncapped).
+    static const int retry_max_faces = [] {
+        const char* e = std::getenv("BREPKIT_BOP_RETRY_MAXFACES");
+        if (e && e[0]) return std::atoi(e);
+        return 600;
+    }();
+    const bool retry_big_pair = is_retry_candidate && retry_max_faces > 0 &&
+        (BopProfFaceCount(s1->GetShape()) +
+         BopProfFaceCount(s2->GetShape()) > retry_max_faces);
+    if (retry_big_pair)
+    {
+        std::fprintf(stderr,
+            "[bop_retry] op_id=%u solids=%d candidate SKIPPED (big pair, "
+            "faces>%d)\n",
+            op_id, CountSolids(algo->Shape()), retry_max_faces);
+        std::fflush(stderr);
+    }
+
+    if (is_retry_candidate && !retry_big_pair && bop_retry_mode() != 0)
     {
         const bool fast = (bop_retry_mode() == 2);
         auto solid_volume = [](const TopoDS_Shape& s) -> double {
@@ -2554,7 +2584,7 @@ std::shared_ptr<TopoShape> TopoAlgo::Fuse(const std::shared_ptr<TopoShape>& s1, 
             op_id, start_solids, best_solids, retries_ran, retries_accepted, _ms);
         std::fflush(stderr);
     }
-    else if (is_retry_candidate)
+    else if (is_retry_candidate && !retry_big_pair)
     {
         // Retry disabled by env -- record that this fuse WOULD have retried,
         // so the A/B (BREPKIT_BOP_RETRY=0) still shows how many candidates exist.
@@ -3224,6 +3254,127 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                 sp.Build();
                 if (sp.IsDone())
                 {
+                // ROUTE 2 (preferred): non-manifold sew unifies the
+                // imprinted edges across box pieces and sheet, then
+                // BOPAlgo_BuilderSolid extracts every enclosed region by
+                // orientation analysis -- no seal heuristics, no surface
+                // intersections (the imprint already happened). Manifold
+                // sewing loses this assembly to the pairing lottery: a
+                // hole-cap edge carries THREE faces and the sewer welds
+                // the two box-born ones, orphaning the sheet's rim.
+                bool route2_done = false;
+                {
+                    BRepBuilderAPI_Sewing nms(std::max(tol, 1e-6));
+                    nms.SetNonManifoldMode(Standard_True);
+                    for (TopExp_Explorer fx(sp.Shape(), TopAbs_FACE);
+                         fx.More(); fx.Next()) {
+                        nms.Add(fx.Current());
+                    }
+                    for (TopExp_Explorer fx(S, TopAbs_FACE); fx.More();
+                         fx.Next()) {
+                        nms.Add(fx.Current());
+                    }
+                    nms.Perform();
+                    const TopoDS_Shape nmshape = nms.SewedShape();
+                    if (!nmshape.IsNull())
+                    {
+                        TopTools_ListOfShape lf;
+                        int nf = 0;
+                        for (TopExp_Explorer fx(nmshape, TopAbs_FACE);
+                             fx.More(); fx.Next())
+                        {
+                            lf.Append(fx.Current()
+                                          .Oriented(TopAbs_FORWARD));
+                            lf.Append(fx.Current()
+                                          .Oriented(TopAbs_REVERSED));
+                            ++nf;
+                        }
+                        BOPAlgo_BuilderSolid bsld;
+                        bsld.SetShapes(lf);
+                        bsld.Perform();
+                        if (!bsld.HasErrors())
+                        {
+                            BRep_Builder ub;
+                            TopoDS_Compound uc;
+                            ub.MakeCompound(uc);
+                            int    n_areas = 0;
+                            double tot     = 0.0;
+                            for (TopTools_ListIteratorOfListOfShape it(
+                                     bsld.Areas());
+                                 it.More(); it.Next())
+                            {
+                                GProp_GProps g;
+                                BRepGProp::VolumeProperties(it.Value(), g);
+                                const double v = std::fabs(g.Mass());
+                                if (v < 1e-15) { continue; }
+                                TopoDS_Shape sol = it.Value();
+                                if (g.Mass() < 0.0) {
+                                    sol.Reverse();
+                                }
+                                ub.Add(uc, sol);
+                                ++n_areas;
+                                tot += v;
+                            }
+                            std::fprintf(stderr,
+                                "[sew] op_id=%u nm+builder areas=%d "
+                                "vol=%.6g (faces=%d)\n",
+                                op_id, n_areas, tot * 1e9, nf);
+                            std::fflush(stderr);
+                            if (n_areas > 0)
+                            {
+                                // Multiple areas arise when T-joint
+                                // imprinting encloses more than one
+                                // region (e.g. interior + exterior cap).
+                                // Fusing them is expensive and can OOM;
+                                // for a sew-close op the correct body is
+                                // the dominant (largest-volume) region.
+                                TopoDS_Shape best;
+                                double best_vol = -1.0;
+                                for (TopoDS_Iterator it2(uc); it2.More();
+                                     it2.Next())
+                                {
+                                    GProp_GProps gp2;
+                                    BRepGProp::VolumeProperties(
+                                        it2.Value(), gp2);
+                                    const double v2 =
+                                        std::fabs(gp2.Mass());
+                                    if (v2 > best_vol) {
+                                        best_vol = v2;
+                                        best     = it2.Value();
+                                    }
+                                }
+                                BRep_Builder ob;
+                                TopoDS_Compound oc;
+                                ob.MakeCompound(oc);
+                                int n_out = 0;
+                                if (!best.IsNull()) {
+                                    ob.Add(oc, best);
+                                    ++n_out;
+                                }
+                                for (const TopoDS_Shape& r : riders) {
+                                    ob.Add(oc, r);
+                                }
+                                if (n_out > 0)
+                                {
+                                    out_c    = oc;
+                                    n_solids = n_out;
+                                    n_open   = 0;
+                                    n_loose  = (int)riders.size();
+                                    route2_done = true;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            std::fprintf(stderr,
+                                "[sew] op_id=%u nm+builder FAILED\n",
+                                op_id);
+                            std::fflush(stderr);
+                        }
+                    }
+                }
+                if (!route2_done)
+                {
                     // SEAL pieces: fragments of B's faces that the rim
                     // bounds -- the wall piece UNDER the sheet (interior
                     // nearest-point) and the piece capping the sheet's
@@ -3482,6 +3633,7 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                         }
                     }
                 }
+                }   // !route2_done (legacy seal path)
             }
             catch (Standard_Failure& sf)
             {
