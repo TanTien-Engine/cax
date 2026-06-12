@@ -33,6 +33,8 @@
 #include <BOPAlgo_GlueEnum.hxx>
 #include <BOPAlgo_MakerVolume.hxx>
 #include <BOPAlgo_Splitter.hxx>
+#include <Geom_Plane.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
@@ -1835,6 +1837,52 @@ double SignedDistToTool(const TopoDS_Shape& tool, const gp_Pnt& p)
         }
         return gp_Vec(sp, p).Dot(n) / n.Magnitude();
     }
+    // Extended-surface fallback, PLANAR tools only: the nearest tool
+    // point lies on an edge / vertex -- p projects beyond the bounded
+    // face, the tangent / no-cut case. ZW3D trims by SPACE PARTITION
+    // (02-ear 修剪2: the lens pair is exactly tangent to the L-band's
+    // wall plane, zero transversal intersection, yet truth discards the
+    // whole face on the flap plane's far side). A plane's extension is
+    // exact; B-spline extrapolation is not -- those keep the zero vote.
+    for (int i = 1; i <= ext.NbSolution(); ++i)
+    {
+        const TopoDS_Shape sup = ext.SupportOnShape2(i);
+        if (sup.ShapeType() != TopAbs_EDGE &&
+            sup.ShapeType() != TopAbs_VERTEX) {
+            continue;
+        }
+        for (TopExp_Explorer fx(tool, TopAbs_FACE); fx.More(); fx.Next())
+        {
+            bool contains = false;
+            for (TopExp_Explorer sx(fx.Current(), sup.ShapeType());
+                 sx.More() && !contains; sx.Next())
+            {
+                if (sx.Current().IsSame(sup)) { contains = true; }
+            }
+            if (!contains) { continue; }
+            const TopoDS_Face f = TopoDS::Face(fx.Current());
+            Handle(Geom_Surface) hs = BRep_Tool::Surface(f);
+            if (hs.IsNull()) { continue; }
+            // No planarity gate: ZW3D's STEP encodes even flat faces as
+            // B-splines, so a Geom_Plane downcast never fires. The
+            // projection clamps to the surface DOMAIN (no extrapolation)
+            // and the normal at that nearest domain point classifies the
+            // side just as the bounded-face branch does.
+            GeomAPI_ProjectPointOnSurf proj(p, hs);
+            if (!proj.IsDone() || proj.NbPoints() < 1) { continue; }
+            Standard_Real u = 0.0, w = 0.0;
+            proj.LowerDistanceParameters(u, w);
+            gp_Pnt sp;
+            gp_Vec d1u, d1v;
+            hs->D1(u, w, sp, d1u, d1v);
+            gp_Vec n = d1u.Crossed(d1v);
+            if (n.Magnitude() < 1e-12) { continue; }
+            if (f.Orientation() == TopAbs_REVERSED) {
+                n.Reverse();
+            }
+            return gp_Vec(sp, p).Dot(n) / n.Magnitude();
+        }
+    }
     return 0.0;
 }
 
@@ -3091,8 +3139,10 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
     // outside piece it is on the sheet's own rim. No surface-surface
     // intersection anywhere -- the dome x wall SS pair is exactly what
     // ate the machine via MakerVolume.
+    bool union_attempted = false;
     if (n_solids == 1 && n_open == 1)
     {
+        union_attempted = true;
         TopoDS_Shape B, S;
         for (TopoDS_Iterator it(out_c); it.More(); it.Next())
         {
@@ -3231,13 +3281,14 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
             }
         }
     }
-    // Last resort, budgeted: MakerVolume's blind face-soup intersection
-    // (its unbudgeted form once ate the whole machine -- keep it
-    // fenced). Runs whenever OPEN shells remain, not only when nothing
-    // solidified: the combine that closes the ear box still leaves the
-    // dome region to be enclosed against the box wall (a region no sew
-    // can produce -- its boundary is part dome sheet, part box face).
-    if (n_open > 0 || n_solids == 0)
+    // Last resort, budgeted: MakerVolume's blind face-soup intersection.
+    // Its rap sheet on this part: unbounded OOM (machine froze), 60 s
+    // budget burnouts, and an access violation on the post-standalone
+    // composite args -- it has never once succeeded where the structured
+    // paths failed. Run it only when the union path did not apply at
+    // all (pure-sheet states), never after union_rest already degraded
+    // gracefully.
+    if (!union_attempted && (n_open > 0 || n_solids == 0))
     {
         BOPAlgo_MakerVolume mv;
         TopTools_ListOfShape args;
