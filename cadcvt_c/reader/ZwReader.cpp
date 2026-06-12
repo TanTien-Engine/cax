@@ -1592,7 +1592,16 @@ bool ZwReader::ReadFile(const std::string& path,
                                      edir[2] * sk.plane_normal[2];
                         if (dot < 0.0) { sign = -1.0; }
                     }
-                    const double near_off = (startS < endE) ? startS : endE;
+                    double near_off = (startS < endE) ? startS : endE;
+                    // fld 31 'Extrude type' = 3: SYMMETRIC about the
+                    // profile plane. S/E are dialog residue then (02-ear
+                    // 拉伸23: S=0,E=5 yet the authored pin is centred on
+                    // the plane -- the one-sided replay landed exactly
+                    // E/2 = 2.498mm off along the growth direction).
+                    if (std::fabs(FieldValueById(jf, 31, 0.0) - 3.0) < 0.5)
+                    {
+                        near_off = -std::fabs(endE - startS) * 0.5;
+                    }
                     const double near_m   = near_off * sign * s;
                     sk.plane_origin[0] += near_m * sk.plane_normal[0];
                     sk.plane_origin[1] += near_m * sk.plane_normal[1];
@@ -1635,8 +1644,9 @@ bool ZwReader::ReadFile(const std::string& path,
                     // fuses material already inside the body -> "no visible
                     // effect"; route fld14==2 to CutExtrude so it subtracts
                     // (the Replayer cuts the prism from the running body).
-                    const bool is_cut =
-                        std::fabs(FieldValueById(jf, 14, 0.0) - 2.0) < 0.5;
+                    const double combine14 = FieldValueById(jf, 14, 0.0);
+                    const bool is_cut  = std::fabs(combine14 - 2.0) < 0.5;
+                    const bool is_base = std::fabs(combine14) < 0.5;
 
                     cadapp::FeatureIR ef;
                     ef.id   = id;
@@ -1648,9 +1658,16 @@ bool ZwReader::ReadFile(const std::string& path,
                     // Wire the running body (imported / prior solid) as the
                     // Base input: a boss fuses the prism onto it, a cut
                     // subtracts the prism from it (the Replayer picks the
-                    // boolean by feat type). A boss with no running body
-                    // stands alone; a cut needs one (else the Replayer errs).
-                    if (running_solid_id != 0) {
+                    // boolean by feat type). EXCEPT fld14=0: that opens a
+                    // NEW body ZW3D keeps standalone -- 02-ear's pin forest
+                    // lost 5 solids to implicit fuses (拉伸14/17/18 absorbed
+                    // without trace, 拉伸9+19 and 拉伸11+12 pairwise merged).
+                    // The chain ROOT (no running body yet) still advances
+                    // the tip: a single-body part's first base extrude is
+                    // what later adds fuse onto.
+                    const bool standalone_base =
+                        is_base && running_solid_id != 0;
+                    if (running_solid_id != 0 && !standalone_base) {
                         PushInput(ef, running_solid_id, cadapp::InputRole::Base);
                     }
 
@@ -1720,7 +1737,17 @@ bool ZwReader::ReadFile(const std::string& path,
                     }
 
                     out.features.push_back(std::move(ef));
-                    running_solid_id = id;
+                    if (standalone_base)
+                    {
+                        // New independent body: the chain tip stays on the
+                        // body it was building; this extrude emits on its
+                        // own (and is consumable as a sew/trim operand).
+                        standalone_ids.insert(id);
+                    }
+                    else
+                    {
+                        running_solid_id = id;
+                    }
                     continue;
                 }
 
