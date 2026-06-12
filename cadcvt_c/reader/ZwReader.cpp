@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -617,8 +618,16 @@ uint32_t FieldEntFeat(const json& jf, int fld_id)
 // positions that frame in space. Absent a plane block (older snapshots, or a
 // sketch drawn on world XY), the default is XY at z==0 -- which is why the
 // base extrude, on z==0, was already correct without it.
+// loops_only: build ONLY curves that lie on closed chains, dropping
+// dangling strays. The extrude gate (ProfileHasClosedLoop) accepts a
+// profile as soon as ONE closed region exists -- but an all-reference
+// profile (02-ear 拉伸17: a region-picked r=0.9 circle next to two
+// ±150 mm construction AXIS LINES) would otherwise feed the strays into
+// the sketch, and WiresToFace fabricates faces over the phantom region
+// (a 250 mm solid out of a 1.8 mm pin). Sweep SPINES are legitimately
+// open chains -- their call site keeps loops_only=false.
 void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
-                            cadapp::SketchIR& sk)
+                            cadapp::SketchIR& sk, bool loops_only = false)
 {
     sk.feature_id = feature_id;
     sk.plane_origin[0] = 0.0; sk.plane_origin[1] = 0.0; sk.plane_origin[2] = 0.0;
@@ -661,9 +670,96 @@ void BuildSketchFromProfile(const json& profile, double s, uint32_t feature_id,
     {
         if (!JGet<bool>(c, "ref", false)) { has_drawn = true; break; }
     }
-    uint32_t gid = 1;
-    for (const auto& c : *cit)
+
+    // Closed-chain mask (loops_only). Mirrors ProfileHasClosedLoop's
+    // peel: circles/ellipses and self-closing segments are loops on
+    // their own; line/arc segments survive only while both endpoints
+    // touch another surviving segment. 1e-2 mm pairing tolerance --
+    // same calibration as the gate (drawn arc-chains jitter ~3e-3 mm,
+    // structural gaps are millimetres).
+    const size_t      n_curves = cit->size();
+    std::vector<bool> keep(n_curves, true);
+    if (loops_only)
     {
+        const double tol = 1e-2;
+        auto near2 = [tol](const double* p, const double* q) {
+            return std::fabs(p[0] - q[0]) < tol &&
+                   std::fabs(p[1] - q[1]) < tol;
+        };
+        struct Seg { double a[2], b[2]; size_t idx; bool alive; };
+        std::vector<Seg> segs;
+        bool any_loop = false;
+        for (size_t i = 0; i < n_curves; ++i)
+        {
+            const auto& c = cit->at(i);
+            if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
+            const std::string ck = JStr(c, "kind", "");
+            if (ck == "circle" || ck == "ellipse") {
+                any_loop = true;
+                continue;                       // self-closed: keep
+            }
+            auto p0 = c.find("p0");
+            auto p1 = c.find("p1");
+            if (p0 == c.end() || p1 == c.end() ||
+                !p0->is_array() || !p1->is_array() ||
+                p0->size() < 2 || p1->size() < 2) {
+                continue;                       // endpoint-less: leave as-is
+            }
+            Seg sg;
+            sg.a[0] = p0->at(0).get<double>();
+            sg.a[1] = p0->at(1).get<double>();
+            sg.b[0] = p1->at(0).get<double>();
+            sg.b[1] = p1->at(1).get<double>();
+            sg.idx  = i;
+            if (near2(sg.a, sg.b)) {            // full circle as one arc
+                any_loop = true;
+                continue;
+            }
+            sg.alive = true;
+            segs.push_back(sg);
+        }
+        bool pruned = true;
+        while (pruned)
+        {
+            pruned = false;
+            for (auto& sg : segs)
+            {
+                if (!sg.alive) { continue; }
+                int deg_a = 0, deg_b = 0;
+                for (const auto& t : segs)
+                {
+                    if (!t.alive || &t == &sg) { continue; }
+                    if (near2(sg.a, t.a) || near2(sg.a, t.b)) { ++deg_a; }
+                    if (near2(sg.b, t.a) || near2(sg.b, t.b)) { ++deg_b; }
+                }
+                if (deg_a == 0 || deg_b == 0)
+                {
+                    sg.alive = false;
+                    pruned   = true;
+                }
+            }
+        }
+        size_t survivors = 0;
+        for (const auto& sg : segs)
+        {
+            if (sg.alive) { ++survivors; }
+        }
+        // Apply only when a loop actually remains; an all-stray profile
+        // (shouldn't pass the gate) builds unfiltered rather than empty.
+        if (any_loop || survivors >= 2)
+        {
+            for (const auto& sg : segs)
+            {
+                if (!sg.alive) { keep[sg.idx] = false; }
+            }
+        }
+    }
+
+    uint32_t gid = 1;
+    for (size_t ci = 0; ci < n_curves; ++ci)
+    {
+        const auto& c = cit->at(ci);
+        if (!keep[ci]) { continue; }
         if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
         const std::string ck = JStr(c, "kind", "");
         if (ck == "line")
@@ -1210,6 +1306,30 @@ bool ZwReader::ReadFile(const std::string& path,
     }
     const double s = m_unit_scale;
 
+    // Bodies the part keeps BLANKED in its final state (plugin writes
+    // them from cvxEntIsBlanked over the end-state shape list). The
+    // history builds them, the visible part -- and ZW3D's own truth
+    // STEP -- excludes them; the Replayer drops the matching solids at
+    // emission. R2900: the Pattern17 plate+funnel composite (~46k mm^3)
+    // is blanked, and replaying it visible was a +19% volume phantom.
+    if (auto hb = doc.find("hidden_bodies");
+        hb != doc.end() && hb->is_array())
+    {
+        for (const auto& b : *hb)
+        {
+            auto bx = b.find("bbox");
+            if (bx == b.end() || !bx->is_array() || bx->size() < 6) {
+                continue;
+            }
+            cadapp::HiddenBodyIR h;
+            for (int k = 0; k < 3; ++k) {
+                h.bbox_min[k] = bx->at(k).get<double>() * s;
+                h.bbox_max[k] = bx->at(k + 3).get<double>() * s;
+            }
+            out.hidden_bodies.push_back(h);
+        }
+    }
+
     // Directory of the .cax.json, used to resolve the sibling per-feature
     // STEP refs (CdGeomCopy's authored base geometry).
     std::string doc_dir;
@@ -1223,6 +1343,26 @@ bool ZwReader::ReadFile(const std::string& path,
     // Running body tip: the last solid-producing feature's id, so a boss
     // extrude fuses onto the imported base instead of floating standalone.
     uint32_t running_solid_id = 0;
+
+    // Features emitted as STANDALONE bodies (Boolean=none patterns, sheet
+    // mirrors, baked-shape roots): they own a live output candidate that
+    // is not the running chain. A later feature whose fld 62 "Boolean
+    // shapes" names one of these merged it away -- only those get the
+    // Role::Operand consumption link (a chain feature in fld 62 is
+    // already consumed by its successor's Base link; wiring it again
+    // would only churn the IR).
+    std::set<uint32_t> standalone_ids;
+
+    // The subset of standalone_ids that are SHEET bodies (standalone
+    // mirrors of open shells). A pattern whose fld 62 merges the running
+    // SOLID chain with one of these performs ZW3D's quilt: the result is
+    // a dead non-manifold composite that the visible part -- and the
+    // truth STEP -- excludes forever (R2900 Pattern17 quilts the plate
+    // with Mirror5's funnel sheets at feat 100; the 43.5k mm^3 plate
+    // never reappears in any later state). The reader marks the pattern
+    // with ext_param quilt_kill_running; the Replayer drops the solid
+    // containing the quilted sheets at emission.
+    std::set<uint32_t> standalone_sheet_ids;
 
     // World-placed footprint of each reconstructed solid extrude, by feature
     // id. A later pattern (FtPtnFtr) carries its target only as a world-space
@@ -1577,7 +1717,8 @@ bool ZwReader::ReadFile(const std::string& path,
 
                     cadapp::SketchIR sk;
                     sk.name = name + ":profile";
-                    BuildSketchFromProfile(*use_prof, s, sketch_fid, sk);
+                    BuildSketchFromProfile(*use_prof, s, sketch_fid, sk,
+                                           /*loops_only=*/true);
 
                     // Register this profile as a potential projection donor
                     // for later region-pick extrudes (drawn curves only).
@@ -2586,6 +2727,79 @@ bool ZwReader::ReadFile(const std::string& path,
                                 pf.ext_params["pattern_onto_running"] = 1.0;
                             }
 
+                            // fld 62 "Boolean shapes" lists the EXISTING bodies
+                            // ZW3D merged the pattern's copies with. A
+                            // STANDALONE candidate named there ceases to exist
+                            // independently -- wire it as Role::Operand so the
+                            // Replayer's input-consumption pass drops it from
+                            // emission. R2900 Pattern17 merges [Extrude1_Base,
+                            // Mirror5]: Mirror5's three funnel sheets get
+                            // absorbed into the (blanked) plate composite and
+                            // must stop being emitted (count_sheets read 9 vs
+                            // truth 6). Gated to standalone_ids: a chain
+                            // feature in fld 62 is already consumed by its
+                            // successor's Base link, and wiring it again only
+                            // churns the IR.
+                            {
+                                std::set<uint32_t> consumed62;   // fld 62 lists
+                                                                 // one ent per
+                                                                 // merged copy;
+                                                                 // dedup inputs
+                                bool merges_sheets = false;
+                                bool merges_chain  = false;
+                                auto fit62 = jf.find("fields");
+                                if (fit62 != jf.end() && fit62->is_array()) {
+                                    for (const auto& fd : *fit62) {
+                                        if (JGet<int>(fd, "id", -1) != 62) {
+                                            continue;
+                                        }
+                                        auto eit = fd.find("ents");
+                                        if (eit != fd.end() && eit->is_array()) {
+                                            for (const auto& e : *eit) {
+                                                auto ft = e.find("feat");
+                                                if (ft == e.end() ||
+                                                    !ft->is_number_integer()) {
+                                                    continue;
+                                                }
+                                                int v = ft->get<int>();
+                                                if (v <= 0 ||
+                                                    static_cast<uint32_t>(v) == id) {
+                                                    continue;
+                                                }
+                                                const uint32_t fv =
+                                                    static_cast<uint32_t>(v);
+                                                if (!standalone_ids.count(fv)) {
+                                                    merges_chain = true;
+                                                    continue;
+                                                }
+                                                if (standalone_sheet_ids.count(fv)) {
+                                                    merges_sheets = true;
+                                                }
+                                                if (consumed62.insert(fv).second) {
+                                                    PushInput(pf, fv,
+                                                        cadapp::InputRole::Operand);
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                                // Quilt signature: this pattern's boolean merged
+                                // the running SOLID chain with standalone SHEET
+                                // bodies. ZW3D's result is a dead non-manifold
+                                // composite excluded from the visible part (and
+                                // from every later state STEP) -- R2900 Pattern17
+                                // quilts the base plate with Mirror5's funnel
+                                // sheets at feat 100 and the 43.5k mm^3 plate
+                                // never reappears, while the replay kept emitting
+                                // it (+19% volume). Mark the pattern; the
+                                // Replayer drops the solid containing the
+                                // quilted sheets at emission.
+                                if (merges_sheets && merges_chain) {
+                                    pf.ext_params["quilt_kill_running"] = 1.0;
+                                }
+                            }
+
                             // Record which pattern consumed each raw seed so a
                             // LATER pattern copying the same seed nests THIS
                             // pattern's result (the ring), not the bare seed.
@@ -2599,6 +2813,8 @@ bool ZwReader::ReadFile(const std::string& path,
                             // pre-pattern tip.
                             if (!standalone) {
                                 running_solid_id = id;
+                            } else {
+                                standalone_ids.insert(id);
                             }
                             continue;
                         }
@@ -3124,6 +3340,12 @@ bool ZwReader::ReadFile(const std::string& path,
                                 PushInput(mf, t, cadapp::InputRole::Tool);
                             }
                             out.features.push_back(std::move(mf));
+                            standalone_ids.insert(id);
+                            // Small standalone mirrors copy open SHEET sets
+                            // (R2900 Mirror5/6 mirror Revolve4's funnels);
+                            // a later quilt that merges the solid chain with
+                            // one of these kills the chain's visibility.
+                            standalone_sheet_ids.insert(id);
                             continue;
                         }
                         if (!small_mirror && pre_body != 0 && pre_body != id) {
@@ -3192,6 +3414,7 @@ bool ZwReader::ReadFile(const std::string& path,
                         f.ext_strings["zw_geometry"] = ResolveFeatStepPath(
                             path, doc_dir, geo->get<std::string>(), id);
                         out.features.push_back(std::move(f));
+                        standalone_ids.insert(id);
                         continue;
                     }
                 }

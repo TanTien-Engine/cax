@@ -767,7 +767,7 @@ feat 47 name=Fillet5 type=Fillet suppressed=0 payload=fillet radius=0.000 edges=
 feat 48 name=Pattern9 type=LinearPattern suppressed=0 payload=linpat dir1=(0.000,-0.267,0.964) count1=4 spacing1=0.001 count2=1 spacing2=0.020
   inputs=[44:tool,45:tool,47:tool]
 feat 49 name=Pattern10 type=LinearPattern suppressed=0 payload=linpat dir1=(0.000,-0.267,0.964) count1=4 spacing1=0.001 count2=1 spacing2=0.020
-  inputs=[42:tool,43:tool,44:tool,45:tool,47:base]
+  inputs=[42:tool,43:tool,44:tool,45:tool,47:base,48:operand]
 feat 50 name=Mirror1 type=Mirror suppressed=0 payload=mirror plane_o=(0.005,-0.009,0.017) plane_n=(-1.000,0.000,0.000)
   inputs=[38:target,49:target,49:base]
 feat 1000051 name=Extrude30_Boss:profile type=Sketch suppressed=0 payload=sketch sketch_id=1000051

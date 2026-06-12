@@ -7,9 +7,14 @@
 #include "brepdb_c/VersionTree.h"
 #include "brepkit_c/TopoShape.h"
 
+#include <Bnd_Box.hxx>
 #include <BRep_Builder.hxx>
+#include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepGProp.hxx>
 #include <BRepTools.hxx>
+#include <GProp_GProps.hxx>
 #include <TopAbs.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS_Compound.hxx>
@@ -68,6 +73,154 @@ namespace cadapp
 
 namespace
 {
+
+// CAX_FEAT_VOL=1: per-feature solid-volume ledger. One line per replayed
+// feature with the solid count and solids-only volume (sheet flux
+// excluded, zw_verify SolidsVolume convention) of the feature's node and
+// the delta vs its base -- the instrument for "where did the extra
+// material enter the chain" questions (R2900 tower double-booking).
+// CAX_FEAT_VOL=2 additionally prints one line per solid (vol + bbox) so
+// a floating / misplaced solid is localisable without a STEP dump.
+int FeatVolLevel()
+{
+    static const int lvl = [] {
+        const char* e = std::getenv("CAX_FEAT_VOL");
+        return (e && e[0]) ? std::atoi(e) : 0;
+    }();
+    return lvl;
+}
+
+bool FeatVolEnabled() { return FeatVolLevel() > 0; }
+
+// Solid count + summed solid volume of a shape (sheets excluded).
+void SolidsVolumeOf(const TopoDS_Shape& s, int& n_solids, double& vol)
+{
+    n_solids = 0;
+    vol      = 0.0;
+    if (s.IsNull()) {
+        return;
+    }
+    for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next())
+    {
+        GProp_GProps g;
+        BRepGProp::VolumeProperties(ex.Current(), g);
+        vol += g.Mass();
+        ++n_solids;
+    }
+}
+
+// Emission-time hidden-body filter. The source system (ZW3D) can keep a
+// history-built body out of its visible final state -- and out of its
+// truth STEP -- while the replay constructs it correctly. Two match
+// channels, two discovery routes:
+//   - hidden:    bboxes exported by the plugin for ENUMERABLE blanked
+//                bodies (cvxEntIsBlanked over the end-state shape list);
+//                matched corner-wise within 2% of the box diagonal.
+//   - witnesses: points known to lie INSIDE a hidden body's material,
+//                derived by the replay itself for bodies ZW3D does NOT
+//                enumerate -- the quilt case: merging the solid chain
+//                with sheet bodies makes a dead composite that vanishes
+//                from the shape list while its mass stays booked (R2900
+//                Pattern17's plate; witness = the quilted funnel sheets'
+//                bbox centre, inside the plate's material).
+// Rebuilds the shape without the matched solids. Returns true when
+// something was dropped; `filtered` then holds the remaining content
+// (solids plus any free shells/faces preserved).
+bool DropHiddenSolids(const TopoDS_Shape&              s,
+                      const std::vector<HiddenBodyIR>& hidden,
+                      const std::vector<gp_Pnt>&       witnesses,
+                      TopoDS_Shape&                    filtered,
+                      int&                             dropped)
+{
+    auto matches = [&](const TopoDS_Shape& solid) -> bool {
+        Bnd_Box bb;
+        BRepBndLib::Add(solid, bb);
+        if (bb.IsVoid()) {
+            return false;
+        }
+        double mn[3], mx[3];
+        bb.Get(mn[0], mn[1], mn[2], mx[0], mx[1], mx[2]);
+        for (const auto& h : hidden)
+        {
+            double dx = h.bbox_max[0] - h.bbox_min[0];
+            double dy = h.bbox_max[1] - h.bbox_min[1];
+            double dz = h.bbox_max[2] - h.bbox_min[2];
+            double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
+            if (diag <= 0.0) {
+                continue;
+            }
+            const double tol = 0.02 * diag;
+            bool ok = true;
+            for (int k = 0; k < 3 && ok; ++k) {
+                ok = std::fabs(mn[k] - h.bbox_min[k]) <= tol &&
+                     std::fabs(mx[k] - h.bbox_max[k]) <= tol;
+            }
+            if (ok) {
+                return true;
+            }
+        }
+        for (const auto& w : witnesses)
+        {
+            // Cheap reject first; the classifier is exact-material.
+            if (w.X() < mn[0] || w.X() > mx[0] ||
+                w.Y() < mn[1] || w.Y() > mx[1] ||
+                w.Z() < mn[2] || w.Z() > mx[2]) {
+                continue;
+            }
+            BRepClass3d_SolidClassifier cls(solid, w, 1e-7);
+            const TopAbs_State st = cls.State();
+            // Emission runs once over a handful of solids; always log so
+            // a witness that lands ON a face (or a solid whose
+            // orientation confuses the classifier) is diagnosable.
+            std::fprintf(stderr,
+                "[hidden] witness (%.4g,%.4g,%.4g) vs solid "
+                "bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g) -> state=%d\n",
+                w.X(), w.Y(), w.Z(), mn[0], mn[1], mn[2],
+                mx[0], mx[1], mx[2], (int)st);
+            if (st == TopAbs_IN || st == TopAbs_ON) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    dropped = 0;
+    std::vector<TopoDS_Shape> keep;
+    for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next())
+    {
+        if (matches(ex.Current())) {
+            ++dropped;
+        } else {
+            keep.push_back(ex.Current());
+        }
+    }
+    if (dropped == 0) {
+        return false;
+    }
+    // Preserve any non-solid top-level content (free shells / faces --
+    // e.g. sheet bodies riding in the same candidate).
+    for (TopExp_Explorer ex(s, TopAbs_SHELL, TopAbs_SOLID); ex.More();
+         ex.Next()) {
+        keep.push_back(ex.Current());
+    }
+    for (TopExp_Explorer ex(s, TopAbs_FACE, TopAbs_SHELL); ex.More();
+         ex.Next()) {
+        keep.push_back(ex.Current());
+    }
+
+    if (keep.size() == 1) {
+        filtered = keep.front();
+        return true;
+    }
+    BRep_Builder    bld;
+    TopoDS_Compound comp;
+    bld.MakeCompound(comp);
+    for (const auto& k : keep) {
+        bld.Add(comp, k);
+    }
+    filtered = comp;
+    return true;
+}
 
 // Locate the SketchIR whose feature_id matches sketch_feat_id.
 const SketchIR* FindSketch(const DocumentIR& doc, uint32_t sketch_feat_id)
@@ -996,6 +1149,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
     // for a later boolean to absorb them (ZW3D merges every body the new
     // geometry touches; see the absorb block after the visit).
     std::vector<uint32_t>             pending_standalone;
+
+    // Points inside running-body solids that ZW3D's final state HIDES:
+    // filled by the quilt handler below (a pattern whose fld 62 merged
+    // the solid chain with standalone sheet bodies -- the dead composite
+    // never reappears in the visible part). Consumed by the emission
+    // filter (DropHiddenSolids witnesses).
+    std::vector<gp_Pnt>               hidden_witnesses;
 
     for (size_t i = 0; i < doc.features.size(); ++i)
     {
@@ -3116,11 +3276,103 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     if (fit == feature_nodes.end() || fit->second < 0) {
                         continue;
                     }
+                    if (FeatVolEnabled() && !opt.analyze_only) {
+                        auto sval = cg->Eval(fit->second);
+                        if (auto* ssv = std::get_if<brepgraph::ShapeVal>(&sval);
+                            ssv && ssv->shape)
+                        {
+                            int ns = 0; double sv = 0.0;
+                            SolidsVolumeOf(ssv->shape->GetShape(), ns, sv);
+                            std::fprintf(stderr,
+                                "[featvol] absorb by=%u standalone=%u "
+                                "solids=%d vol=%.1f\n",
+                                feat.id, sid, ns, sv * 1e9);
+                        }
+                    }
                     node = cg->AddOp("fuse", {node, fit->second}, {},
                                      feat.name + ":absorb");
                     consumed_feat_ids.insert(sid);
                 }
                 pending_standalone.clear();
+            }
+
+            // ZW3D quilt: this feature's boolean merged the running SOLID
+            // chain with standalone SHEET bodies (reader's fld 62 analysis,
+            // ext_param quilt_kill_running). The merged composite is dead
+            // in ZW3D -- it leaves the visible part and every later state
+            // STEP (R2900 Pattern17 quilts the base plate with Mirror5's
+            // funnel sheets; the 43.5k mm^3 plate never reappears). The
+            // sheets sit INSIDE the doomed solid's material, so their bbox
+            // centre is a containment witness for the emission filter.
+            if (!opt.analyze_only)
+            {
+                auto qk = feat.ext_params.find("quilt_kill_running");
+                if (qk != feat.ext_params.end() && qk->second != 0.0)
+                {
+                    for (size_t qi = 0; qi < feat.input_feature_ids.size();
+                         ++qi)
+                    {
+                        InputRole role = (qi < feat.input_roles.size())
+                                            ? feat.input_roles[qi]
+                                            : InputRole::Base;
+                        if (role != InputRole::Operand) {
+                            continue;
+                        }
+                        auto fit = feature_nodes.find(
+                            feat.input_feature_ids[qi]);
+                        if (fit == feature_nodes.end() || fit->second < 0) {
+                            continue;
+                        }
+                        auto qval = cg->Eval(fit->second);
+                        auto* qsv = std::get_if<brepgraph::ShapeVal>(&qval);
+                        if (!qsv || !qsv->shape ||
+                            qsv->shape->GetShape().IsNull()) {
+                            continue;
+                        }
+                        const TopoDS_Shape& qs = qsv->shape->GetShape();
+                        // Sheets only: a solid operand is a normal boolean
+                        // absorb, not a quilt.
+                        if (TopExp_Explorer(qs, TopAbs_SOLID).More()) {
+                            continue;
+                        }
+                        // One witness PER SHELL: a single whole-set centre
+                        // can land inside a real opening of the doomed
+                        // solid (R2900: the funnel mouths poke through
+                        // drilled holes in the plate top), while at least
+                        // one funnel's own centre sits in deep material.
+                        int n_w = 0;
+                        for (TopExp_Explorer sx(qs, TopAbs_SHELL);
+                             sx.More(); sx.Next())
+                        {
+                            Bnd_Box qb;
+                            BRepBndLib::Add(sx.Current(), qb);
+                            if (qb.IsVoid()) {
+                                continue;
+                            }
+                            double x0, y0, z0, x1, y1, z1;
+                            qb.Get(x0, y0, z0, x1, y1, z1);
+                            gp_Pnt w(0.5 * (x0 + x1), 0.5 * (y0 + y1),
+                                     0.5 * (z0 + z1));
+                            hidden_witnesses.push_back(w);
+                            ++n_w;
+                            std::fprintf(stderr,
+                                "[Replayer] feat %u (%s) quilt witness %d "
+                                "of feat %u at (%.4g,%.4g,%.4g)\n",
+                                feat.id, feat.name.c_str(), n_w,
+                                feat.input_feature_ids[qi],
+                                w.X(), w.Y(), w.Z());
+                        }
+                        std::fprintf(stderr,
+                            "[Replayer] feat %u (%s) quilts the running "
+                            "body with sheets of feat %u; the solid "
+                            "containing any of %d witness point(s) will "
+                            "be dropped at emission (ZW3D hides the "
+                            "composite)\n",
+                            feat.id, feat.name.c_str(),
+                            feat.input_feature_ids[qi], n_w);
+                        std::fflush(stderr);
+                    }
+                }
             }
 
             feature_nodes[feat.id] = node;
@@ -3265,6 +3517,69 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
 
+            // Per-feature volume ledger: CAX_FEAT_VOL=1 prints one line
+            // per feature -- solid count + solids-only volume of this
+            // feature's node, and the delta vs its base node. Chain
+            // features show the running-body trajectory; standalone
+            // features (free pattern/mirror copies) show their own
+            // body. Evals are cached, so the chain features cost one
+            // front-loaded eval that emission would have paid anyway.
+            if (FeatVolEnabled() && !opt.analyze_only)
+            {
+                auto val = cg->Eval(node);
+                if (auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
+                    sv && sv->shape)
+                {
+                    int ns = 0; double v = 0.0;
+                    SolidsVolumeOf(sv->shape->GetShape(), ns, v);
+                    double dv      = v;
+                    int    base_ns = 0;
+                    if (base_node >= 0)
+                    {
+                        auto bval = cg->Eval(base_node);
+                        if (auto* bsv =
+                                std::get_if<brepgraph::ShapeVal>(&bval);
+                            bsv && bsv->shape)
+                        {
+                            double bv = 0.0;
+                            SolidsVolumeOf(bsv->shape->GetShape(),
+                                           base_ns, bv);
+                            dv = v - bv;
+                        }
+                    }
+                    // Graph shapes are metres; print mm^3 (matches the
+                    // zw_verify roster and the ZW3D part units).
+                    std::fprintf(stderr,
+                        "[featvol] id=%u name=%s base=%d solids=%d "
+                        "vol=%.1f dvol=%+.1f\n",
+                        feat.id, feat.name.c_str(),
+                        (base_node >= 0) ? base_ns : -1, ns,
+                        v * 1e9, dv * 1e9);
+                    if (FeatVolLevel() >= 2)
+                    {
+                        int i = 0;
+                        for (TopExp_Explorer ex(sv->shape->GetShape(),
+                                                TopAbs_SOLID);
+                             ex.More(); ex.Next(), ++i)
+                        {
+                            GProp_GProps g;
+                            BRepGProp::VolumeProperties(ex.Current(), g);
+                            Bnd_Box bb;
+                            BRepBndLib::Add(ex.Current(), bb);
+                            double x0, y0, z0, x1, y1, z1;
+                            bb.Get(x0, y0, z0, x1, y1, z1);
+                            std::fprintf(stderr,
+                                "[featvol]   solid=%d vol=%.1f "
+                                "bbox=(%.1f,%.1f,%.1f)(%.1f,%.1f,%.1f)\n",
+                                i, g.Mass() * 1e9,
+                                x0 * 1e3, y0 * 1e3, z0 * 1e3,
+                                x1 * 1e3, y1 * 1e3, z1 * 1e3);
+                        }
+                    }
+                    std::fflush(stderr);
+                }
+            }
+
             // Dump-bodies hook: when CAX_DUMP_BODIES is set in the
             // environment, write each feature's running body to a
             // .brp file in the current working directory. Filename
@@ -3391,17 +3706,41 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             auto val = cg->Eval(ln.first);
             auto* sv = std::get_if<brepgraph::ShapeVal>(&val);
             if (!sv || !sv->shape) continue;
-            const TopoDS_Shape& s = sv->shape->GetShape();
+            TopoDS_Shape s = sv->shape->GetShape();
             if (s.IsNull()) continue;
 
+            // Bodies the source keeps out of its visible final state are
+            // built by the replay but must not be emitted -- ZW3D's
+            // visible part (and its truth STEP) excludes them (R2900:
+            // the Pattern17 plate+funnel quilt composite, ~46k mm^3).
+            // Two channels: exported blanked-body bboxes, and quilt
+            // witness points collected during the replay.
+            std::shared_ptr<brepkit::TopoShape> emit_ts = sv->shape;
+            if (!doc.hidden_bodies.empty() || !hidden_witnesses.empty())
+            {
+                TopoDS_Shape flt;
+                int          n_drop = 0;
+                if (DropHiddenSolids(s, doc.hidden_bodies,
+                                     hidden_witnesses, flt, n_drop))
+                {
+                    std::fprintf(stderr,
+                        "[Replayer] feat %u: dropped %d solid(s) hidden "
+                        "in the source's final state\n",
+                        ln.second, n_drop);
+                    if (flt.IsNull()) continue;
+                    s       = flt;
+                    emit_ts = std::make_shared<brepkit::TopoShape>(flt);
+                }
+            }
+
             ReplayPart part;
-            part.shape        = sv->shape;
+            part.shape        = emit_ts;
             part.transparency = transparency_of(ln.second);
             part.feat_id      = ln.second;
             out.parts.push_back(std::move(part));
 
             bb.Add(comp, s);
-            if (added == 0) solo_ts = sv->shape;
+            if (added == 0) solo_ts = emit_ts;
             ++added;
         }
 

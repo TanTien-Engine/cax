@@ -637,12 +637,31 @@ inline FeatureIR MakeFeature(uint32_t id, FeatType type, std::string name, P&& p
 
 // ---- DocumentIR ----
 
+// Axis-aligned bbox (IR units) of a source-side body that the source
+// system keeps HIDDEN (blanked) in its final state. The body is a real
+// product of the history -- the replay builds it correctly -- but the
+// source's visible end state (and its truth STEP export) excludes it,
+// so the emitter drops the matching solid at emission time. R2900:
+// ZW3D's Pattern17 merges the base plate with the Mirror5 funnel sheets
+// and the designer left that 46k mm^3 composite blanked -- the replay
+// kept emitting it as a +43k phantom solid.
+struct HiddenBodyIR
+{
+    double bbox_min[3] = {0.0, 0.0, 0.0};
+    double bbox_max[3] = {0.0, 0.0, 0.0};
+};
+
 struct DocumentIR
 {
     std::string            source;     // "self" / "freecad" / "sw" / ...
     std::string            doc_path;   // origin file path, for diagnostics
     std::vector<SketchIR>  sketches;
     std::vector<FeatureIR> features;
+
+    // Bodies the source keeps blanked in its final state; matched (by
+    // bbox) and dropped at emission. Empty for sources without the
+    // concept (FreeCAD reader never fills it).
+    std::vector<HiddenBodyIR>  hidden_bodies;
 
     // feature_id -> the source-side authored body for that feature.
     // Populated by readers that have access to a ground-truth shape
