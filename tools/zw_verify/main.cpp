@@ -102,6 +102,12 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 namespace
 {
 
@@ -854,10 +860,47 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
     return out;
 }
 
+// Hard per-process commit cap via a Job Object. A pathological OCCT op
+// (2026-06-12: BOPAlgo_MakerVolume on 02-ear 组合1, inside one face-face
+// intersection that never polls UserBreak) otherwise allocates at
+// ~110MB/s until the machine thrashes to death -- three freezes at
+// 90+GB in one day. With the cap, the runaway allocation FAILS instead;
+// OCCT turns that into Standard_Failure / bad_alloc, which the op-level
+// catch (TopoAlgo) or ReplayShape's catch degrades gracefully.
+// CAX_MEM_BUDGET_MB overrides the default 8192; 0 disables the cap.
+void InstallMemoryBudget()
+{
+#ifdef _WIN32
+    size_t mb = 8192;
+    if (const char* e = std::getenv("CAX_MEM_BUDGET_MB"))
+    {
+        const long v = std::atol(e);
+        if (v <= 0) return;
+        mb = (size_t)v;
+    }
+    HANDLE job = CreateJobObjectW(nullptr, nullptr);
+    if (!job) return;
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli{};
+    jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+    jeli.ProcessMemoryLimit = mb * (size_t)1024 * (size_t)1024;
+    if (SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                &jeli, sizeof jeli) &&
+        AssignProcessToJobObject(job, GetCurrentProcess()))
+    {
+        std::fprintf(stderr,
+            "[mem] process commit budget %zu MB (CAX_MEM_BUDGET_MB "
+            "overrides, 0 disables)\n", mb);
+    }
+    // On failure (e.g. an enclosing job forbids nesting) just run
+    // unbudgeted -- same behavior as before this guard.
+#endif
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
+    InstallMemoryBudget();
     std::string json_path, step_path, dump_path, states_arg;
     double      rel_tol   = 1e-4;   // volume/area/bbox, relative
     double      face_tol  = 1e-4;   // face centroid match, fraction of bbox diag
