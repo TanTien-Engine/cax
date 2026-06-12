@@ -44,6 +44,19 @@ public:
 	static std::shared_ptr<TopoShape> Split(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+
+	// Split base by the tool's faces, then keep only the fragments on the
+	// side of the tool that (keep_pt, keep_dir) witnesses: keep_pt sits
+	// (approximately) ON the tool surface and keep_dir points INTO the
+	// surviving half (ZW3D FtSolidSoloTrm 修剪). Works on sheet and solid
+	// bases alike. Returns base unchanged (with a stderr WARNING) when the
+	// classification keeps nothing -- a silently emptied chain is worse
+	// than a missed trim.
+	static std::shared_ptr<TopoShape> TrimByTool(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
+		const sm::vec3& keep_pt, const sm::vec3& keep_dir,
+		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+
 	static std::shared_ptr<TopoShape> Cut(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);

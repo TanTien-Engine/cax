@@ -443,6 +443,20 @@ struct FeatPayloadAsmConstraint
 };
 
 
+// Trim a Base body with a Tool body's faces (ZW3D FtSolidSoloTrm, the
+// surface-modeling "修剪" workhorse). Inputs ride the parent FeatureIR
+// edges: one InputRole::Base (the body being trimmed) and one or more
+// InputRole::Tool (the trimming sheet(s)); both are consumed -- ZW3D
+// removes the tool body from the part and the base is replaced by its
+// kept side. The payload carries only the keep-side witness: keep_pt
+// sits (approximately) ON the tool surface and keep_dir points INTO
+// the half that survives. Already in IR units (metres).
+struct FeatPayloadTrim
+{
+    double keep_pt[3]  = { 0.0, 0.0, 0.0 };
+    double keep_dir[3] = { 0.0, 0.0, 1.0 };
+};
+
 // ---- variant alias ----
 //
 // IMPORTANT: never reorder; the variant index is what FeatureStore
@@ -476,7 +490,8 @@ using FeaturePayload = std::variant<
     FeatPayloadPrimEllipsoid,    // 24
     FeatPayloadLink,             // 25
     FeatPayloadAsmConstraint,    // 26
-    FeatPayloadBakedShape        // 27
+    FeatPayloadBakedShape,       // 27
+    FeatPayloadTrim              // 28
 >;
 
 

@@ -509,6 +509,12 @@ void Encode(const FeatPayloadBakedShape& p, BlobWriter& w)
     (void)w;
 }
 
+void Encode(const FeatPayloadTrim& p, BlobWriter& w)
+{
+    w.Vec3(p.keep_pt);
+    w.Vec3(p.keep_dir);
+}
+
 
 // ============================================================
 // Decode dispatch: payload tag -> Decode(reader, payload)
@@ -773,6 +779,12 @@ void Decode(BlobReader& r, FeatPayloadBakedShape& p)
 {
     (void)r;
     (void)p;
+}
+
+void Decode(BlobReader& r, FeatPayloadTrim& p)
+{
+    r.Vec3(p.keep_pt);
+    r.Vec3(p.keep_dir);
 }
 
 
@@ -1148,6 +1160,13 @@ bool FeatureStore::ExportToIR(uint32_t entry_idx, FeatureIR& out) const
     case 27:
     {
         FeatPayloadBakedShape p;
+        Decode(r, p);
+        out.data = std::move(p);
+        break;
+    }
+    case 28:
+    {
+        FeatPayloadTrim p;
         Decode(r, p);
         out.data = std::move(p);
         break;

@@ -151,6 +151,11 @@ enum class FeatType : uint8_t
                             // geometry comes verbatim from doc.authored_shapes
                             // (e.g. FreeCAD's Part::Feature, used by Piston.FCStd
                             // when a PartDesign body has been collapsed)
+
+    // surface-modeling
+    Trim             = 104, // trim Base body with Tool body's faces, keep the
+                            // (keep_pt, keep_dir) side; tool consumed
+                            // (ZW3D FtSolidSoloTrm)
 };
 
 // Extrude / revolve end condition.

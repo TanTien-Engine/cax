@@ -787,7 +787,14 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
             why += buf;
         }
     }
-    if (st.has_mass && st.volume > 0.0)
+    // "Has volume" must mean MEANINGFULLY positive: a pure-sheet state's
+    // flux garbage lands at ±1e-24 mm^3 with arbitrary sign (02-ear feat
+    // 12 recorded +4.8e-24 and the old >0 gate exploded vol_rel to 1e16).
+    // Scale the epsilon by the state's own bbox so tiny-but-real solids
+    // (sub-mm features) still qualify on small parts.
+    const double vol_eps = (tdiag > 0.0) ? 1e-9 * tdiag * tdiag * tdiag
+                                         : 1e-15;
+    if (st.has_mass && st.volume * s3 > vol_eps)
     {
         const double tv  = st.volume * s3;
         const double rel = std::fabs(va.volume - tv) / tv;
@@ -799,7 +806,7 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
             why += buf;
         }
     }
-    else if (st.has_mass && st.volume < 0.0)
+    else if (st.has_mass && st.volume * s3 < -vol_eps)
     {
         // Open-shell state: the recorded "volume" is signed flux, whose
         // sign convention is the kernel's own (face orientation). Report
@@ -827,7 +834,7 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
         if (rel > rel_tol)
         {
             char buf[64];
-            const bool decides = (st.volume <= 0.0);
+            const bool decides = (st.volume * s3 <= vol_eps);
             std::snprintf(buf, sizeof buf, "area_rel=%.3g%s ", rel,
                           decides ? "" : "(info)");
             why += buf;

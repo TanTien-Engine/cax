@@ -103,6 +103,26 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		},
 		{false, false, true, false});  // is_boolean
 
+	// trim: split shape1 by shape2's faces and keep only the fragments
+	// on the (keep_pt, keep_dir) side; the tool body itself is consumed
+	// by the caller (ZW3D FtSolidSoloTrm). Tool missing -> pass-through
+	// (a missed trim degrades the metric, an emptied chain kills it).
+	reg.Define("trim", {"shape", "tool", "keep_pt", "keep_dir"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			auto tv = ctx.GetShape(1);
+			if (!tv.shape) return MakeShapeVal(sv.shape);
+			auto p = ctx.GetVec3(2);
+			auto d = ctx.GetVec3(3);
+			auto shp = brepkit::TopoAlgo::TrimByTool(sv.shape, tv.shape,
+				sm::vec3((float)p[0], (float)p[1], (float)p[2]),
+				sm::vec3((float)d[0], (float)d[1], (float)d[2]),
+				ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp ? shp : sv.shape);
+		},
+		{false, false, true, false});  // is_boolean
+
 	// Pre-split body edges at a set of point hints. Inserted into the
 	// graph before the Fillet / Chamfer dressup when the FreeCAD reader's
 	// face-pick handler detected base brep vertices that don't exist in

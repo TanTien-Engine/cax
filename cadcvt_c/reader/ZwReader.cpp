@@ -952,11 +952,97 @@ bool FramesProjectionAligned(const ProfFrame& A, const ProfFrame& B)
 }
 
 // A ZW3D extrude (FtAllExt) yields a SOLID only when its profile bounds a
-// closed region. The historic guard "curves >= 3" rejected the single-line
-// surface extrude correctly, but ALSO dropped perfectly good 1-2 curve solid
-// profiles: a lone circle (a pin / hole), two concentric circles (a ring),
-// or a 2-curve loop (arc + chord, a D-section). Accept those; keep every
-// >= 3 profile exactly as before (zero risk to the base or existing bosses).
+// closed region -- and only when the SKETCH BUILDER can realize that
+// closure. The historic guard accepted any >= 3 curve profile outright,
+// which let two failure modes through (02-ear 拉伸2: phantom 300 mm solid
+// out of a 20 mm sheet part): an OPEN multi-curve profile (ZW3D's
+// surface-extrude idiom), and a closed profile containing a nurb/ellipse
+// that BuildSketchFromProfile silently drops (gate counted 3 curves, the
+// builder built 2, WiresToFace fabricated a face over the gap).
+bool ProfileFormsClosedLoops(const json& curves, double tol);
+
+// TRUE when the effective curves contain at least one CLOSED loop:
+// circles / self-closed arcs count outright; line/arc chains are pruned
+// of dangling segments (an endpoint with no partner within tol) until
+// stable -- whatever survives sits on a cycle. Distinct from
+// ProfileFormsClosedLoops (ALL endpoints must pair up): a region-pick
+// profile can mix its real closed loops with leftover OPEN construction
+// chains (R2900 Extrude21/26/30/31 carry 4 endpoints 157..490 mm apart
+// next to perfectly closed loops -- the builder keeps what closes and
+// drops the strays), while a profile that is ONLY open chains (02-ear's
+// surface-extrude idiom) prunes to nothing and stays rejected.
+bool ProfileHasClosedLoop(const json& curves, double tol)
+{
+    if (!curves.is_array() || curves.empty()) {
+        return false;
+    }
+    bool has_drawn = false;
+    for (const auto& c : curves)
+    {
+        if (!JGet<bool>(c, "ref", false)) { has_drawn = true; break; }
+    }
+    struct Seg { double a[2], b[2]; bool alive; };
+    std::vector<Seg> segs;
+    for (const auto& c : curves)
+    {
+        if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
+        const std::string k = JStr(c, "kind", "");
+        if (k == "circle" || k == "ellipse") {
+            return true;
+        }
+        auto p0 = c.find("p0");
+        auto p1 = c.find("p1");
+        if (p0 == c.end() || p1 == c.end() ||
+            !p0->is_array() || !p1->is_array() ||
+            p0->size() < 2 || p1->size() < 2) {
+            continue;   // endpoint-less curve: can't chain, ignore
+        }
+        Seg s;
+        s.a[0]  = p0->at(0).get<double>();
+        s.a[1]  = p0->at(1).get<double>();
+        s.b[0]  = p1->at(0).get<double>();
+        s.b[1]  = p1->at(1).get<double>();
+        s.alive = true;
+        segs.push_back(s);
+    }
+    auto near2 = [tol](const double* p, const double* q) {
+        return std::fabs(p[0] - q[0]) < tol && std::fabs(p[1] - q[1]) < tol;
+    };
+    // A full circle exported as one arc closes on itself.
+    for (const auto& s : segs)
+    {
+        if (near2(s.a, s.b)) {
+            return true;
+        }
+    }
+    // Peel dangling segments until stable; survivors lie on cycles.
+    size_t alive  = segs.size();
+    bool   pruned = true;
+    while (pruned && alive > 0)
+    {
+        pruned = false;
+        for (auto& s : segs)
+        {
+            if (!s.alive) { continue; }
+            int deg_a = 0, deg_b = 0;
+            for (const auto& t : segs)
+            {
+                if (!t.alive || &t == &s) { continue; }
+                if (near2(s.a, t.a) || near2(s.a, t.b)) { ++deg_a; }
+                if (near2(s.b, t.a) || near2(s.b, t.b)) { ++deg_b; }
+            }
+            if (deg_a == 0 || deg_b == 0)
+            {
+                s.alive = false;
+                --alive;
+                pruned  = true;
+            }
+        }
+    }
+    // Two segments suffice (a pair of half-circle arcs is a closed lens).
+    return alive >= 2;
+}
+
 bool ProfileExtrudable(const json& curves)
 {
     if (!curves.is_array()) {
@@ -970,62 +1056,34 @@ bool ProfileExtrudable(const json& curves)
     {
         if (!JGet<bool>(c, "ref", false)) { has_drawn = true; break; }
     }
+    // Judge the wire the BUILDER will produce, not the wire the json
+    // promises: any effective curve of a kind the builder drops makes the
+    // built wire open no matter what the endpoints say.
     for (const auto& c : curves)
     {
-        if (!(has_drawn && JGet<bool>(c, "ref", false))) { ++n; }
-    }
-    if (n >= 3) {
-        return true;            // unchanged: the existing multi-curve path
+        if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
+        ++n;
+        const std::string k = JStr(c, "kind", "");
+        if (k != "line" && k != "circle" && k != "arc") {
+            return false;       // builder can't realize this curve
+        }
     }
     if (n == 0) {
         return false;
     }
-    // n == 1 or 2: a solid only if the curves close. A circle / ellipse is
-    // self-closing; a line / arc must chain endpoint-to-endpoint, no dangling
-    // end. (A lone line or arc is the open surface-extrude case -> reject.)
-    int closed_loops = 0;
-    std::vector<std::array<double, 2>> ends;
-    for (const auto& c : curves)
-    {
-        if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
-        const std::string k = JStr(c, "kind", "");
-        if (k == "circle" || k == "ellipse") {
-            ++closed_loops;
-            continue;
-        }
-        auto p0 = c.find("p0");
-        auto p1 = c.find("p1");
-        if (p0 == c.end() || p1 == c.end() ||
-            !p0->is_array() || !p1->is_array() ||
-            p0->size() < 2 || p1->size() < 2) {
-            return false;       // open curve we can't verify -> not safe
-        }
-        ends.push_back({ p0->at(0).get<double>(), p0->at(1).get<double>() });
-        ends.push_back({ p1->at(0).get<double>(), p1->at(1).get<double>() });
-    }
-    // Every open endpoint must coincide with exactly one other (a closed
-    // chain). With only 1-2 curves this pairing is cheap and exact.
-    const double tol = 1e-6;
-    std::vector<bool> used(ends.size(), false);
-    for (size_t i = 0; i < ends.size(); ++i)
-    {
-        if (used[i]) { continue; }
-        bool matched = false;
-        for (size_t j = i + 1; j < ends.size(); ++j)
-        {
-            if (used[j]) { continue; }
-            if (std::fabs(ends[i][0] - ends[j][0]) < tol &&
-                std::fabs(ends[i][1] - ends[j][1]) < tol) {
-                used[i] = used[j] = true;
-                matched = true;
-                break;
-            }
-        }
-        if (!matched) {
-            return false;       // dangling end -> open profile (a surface)
-        }
-    }
-    return closed_loops > 0 || !ends.empty();
+    // At-least-one-closed-loop chaining at 1e-2 mm endpoint tolerance.
+    // Both choices are R2900-calibrated against real exports:
+    //   - 1e-2, not 1e-4: consecutive DRAWN arcs of an arc-chain ring
+    //     (Extrude81, 40 arcs) carry ~3e-3 mm export jitter -- legit
+    //     geometry, while a structurally open profile gapes by whole
+    //     millimetres (02-ear's surface extrude: 150+ mm).
+    //   - any closed loop, not ALL-curves-closed: region-pick profiles
+    //     ship stray open construction chains next to their real loops
+    //     (Extrude21/26/30/31); the sketch builder drops the strays.
+    // 02-ear's failure modes stay rejected: its open profiles have NO
+    // closed loop at any tolerance, and the nurb/ellipse kind gate
+    // above is unchanged.
+    return ProfileHasClosedLoop(curves, 1e-2);
 }
 
 // True when the profile's curves chain into closed loop(s): every open
@@ -2637,6 +2695,117 @@ bool ZwReader::ReadFile(const std::string& path,
                         running_solid_id = id;
                         continue;
                     }
+                }
+
+                // ZW3D trim (FtSolidSoloTrm 修剪) -> FeatPayloadTrim. fld 1
+                // "Base B" names the body being trimmed (its ent carries the
+                // owning feature's JSON id in "feat"), fld 2 "Trimming T" the
+                // trimming face(s) -- each ent's "feat" names the sheet body
+                // owning them -- and fld 20 is the keep-side witness: "pt"
+                // sits on the trimming surface and "dir" points INTO the kept
+                // half. The Replayer splits base by tool and keeps the
+                // witnessed side; both inputs are consumed (ZW3D removes the
+                // trimming sheet from the part). 02-ear: 修剪1 cuts UV曲面1's
+                // skin with 拉伸1's extruded band (truth flux -1716 -> -907).
+                if (zt == "FtSolidSoloTrm")
+                {
+                    auto fields_it = jf.find("fields");
+                    const bool has_fields =
+                        (fields_it != jf.end() && fields_it->is_array());
+
+                    auto is_built = [&](uint32_t fid) -> bool {
+                        for (const auto& f : out.features) {
+                            if (f.id == fid) {
+                                return f.type != cadapp::FeatType::Unknown;
+                            }
+                        }
+                        return false;
+                    };
+
+                    uint32_t              base_fid = 0;
+                    std::vector<uint32_t> tool_fids;
+                    double kpt[3]  = { 0.0, 0.0, 0.0 };
+                    double kdir[3] = { 0.0, 0.0, 0.0 };
+                    bool   has_keep = false;
+                    if (has_fields) {
+                        for (const auto& fd : *fields_it) {
+                            const int fld = JGet<int>(fd, "id", -1);
+                            if (fld == 1 || fld == 2)
+                            {
+                                auto eit = fd.find("ents");
+                                if (eit == fd.end() || !eit->is_array()) {
+                                    continue;
+                                }
+                                for (const auto& e : *eit) {
+                                    auto ft = e.find("feat");
+                                    if (ft == e.end() ||
+                                        !ft->is_number_integer()) {
+                                        continue;
+                                    }
+                                    uint32_t t =
+                                        static_cast<uint32_t>(ft->get<int>());
+                                    if (t == 0 || !is_built(t)) { continue; }
+                                    if (fld == 1) {
+                                        if (base_fid == 0) { base_fid = t; }
+                                    } else {
+                                        if (t == base_fid) { continue; }
+                                        bool dup = false;
+                                        for (uint32_t x : tool_fids) {
+                                            if (x == t) { dup = true; break; }
+                                        }
+                                        if (!dup) { tool_fids.push_back(t); }
+                                    }
+                                }
+                            }
+                            else if (fld == 20)
+                            {
+                                auto pt = fd.find("pt");
+                                auto dr = fd.find("dir");
+                                if (pt != fd.end() && pt->is_array() &&
+                                    pt->size() >= 3 &&
+                                    dr != fd.end() && dr->is_array() &&
+                                    dr->size() >= 3)
+                                {
+                                    for (int k = 0; k < 3; ++k) {
+                                        kpt[k]  = pt->at(k).get<double>();
+                                        kdir[k] = dr->at(k).get<double>();
+                                    }
+                                    has_keep = std::fabs(kdir[0]) +
+                                               std::fabs(kdir[1]) +
+                                               std::fabs(kdir[2]) > 1e-12;
+                                }
+                            }
+                        }
+                    }
+
+                    if (base_fid != 0 && !tool_fids.empty() && has_keep)
+                    {
+                        cadapp::FeatPayloadTrim pl;
+                        for (int k = 0; k < 3; ++k) {
+                            pl.keep_pt[k]  = kpt[k] * s;
+                            pl.keep_dir[k] = kdir[k];
+                        }
+                        cadapp::FeatureIR tf;
+                        tf.id   = id;
+                        tf.name = name;
+                        tf.type = cadapp::FeatType::Trim;
+                        tf.data = std::move(pl);
+                        tf.ext_strings["zw_type"] = zt;
+                        PushInput(tf, base_fid, cadapp::InputRole::Base);
+                        for (uint32_t t : tool_fids) {
+                            PushInput(tf, t, cadapp::InputRole::Tool);
+                        }
+                        out.features.push_back(std::move(tf));
+                        // The trim replaces its base lineage in place; if
+                        // that lineage was the running tip, the trim is the
+                        // new tip.
+                        if (running_solid_id == base_fid) {
+                            running_solid_id = id;
+                        }
+                        continue;
+                    }
+                    // incomplete record (no feat backrefs / no witness):
+                    // fall through to the opaque path below.
                 }
 
                 // ZW3D mirror (FtMirrorFtr) -> FeatPayloadMirror. fld 1

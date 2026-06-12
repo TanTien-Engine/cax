@@ -2790,6 +2790,89 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
             }
 
+            // ---- Trim (ZW3D FtSolidSoloTrm 修剪) ----
+            //
+            // Split the Base-role body by the Tool-role body's faces and
+            // keep the (keep_pt, keep_dir) side; both inputs are consumed
+            // (the default input-consumption pass below handles that --
+            // ZW3D removes the trimming sheet from the part and the base
+            // is replaced by its kept side). 02-ear 修剪1: UV曲面1's skin
+            // cut by 拉伸1's extruded band, flux halves, tool vanishes.
+            else if constexpr (std::is_same_v<T, FeatPayloadTrim>)
+            {
+                std::vector<int> tool_nodes;
+                for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+                {
+                    InputRole role = (i < feat.input_roles.size())
+                                         ? feat.input_roles[i]
+                                         : InputRole::Base;
+                    if (role != InputRole::Tool) {
+                        continue;
+                    }
+                    auto fit = feature_nodes.find(feat.input_feature_ids[i]);
+                    if (fit != feature_nodes.end() && fit->second >= 0) {
+                        tool_nodes.push_back(fit->second);
+                    }
+                }
+                if (base_node < 0 || tool_nodes.empty())
+                {
+                    if (!out.err_msg.empty()) {
+                        out.err_msg += "; ";
+                    }
+                    out.err_msg += "trim " + feat.name +
+                                   (base_node < 0
+                                        ? " has no base body; skipped"
+                                        : " resolved no tool body; skipped");
+                }
+                else
+                {
+                    int tool_n = tool_nodes[0];
+                    if (tool_nodes.size() > 1) {
+                        tool_n = cg->AddOp("merge", {}, tool_nodes,
+                                           feat.name + ":tools");
+                    }
+                    brepgraph::Vec3 kp = {p.keep_pt[0], p.keep_pt[1],
+                                          p.keep_pt[2]};
+                    brepgraph::Vec3 kd = {p.keep_dir[0], p.keep_dir[1],
+                                          p.keep_dir[2]};
+                    int kp_n = cg->AddConst(kp, "keep_pt");
+                    int kd_n = cg->AddConst(kd, "keep_dir");
+                    node = cg->AddOp("trim",
+                                     {base_node, tool_n, kp_n, kd_n}, {},
+                                     feat.name + ":trim");
+                    // ZW3D modifies the trimmed lineage IN PLACE: any
+                    // later feature naming the BASE feature means its
+                    // post-trim state. Redirect the base id's node (and
+                    // its tool record, for mirrors of the trimmed skin)
+                    // to the trim result.
+                    for (size_t i = 0; i < feat.input_feature_ids.size();
+                         ++i)
+                    {
+                        InputRole role = (i < feat.input_roles.size())
+                                             ? feat.input_roles[i]
+                                             : InputRole::Base;
+                        if (role != InputRole::Base) {
+                            continue;
+                        }
+                        const uint32_t bid = feat.input_feature_ids[i];
+                        feature_nodes[bid] = node;
+                        auto tit = feature_tools.find(bid);
+                        if (tit != feature_tools.end()) {
+                            tit->second.tool_node = node;
+                        }
+                        break;
+                    }
+                    // The trimmed sheet is itself a multipliable tool
+                    // (mirror-of-trimmed-skin), same registration as the
+                    // BakedShape arm.
+                    FeatureToolInfo ti;
+                    ti.tool_node = node;
+                    ti.base_node = -1;
+                    ti.op_kind   = '0';
+                    feature_tools[feat.id] = ti;
+                }
+            }
+
             // ---- Not implemented yet ----
             else
             {
@@ -2885,7 +2968,14 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                             sv->shape->GetShape().IsNull();
                 if (!dead)
                 {
-                    TopExp_Explorer ex(sv->shape->GetShape(), TopAbs_SOLID);
+                    // A trim on a sheet base legitimately yields a sheet;
+                    // demanding a SOLID would revert every surface-
+                    // modeling trim to its base. Faces are proof of life
+                    // there; everything else keeps the solid bar.
+                    const TopAbs_ShapeEnum need =
+                        (feat.type == FeatType::Trim) ? TopAbs_FACE
+                                                      : TopAbs_SOLID;
+                    TopExp_Explorer ex(sv->shape->GetShape(), need);
                     dead = !ex.More();
                 }
                 if (dead)

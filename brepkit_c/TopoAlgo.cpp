@@ -27,6 +27,8 @@
 #include <GeomAbs_JoinType.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Iterator.hxx>
+#include <BRep_Builder.hxx>
 #include <TopExp_Explorer.hxx>
 #include <BOPAlgo_GlueEnum.hxx>
 #include <BOPAlgo_Splitter.hxx>
@@ -1767,6 +1769,276 @@ std::shared_ptr<TopoShape> TopoAlgo::Split(const std::shared_ptr<TopoShape>& bas
     }
     auto dst = std::make_shared<brepkit::TopoShape>(algo.Shape());
     merge_to_vt(tn, vt, base, tool, dst, std::move(tool_world), pid_map, "split");
+    return dst;
+}
+
+namespace
+{
+
+// Signed distance of `p` to the tool's ORIENTED surface: dot(p - q, n(q))
+// with q the closest point on a tool FACE and n the face normal including
+// the face's orientation flag. Returns 0 when the closest support is an
+// edge / vertex (the cut seam -- ambiguous) or extrema fails; callers
+// treat 0 as "no vote".
+double SignedDistToTool(const TopoDS_Shape& tool, const gp_Pnt& p)
+{
+    TopoDS_Vertex v = BRepBuilderAPI_MakeVertex(p);
+    BRepExtrema_DistShapeShape ext(v, tool);
+    if (!ext.IsDone() || ext.NbSolution() < 1) {
+        return 0.0;
+    }
+    for (int i = 1; i <= ext.NbSolution(); ++i)
+    {
+        if (ext.SupportTypeShape2(i) != BRepExtrema_IsInFace) {
+            continue;
+        }
+        const TopoDS_Face f = TopoDS::Face(ext.SupportOnShape2(i));
+        double u = 0.0, w = 0.0;
+        ext.ParOnFaceS2(i, u, w);
+        BRepAdaptor_Surface surf(f);
+        gp_Pnt sp;
+        gp_Vec d1u, d1v;
+        surf.D1(u, w, sp, d1u, d1v);
+        gp_Vec n = d1u.Crossed(d1v);
+        if (n.Magnitude() < 1e-12) {
+            continue;
+        }
+        if (f.Orientation() == TopAbs_REVERSED) {
+            n.Reverse();
+        }
+        return gp_Vec(sp, p).Dot(n) / n.Magnitude();
+    }
+    return 0.0;
+}
+
+// Side vote of a whole fragment: area-weighted signed distance over its
+// face centroids. Weighting makes samples near the cut seam (tiny |d|)
+// irrelevant and L-shaped faces (centroid off the trim region but on the
+// correct side) harmless.
+double FragmentSideVote(const TopoDS_Shape& tool, const TopoDS_Shape& frag)
+{
+    double acc = 0.0;
+    for (TopExp_Explorer fx(frag, TopAbs_FACE); fx.More(); fx.Next())
+    {
+        GProp_GProps g;
+        BRepGProp::SurfaceProperties(fx.Current(), g);
+        const gp_Pnt c = g.CentreOfMass();
+        acc += g.Mass() * SignedDistToTool(tool, c);
+    }
+    return acc;
+}
+
+} // namespace
+
+std::shared_ptr<TopoShape> TopoAlgo::TrimByTool(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
+                                                const sm::vec3& keep_pt, const sm::vec3& keep_dir,
+                                                uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
+                                                const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    TopTools_ListOfShape bases, tools;
+    bases.Append(base->GetShape());
+    tools.Append(tool->GetShape());
+
+    BRepAlgoAPI_Splitter algo;
+    algo.SetArguments(bases);
+    algo.SetTools(tools);
+    // Same rationale as Cut/Fuse: plane-on-plane tangencies otherwise
+    // make the splitter miss the intersection entirely.
+    algo.SetFuzzyValue(1e-6);
+    algo.Build();
+    if (!algo.IsDone())
+    {
+        std::fprintf(stderr,
+            "[TRIM] op_id=%u WARNING: splitter failed, body UNCHANGED\n",
+            op_id);
+        std::fflush(stderr);
+        return base;
+    }
+
+    // Keep-side witness: keep_pt sits ON the tool, so step a little way
+    // along keep_dir before classifying. Scale the step to the model and
+    // grow it if the sample still reads as "on the surface".
+    Bnd_Box bb;
+    BRepBndLib::Add(base->GetShape(), bb);
+    double diag = 1.0;
+    if (!bb.IsVoid())
+    {
+        double x0, y0, z0, x1, y1, z1;
+        bb.Get(x0, y0, z0, x1, y1, z1);
+        diag = std::sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0) + (z1-z0)*(z1-z0));
+    }
+    gp_Vec dir(keep_dir.x, keep_dir.y, keep_dir.z);
+    if (dir.Magnitude() < 1e-12)
+    {
+        std::fprintf(stderr,
+            "[TRIM] op_id=%u WARNING: null keep_dir, body UNCHANGED\n", op_id);
+        std::fflush(stderr);
+        return base;
+    }
+    dir.Normalize();
+    double ref = 0.0;
+    double eps = std::max(1e-7, 1e-4 * diag);
+    for (int attempt = 0; attempt < 5 && std::fabs(ref) < 1e-12; ++attempt)
+    {
+        const gp_Pnt x_ref(keep_pt.x + eps * dir.X(),
+                           keep_pt.y + eps * dir.Y(),
+                           keep_pt.z + eps * dir.Z());
+        ref = SignedDistToTool(tool->GetShape(), x_ref);
+        eps *= 10.0;
+    }
+    if (std::fabs(ref) < 1e-12)
+    {
+        std::fprintf(stderr,
+            "[TRIM] op_id=%u WARNING: keep-side witness unresolvable, "
+            "body UNCHANGED\n", op_id);
+        std::fflush(stderr);
+        return base;
+    }
+
+    // Classify the split pieces. Granularity matters: the splitter
+    // rebuilds a SHELL argument as ONE shell whose faces are now split
+    // along the tool curve -- top-level iteration sees a single
+    // "fragment" and the trim silently no-ops (02-ear 修剪1: the z=-0.6
+    // plane cut the skin, but the skin stayed one shell). So: SOLIDs
+    // classify whole, anything sheet-like decomposes to FACES that
+    // classify individually (kept ones are sewn back below); free wires
+    // / edges ride along uncut.
+    const TopoDS_Shape result = algo.Shape();
+    std::vector<TopoDS_Shape> top;
+    if (result.ShapeType() == TopAbs_COMPOUND)
+    {
+        for (TopoDS_Iterator it(result); it.More(); it.Next()) {
+            top.push_back(it.Value());
+        }
+    }
+    else
+    {
+        top.push_back(result);
+    }
+    std::vector<TopoDS_Shape> frags;       // solids (whole) + faces
+    std::vector<TopoDS_Shape> riders;      // non-face leftovers, kept as-is
+    for (const TopoDS_Shape& t : top)
+    {
+        if (t.ShapeType() == TopAbs_SOLID)
+        {
+            frags.push_back(t);
+            continue;
+        }
+        bool any_face = false;
+        for (TopExp_Explorer fx(t, TopAbs_FACE); fx.More(); fx.Next())
+        {
+            frags.push_back(fx.Current());
+            any_face = true;
+        }
+        if (!any_face) {
+            riders.push_back(t);
+        }
+    }
+    // Forensics when the splitter produced no cut: print both bboxes and
+    // the min distance so "tool never reaches base" vs "tangency the
+    // fuzzy didn't bridge" vs "wrong base wired" are distinguishable
+    // from the log alone.
+    if (frags.size() <= 1)
+    {
+        Bnd_Box tb;
+        BRepBndLib::Add(tool->GetShape(), tb);
+        double tx0=0, ty0=0, tz0=0, tx1=0, ty1=0, tz1=0;
+        if (!tb.IsVoid()) tb.Get(tx0, ty0, tz0, tx1, ty1, tz1);
+        double bx0=0, by0=0, bz0=0, bx1=0, by1=0, bz1=0;
+        if (!bb.IsVoid()) bb.Get(bx0, by0, bz0, bx1, by1, bz1);
+        BRepExtrema_DistShapeShape dist(base->GetShape(), tool->GetShape());
+        const double d = (dist.IsDone() && dist.NbSolution() > 0)
+                             ? dist.Value() : -1.0;
+        std::fprintf(stderr,
+            "[trim] op_id=%u NOSPLIT base_bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,"
+            "%.4g) tool_bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g) min_dist=%.4g\n",
+            op_id, bx0, by0, bz0, bx1, by1, bz1,
+            tx0, ty0, tz0, tx1, ty1, tz1, d);
+        std::fflush(stderr);
+    }
+
+    BRep_Builder builder;
+    TopoDS_Compound kept;
+    builder.MakeCompound(kept);
+    int n_kept = 0, n_drop = 0;
+    std::vector<TopoDS_Shape> kept_faces;
+    for (const TopoDS_Shape& f : frags)
+    {
+        const double vote = FragmentSideVote(tool->GetShape(), f);
+        const bool keep = (vote == 0.0) || ((vote > 0.0) == (ref > 0.0));
+        if (!keep) { ++n_drop; continue; }
+        ++n_kept;
+        if (f.ShapeType() == TopAbs_FACE) {
+            kept_faces.push_back(f);
+        } else {
+            builder.Add(kept, f);
+        }
+    }
+    if (n_kept == 0)
+    {
+        std::fprintf(stderr,
+            "[TRIM] op_id=%u WARNING: classification kept 0 of %d fragments, "
+            "body UNCHANGED\n", op_id, (int)frags.size());
+        std::fflush(stderr);
+        return base;
+    }
+    // Sew the kept faces back into shells so the surviving skin stays ONE
+    // body (ZW3D keeps it one); the splitter's face splits otherwise leak
+    // out as a bag of loose faces.
+    if (!kept_faces.empty())
+    {
+        if (kept_faces.size() == 1)
+        {
+            builder.Add(kept, kept_faces[0]);
+        }
+        else
+        {
+            BRepBuilderAPI_Sewing sew(1e-6);
+            for (const TopoDS_Shape& f : kept_faces) {
+                sew.Add(f);
+            }
+            sew.Perform();
+            const TopoDS_Shape sewn = sew.SewedShape();
+            if (!sewn.IsNull()) {
+                builder.Add(kept, sewn);
+            } else {
+                for (const TopoDS_Shape& f : kept_faces) {
+                    builder.Add(kept, f);
+                }
+            }
+        }
+    }
+    for (const TopoDS_Shape& r : riders) {
+        builder.Add(kept, r);
+    }
+    TopoDS_Shape out_shape = kept;
+    {
+        TopoDS_Iterator solo(kept);
+        if (solo.More())
+        {
+            const TopoDS_Shape first = solo.Value();
+            solo.Next();
+            if (!solo.More()) {
+                out_shape = first;   // single child -> unwrap
+            }
+        }
+    }
+    std::fprintf(stderr, "[trim] op_id=%u frags=%d kept=%d dropped=%d\n",
+                 op_id, (int)frags.size(), n_kept, n_drop);
+
+    // Serialize tool BEFORE tn->Update() unbinds its shapes (Split's
+    // pattern); naming maps to the kept subset only.
+    brepdb::BRepWorld tool_world;
+    if (tn && vt) { tool_world = serialize_world(tn, tool->GetShape()); }
+    brepgraph::TopoNaming::PidMap pid_map;
+    if (tn)
+    {
+        auto old_shp = ShapeBuilder::MakeCompound({ base, tool });
+        opencascade::handle<BRepTools_History> o_hist = algo.History();
+        pid_map = tn->Update(o_hist, out_shape, old_shp->GetShape(), op_id);
+    }
+    auto dst = std::make_shared<brepkit::TopoShape>(out_shape);
+    merge_to_vt(tn, vt, base, tool, dst, std::move(tool_world), pid_map, "trim");
     return dst;
 }
 
