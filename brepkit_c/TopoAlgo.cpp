@@ -2689,11 +2689,16 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
     auto has_solid = [](const TopoDS_Shape& s) {
         return TopExp_Explorer(s, TopAbs_SOLID).More();
     };
-    // A combine-add where either operand is already a solid is a plain
-    // boolean, not sheet joinery.
-    if (has_solid(base->GetShape()) || has_solid(tool->GetShape()))
+    // A combine-add where BOTH operands are solids is a plain boolean.
+    // Solid + SHEET stays on the joinery path below: ZW3D's combine of
+    // the closed ear box with the dome skin encloses the dome region
+    // against the box wall -- a fuse can't create that volume, and the
+    // solidxsheet BOP on these B-spline skins exploded to the memory
+    // cap (bad alloc under the 8G Job Object fence).
+    if (has_solid(base->GetShape()) && has_solid(tool->GetShape()))
     {
-        std::fprintf(stderr, "[sew] op_id=%u solid operand -> fuse\n", op_id);
+        std::fprintf(stderr, "[sew] op_id=%u solid operands -> fuse\n",
+                     op_id);
         std::fflush(stderr);
         return Fuse(base, tool, op_id, tn, vt);
     }
@@ -3077,15 +3082,186 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
             }
         }
     }
+    // Solid-union-resting-sheet (ZW3D combine): the open shell's rim
+    // rests ON the solid's wall (02-ear 组合1: dome rim at 8e-17 on the
+    // ear box). Union boundary = solid faces minus the wall piece the
+    // sheet covers, plus the sheet. Rim imprint (edge-on-face split,
+    // cheap) carves that piece out; covered-vs-outside classification:
+    // the nearest sheet point from a covered piece is INTERIOR, from an
+    // outside piece it is on the sheet's own rim. No surface-surface
+    // intersection anywhere -- the dome x wall SS pair is exactly what
+    // ate the machine via MakerVolume.
+    if (n_solids == 1 && n_open == 1)
+    {
+        TopoDS_Shape B, S;
+        for (TopoDS_Iterator it(out_c); it.More(); it.Next())
+        {
+            if (it.Value().ShapeType() == TopAbs_SOLID) { B = it.Value(); }
+            else if (it.Value().ShapeType() == TopAbs_SHELL) {
+                S = it.Value();
+            }
+        }
+        // Rim edges of S, for the imprint and the boundary test.
+        TopTools_IndexedDataMapOfShapeListOfShape se2f;
+        TopExp::MapShapesAndAncestors(S, TopAbs_EDGE, TopAbs_FACE, se2f);
+        BRep_Builder rb;
+        TopoDS_Compound rim_c;
+        rb.MakeCompound(rim_c);
+        TopTools_ListOfShape rim_edges;
+        for (int i = 1; i <= se2f.Extent(); ++i)
+        {
+            const TopoDS_Edge& e = TopoDS::Edge(se2f.FindKey(i));
+            if (BRep_Tool::Degenerated(e)) { continue; }
+            if (se2f.FindFromIndex(i).Extent() < 2)
+            {
+                rb.Add(rim_c, e);
+                rim_edges.Append(e);
+            }
+        }
+        if (!B.IsNull() && !S.IsNull() && !rim_edges.IsEmpty())
+        {
+            try
+            {
+                TopTools_ListOfShape args;
+                args.Append(B);
+                BRepAlgoAPI_Splitter sp;
+                sp.SetArguments(args);
+                sp.SetTools(rim_edges);
+                sp.SetFuzzyValue(std::max(tol, 1e-6));
+                sp.Build();
+                if (sp.IsDone())
+                {
+                    std::vector<TopoDS_Shape> uni;
+                    int n_covered = 0;
+                    for (TopExp_Explorer fx(sp.Shape(), TopAbs_FACE);
+                         fx.More(); fx.Next())
+                    {
+                        GProp_GProps fg;
+                        BRepGProp::SurfaceProperties(fx.Current(), fg);
+                        const gp_Pnt c = fg.CentreOfMass();
+                        TopoDS_Vertex cv = BRepBuilderAPI_MakeVertex(c);
+                        BRepExtrema_DistShapeShape ds(cv, S);
+                        bool covered = false;
+                        if (ds.IsDone() && ds.NbSolution() > 0)
+                        {
+                            const gp_Pnt q = ds.PointOnShape2(1);
+                            TopoDS_Vertex qv = BRepBuilderAPI_MakeVertex(q);
+                            BRepExtrema_DistShapeShape dr(qv, rim_c);
+                            const double rim_d =
+                                (dr.IsDone() && dr.NbSolution() > 0)
+                                    ? dr.Value() : 1e9;
+                            // FIXED interior threshold -- scaling by the
+                            // (escalated) sew tolerance once produced a
+                            // 5 mm bar that classified every covered
+                            // piece as "on the rim".
+                            covered = rim_d > 2e-4;
+                            std::fprintf(stderr,
+                                "[sew]   union_rest piece area=%.4g "
+                                "sheet_d=%.4g rim_d=%.4g covered=%d\n",
+                                fg.Mass() * 1e6, ds.Value(), rim_d,
+                                covered ? 1 : 0);
+                        }
+                        if (covered) { ++n_covered; continue; }
+                        uni.push_back(fx.Current());
+                    }
+                    for (TopExp_Explorer fx(S, TopAbs_FACE); fx.More();
+                         fx.Next()) {
+                        uni.push_back(fx.Current());
+                    }
+                    std::fprintf(stderr,
+                        "[sew] op_id=%u union_rest covered=%d faces=%d\n",
+                        op_id, n_covered, (int)uni.size());
+                    std::fflush(stderr);
+                    if (n_covered > 0)
+                    {
+                        BRepBuilderAPI_Sewing usew(std::max(tol, 1e-6));
+                        for (const TopoDS_Shape& f : uni) {
+                            usew.Add(f);
+                        }
+                        usew.Perform();
+                        const TopoDS_Shape us = usew.SewedShape();
+                        if (!us.IsNull() &&
+                            us.ShapeType() == TopAbs_SHELL &&
+                            shell_closed(us))
+                        {
+                            TopoDS_Solid sol;
+                            BRep_Builder sb;
+                            sb.MakeSolid(sol);
+                            sb.Add(sol, us);
+                            GProp_GProps g;
+                            BRepGProp::VolumeProperties(sol, g);
+                            if (g.Mass() < 0.0) {
+                                sol.Reverse();
+                                BRepGProp::VolumeProperties(sol, g);
+                            }
+                            std::fprintf(stderr,
+                                "[sew] op_id=%u union_rest SOLID "
+                                "vol=%.6g\n", op_id,
+                                std::fabs(g.Mass()) * 1e9);
+                            std::fflush(stderr);
+                            BRep_Builder ob;
+                            TopoDS_Compound oc;
+                            ob.MakeCompound(oc);
+                            ob.Add(oc, sol);
+                            for (const TopoDS_Shape& r : riders) {
+                                ob.Add(oc, r);
+                            }
+                            out_c    = oc;
+                            n_solids = 1;
+                            n_open   = 0;
+                            n_loose  = (int)riders.size();
+                        }
+                        else
+                        {
+                            std::fprintf(stderr,
+                                "[sew] op_id=%u union_rest shell did not "
+                                "close; kept sewn pieces\n", op_id);
+                            std::fflush(stderr);
+                        }
+                    }
+                }
+            }
+            catch (Standard_Failure& sf)
+            {
+                const char* m = sf.GetMessageString();
+                std::fprintf(stderr,
+                    "[sew] op_id=%u union_rest THREW %s\n",
+                    op_id, m ? m : "Standard_Failure");
+                std::fflush(stderr);
+            }
+        }
+    }
     // Last resort, budgeted: MakerVolume's blind face-soup intersection
-    // (it has never beaten imprint_peel on the motivating case, and its
-    // unbudgeted form once ate the whole machine -- keep it fenced).
-    if (n_solids == 0)
+    // (its unbudgeted form once ate the whole machine -- keep it
+    // fenced). Runs whenever OPEN shells remain, not only when nothing
+    // solidified: the combine that closes the ear box still leaves the
+    // dome region to be enclosed against the box wall (a region no sew
+    // can produce -- its boundary is part dome sheet, part box face).
+    if (n_open > 0 || n_solids == 0)
     {
         BOPAlgo_MakerVolume mv;
         TopTools_ListOfShape args;
-        for (const TopoDS_Shape& f : faces) {
-            args.Append(f);
+        // COMPOSITE args, not the face soup: the sewn pieces (a closed
+        // box solid, a dome shell) go in whole, so the interference
+        // stage runs once per piece-pair instead of once per face-pair
+        // -- the decomposed form ran 13x13 B-spline intersections and
+        // blew the 60 s budget on the very op it exists for.
+        int n_args = 0;
+        for (TopoDS_Iterator it(out_c); it.More(); it.Next())
+        {
+            const TopAbs_ShapeEnum t = it.Value().ShapeType();
+            if (t == TopAbs_SOLID || t == TopAbs_SHELL ||
+                t == TopAbs_FACE)
+            {
+                args.Append(it.Value());
+                ++n_args;
+            }
+        }
+        if (n_args == 0)
+        {
+            for (const TopoDS_Shape& f : faces) {
+                args.Append(f);
+            }
         }
         mv.SetArguments(args);
         mv.SetIntersect(Standard_True);
@@ -3156,14 +3332,53 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                 op_id, n_mv, mv_vol * 1e9);
             if (n_mv > 0)
             {
+                // MakerVolume returns each enclosed region separately --
+                // the ear box and the dome region share their imprinted
+                // wall as two glued solids where the source has ONE.
+                // Fold them with a plain solid-solid fuse (cheap and
+                // clean on glued inputs).
+                TopoDS_Shape merged;
+                if (n_mv > 1)
+                {
+                    std::shared_ptr<TopoShape> acc;
+                    for (TopoDS_Iterator it(vols); it.More(); it.Next())
+                    {
+                        auto cur = std::make_shared<brepkit::TopoShape>(
+                            it.Value());
+                        acc = acc ? Fuse(acc, cur, op_id, nullptr) : cur;
+                    }
+                    if (acc && !acc->GetShape().IsNull())
+                    {
+                        merged = acc->GetShape();
+                        int nm = 0;
+                        for (TopExp_Explorer sx(merged, TopAbs_SOLID);
+                             sx.More(); sx.Next()) {
+                            ++nm;
+                        }
+                        std::fprintf(stderr,
+                            "[sew] op_id=%u maker_volume fold %d -> %d "
+                            "solid(s)\n", op_id, n_mv, nm);
+                        n_mv = nm;
+                    }
+                }
                 // The enclosed region replaces the sewn complex (its
                 // boundary faces ARE the complex); riders still tag
                 // along.
                 BRep_Builder ob;
                 TopoDS_Compound oc;
                 ob.MakeCompound(oc);
-                for (TopoDS_Iterator it(vols); it.More(); it.Next()) {
-                    ob.Add(oc, it.Value());
+                if (!merged.IsNull())
+                {
+                    for (TopExp_Explorer sx(merged, TopAbs_SOLID);
+                         sx.More(); sx.Next()) {
+                        ob.Add(oc, sx.Current());
+                    }
+                }
+                else
+                {
+                    for (TopoDS_Iterator it(vols); it.More(); it.Next()) {
+                        ob.Add(oc, it.Value());
+                    }
                 }
                 for (const TopoDS_Shape& r : riders) {
                     ob.Add(oc, r);

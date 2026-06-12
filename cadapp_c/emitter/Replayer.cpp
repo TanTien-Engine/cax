@@ -2895,6 +2895,15 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     if (fit != feature_nodes.end() && fit->second >= 0) {
                         tool_nodes.push_back(fit->second);
                     }
+                    else
+                    {
+                        std::fprintf(stderr,
+                            "[sewwire] %s tool feat=%u UNRESOLVED (%s)\n",
+                            feat.name.c_str(), feat.input_feature_ids[i],
+                            fit == feature_nodes.end() ? "no node entry"
+                                                       : "node < 0");
+                        std::fflush(stderr);
+                    }
                 }
                 if (base_node < 0 || tool_nodes.empty())
                 {

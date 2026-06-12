@@ -11,8 +11,10 @@
 
 #include <graph/Node.h>
 
+#include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopAbs.hxx>
@@ -235,12 +237,29 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		},
 		{false, false, false, false, true});  // no_vt_cache
 
+	// merge: bundle every input shape into one COMPOUND. Consumers that
+	// need "all the tools as one input" (sew, trim) explore it by face;
+	// the old stub returned shapes[0] only, silently dropping the rest
+	// (02-ear 缝合2: 3 tools wired, 1 arrived, the ear box never closed).
 	reg.Define("merge", {}, {"shapes"},
 		[](EvalCtx& ctx) -> Val {
 			auto shapes = ctx.VarShapes();
 			if (shapes.empty()) return {};
 			if (shapes.size() == 1) return shapes[0];
-			return shapes[0];
+			BRep_Builder bb;
+			TopoDS_Compound comp;
+			bb.MakeCompound(comp);
+			int added = 0;
+			for (auto& sv : shapes)
+			{
+				if (sv.shape && !sv.shape->GetShape().IsNull())
+				{
+					bb.Add(comp, sv.shape->GetShape());
+					++added;
+				}
+			}
+			if (added == 0) return {};
+			return MakeShapeVal(std::make_shared<brepkit::TopoShape>(comp));
 		});
 
 	reg.Define("cylinder", {"radius", "height"}, {},
