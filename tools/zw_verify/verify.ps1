@@ -42,7 +42,7 @@ if ($code -eq 1 -and -not $Bisect) {
     if ($hasState) {
         Write-Host "`n--- FAIL with _state truth present: bisecting ---`n"
         $ErrorActionPreference = 'Continue'
-        & $exe.FullName $Json --bisect 2>$null
+        & $exe.FullName $Json --bisect @Args 2>$null
         $code = $LASTEXITCODE
         $ErrorActionPreference = 'Stop'
     } else {

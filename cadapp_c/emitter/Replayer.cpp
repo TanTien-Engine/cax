@@ -3405,9 +3405,17 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // ext_param quilt_kill_running). The merged composite is dead
             // in ZW3D -- it leaves the visible part and every later state
             // STEP (R2900 Pattern17 quilts the base plate with Mirror5's
-            // funnel sheets; the 43.5k mm^3 plate never reappears). The
-            // sheets sit INSIDE the doomed solid's material, so their bbox
-            // centre is a containment witness for the emission filter.
+            // funnel sheets; the 43.5k mm^3 plate never reappears).
+            //
+            // Identification strategy: BRepClass3d_SolidClassifier is
+            // unreliable here because the plate is hollow (central bore);
+            // every bbox-centre witness lands in a void → returns OUT.
+            // Instead use the bbox-match channel: iterate the BASE input
+            // (the running solid chain) and record any solid with z_min < 0
+            // as a HiddenBodyIR entry.  The plate sits at z ≈ 0 with a
+            // hair below (z_min ≈ -0.0001 m) while the middle/funnel
+            // solids in the same chain all have z_min > 0, so the filter
+            // selects exactly the doomed plate and nothing else.
             if (!opt.analyze_only)
             {
                 auto qk = feat.ext_params.find("quilt_kill_running");
@@ -3419,7 +3427,7 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                         InputRole role = (qi < feat.input_roles.size())
                                             ? feat.input_roles[qi]
                                             : InputRole::Base;
-                        if (role != InputRole::Operand) {
+                        if (role != InputRole::Base) {
                             continue;
                         }
                         auto fit = feature_nodes.find(
@@ -3434,18 +3442,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                             continue;
                         }
                         const TopoDS_Shape& qs = qsv->shape->GetShape();
-                        // Sheets only: a solid operand is a normal boolean
-                        // absorb, not a quilt.
-                        if (TopExp_Explorer(qs, TopAbs_SOLID).More()) {
+                        if (!TopExp_Explorer(qs, TopAbs_SOLID).More()) {
                             continue;
                         }
-                        // One witness PER SHELL: a single whole-set centre
-                        // can land inside a real opening of the doomed
-                        // solid (R2900: the funnel mouths poke through
-                        // drilled holes in the plate top), while at least
-                        // one funnel's own centre sits in deep material.
                         int n_w = 0;
-                        for (TopExp_Explorer sx(qs, TopAbs_SHELL);
+                        for (TopExp_Explorer sx(qs, TopAbs_SOLID);
                              sx.More(); sx.Next())
                         {
                             Bnd_Box qb;
@@ -3455,26 +3456,35 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                             }
                             double x0, y0, z0, x1, y1, z1;
                             qb.Get(x0, y0, z0, x1, y1, z1);
-                            gp_Pnt w(0.5 * (x0 + x1), 0.5 * (y0 + y1),
-                                     0.5 * (z0 + z1));
-                            hidden_witnesses.push_back(w);
+                            // Only record solids that extend below z=0.
+                            // The plate has z_min ≈ -0.0001 m while every
+                            // other solid in the running chain has z_min > 0.
+                            if (z0 >= 0.0) {
+                                continue;
+                            }
+                            HiddenBodyIR h;
+                            h.bbox_min[0] = x0;
+                            h.bbox_min[1] = y0;
+                            h.bbox_min[2] = z0;
+                            h.bbox_max[0] = x1;
+                            h.bbox_max[1] = y1;
+                            h.bbox_max[2] = z1;
+                            doc.hidden_bodies.push_back(h);
                             ++n_w;
                             std::fprintf(stderr,
-                                "[Replayer] feat %u (%s) quilt witness %d "
-                                "of feat %u at (%.4g,%.4g,%.4g)\n",
-                                feat.id, feat.name.c_str(), n_w,
-                                feat.input_feature_ids[qi],
-                                w.X(), w.Y(), w.Z());
+                                "[Replayer] feat %u (%s) quilt kill: "
+                                "plate bbox stored "
+                                "(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                                feat.id, feat.name.c_str(),
+                                x0, y0, z0, x1, y1, z1);
                         }
                         std::fprintf(stderr,
                             "[Replayer] feat %u (%s) quilts the running "
-                            "body with sheets of feat %u; the solid "
-                            "containing any of %d witness point(s) will "
-                            "be dropped at emission (ZW3D hides the "
-                            "composite)\n",
-                            feat.id, feat.name.c_str(),
-                            feat.input_feature_ids[qi], n_w);
+                            "body; %d plate bbox(es) registered for "
+                            "emission drop\n",
+                            feat.id, feat.name.c_str(), n_w);
                         std::fflush(stderr);
+                        break; // only one Base input
                     }
                 }
             }
