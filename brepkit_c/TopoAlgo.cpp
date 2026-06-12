@@ -36,7 +36,9 @@
 #include <Geom_Plane.hxx>
 #include <GeomAPI_ProjectPointOnSurf.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <TopExp.hxx>
 #include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
@@ -1933,9 +1935,17 @@ struct TrimSideResult
 // TOOL side ZW3D's default is consumption; keeping unclassifiable tool
 // junk inflates the model with material ZW3D removed (02-ear 修剪3: an
 // uncut 342 mm^2 horizontal sheet piece rode in on a zero vote) -> drop.
+// zero_adj: optional adjacency referee for zero-vote fragments. A
+// mutual-trim CAP (the tool sliver that seals the kept base's cut
+// opening) lies ON the partition boundary -- distance-sign voting is
+// structurally zero there. ZW3D keeps exactly the tool pieces bounding
+// the kept region: with zero_adj set, a zero-vote fragment is kept iff
+// it RESTS on those edges (02-ear 修剪3: the 46.4+63.4mm^2 z=8.2 caps
+// that later seal the dome for the final solid).
 TrimSideResult TrimOneSide(const TopoDS_Shape& arg, const TopoDS_Shape& cutter,
                            double ref, uint32_t op_id, const char* side,
-                           bool keep_zero_votes)
+                           bool keep_zero_votes,
+                           const TopoDS_Shape* zero_adj = nullptr)
 {
     TrimSideResult r;
 
@@ -2022,8 +2032,21 @@ TrimSideResult TrimOneSide(const TopoDS_Shape& arg, const TopoDS_Shape& cutter,
     for (const TopoDS_Shape& f : frags)
     {
         const double vote = FragmentSideVote(cutter, f);
-        const bool keep = (vote == 0.0) ? keep_zero_votes
-                                        : ((vote > 0.0) == (ref > 0.0));
+        bool keep;
+        if (vote != 0.0)
+        {
+            keep = (vote > 0.0) == (ref > 0.0);
+        }
+        else if (zero_adj != nullptr && !zero_adj->IsNull())
+        {
+            BRepExtrema_DistShapeShape da(f, *zero_adj);
+            keep = da.IsDone() && da.NbSolution() > 0 &&
+                   da.Value() <= 5e-4;
+        }
+        else
+        {
+            keep = keep_zero_votes;
+        }
         {
             GProp_GProps fg;
             BRepGProp::SurfaceProperties(f, fg);
@@ -2176,10 +2199,30 @@ std::shared_ptr<TopoShape> TopoAlgo::TrimByTool(const std::shared_ptr<TopoShape>
         const double ref2 = -witness(base->GetShape());
         if (std::fabs(ref2) >= 1e-12)
         {
+            // Free boundary of the KEPT base side: the cap slivers that
+            // must survive rest exactly on these edges.
+            TopoDS_Compound kept_free;
+            {
+                BRep_Builder kb;
+                kb.MakeCompound(kept_free);
+                TopTools_IndexedDataMapOfShapeListOfShape ke2f;
+                TopExp::MapShapesAndAncestors(bs.shape, TopAbs_EDGE,
+                                              TopAbs_FACE, ke2f);
+                for (int i = 1; i <= ke2f.Extent(); ++i)
+                {
+                    const TopoDS_Edge& e = TopoDS::Edge(ke2f.FindKey(i));
+                    if (BRep_Tool::Degenerated(e)) { continue; }
+                    if (ke2f.FindFromIndex(i).Extent() < 2) {
+                        kb.Add(kept_free, e);
+                    }
+                }
+            }
+            const TopoDS_Shape kf = kept_free;
             TrimSideResult ts = TrimOneSide(tool->GetShape(),
                                             base->GetShape(),
                                             ref2, op_id, "tool",
-                                            /*keep_zero_votes=*/false);
+                                            /*keep_zero_votes=*/false,
+                                            &kf);
             if (ts.ok)
             {
                 BRep_Builder builder;
@@ -3181,8 +3224,17 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                 sp.Build();
                 if (sp.IsDone())
                 {
-                    std::vector<TopoDS_Shape> uni;
-                    int n_covered = 0;
+                    // SEAL pieces: fragments of B's faces that the rim
+                    // bounds -- the wall piece UNDER the sheet (interior
+                    // nearest-point) and the piece capping the sheet's
+                    // planar OPENING (boundary mostly ON the rim; its
+                    // interior test fails because the nearest sheet
+                    // point from inside a hole is the hole's edge).
+                    // B itself stays INTACT (it is already the closed
+                    // half of the union); the seal pieces are COPIED
+                    // into the sheet's shell so both regions close
+                    // independently, then fused.
+                    std::vector<TopoDS_Shape> seals;
                     for (TopExp_Explorer fx(sp.Shape(), TopAbs_FACE);
                          fx.More(); fx.Next())
                     {
@@ -3191,35 +3243,58 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                         const gp_Pnt c = fg.CentreOfMass();
                         TopoDS_Vertex cv = BRepBuilderAPI_MakeVertex(c);
                         BRepExtrema_DistShapeShape ds(cv, S);
-                        bool covered = false;
+                        bool seal = false;
+                        double rim_d = 1e9, on_frac = 0.0;
                         if (ds.IsDone() && ds.NbSolution() > 0)
                         {
                             const gp_Pnt q = ds.PointOnShape2(1);
                             TopoDS_Vertex qv = BRepBuilderAPI_MakeVertex(q);
                             BRepExtrema_DistShapeShape dr(qv, rim_c);
-                            const double rim_d =
-                                (dr.IsDone() && dr.NbSolution() > 0)
-                                    ? dr.Value() : 1e9;
-                            // FIXED interior threshold -- scaling by the
-                            // (escalated) sew tolerance once produced a
-                            // 5 mm bar that classified every covered
-                            // piece as "on the rim".
-                            covered = rim_d > 2e-4;
-                            std::fprintf(stderr,
-                                "[sew]   union_rest piece area=%.4g "
-                                "sheet_d=%.4g rim_d=%.4g covered=%d\n",
-                                fg.Mass() * 1e6, ds.Value(), rim_d,
-                                covered ? 1 : 0);
+                            rim_d = (dr.IsDone() && dr.NbSolution() > 0)
+                                        ? dr.Value() : 1e9;
+                            seal = rim_d > 2e-4;
                         }
-                        if (covered) { ++n_covered; continue; }
-                        uni.push_back(fx.Current());
+                        if (!seal)
+                        {
+                            // Boundary-on-rim fraction.
+                            double on_len = 0.0, tot_len = 0.0;
+                            for (TopExp_Explorer ex(fx.Current(),
+                                                    TopAbs_EDGE);
+                                 ex.More(); ex.Next())
+                            {
+                                GProp_GProps lg;
+                                BRepGProp::LinearProperties(ex.Current(),
+                                                            lg);
+                                tot_len += lg.Mass();
+                                BRepExtrema_DistShapeShape de(
+                                    ex.Current(), rim_c);
+                                if (de.IsDone() && de.NbSolution() > 0 &&
+                                    de.Value() <= 5e-4) {
+                                    on_len += lg.Mass();
+                                }
+                            }
+                            on_frac = tot_len > 0.0 ? on_len / tot_len
+                                                    : 0.0;
+                            seal = on_frac >= 0.7;
+                        }
+                        std::fprintf(stderr,
+                            "[sew]   union_rest piece area=%.4g "
+                            "rim_d=%.4g on_frac=%.2f seal=%d\n",
+                            fg.Mass() * 1e6, rim_d, on_frac,
+                            seal ? 1 : 0);
+                        if (seal) { seals.push_back(fx.Current()); }
                     }
+                    std::vector<TopoDS_Shape> uni;
                     for (TopExp_Explorer fx(S, TopAbs_FACE); fx.More();
                          fx.Next()) {
                         uni.push_back(fx.Current());
                     }
+                    for (const TopoDS_Shape& f : seals) {
+                        uni.push_back(f);
+                    }
+                    const int n_covered = (int)seals.size();
                     std::fprintf(stderr,
-                        "[sew] op_id=%u union_rest covered=%d faces=%d\n",
+                        "[sew] op_id=%u union_rest seals=%d sheet_faces=%d\n",
                         op_id, n_covered, (int)uni.size());
                     std::fflush(stderr);
                     if (n_covered > 0)
@@ -3229,7 +3304,79 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                             usew.Add(f);
                         }
                         usew.Perform();
-                        const TopoDS_Shape us = usew.SewedShape();
+                        TopoDS_Shape us = usew.SewedShape();
+                        // Planar-hole capping: a trim that cut both
+                        // lineages at the same surface leaves a hole
+                        // whose boundary loop is PLANAR (02-ear: the
+                        // 拉伸8 z=8.2 cut -- truth seals it with the
+                        // mutual-trim cap slivers, which distance-sign
+                        // voting can never classify because they lie ON
+                        // the partition). Synthesize the caps from the
+                        // open loops instead: chain free edges by
+                        // endpoint, MakeFace(wire) accepts only planar
+                        // loops, re-sew. Non-planar openings fail
+                        // MakeFace and degrade as before.
+                        if (!us.IsNull() && us.ShapeType() == TopAbs_SHELL
+                            && !shell_closed(us))
+                        {
+                            TopTools_IndexedDataMapOfShapeListOfShape h2f;
+                            TopExp::MapShapesAndAncestors(
+                                us, TopAbs_EDGE, TopAbs_FACE, h2f);
+                            std::vector<TopoDS_Edge> open_e;
+                            for (int i = 1; i <= h2f.Extent(); ++i)
+                            {
+                                const TopoDS_Edge& e =
+                                    TopoDS::Edge(h2f.FindKey(i));
+                                if (BRep_Tool::Degenerated(e)) {
+                                    continue;
+                                }
+                                if (h2f.FindFromIndex(i).Extent() < 2) {
+                                    open_e.push_back(e);
+                                }
+                            }
+                            int n_caps = 0;
+                            if (!open_e.empty() && open_e.size() <= 16)
+                            {
+                                try
+                                {
+                                    BRepBuilderAPI_MakeWire mw;
+                                    for (const TopoDS_Edge& e : open_e) {
+                                        mw.Add(e);
+                                    }
+                                    if (mw.IsDone())
+                                    {
+                                        BRepBuilderAPI_MakeFace mf(
+                                            mw.Wire(), Standard_True);
+                                        if (mf.IsDone())
+                                        {
+                                            uni.push_back(mf.Face());
+                                            ++n_caps;
+                                        }
+                                    }
+                                }
+                                catch (Standard_Failure&) {}
+                                if (n_caps > 0)
+                                {
+                                    BRepBuilderAPI_Sewing rsew(
+                                        std::max(tol, 1e-6));
+                                    for (const TopoDS_Shape& f : uni) {
+                                        rsew.Add(f);
+                                    }
+                                    rsew.Perform();
+                                    const TopoDS_Shape rs =
+                                        rsew.SewedShape();
+                                    if (!rs.IsNull() &&
+                                        rs.ShapeType() == TopAbs_SHELL) {
+                                        us = rs;
+                                    }
+                                }
+                            }
+                            std::fprintf(stderr,
+                                "[sew] op_id=%u union_rest hole_caps=%d "
+                                "(open_edges=%d)\n",
+                                op_id, n_caps, (int)open_e.size());
+                            std::fflush(stderr);
+                        }
                         if (!us.IsNull() &&
                             us.ShapeType() == TopAbs_SHELL &&
                             shell_closed(us))
@@ -3245,19 +3392,50 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                                 BRepGProp::VolumeProperties(sol, g);
                             }
                             std::fprintf(stderr,
-                                "[sew] op_id=%u union_rest SOLID "
-                                "vol=%.6g\n", op_id,
+                                "[sew] op_id=%u union_rest sheet region "
+                                "closed vol=%.6g\n", op_id,
                                 std::fabs(g.Mass()) * 1e9);
                             std::fflush(stderr);
+                            // Two closed regions sharing their seal
+                            // faces: fold into the single union solid
+                            // (plain solid-solid fuse on glued inputs).
+                            auto bsol = std::make_shared<brepkit::TopoShape>(B);
+                            auto dsol = std::make_shared<brepkit::TopoShape>(
+                                TopoDS_Shape(sol));
+                            auto fused = Fuse(bsol, dsol, op_id, nullptr);
+                            TopoDS_Shape result =
+                                (fused && !fused->GetShape().IsNull())
+                                    ? fused->GetShape()
+                                    : TopoDS_Shape();
+                            int n_out = 0;
                             BRep_Builder ob;
                             TopoDS_Compound oc;
                             ob.MakeCompound(oc);
-                            ob.Add(oc, sol);
+                            if (!result.IsNull())
+                            {
+                                for (TopExp_Explorer sx(result,
+                                                        TopAbs_SOLID);
+                                     sx.More(); sx.Next())
+                                {
+                                    ob.Add(oc, sx.Current());
+                                    ++n_out;
+                                }
+                            }
+                            if (n_out == 0)
+                            {
+                                ob.Add(oc, B);
+                                ob.Add(oc, sol);
+                                n_out = 2;
+                            }
+                            std::fprintf(stderr,
+                                "[sew] op_id=%u union_rest UNION "
+                                "solids=%d\n", op_id, n_out);
+                            std::fflush(stderr);
                             for (const TopoDS_Shape& r : riders) {
                                 ob.Add(oc, r);
                             }
                             out_c    = oc;
-                            n_solids = 1;
+                            n_solids = n_out;
                             n_open   = 0;
                             n_loose  = (int)riders.size();
                         }
@@ -3266,6 +3444,40 @@ std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& b
                             std::fprintf(stderr,
                                 "[sew] op_id=%u union_rest shell did not "
                                 "close; kept sewn pieces\n", op_id);
+                            // Census the unclosed edges: which boundary
+                            // still has nothing to pair with.
+                            if (!us.IsNull())
+                            {
+                                TopTools_IndexedDataMapOfShapeListOfShape
+                                    ue2f;
+                                TopExp::MapShapesAndAncestors(
+                                    us, TopAbs_EDGE, TopAbs_FACE, ue2f);
+                                for (int i = 1; i <= ue2f.Extent(); ++i)
+                                {
+                                    const TopoDS_Edge& e =
+                                        TopoDS::Edge(ue2f.FindKey(i));
+                                    if (BRep_Tool::Degenerated(e)) {
+                                        continue;
+                                    }
+                                    if (ue2f.FindFromIndex(i).Extent()
+                                        >= 2) {
+                                        continue;
+                                    }
+                                    GProp_GProps lg;
+                                    BRepGProp::LinearProperties(e, lg);
+                                    Bnd_Box eb;
+                                    BRepBndLib::Add(e, eb);
+                                    double x0=0,y0=0,z0=0,x1=0,y1=0,z1=0;
+                                    if (!eb.IsVoid()) {
+                                        eb.Get(x0,y0,z0,x1,y1,z1);
+                                    }
+                                    std::fprintf(stderr,
+                                        "[sew]   union_rest open_edge "
+                                        "len=%.4g bbox=(%.4g,%.4g,%.4g)"
+                                        "(%.4g,%.4g,%.4g)\n",
+                                        lg.Mass(), x0,y0,z0,x1,y1,z1);
+                                }
+                            }
                             std::fflush(stderr);
                         }
                     }
