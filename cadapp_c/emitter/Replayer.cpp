@@ -184,6 +184,55 @@ bool DropHiddenSolids(const TopoDS_Shape&              s,
         return false;
     };
 
+    // For shapes that contain no closed solids (open shells, free faces),
+    // check if the WHOLE shape matches a hidden_body bbox.  These are
+    // construction surfaces (UV patches, planar cut planes, etc.) that
+    // ZW3D blanks via CdPartDel; the plugin exports their bboxes in
+    // hidden_bodies so we can drop them at emission.
+    {
+        bool has_solid = false;
+        for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next()) {
+            has_solid = true;
+            break;
+        }
+        if (!has_solid)
+        {
+            Bnd_Box bb;
+            BRepBndLib::Add(s, bb);
+            if (!bb.IsVoid())
+            {
+                double mn[3], mx[3];
+                bb.Get(mn[0], mn[1], mn[2], mx[0], mx[1], mx[2]);
+                for (const auto& h : hidden)
+                {
+                    double dx = h.bbox_max[0] - h.bbox_min[0];
+                    double dy = h.bbox_max[1] - h.bbox_min[1];
+                    double dz = h.bbox_max[2] - h.bbox_min[2];
+                    double diag =
+                        std::sqrt(dx * dx + dy * dy + dz * dz);
+                    if (diag <= 0.0) continue;
+                    const double tol = 0.02 * diag;
+                    bool ok = true;
+                    for (int k = 0; k < 3 && ok; ++k)
+                        ok = std::fabs(mn[k] - h.bbox_min[k]) <= tol &&
+                             std::fabs(mx[k] - h.bbox_max[k]) <= tol;
+                    if (ok)
+                    {
+                        std::fprintf(stderr,
+                            "[hidden] sheet bbox match: dropping "
+                            "non-solid shape "
+                            "(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                            mn[0], mn[1], mn[2],
+                            mx[0], mx[1], mx[2]);
+                        filtered = TopoDS_Shape();
+                        dropped  = 1;
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
     dropped = 0;
     std::vector<TopoDS_Shape> keep;
     for (TopExp_Explorer ex(s, TopAbs_SOLID); ex.More(); ex.Next())

@@ -1067,7 +1067,13 @@ bool ProfileFormsClosedLoops(const json& curves, double tol);
 // next to perfectly closed loops -- the builder keeps what closes and
 // drops the strays), while a profile that is ONLY open chains (02-ear's
 // surface-extrude idiom) prunes to nothing and stays rejected.
-bool ProfileHasClosedLoop(const json& curves, double tol)
+// all_curves=true: include ref-tagged curves even when drawn curves exist.
+// Needed for region-pick cuts where a drawn segment meets a ref arc to
+// form a D-shaped closed boundary (R2900 Extrude56_Cut, Extrude61_Cut).
+// Long construction reference lines are pruned out automatically by the
+// dangling-endpoint algorithm.
+bool ProfileHasClosedLoop(const json& curves, double tol,
+                          bool all_curves = false)
 {
     if (!curves.is_array() || curves.empty()) {
         return false;
@@ -1081,7 +1087,7 @@ bool ProfileHasClosedLoop(const json& curves, double tol)
     std::vector<Seg> segs;
     for (const auto& c : curves)
     {
-        if (has_drawn && JGet<bool>(c, "ref", false)) { continue; }
+        if (!all_curves && has_drawn && JGet<bool>(c, "ref", false)) { continue; }
         const std::string k = JStr(c, "kind", "");
         if (k == "circle" || k == "ellipse") {
             return true;
@@ -1179,7 +1185,14 @@ bool ProfileExtrudable(const json& curves)
     // 02-ear's failure modes stay rejected: its open profiles have NO
     // closed loop at any tolerance, and the nurb/ellipse kind gate
     // above is unchanged.
-    return ProfileHasClosedLoop(curves, 1e-2);
+    if (ProfileHasClosedLoop(curves, 1e-2)) return true;
+    // Fallback: allow ref curves to close the loop. Some region-pick
+    // cuts export exactly one drawn segment (the region edge) and a ref
+    // arc (the existing face boundary) that together bound a closed
+    // D-shape (R2900 Extrude56_Cut, Extrude61_Cut). Long construction
+    // reference lines are pruned out by the dangling-endpoint algorithm
+    // so 02-ear's surface-extrude failure modes remain rejected.
+    return has_drawn && ProfileHasClosedLoop(curves, 1e-2, /*all_curves=*/true);
 }
 
 // True when the profile's curves chain into closed loop(s): every open
