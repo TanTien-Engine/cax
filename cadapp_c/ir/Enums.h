@@ -156,6 +156,10 @@ enum class FeatType : uint8_t
     Trim             = 104, // trim Base body with Tool body's faces, keep the
                             // (keep_pt, keep_dir) side; tool consumed
                             // (ZW3D FtSolidSoloTrm)
+    Sew              = 105, // sew Base + Tool sheet bodies into one shell,
+                            // solidifying closed results; tools consumed
+                            // (ZW3D CdShapeSew 缝合, FtBoolSoloAdd 组合-添加
+                            // on sheet operands)
 };
 
 // Extrude / revolve end condition.

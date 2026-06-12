@@ -31,11 +31,13 @@
 #include <BRep_Builder.hxx>
 #include <TopExp_Explorer.hxx>
 #include <BOPAlgo_GlueEnum.hxx>
+#include <BOPAlgo_MakerVolume.hxx>
 #include <BOPAlgo_Splitter.hxx>
 #include <BRepAlgoAPI_Splitter.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <TopExp.hxx>
+#include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
 #include <TopTools_ListOfShape.hxx>
 #include <TopTools_ListIteratorOfListOfShape.hxx>
 #include <TopTools_IndexedMapOfShape.hxx>
@@ -99,6 +101,31 @@ struct FpTrapScope {};
 // reader's [edge_diff]/[face_picks] traces). The env is read once
 // (function-local static -> thread-safe init), so the steady-state cost
 // when off is a single predictable branch per call site.
+// Wall-clock cancellation for BOP algorithms. OCCT polls UserBreak()
+// between pave-filler stages / intersection pairs; once the deadline
+// passes the algorithm stops with BOPAlgo_AlertUserBreak (surfaces as
+// HasErrors()), and the caller falls back exactly as for any other
+// failed BOP. Motivation: BOPAlgo_MakerVolume on a face soup whose
+// boundaries come from trimmed B-splines can degenerate into an
+// unbounded intersection walk -- 02-ear 组合1 ran 13+ minutes at
+// ~110MB/s straight to 90+GB and froze the machine three times on
+// 2026-06-12 before this guard existed.
+class DeadlineIndicator : public Message_ProgressIndicator
+{
+public:
+    explicit DeadlineIndicator(double seconds)
+        : m_deadline(std::chrono::steady_clock::now()
+                     + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                           std::chrono::duration<double>(seconds))) {}
+    bool Expired() const
+    { return std::chrono::steady_clock::now() > m_deadline; }
+protected:
+    Standard_Boolean UserBreak() override { return Expired(); }
+    void Show(const Message_ProgressScope&, const Standard_Boolean) override {}
+private:
+    std::chrono::steady_clock::time_point m_deadline;
+};
+
 static bool ta_log_on()
 {
     static const bool on = [] {
@@ -1830,18 +1857,46 @@ double FragmentSideVote(const TopoDS_Shape& tool, const TopoDS_Shape& frag)
 
 } // namespace
 
-std::shared_ptr<TopoShape> TopoAlgo::TrimByTool(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
-                                                const sm::vec3& keep_pt, const sm::vec3& keep_dir,
-                                                uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
-                                                const std::shared_ptr<brepdb::VersionTree>& vt)
+namespace
 {
-    TopTools_ListOfShape bases, tools;
-    bases.Append(base->GetShape());
-    tools.Append(tool->GetShape());
 
+// One directional trim pass: split `arg` by `cutter`'s faces and keep
+// the pieces whose side sign (vs the cutter's oriented surface) matches
+// `ref`. Granularity matters: the splitter rebuilds a SHELL argument as
+// ONE shell whose faces are now split along the cut curve -- top-level
+// iteration sees a single "fragment" and the trim silently no-ops
+// (02-ear 修剪1: the z=-0.6 plane cut the skin, but the skin stayed one
+// shell). So: SOLIDs classify whole, anything sheet-like decomposes to
+// FACES that classify individually (kept ones are sewn back so the
+// surviving skin stays ONE body); free wires / edges ride along uncut.
+struct TrimSideResult
+{
+    bool ok      = false;   // splitter ran and something was kept
+    int  frags   = 0;
+    int  kept    = 0;
+    int  dropped = 0;
+    TopoDS_Shape shape;     // kept content (single child unwrapped)
+    opencascade::handle<BRepTools_History> hist;
+};
+
+// keep_zero_votes: what to do with a fragment the classifier can't side
+// (no face support -- e.g. its nearest cutter point is an edge). For the
+// BASE side losing geometry silently is the worse error -> keep. For the
+// TOOL side ZW3D's default is consumption; keeping unclassifiable tool
+// junk inflates the model with material ZW3D removed (02-ear 修剪3: an
+// uncut 342 mm^2 horizontal sheet piece rode in on a zero vote) -> drop.
+TrimSideResult TrimOneSide(const TopoDS_Shape& arg, const TopoDS_Shape& cutter,
+                           double ref, uint32_t op_id, const char* side,
+                           bool keep_zero_votes)
+{
+    TrimSideResult r;
+
+    TopTools_ListOfShape args, cuts;
+    args.Append(arg);
+    cuts.Append(cutter);
     BRepAlgoAPI_Splitter algo;
-    algo.SetArguments(bases);
-    algo.SetTools(tools);
+    algo.SetArguments(args);
+    algo.SetTools(cuts);
     // Same rationale as Cut/Fuse: plane-on-plane tangencies otherwise
     // make the splitter miss the intersection entirely.
     algo.SetFuzzyValue(1e-6);
@@ -1849,60 +1904,13 @@ std::shared_ptr<TopoShape> TopoAlgo::TrimByTool(const std::shared_ptr<TopoShape>
     if (!algo.IsDone())
     {
         std::fprintf(stderr,
-            "[TRIM] op_id=%u WARNING: splitter failed, body UNCHANGED\n",
-            op_id);
+            "[TRIM] op_id=%u WARNING: splitter failed (%s side)\n",
+            op_id, side);
         std::fflush(stderr);
-        return base;
+        return r;
     }
+    r.hist = algo.History();
 
-    // Keep-side witness: keep_pt sits ON the tool, so step a little way
-    // along keep_dir before classifying. Scale the step to the model and
-    // grow it if the sample still reads as "on the surface".
-    Bnd_Box bb;
-    BRepBndLib::Add(base->GetShape(), bb);
-    double diag = 1.0;
-    if (!bb.IsVoid())
-    {
-        double x0, y0, z0, x1, y1, z1;
-        bb.Get(x0, y0, z0, x1, y1, z1);
-        diag = std::sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0) + (z1-z0)*(z1-z0));
-    }
-    gp_Vec dir(keep_dir.x, keep_dir.y, keep_dir.z);
-    if (dir.Magnitude() < 1e-12)
-    {
-        std::fprintf(stderr,
-            "[TRIM] op_id=%u WARNING: null keep_dir, body UNCHANGED\n", op_id);
-        std::fflush(stderr);
-        return base;
-    }
-    dir.Normalize();
-    double ref = 0.0;
-    double eps = std::max(1e-7, 1e-4 * diag);
-    for (int attempt = 0; attempt < 5 && std::fabs(ref) < 1e-12; ++attempt)
-    {
-        const gp_Pnt x_ref(keep_pt.x + eps * dir.X(),
-                           keep_pt.y + eps * dir.Y(),
-                           keep_pt.z + eps * dir.Z());
-        ref = SignedDistToTool(tool->GetShape(), x_ref);
-        eps *= 10.0;
-    }
-    if (std::fabs(ref) < 1e-12)
-    {
-        std::fprintf(stderr,
-            "[TRIM] op_id=%u WARNING: keep-side witness unresolvable, "
-            "body UNCHANGED\n", op_id);
-        std::fflush(stderr);
-        return base;
-    }
-
-    // Classify the split pieces. Granularity matters: the splitter
-    // rebuilds a SHELL argument as ONE shell whose faces are now split
-    // along the tool curve -- top-level iteration sees a single
-    // "fragment" and the trim silently no-ops (02-ear 修剪1: the z=-0.6
-    // plane cut the skin, but the skin stayed one shell). So: SOLIDs
-    // classify whole, anything sheet-like decomposes to FACES that
-    // classify individually (kept ones are sewn back below); free wires
-    // / edges ride along uncut.
     const TopoDS_Shape result = algo.Shape();
     std::vector<TopoDS_Shape> top;
     if (result.ShapeType() == TopAbs_COMPOUND)
@@ -1935,56 +1943,68 @@ std::shared_ptr<TopoShape> TopoAlgo::TrimByTool(const std::shared_ptr<TopoShape>
         }
     }
     // Forensics when the splitter produced no cut: print both bboxes and
-    // the min distance so "tool never reaches base" vs "tangency the
+    // the min distance so "cutter never reaches arg" vs "tangency the
     // fuzzy didn't bridge" vs "wrong base wired" are distinguishable
     // from the log alone.
     if (frags.size() <= 1)
     {
-        Bnd_Box tb;
-        BRepBndLib::Add(tool->GetShape(), tb);
-        double tx0=0, ty0=0, tz0=0, tx1=0, ty1=0, tz1=0;
-        if (!tb.IsVoid()) tb.Get(tx0, ty0, tz0, tx1, ty1, tz1);
-        double bx0=0, by0=0, bz0=0, bx1=0, by1=0, bz1=0;
-        if (!bb.IsVoid()) bb.Get(bx0, by0, bz0, bx1, by1, bz1);
-        BRepExtrema_DistShapeShape dist(base->GetShape(), tool->GetShape());
+        Bnd_Box ab, cb;
+        BRepBndLib::Add(arg, ab);
+        BRepBndLib::Add(cutter, cb);
+        double ax0=0, ay0=0, az0=0, ax1=0, ay1=0, az1=0;
+        double cx0=0, cy0=0, cz0=0, cx1=0, cy1=0, cz1=0;
+        if (!ab.IsVoid()) ab.Get(ax0, ay0, az0, ax1, ay1, az1);
+        if (!cb.IsVoid()) cb.Get(cx0, cy0, cz0, cx1, cy1, cz1);
+        BRepExtrema_DistShapeShape dist(arg, cutter);
         const double d = (dist.IsDone() && dist.NbSolution() > 0)
                              ? dist.Value() : -1.0;
         std::fprintf(stderr,
-            "[trim] op_id=%u NOSPLIT base_bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,"
-            "%.4g) tool_bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g) min_dist=%.4g\n",
-            op_id, bx0, by0, bz0, bx1, by1, bz1,
-            tx0, ty0, tz0, tx1, ty1, tz1, d);
+            "[trim] op_id=%u NOSPLIT(%s) arg_bbox=(%.4g,%.4g,%.4g)(%.4g,"
+            "%.4g,%.4g) cutter_bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g) "
+            "min_dist=%.4g\n",
+            op_id, side, ax0, ay0, az0, ax1, ay1, az1,
+            cx0, cy0, cz0, cx1, cy1, cz1, d);
         std::fflush(stderr);
     }
 
     BRep_Builder builder;
     TopoDS_Compound kept;
     builder.MakeCompound(kept);
-    int n_kept = 0, n_drop = 0;
     std::vector<TopoDS_Shape> kept_faces;
     for (const TopoDS_Shape& f : frags)
     {
-        const double vote = FragmentSideVote(tool->GetShape(), f);
-        const bool keep = (vote == 0.0) || ((vote > 0.0) == (ref > 0.0));
-        if (!keep) { ++n_drop; continue; }
-        ++n_kept;
+        const double vote = FragmentSideVote(cutter, f);
+        const bool keep = (vote == 0.0) ? keep_zero_votes
+                                        : ((vote > 0.0) == (ref > 0.0));
+        {
+            GProp_GProps fg;
+            BRepGProp::SurfaceProperties(f, fg);
+            Bnd_Box fb;
+            BRepBndLib::Add(f, fb);
+            double fx0=0, fy0=0, fz0=0, fx1=0, fy1=0, fz1=0;
+            if (!fb.IsVoid()) fb.Get(fx0, fy0, fz0, fx1, fy1, fz1);
+            std::fprintf(stderr,
+                "[trim]   frag side=%s area=%.4g vote=%.3g keep=%d "
+                "bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                side, fg.Mass() * 1e6, vote, keep ? 1 : 0,
+                fx0, fy0, fz0, fx1, fy1, fz1);
+        }
+        if (!keep) { ++r.dropped; continue; }
+        ++r.kept;
         if (f.ShapeType() == TopAbs_FACE) {
             kept_faces.push_back(f);
         } else {
             builder.Add(kept, f);
         }
     }
-    if (n_kept == 0)
+    r.frags = (int)frags.size();
+    if (r.kept == 0)
     {
-        std::fprintf(stderr,
-            "[TRIM] op_id=%u WARNING: classification kept 0 of %d fragments, "
-            "body UNCHANGED\n", op_id, (int)frags.size());
+        std::fprintf(stderr, "[trim] op_id=%u side=%s frags=%d kept=0\n",
+                     op_id, side, r.frags);
         std::fflush(stderr);
-        return base;
+        return r;
     }
-    // Sew the kept faces back into shells so the surviving skin stays ONE
-    // body (ZW3D keeps it one); the splitter's face splits otherwise leak
-    // out as a bag of loose faces.
     if (!kept_faces.empty())
     {
         if (kept_faces.size() == 1)
@@ -2019,23 +2039,127 @@ std::shared_ptr<TopoShape> TopoAlgo::TrimByTool(const std::shared_ptr<TopoShape>
             const TopoDS_Shape first = solo.Value();
             solo.Next();
             if (!solo.More()) {
-                out_shape = first;   // single child -> unwrap
+                r.shape = first;   // single child -> unwrap
             }
         }
     }
-    std::fprintf(stderr, "[trim] op_id=%u frags=%d kept=%d dropped=%d\n",
-                 op_id, (int)frags.size(), n_kept, n_drop);
+    r.ok = true;
+    std::fprintf(stderr, "[trim] op_id=%u side=%s frags=%d kept=%d dropped=%d\n",
+                 op_id, side, r.frags, r.kept, r.dropped);
+    return r;
+}
+
+} // namespace
+
+std::shared_ptr<TopoShape> TopoAlgo::TrimByTool(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
+                                                const sm::vec3& keep_pt, const sm::vec3& keep_dir, bool mutual,
+                                                uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
+                                                const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    // Keep-side witness: keep_pt sits ON the tool, so step a little way
+    // along keep_dir before classifying. Scale the step to the model and
+    // grow it if the sample still reads as "on the surface".
+    Bnd_Box bb;
+    BRepBndLib::Add(base->GetShape(), bb);
+    double diag = 1.0;
+    if (!bb.IsVoid())
+    {
+        double x0, y0, z0, x1, y1, z1;
+        bb.Get(x0, y0, z0, x1, y1, z1);
+        diag = std::sqrt((x1-x0)*(x1-x0) + (y1-y0)*(y1-y0) + (z1-z0)*(z1-z0));
+    }
+    gp_Vec dir(keep_dir.x, keep_dir.y, keep_dir.z);
+    if (dir.Magnitude() < 1e-12)
+    {
+        std::fprintf(stderr,
+            "[TRIM] op_id=%u WARNING: null keep_dir, body UNCHANGED\n", op_id);
+        std::fflush(stderr);
+        return base;
+    }
+    dir.Normalize();
+    auto witness = [&](const TopoDS_Shape& surface) -> double {
+        double ref = 0.0;
+        double eps = std::max(1e-7, 1e-4 * diag);
+        for (int attempt = 0; attempt < 5 && std::fabs(ref) < 1e-12; ++attempt)
+        {
+            const gp_Pnt x_ref(keep_pt.x + eps * dir.X(),
+                               keep_pt.y + eps * dir.Y(),
+                               keep_pt.z + eps * dir.Z());
+            ref = SignedDistToTool(surface, x_ref);
+            eps *= 10.0;
+        }
+        return ref;
+    };
+    const double ref = witness(tool->GetShape());
+    if (std::fabs(ref) < 1e-12)
+    {
+        std::fprintf(stderr,
+            "[TRIM] op_id=%u WARNING: keep-side witness unresolvable, "
+            "body UNCHANGED\n", op_id);
+        std::fflush(stderr);
+        return base;
+    }
+
+    TrimSideResult bs = TrimOneSide(base->GetShape(), tool->GetShape(),
+                                    ref, op_id, "base",
+                                    /*keep_zero_votes=*/true);
+    if (!bs.ok)
+    {
+        std::fprintf(stderr,
+            "[TRIM] op_id=%u WARNING: base side kept nothing, body "
+            "UNCHANGED\n", op_id);
+        std::fflush(stderr);
+        return base;
+    }
+
+    // Mutual (ZW3D fld8 互剪): the tool is trimmed by the BASE too, and
+    // its witnessed-side remnant survives as a separate body (02-ear
+    // 修剪3: 拉伸8's sheet leaves a ~110 mm^2 sliver -- the _state area
+    // only balances with it kept). Same witness ray, classified against
+    // the BASE surface this time. Unresolvable witness or empty keep
+    // degrades to the plain consume-the-tool trim.
+    TopoDS_Shape out_shape = bs.shape;
+    if (mutual)
+    {
+        // The surviving tool remnant lies on the side of the base the
+        // witness ray LEAVES, i.e. the reverse of the witnessed base
+        // side (02-ear 修剪3: same-side kept ~470 mm^2 of 拉伸8 where
+        // ZW3D keeps a 110 mm^2 sliver tucked under the skin).
+        const double ref2 = -witness(base->GetShape());
+        if (std::fabs(ref2) >= 1e-12)
+        {
+            TrimSideResult ts = TrimOneSide(tool->GetShape(),
+                                            base->GetShape(),
+                                            ref2, op_id, "tool",
+                                            /*keep_zero_votes=*/false);
+            if (ts.ok)
+            {
+                BRep_Builder builder;
+                TopoDS_Compound both;
+                builder.MakeCompound(both);
+                builder.Add(both, bs.shape);
+                builder.Add(both, ts.shape);
+                out_shape = both;
+            }
+        }
+        else
+        {
+            std::fprintf(stderr,
+                "[trim] op_id=%u mutual witness unresolvable vs base; "
+                "tool remnant dropped\n", op_id);
+            std::fflush(stderr);
+        }
+    }
 
     // Serialize tool BEFORE tn->Update() unbinds its shapes (Split's
-    // pattern); naming maps to the kept subset only.
+    // pattern); naming maps to the kept subset of the base side only.
     brepdb::BRepWorld tool_world;
     if (tn && vt) { tool_world = serialize_world(tn, tool->GetShape()); }
     brepgraph::TopoNaming::PidMap pid_map;
     if (tn)
     {
         auto old_shp = ShapeBuilder::MakeCompound({ base, tool });
-        opencascade::handle<BRepTools_History> o_hist = algo.History();
-        pid_map = tn->Update(o_hist, out_shape, old_shp->GetShape(), op_id);
+        pid_map = tn->Update(bs.hist, out_shape, old_shp->GetShape(), op_id);
     }
     auto dst = std::make_shared<brepkit::TopoShape>(out_shape);
     merge_to_vt(tn, vt, base, tool, dst, std::move(tool_world), pid_map, "trim");
@@ -2555,6 +2679,635 @@ std::shared_ptr<TopoShape> TopoAlgo::Sew(const std::shared_ptr<TopoShape>& s1, c
     auto type = shp.ShapeType();
 
     return std::make_shared<brepkit::TopoShape>(algo.SewedShape());
+}
+
+std::shared_ptr<TopoShape> TopoAlgo::SewJoin(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
+                                             double tolerance,
+                                             uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
+                                             const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    auto has_solid = [](const TopoDS_Shape& s) {
+        return TopExp_Explorer(s, TopAbs_SOLID).More();
+    };
+    // A combine-add where either operand is already a solid is a plain
+    // boolean, not sheet joinery.
+    if (has_solid(base->GetShape()) || has_solid(tool->GetShape()))
+    {
+        std::fprintf(stderr, "[sew] op_id=%u solid operand -> fuse\n", op_id);
+        std::fflush(stderr);
+        return Fuse(base, tool, op_id, tn, vt);
+    }
+
+    std::vector<TopoDS_Shape> faces;
+    std::vector<TopoDS_Shape> riders;   // wires / edges ride along uncut
+    auto feed = [&](const TopoDS_Shape& s)
+    {
+        for (TopExp_Explorer fx(s, TopAbs_FACE); fx.More(); fx.Next())
+        {
+            faces.push_back(fx.Current());
+        }
+        // Top-level non-face content (free wires from BakedShapes etc.).
+        if (s.ShapeType() == TopAbs_COMPOUND)
+        {
+            for (TopoDS_Iterator it(s); it.More(); it.Next())
+            {
+                const TopAbs_ShapeEnum t = it.Value().ShapeType();
+                if (t == TopAbs_WIRE || t == TopAbs_EDGE || t == TopAbs_VERTEX) {
+                    riders.push_back(it.Value());
+                }
+            }
+        }
+    };
+    feed(base->GetShape());
+    feed(tool->GetShape());
+    const int n_in_faces = (int)faces.size();
+    if (n_in_faces == 0)
+    {
+        std::fprintf(stderr,
+            "[sew] op_id=%u WARNING: no faces to sew, base UNCHANGED\n",
+            op_id);
+        std::fflush(stderr);
+        return base;
+    }
+    // Free edges of a shape: non-degenerate edges with < 2 face parents.
+    auto free_edge_count = [](const TopoDS_Shape& s) -> int {
+        TopTools_IndexedDataMapOfShapeListOfShape e2f;
+        TopExp::MapShapesAndAncestors(s, TopAbs_EDGE, TopAbs_FACE, e2f);
+        int n = 0;
+        for (int i = 1; i <= e2f.Extent(); ++i)
+        {
+            const TopoDS_Edge& e = TopoDS::Edge(e2f.FindKey(i));
+            if (BRep_Tool::Degenerated(e)) { continue; }
+            if (e2f.FindFromIndex(i).Extent() < 2) { ++n; }
+        }
+        return n;
+    };
+    // The replayed pieces meet ZW3D's at slightly different cut lines
+    // (a trim's witnessed boundary is kernel-dependent), so the joint
+    // gap can exceed the authored sew tolerance. Escalate x10 while the
+    // seam stays open, capped at 0.5 mm -- far below any feature size,
+    // far above any legitimate seam.
+    double       tol  = (tolerance > 0.0 ? tolerance : 1e-6);
+    TopoDS_Shape sewn;
+    for (int attempt = 0; attempt < 4; ++attempt)
+    {
+        BRepBuilderAPI_Sewing sew(tol);
+        for (const TopoDS_Shape& f : faces) {
+            sew.Add(f);
+        }
+        sew.Perform();
+        sewn = sew.SewedShape();
+        const int open = sewn.IsNull() ? -1 : free_edge_count(sewn);
+        std::fprintf(stderr,
+            "[sew] op_id=%u attempt=%d tol=%.4g free_edges=%d\n",
+            op_id, attempt, tol, open);
+        std::fflush(stderr);
+        if (open == 0) {
+            break;
+        }
+        if (tol >= 5e-4) {
+            break;
+        }
+        tol = std::min(tol * 10.0, 5e-4);
+    }
+    if (sewn.IsNull())
+    {
+        std::fprintf(stderr,
+            "[sew] op_id=%u WARNING: sewing produced nothing, base "
+            "UNCHANGED\n", op_id);
+        std::fflush(stderr);
+        return base;
+    }
+
+    // Closed shell -> solid. "Closed" = every non-degenerate edge is
+    // shared by >= 2 faces (the Closed() flag is not reliably set by the
+    // sewer). An inside-out solid (negative volume) is reversed -- this
+    // is what lets the source's explicit face-flip feature stay a no-op.
+    auto shell_closed = [](const TopoDS_Shape& shell) -> bool {
+        TopTools_IndexedDataMapOfShapeListOfShape e2f;
+        TopExp::MapShapesAndAncestors(shell, TopAbs_EDGE, TopAbs_FACE, e2f);
+        for (int i = 1; i <= e2f.Extent(); ++i)
+        {
+            const TopoDS_Edge& e = TopoDS::Edge(e2f.FindKey(i));
+            if (BRep_Tool::Degenerated(e)) { continue; }
+            if (e2f.FindFromIndex(i).Extent() < 2) { return false; }
+        }
+        return e2f.Extent() > 0;
+    };
+    BRep_Builder bb;
+    TopoDS_Compound out_c;
+    bb.MakeCompound(out_c);
+    int n_solids = 0, n_open = 0, n_loose = 0;
+    auto place = [&](const TopoDS_Shape& piece)
+    {
+        if (piece.ShapeType() == TopAbs_SHELL && shell_closed(piece))
+        {
+            TopoDS_Solid sol;
+            bb.MakeSolid(sol);
+            bb.Add(sol, piece);
+            GProp_GProps g;
+            BRepGProp::VolumeProperties(sol, g);
+            if (g.Mass() < 0.0) {
+                sol.Reverse();
+            }
+            bb.Add(out_c, sol);
+            ++n_solids;
+        }
+        else
+        {
+            bb.Add(out_c, piece);
+            (piece.ShapeType() == TopAbs_SHELL ? n_open : n_loose) += 1;
+        }
+    };
+    if (sewn.ShapeType() == TopAbs_COMPOUND)
+    {
+        for (TopoDS_Iterator it(sewn); it.More(); it.Next()) {
+            place(it.Value());
+        }
+    }
+    else
+    {
+        place(sewn);
+    }
+    for (const TopoDS_Shape& r : riders) {
+        bb.Add(out_c, r);
+    }
+    // Sewing only welds edge-to-edge. A combine whose pieces meet in a
+    // T-joint (02-ear 组合1: the dome rim lies EXACTLY mid-face on the
+    // wall band, min_dist 8e-17 with no edge to pair) can never close by
+    // sewing alone -- the source kernel imprints and extracts the
+    // enclosed region. Bounded path first: mutually imprint base and
+    // tool with the SAME splitter the trim arm uses (proven ~100 ms on
+    // exactly these surfaces, where MakerVolume's全对求交 ran the
+    // machine out of memory), sew NON-MANIFOLD so a rim edge holds all
+    // three meeting faces, then peel dangling faces -- a flap has a
+    // free outer edge and dies, the volume boundary survives closed.
+    // Peeling only selects the solidification candidates: peeled faces
+    // stay in the output as the open complex (ZW3D keeps them too).
+    if (n_solids == 0 && n_in_faces >= 2)
+    {
+        // Rim imprint, NOT face-face splitting: the only intersection a
+        // T-joint needs is the toolside FREE BOUNDARY scribed onto the
+        // base face it rests on. Edge-on-face splitting
+        // (BRepFeat_SplitShape) is cheap and bounded -- the face-face
+        // SS intersector on this part's dome x wall B-spline pair is
+        // exactly what ate the machine via MakerVolume AND via a
+        // whole-compound BRepAlgoAPI_Splitter.
+        auto rim_imprint = [op_id, this_tol = tol](
+            const TopoDS_Shape& dst, const TopoDS_Shape& src) -> TopoDS_Shape
+        {
+            // Free boundary edges of src.
+            TopTools_IndexedDataMapOfShapeListOfShape e2f;
+            TopExp::MapShapesAndAncestors(src, TopAbs_EDGE, TopAbs_FACE, e2f);
+            std::vector<TopoDS_Edge> rim;
+            for (int i = 1; i <= e2f.Extent(); ++i)
+            {
+                const TopoDS_Edge& e = TopoDS::Edge(e2f.FindKey(i));
+                if (BRep_Tool::Degenerated(e)) { continue; }
+                if (e2f.FindFromIndex(i).Extent() < 2) {
+                    rim.push_back(e);
+                }
+            }
+            if (rim.empty()) {
+                return dst;
+            }
+            // Keep only rim edges that actually REST on a dst face --
+            // they become the splitter's TOOLS. Edge tools mean every
+            // interference pair is edge x face (cheap, robust); it was
+            // the face x face SS intersector that ate the machine.
+            TopTools_ListOfShape cutters;
+            int n_pairs = 0;
+            for (const TopoDS_Edge& e : rim)
+            {
+                bool rests = false;
+                for (TopExp_Explorer fx(dst, TopAbs_FACE);
+                     fx.More() && !rests; fx.Next())
+                {
+                    BRepExtrema_DistShapeShape dist(e, fx.Current());
+                    rests = dist.IsDone() && dist.NbSolution() > 0 &&
+                            dist.Value() <= std::max(this_tol, 1e-5);
+                }
+                if (rests)
+                {
+                    cutters.Append(e);
+                    ++n_pairs;
+                }
+            }
+            if (n_pairs == 0) {
+                return dst;
+            }
+            try
+            {
+                TopTools_ListOfShape args;
+                args.Append(dst);
+                BRepAlgoAPI_Splitter sp;
+                sp.SetArguments(args);
+                sp.SetTools(cutters);
+                sp.SetFuzzyValue(std::max(this_tol, 1e-6));
+                sp.Build();
+                if (sp.IsDone())
+                {
+                    std::fprintf(stderr,
+                        "[sew] op_id=%u rim_imprint edges=%d ok\n",
+                        op_id, n_pairs);
+                    std::fflush(stderr);
+                    return sp.Shape();
+                }
+            }
+            catch (Standard_Failure& sf)
+            {
+                const char* m = sf.GetMessageString();
+                std::fprintf(stderr,
+                    "[sew] op_id=%u rim_imprint THREW %s\n",
+                    op_id, m ? m : "Standard_Failure");
+                std::fflush(stderr);
+            }
+            return dst;
+        };
+        // Tool rim onto base faces, then base rim onto (possibly split)
+        // tool faces -- both directions of a general T-joint.
+        const TopoDS_Shape ib  = rim_imprint(base->GetShape(),
+                                             tool->GetShape());
+        const TopoDS_Shape it_ = rim_imprint(tool->GetShape(), ib);
+
+        BRepBuilderAPI_Sewing nsew(tol);
+        nsew.SetNonManifoldMode(Standard_True);
+        int n_imp = 0;
+        for (const TopoDS_Shape* src : { &ib, &it_ })
+        {
+            for (TopExp_Explorer fx(*src, TopAbs_FACE); fx.More(); fx.Next())
+            {
+                nsew.Add(fx.Current());
+                ++n_imp;
+            }
+        }
+        nsew.Perform();
+        const TopoDS_Shape nm = nsew.SewedShape();
+        if (!nm.IsNull() && n_imp >= 4)
+        {
+            // Peel: drop faces with any free (single-parent) edge until
+            // stable. Shared TShapes from the non-manifold sew make the
+            // parent counts honest across pieces.
+            std::vector<TopoDS_Shape> all;
+            for (TopExp_Explorer fx(nm, TopAbs_FACE); fx.More(); fx.Next()) {
+                all.push_back(fx.Current());
+            }
+            std::vector<bool> alive(all.size(), true);
+            bool pruned = true;
+            while (pruned)
+            {
+                pruned = false;
+                BRep_Builder cb;
+                TopoDS_Compound cc;
+                cb.MakeCompound(cc);
+                for (size_t i = 0; i < all.size(); ++i) {
+                    if (alive[i]) { cb.Add(cc, all[i]); }
+                }
+                TopTools_IndexedDataMapOfShapeListOfShape e2f;
+                TopExp::MapShapesAndAncestors(cc, TopAbs_EDGE, TopAbs_FACE,
+                                              e2f);
+                for (size_t i = 0; i < all.size(); ++i)
+                {
+                    if (!alive[i]) { continue; }
+                    bool dangling = false;
+                    for (TopExp_Explorer ex(all[i], TopAbs_EDGE); ex.More();
+                         ex.Next())
+                    {
+                        const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+                        if (BRep_Tool::Degenerated(e)) { continue; }
+                        const int idx = e2f.FindIndex(e);
+                        if (idx == 0 ||
+                            e2f.FindFromIndex(idx).Extent() < 2)
+                        {
+                            dangling = true;
+                            break;
+                        }
+                    }
+                    if (dangling)
+                    {
+                        alive[i] = false;
+                        pruned   = true;
+                    }
+                }
+            }
+            int n_alive = 0;
+            for (bool a : alive) { n_alive += a ? 1 : 0; }
+            std::fprintf(stderr,
+                "[sew] op_id=%u imprint_peel faces=%d alive=%d\n",
+                op_id, (int)all.size(), n_alive);
+            std::fflush(stderr);
+            if (n_alive >= 4)
+            {
+                // Survivors form the volume boundary: re-sew manifold,
+                // solidify closed shells. Peeled faces rejoin the output
+                // as the open complex.
+                BRepBuilderAPI_Sewing msew(tol);
+                for (size_t i = 0; i < all.size(); ++i) {
+                    if (alive[i]) { msew.Add(all[i]); }
+                }
+                msew.Perform();
+                const TopoDS_Shape msewn = msew.SewedShape();
+                int n_new_solids = 0;
+                BRep_Builder ob;
+                TopoDS_Compound oc;
+                ob.MakeCompound(oc);
+                auto try_solid = [&](const TopoDS_Shape& piece)
+                {
+                    if (piece.ShapeType() == TopAbs_SHELL &&
+                        shell_closed(piece))
+                    {
+                        TopoDS_Solid sol;
+                        ob.MakeSolid(sol);
+                        ob.Add(sol, piece);
+                        GProp_GProps g;
+                        BRepGProp::VolumeProperties(sol, g);
+                        if (g.Mass() < 0.0) {
+                            sol.Reverse();
+                        }
+                        ob.Add(oc, sol);
+                        ++n_new_solids;
+                    }
+                    else
+                    {
+                        ob.Add(oc, piece);
+                    }
+                };
+                if (!msewn.IsNull())
+                {
+                    if (msewn.ShapeType() == TopAbs_COMPOUND)
+                    {
+                        for (TopoDS_Iterator i2(msewn); i2.More(); i2.Next()) {
+                            try_solid(i2.Value());
+                        }
+                    }
+                    else
+                    {
+                        try_solid(msewn);
+                    }
+                }
+                std::fprintf(stderr,
+                    "[sew] op_id=%u imprint_peel solids=%d\n",
+                    op_id, n_new_solids);
+                std::fflush(stderr);
+                if (n_new_solids > 0)
+                {
+                    // Peeled flaps: sew what's left into open shell(s)
+                    // so they stay one body each, then ride along.
+                    int n_flap = 0;
+                    BRepBuilderAPI_Sewing fsew(tol);
+                    for (size_t i = 0; i < all.size(); ++i) {
+                        if (!alive[i]) { fsew.Add(all[i]); ++n_flap; }
+                    }
+                    if (n_flap > 0)
+                    {
+                        fsew.Perform();
+                        const TopoDS_Shape fs = fsew.SewedShape();
+                        if (!fs.IsNull()) {
+                            ob.Add(oc, fs);
+                        }
+                    }
+                    for (const TopoDS_Shape& r : riders) {
+                        ob.Add(oc, r);
+                    }
+                    out_c    = oc;
+                    n_solids = n_new_solids;
+                    n_open   = (n_flap > 0 ? 1 : 0);
+                    n_loose  = (int)riders.size();
+                }
+            }
+        }
+    }
+    // Last resort, budgeted: MakerVolume's blind face-soup intersection
+    // (it has never beaten imprint_peel on the motivating case, and its
+    // unbudgeted form once ate the whole machine -- keep it fenced).
+    if (n_solids == 0)
+    {
+        BOPAlgo_MakerVolume mv;
+        TopTools_ListOfShape args;
+        for (const TopoDS_Shape& f : faces) {
+            args.Append(f);
+        }
+        mv.SetArguments(args);
+        mv.SetIntersect(Standard_True);
+        mv.SetFuzzyValue(1e-6);
+        // Budgeted: the T-joint volume extraction is worth seconds,
+        // never the machine (see DeadlineIndicator). On timeout the
+        // algo reports HasErrors() and we keep the sewn open shells --
+        // the same degradation as any other maker_volume failure.
+        // BREPKIT_MV_BUDGET_S overrides (seconds, default 30).
+        static const double mv_budget = [] {
+            if (const char* e = std::getenv("BREPKIT_MV_BUDGET_S")) {
+                const double v = std::atof(e);
+                if (v > 0.0) { return v; }
+            }
+            return 30.0;
+        }();
+        opencascade::handle<DeadlineIndicator> deadline =
+            new DeadlineIndicator(mv_budget);
+        // The deadline aborts only where OCCT polls UserBreak (between
+        // pave-filler stages). The 02-ear 组合1 explosion lives INSIDE
+        // one face-face intersection, which never polls -- there the
+        // process memory budget (zw_verify installs a Job Object cap,
+        // CAX_MEM_BUDGET_MB) fails the allocation instead, and the
+        // throw below degrades to the sewn open shells.
+        bool mv_threw = false;
+        try
+        {
+            mv.Perform(deadline->Start());
+        }
+        catch (Standard_Failure& f)
+        {
+            mv_threw = true;
+            const char* m = f.GetMessageString();
+            std::fprintf(stderr,
+                "[sew] op_id=%u maker_volume THREW %s (sewn open shells "
+                "kept)\n", op_id, m ? m : "Standard_Failure");
+        }
+        catch (const std::bad_alloc&)
+        {
+            mv_threw = true;
+            std::fprintf(stderr,
+                "[sew] op_id=%u maker_volume THREW bad_alloc (memory "
+                "budget hit, sewn open shells kept)\n", op_id);
+        }
+        std::fflush(stderr);
+        if (!mv_threw && !mv.HasErrors())
+        {
+            int    n_mv     = 0;
+            double mv_vol   = 0.0;
+            BRep_Builder vb;
+            TopoDS_Compound vols;
+            vb.MakeCompound(vols);
+            for (TopExp_Explorer sx(mv.Shape(), TopAbs_SOLID); sx.More();
+                 sx.Next())
+            {
+                GProp_GProps g;
+                BRepGProp::VolumeProperties(sx.Current(), g);
+                TopoDS_Shape sol = sx.Current();
+                if (g.Mass() < 0.0) {
+                    sol.Reverse();
+                }
+                vb.Add(vols, sol);
+                mv_vol += std::fabs(g.Mass());
+                ++n_mv;
+            }
+            std::fprintf(stderr,
+                "[sew] op_id=%u maker_volume solids=%d vol=%.6g\n",
+                op_id, n_mv, mv_vol * 1e9);
+            if (n_mv > 0)
+            {
+                // The enclosed region replaces the sewn complex (its
+                // boundary faces ARE the complex); riders still tag
+                // along.
+                BRep_Builder ob;
+                TopoDS_Compound oc;
+                ob.MakeCompound(oc);
+                for (TopoDS_Iterator it(vols); it.More(); it.Next()) {
+                    ob.Add(oc, it.Value());
+                }
+                for (const TopoDS_Shape& r : riders) {
+                    ob.Add(oc, r);
+                }
+                out_c    = oc;
+                n_solids = n_mv;
+                n_open   = 0;
+                n_loose  = (int)riders.size();
+            }
+        }
+        else if (!mv_threw)
+        {
+            std::fprintf(stderr,
+                "[sew] op_id=%u maker_volume %s\n", op_id,
+                deadline->Expired()
+                    ? "TIMED OUT (budget spent, sewn open shells kept; "
+                      "BREPKIT_MV_BUDGET_S raises the budget)"
+                    : "FAILED (errors)");
+        }
+    }
+    TopoDS_Shape out_shape = out_c;
+    {
+        TopoDS_Iterator solo(out_c);
+        if (solo.More())
+        {
+            const TopoDS_Shape first = solo.Value();
+            solo.Next();
+            if (!solo.More()) {
+                out_shape = first;
+            }
+        }
+    }
+    std::fprintf(stderr,
+        "[sew] op_id=%u faces=%d -> solids=%d open_shells=%d loose=%d "
+        "tol=%.4g\n",
+        op_id, n_in_faces, n_solids, n_open, n_loose, tolerance);
+    // Open-seam forensics: where does each surviving open shell gape?
+    // Per shell: face count, free-edge count + summed length + bbox of
+    // the free edges -- enough to tell a genuinely detached stray from
+    // a joint that misses closure by a hair.
+    if (n_open > 0)
+    {
+        int si = 0;
+        for (TopoDS_Iterator it(out_c); it.More(); it.Next(), ++si)
+        {
+            const TopoDS_Shape& piece = it.Value();
+            if (piece.ShapeType() != TopAbs_SHELL) { continue; }
+            TopTools_IndexedDataMapOfShapeListOfShape e2f;
+            TopExp::MapShapesAndAncestors(piece, TopAbs_EDGE, TopAbs_FACE,
+                                          e2f);
+            int    nfree = 0;
+            double flen  = 0.0;
+            Bnd_Box fb;
+            for (int i = 1; i <= e2f.Extent(); ++i)
+            {
+                const TopoDS_Edge& e = TopoDS::Edge(e2f.FindKey(i));
+                if (BRep_Tool::Degenerated(e)) { continue; }
+                if (e2f.FindFromIndex(i).Extent() >= 2) { continue; }
+                ++nfree;
+                GProp_GProps lg;
+                BRepGProp::LinearProperties(e, lg);
+                flen += lg.Mass();
+                BRepBndLib::Add(e, fb);
+            }
+            int nf = 0;
+            for (TopExp_Explorer fx(piece, TopAbs_FACE); fx.More();
+                 fx.Next()) {
+                ++nf;
+            }
+            double x0=0, y0=0, z0=0, x1=0, y1=0, z1=0;
+            if (!fb.IsVoid()) fb.Get(x0, y0, z0, x1, y1, z1);
+            std::fprintf(stderr,
+                "[sew]   shell=%d faces=%d free_edges=%d free_len=%.4g "
+                "free_bbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                si, nf, nfree, flen, x0, y0, z0, x1, y1, z1);
+        }
+        // T-joint detector: for every open shell, how far is its free
+        // boundary from the OTHER pieces' geometry? ~0 with no edge to
+        // sew to = the rim lands mid-face (needs imprint, not sewing);
+        // large = the pieces genuinely don't line up.
+        std::vector<TopoDS_Shape> pieces;
+        for (TopoDS_Iterator it(out_c); it.More(); it.Next()) {
+            pieces.push_back(it.Value());
+        }
+        for (size_t a = 0; a < pieces.size(); ++a)
+        {
+            if (pieces[a].ShapeType() != TopAbs_SHELL) { continue; }
+            TopTools_IndexedDataMapOfShapeListOfShape e2f;
+            TopExp::MapShapesAndAncestors(pieces[a], TopAbs_EDGE,
+                                          TopAbs_FACE, e2f);
+            BRep_Builder fb_b;
+            TopoDS_Compound free_c;
+            fb_b.MakeCompound(free_c);
+            int nfree = 0;
+            for (int i = 1; i <= e2f.Extent(); ++i)
+            {
+                const TopoDS_Edge& e = TopoDS::Edge(e2f.FindKey(i));
+                if (BRep_Tool::Degenerated(e)) { continue; }
+                if (e2f.FindFromIndex(i).Extent() >= 2) { continue; }
+                fb_b.Add(free_c, e);
+                ++nfree;
+            }
+            if (nfree == 0) { continue; }
+            // Per free EDGE: how far is it from each other piece? A
+            // mid-face rest reads ~0 (T-joint, needs imprint); a
+            // millimetre reads "pieces genuinely apart there"; tens of
+            // millimetres reads "the sealing piece is missing".
+            int ei = 0;
+            for (TopoDS_Iterator eit(free_c); eit.More(); eit.Next(), ++ei)
+            {
+                Bnd_Box eb;
+                BRepBndLib::Add(eit.Value(), eb);
+                double x0=0, y0=0, z0=0, x1=0, y1=0, z1=0;
+                if (!eb.IsVoid()) eb.Get(x0, y0, z0, x1, y1, z1);
+                GProp_GProps lg;
+                BRepGProp::LinearProperties(eit.Value(), lg);
+                for (size_t b = 0; b < pieces.size(); ++b)
+                {
+                    if (a == b) { continue; }
+                    BRepExtrema_DistShapeShape dist(eit.Value(), pieces[b]);
+                    if (dist.IsDone() && dist.NbSolution() > 0)
+                    {
+                        std::fprintf(stderr,
+                            "[sew]   freeb shell=%d edge=%d len=%.4g -> "
+                            "piece=%d min_dist=%.4g "
+                            "ebbox=(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
+                            (int)a, ei, lg.Mass(), (int)b, dist.Value(),
+                            x0, y0, z0, x1, y1, z1);
+                    }
+                }
+            }
+        }
+    }
+    std::fflush(stderr);
+
+    // BRepBuilderAPI_Sewing exposes no BRepTools_History; naming across a
+    // sew is dropped (same as the legacy Sew above). The verify path runs
+    // without tn anyway; editor naming resumes at the next history op.
+    brepdb::BRepWorld tool_world;
+    if (tn && vt) { tool_world = serialize_world(tn, tool->GetShape()); }
+    brepgraph::TopoNaming::PidMap pid_map;
+    auto dst = std::make_shared<brepkit::TopoShape>(out_shape);
+    merge_to_vt(tn, vt, base, tool, dst, std::move(tool_world), pid_map, "sew");
+    return dst;
 }
 
 std::shared_ptr<TopoShape> TopoAlgo::UnifySameDomain(const std::shared_ptr<TopoShape>& shape,

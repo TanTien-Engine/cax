@@ -455,6 +455,23 @@ struct FeatPayloadTrim
 {
     double keep_pt[3]  = { 0.0, 0.0, 0.0 };
     double keep_dir[3] = { 0.0, 0.0, 1.0 };
+    // ZW3D fld8 "mutual": the tool is not just consumed -- it is ALSO
+    // trimmed by the base, and its witnessed-side remnant survives as a
+    // separate body (02-ear 修剪3: 拉伸8's sheet leaves a 110 mm^2
+    // remnant; the _state area only balances with it kept).
+    bool   mutual      = false;
+};
+
+// Sew Base + Tool sheet bodies into one shell at the given tolerance,
+// solidifying any closed result (inside-out solids are reversed, so an
+// upstream face-flip feature can stay a no-op). Inputs ride the input
+// edges: first Base-role entry is the surviving lineage, Tool-role
+// entries are consumed. ZW3D CdShapeSew (缝合, fld4 = tolerance) and
+// FtBoolSoloAdd (组合-添加) over sheet operands -- 02-ear's wall band +
+// dome skin close into the final solid this way.
+struct FeatPayloadSew
+{
+    double tolerance = 1e-5;   // IR units (m); ZW3D default 0.01 mm
 };
 
 // ---- variant alias ----
@@ -491,7 +508,8 @@ using FeaturePayload = std::variant<
     FeatPayloadLink,             // 25
     FeatPayloadAsmConstraint,    // 26
     FeatPayloadBakedShape,       // 27
-    FeatPayloadTrim              // 28
+    FeatPayloadTrim,             // 28
+    FeatPayloadSew               // 29
 >;
 
 

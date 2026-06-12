@@ -1726,6 +1726,55 @@ StateSnap CaptureStateSnap(bool with_mass)
     return s;
 }
 
+// Bodies BLANKED in the part's current (final) state. A blanked body is
+// a real product of the history -- the converter's replay builds it --
+// but ZW3D's visible part and its "all objects" STEP export exclude it,
+// so the snapshot must say which bodies those are or the replay emits
+// them as phantom extra solids (R2900: the Pattern17 plate+funnel
+// composite, ~46k mm^3 = a +19% volume error). Captured at the end of
+// the forward sweep, after RollBodyToEnd(). bbox in part-native mm.
+struct HiddenBody
+{
+    double bbox[6] = {0, 0, 0, 0, 0, 0};
+    int    n_face  = 0;
+};
+
+std::vector<HiddenBody> CaptureHiddenBodies()
+{
+    std::vector<HiddenBody> out;
+    int  cnt = 0;
+    int* ids = nullptr;
+    if (cvxPartInqShapes(nullptr, nullptr, &cnt, &ids) != ZW_API_NO_ERROR) {
+        return out;
+    }
+    for (int i = 0; i < cnt && ids != nullptr; ++i)
+    {
+        if (!cvxEntIsBlanked(ids[i])) {
+            continue;
+        }
+        svxBndBox bb;
+        if (cvxEntBndBox(ids[i], &bb) != ZW_API_NO_ERROR) {
+            continue;
+        }
+        HiddenBody h;
+        h.bbox[0] = bb.X.min; h.bbox[1] = bb.Y.min; h.bbox[2] = bb.Z.min;
+        h.bbox[3] = bb.X.max; h.bbox[4] = bb.Y.max; h.bbox[5] = bb.Z.max;
+        int  n   = 0;
+        int* sub = nullptr;
+        if (cvxPartInqShapeFaces(ids[i], &n, &sub) == ZW_API_NO_ERROR &&
+            sub != nullptr)
+        {
+            h.n_face = n;
+            cvxMemFree(reinterpret_cast<void**>(&sub));
+        }
+        out.push_back(h);
+    }
+    if (ids != nullptr) {
+        cvxMemFree(reinterpret_cast<void**>(&ids));
+    }
+    return out;
+}
+
 // Read an external-geometry-copy feature (CdGeomCopy) via its dedicated
 // typed inquiry -- its source reference lives there, not in the generic
 // field container. Bridges the Vx int feature id to the new-API
@@ -3158,6 +3207,28 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
 
     doc["document"]["name"]     = zwapi::ActivePartName();
     doc["document"]["features"] = std::move(features);
+
+    // Bodies blanked in the final state: real history products that the
+    // visible part (and the truth STEP below) excludes. The reader hands
+    // these to the Replayer, which drops the matching solids at emission
+    // -- without this list the replay emits them as phantom extra
+    // bodies (R2900's blanked plate composite was +19% volume).
+    {
+        auto hidden = zwapi::CaptureHiddenBodies();
+        if (!hidden.empty())
+        {
+            json arr = json::array();
+            for (const auto& h : hidden)
+            {
+                json b;
+                b["bbox"]   = { h.bbox[0], h.bbox[1], h.bbox[2],
+                                h.bbox[3], h.bbox[4], h.bbox[5] };
+                b["n_face"] = h.n_face;
+                arr.push_back(std::move(b));
+            }
+            doc["hidden_bodies"] = std::move(arr);
+        }
+    }
 
     // Truth geometry: export the final solid to a sibling STEP file. This
     // is the universal baseline (correct for every feature) and the truth

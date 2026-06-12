@@ -49,11 +49,13 @@ public:
 	// side of the tool that (keep_pt, keep_dir) witnesses: keep_pt sits
 	// (approximately) ON the tool surface and keep_dir points INTO the
 	// surviving half (ZW3D FtSolidSoloTrm 修剪). Works on sheet and solid
-	// bases alike. Returns base unchanged (with a stderr WARNING) when the
-	// classification keeps nothing -- a silently emptied chain is worse
-	// than a missed trim.
+	// bases alike. With mutual=true the TOOL is also trimmed by the base
+	// and its witnessed-side remnant survives as a separate body in the
+	// result (ZW3D fld8 互剪). Returns base unchanged (with a stderr
+	// WARNING) when the classification keeps nothing -- a silently
+	// emptied chain is worse than a missed trim.
 	static std::shared_ptr<TopoShape> TrimByTool(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
-		const sm::vec3& keep_pt, const sm::vec3& keep_dir,
+		const sm::vec3& keep_pt, const sm::vec3& keep_dir, bool mutual,
 		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 
@@ -72,6 +74,17 @@ public:
 
 	static std::shared_ptr<TopoShape> Sew(const std::shared_ptr<TopoShape>& s1, const std::shared_ptr<TopoShape>& s2,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+
+	// Sew base + tool sheet bodies into one shell at `tolerance`,
+	// SOLIDIFYING any closed result (an inside-out solid is reversed, so
+	// an upstream face-flip can stay a no-op). Both-sides-solid degrades
+	// to Fuse (a combine-add of solids is a plain boolean). ZW3D
+	// CdShapeSew 缝合 / FtBoolSoloAdd 组合-添加 over sheet operands --
+	// 02-ear: wall band + dome skin close into the final solid here.
+	static std::shared_ptr<TopoShape> SewJoin(const std::shared_ptr<TopoShape>& base, const std::shared_ptr<TopoShape>& tool,
+		double tolerance,
+		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 	static std::shared_ptr<TopoShape> UnifySameDomain(const std::shared_ptr<TopoShape>& shape,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,

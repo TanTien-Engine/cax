@@ -2785,6 +2785,11 @@ bool ZwReader::ReadFile(const std::string& path,
                             pl.keep_pt[k]  = kpt[k] * s;
                             pl.keep_dir[k] = kdir[k];
                         }
+                        // fld8=1: mutual trim -- the tool is trimmed by
+                        // the base too and its remnant survives (修剪3/4
+                        // truth keeps a tool sliver as a visible body);
+                        // fld8=0: tool fully consumed (修剪1/2).
+                        pl.mutual = FieldValueById(jf, 8, 0.0) > 0.5;
                         cadapp::FeatureIR tf;
                         tf.id   = id;
                         tf.name = name;
@@ -2806,6 +2811,90 @@ bool ZwReader::ReadFile(const std::string& path,
                     }
                     // incomplete record (no feat backrefs / no witness):
                     // fall through to the opaque path below.
+                }
+
+                // ZW3D sew (CdShapeSew 缝合) and combine-add (FtBoolSoloAdd
+                // 组合-添加) -> FeatPayloadSew. fld 1 = Base body, fld 2 =
+                // the bodies sewn/added into it (feat backrefs), fld 4 =
+                // sew tolerance (CdShapeSew only; combine uses the same
+                // 0.01 mm default). Sheet operands sew + solidify when the
+                // shell closes; solid operands degrade to a plain fuse at
+                // replay time. 02-ear: 缝合3 merges the dome skins into the
+                // main skin, 组合1_添加 closes wall band + dome into the
+                // final solid (truth flux -304 -> +4.5).
+                if (zt == "CdShapeSew" || zt == "FtBoolSoloAdd")
+                {
+                    auto fields_it = jf.find("fields");
+                    const bool has_fields =
+                        (fields_it != jf.end() && fields_it->is_array());
+
+                    auto is_built = [&](uint32_t fid) -> bool {
+                        for (const auto& f : out.features) {
+                            if (f.id == fid) {
+                                return f.type != cadapp::FeatType::Unknown;
+                            }
+                        }
+                        return false;
+                    };
+
+                    uint32_t              base_fid = 0;
+                    std::vector<uint32_t> tool_fids;
+                    if (has_fields) {
+                        for (const auto& fd : *fields_it) {
+                            const int fld = JGet<int>(fd, "id", -1);
+                            if (fld != 1 && fld != 2) { continue; }
+                            auto eit = fd.find("ents");
+                            if (eit == fd.end() || !eit->is_array()) {
+                                continue;
+                            }
+                            for (const auto& e : *eit) {
+                                auto ft = e.find("feat");
+                                if (ft == e.end() ||
+                                    !ft->is_number_integer()) {
+                                    continue;
+                                }
+                                uint32_t t =
+                                    static_cast<uint32_t>(ft->get<int>());
+                                if (t == 0 || !is_built(t)) { continue; }
+                                if (fld == 1) {
+                                    if (base_fid == 0) { base_fid = t; }
+                                } else {
+                                    if (t == base_fid) { continue; }
+                                    bool dup = false;
+                                    for (uint32_t x : tool_fids) {
+                                        if (x == t) { dup = true; break; }
+                                    }
+                                    if (!dup) { tool_fids.push_back(t); }
+                                }
+                            }
+                        }
+                    }
+
+                    if (base_fid != 0 && !tool_fids.empty())
+                    {
+                        cadapp::FeatPayloadSew pl;
+                        // fld4 is the dialog's sew tolerance in file units
+                        // (mm); both features default to ZW3D's 0.01 mm.
+                        const double tol_mm = FieldValueById(jf, 4, 0.01);
+                        pl.tolerance = (tol_mm > 0.0 ? tol_mm : 0.01) * s;
+                        cadapp::FeatureIR sf;
+                        sf.id   = id;
+                        sf.name = name;
+                        sf.type = cadapp::FeatType::Sew;
+                        sf.data = std::move(pl);
+                        sf.ext_strings["zw_type"] = zt;
+                        PushInput(sf, base_fid, cadapp::InputRole::Base);
+                        for (uint32_t t : tool_fids) {
+                            PushInput(sf, t, cadapp::InputRole::Tool);
+                        }
+                        out.features.push_back(std::move(sf));
+                        // The sew replaces its base lineage in place.
+                        if (running_solid_id == base_fid) {
+                            running_solid_id = id;
+                        }
+                        continue;
+                    }
+                    // incomplete record: fall through to the opaque path.
                 }
 
                 // ZW3D mirror (FtMirrorFtr) -> FeatPayloadMirror. fld 1

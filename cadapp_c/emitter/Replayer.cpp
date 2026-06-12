@@ -2837,9 +2837,10 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                                           p.keep_dir[2]};
                     int kp_n = cg->AddConst(kp, "keep_pt");
                     int kd_n = cg->AddConst(kd, "keep_dir");
+                    int mu_n = cg->AddConst(p.mutual ? 1.0 : 0.0, "mutual");
                     node = cg->AddOp("trim",
-                                     {base_node, tool_n, kp_n, kd_n}, {},
-                                     feat.name + ":trim");
+                                     {base_node, tool_n, kp_n, kd_n, mu_n},
+                                     {}, feat.name + ":trim");
                     // ZW3D modifies the trimmed lineage IN PLACE: any
                     // later feature naming the BASE feature means its
                     // post-trim state. Redirect the base id's node (and
@@ -2865,6 +2866,73 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                     // The trimmed sheet is itself a multipliable tool
                     // (mirror-of-trimmed-skin), same registration as the
                     // BakedShape arm.
+                    FeatureToolInfo ti;
+                    ti.tool_node = node;
+                    ti.base_node = -1;
+                    ti.op_kind   = '0';
+                    feature_tools[feat.id] = ti;
+                }
+            }
+
+            // ---- Sew (CdShapeSew 缝合 / sheet FtBoolSoloAdd 组合-添加) --
+            // Join Base + Tool sheets into one shell, solidifying closed
+            // results. Tools are consumed; the BASE lineage is redirected
+            // to the sewn body (later features naming the base mean its
+            // post-sew state). 02-ear: 缝合3 merges the dome skins, then
+            // 组合1_添加 sews wall band + dome closed -> the final solid.
+            else if constexpr (std::is_same_v<T, FeatPayloadSew>)
+            {
+                std::vector<int> tool_nodes;
+                for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+                {
+                    InputRole role = (i < feat.input_roles.size())
+                                         ? feat.input_roles[i]
+                                         : InputRole::Base;
+                    if (role != InputRole::Tool) {
+                        continue;
+                    }
+                    auto fit = feature_nodes.find(feat.input_feature_ids[i]);
+                    if (fit != feature_nodes.end() && fit->second >= 0) {
+                        tool_nodes.push_back(fit->second);
+                    }
+                }
+                if (base_node < 0 || tool_nodes.empty())
+                {
+                    if (!out.err_msg.empty()) {
+                        out.err_msg += "; ";
+                    }
+                    out.err_msg += "sew " + feat.name +
+                                   (base_node < 0
+                                        ? " has no base body; skipped"
+                                        : " resolved no tool body; skipped");
+                }
+                else
+                {
+                    int tool_n = tool_nodes[0];
+                    if (tool_nodes.size() > 1) {
+                        tool_n = cg->AddOp("merge", {}, tool_nodes,
+                                           feat.name + ":tools");
+                    }
+                    int tol_n = cg->AddConst(p.tolerance, "tol");
+                    node = cg->AddOp("sew", {base_node, tool_n, tol_n}, {},
+                                     feat.name + ":sew");
+                    for (size_t i = 0; i < feat.input_feature_ids.size();
+                         ++i)
+                    {
+                        InputRole role = (i < feat.input_roles.size())
+                                             ? feat.input_roles[i]
+                                             : InputRole::Base;
+                        if (role != InputRole::Base) {
+                            continue;
+                        }
+                        const uint32_t bid = feat.input_feature_ids[i];
+                        feature_nodes[bid] = node;
+                        auto tit = feature_tools.find(bid);
+                        if (tit != feature_tools.end()) {
+                            tit->second.tool_node = node;
+                        }
+                        break;
+                    }
                     FeatureToolInfo ti;
                     ti.tool_node = node;
                     ti.base_node = -1;
@@ -2968,13 +3036,17 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                             sv->shape->GetShape().IsNull();
                 if (!dead)
                 {
-                    // A trim on a sheet base legitimately yields a sheet;
-                    // demanding a SOLID would revert every surface-
-                    // modeling trim to its base. Faces are proof of life
-                    // there; everything else keeps the solid bar.
+                    // A trim on a sheet base legitimately yields a sheet,
+                    // and so does a sew whose shell hasn't closed yet
+                    // (02-ear 缝合1/2/3 join skins that only solidify at
+                    // the final combine); demanding a SOLID would revert
+                    // every surface-modeling step to its base. Faces are
+                    // proof of life there; everything else keeps the
+                    // solid bar.
                     const TopAbs_ShapeEnum need =
-                        (feat.type == FeatType::Trim) ? TopAbs_FACE
-                                                      : TopAbs_SOLID;
+                        (feat.type == FeatType::Trim ||
+                         feat.type == FeatType::Sew) ? TopAbs_FACE
+                                                     : TopAbs_SOLID;
                     TopExp_Explorer ex(sv->shape->GetShape(), need);
                     dead = !ex.More();
                 }

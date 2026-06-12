@@ -1,4 +1,4 @@
-#include "cadapp_c/store/FeatureStore.h"
+﻿#include "cadapp_c/store/FeatureStore.h"
 
 #include <cassert>
 #include <cstring>
@@ -513,6 +513,12 @@ void Encode(const FeatPayloadTrim& p, BlobWriter& w)
 {
     w.Vec3(p.keep_pt);
     w.Vec3(p.keep_dir);
+    w.U8(p.mutual ? 1 : 0);
+}
+
+void Encode(const FeatPayloadSew& p, BlobWriter& w)
+{
+    w.F64(p.tolerance);
 }
 
 
@@ -785,6 +791,12 @@ void Decode(BlobReader& r, FeatPayloadTrim& p)
 {
     r.Vec3(p.keep_pt);
     r.Vec3(p.keep_dir);
+    p.mutual = (r.U8() != 0);
+}
+
+void Decode(BlobReader& r, FeatPayloadSew& p)
+{
+    p.tolerance = r.F64();
 }
 
 
@@ -1167,6 +1179,13 @@ bool FeatureStore::ExportToIR(uint32_t entry_idx, FeatureIR& out) const
     case 28:
     {
         FeatPayloadTrim p;
+        Decode(r, p);
+        out.data = std::move(p);
+        break;
+    }
+    case 29:
+    {
+        FeatPayloadSew p;
         Decode(r, p);
         out.data = std::move(p);
         break;
