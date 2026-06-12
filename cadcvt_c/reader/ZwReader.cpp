@@ -2417,10 +2417,38 @@ bool ZwReader::ReadFile(const std::string& path,
                                       patj->at("dir").is_array() &&
                                       patj->at("dir").size() == 3) ||
                                      FieldDir(jf, 2, fdir_tmp);
+                    // Can fld 1 identify the seed by direct feature-id
+                    // reference ("feat" field), without needing anchor
+                    // matching in extrude_xy? This lets a pattern of a
+                    // box/BakedShape primitive be reconstructed even when
+                    // no FtAllExt extrude has been processed yet.
+                    auto has_fld1_feat_ref = [&]() -> bool {
+                        auto fit2 = jf.find("fields");
+                        if (fit2 == jf.end() || !fit2->is_array()) return false;
+                        for (const auto& fd : *fit2) {
+                            auto idit2 = fd.find("id");
+                            if (idit2 == fd.end() || !idit2->is_number() ||
+                                idit2->get<int>() != 1) {
+                                continue;
+                            }
+                            auto eit2 = fd.find("ents");
+                            if (eit2 == fd.end() || !eit2->is_array()) continue;
+                            for (const auto& e2 : *eit2) {
+                                auto ft2 = e2.find("feat");
+                                if (ft2 != e2.end() &&
+                                    ft2->is_number_integer() &&
+                                    ft2->get<int>() > 0) {
+                                    return true;
+                                }
+                            }
+                        }
+                        return false;
+                    };
                     if (zt == "FtPtnFtr" &&
                         ((linear_method && has_dir) ||
                          (circular_method && has_axis_pt)) &&
-                        running_solid_id != 0 && !extrude_xy.empty())
+                        running_solid_id != 0 &&
+                        (!extrude_xy.empty() || has_fld1_feat_ref()))
                     {
                         // Match a world-mm anchor to a reconstructed extrude
                         // footprint: project onto each extrude's sketch plane and

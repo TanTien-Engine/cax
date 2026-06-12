@@ -4031,6 +4031,31 @@ bool Replayer::ReplayParts(DocumentIR& doc, const ReplayOptions& opt,
     // not merged -- ReplayParts is for the non-persisted load path.
     out.naming = ares.naming;
     out.vtree  = ares.vtree;
+
+    // When exactly one sub-part has a non-trivial CalcGraph (more than one
+    // history step, i.e. a real parametric chain rather than a single baked
+    // const node), promote it so RebuildHistory can decompile the
+    // reconstructable portion. This covers the common pattern of a
+    // single-chain part whose unreconstructable opaque features (e.g.
+    // FtPtnFtr pattern copies) fell back to BakedShape geometry, causing
+    // a spurious extra live-part that triggered this split path.
+    // If multiple sub-parts have non-trivial chains (a true multi-chain
+    // assembly), we leave calc_graph null to preserve the existing
+    // "multi-part assembly" diagnostic in RebuildHistory.
+    {
+        std::shared_ptr<brepgraph::CalcGraph> chain_cg;
+        int chain_count = 0;
+        for (auto& sr : subres) {
+            if (sr.calc_graph && sr.calc_graph->GetHistorySize() > 1) {
+                chain_cg = sr.calc_graph;
+                ++chain_count;
+            }
+        }
+        if (chain_count == 1) {
+            out.calc_graph = chain_cg;
+        }
+    }
+
     out.ok     = true;
     return true;
 }
