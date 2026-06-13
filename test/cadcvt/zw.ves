@@ -1,8 +1,8 @@
 var node0 = ::blueprint::nodes::camera3d::Camera3d()
 
-node0.cam.position.set(-0.37387331656566, -22.574113742468, 14.728388092775)
-node0.cam.yaw = -90.8
-node0.cam.pitch = 58
+node0.cam.position.set(-60.5, -24.5, 134)
+node0.cam.yaw = -90
+node0.cam.pitch = 0
 node0.cam.zoom = 45
 node0.cam.update_vectors()
 node0.speed = 0.2
@@ -25,9 +25,10 @@ node3.query_param("disable").value = false
 _editor.add_node(node3, 392.18895050427, 211.79090897199)
 
 var node4 = ::cadcvt::nodes::load_zw::LoadZw()
-//node4.query_param("path").value = "D:/projects/cad/zw3d/test.Z3PRT.cax.json"
+//node4.query_param("path").value = "y:/cad/zw/test/ptn_ftr_0.Z3PRT.cax.json"
+node4.query_param("path").value = "y:/cad/zw/test/ptn_ftr_1.Z3PRT.cax.json"
 //node4.query_param("path").value = "D:/projects/cad/zw3d/高压泡沫混合_029-R2900_100.Z3PRT.cax.json"
-node4.query_param("path").value = "y:/cad/zw/test/ptn_ftr_0.Z3PRT.cax.json"
+//node4.query_param("path").value = "y:/cad/zw/高压泡沫混合_029-R2900.Z3PRT.cax.json"
 //node4.query_param("path").value = "/Users/zhuguang/projects/cad/zw/高压泡沫混合_029-R2900.Z3PRT.cax.json"
 node4.query_param("unit_scale").value = 1
 node4.query_param("strict").value = false

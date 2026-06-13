@@ -1245,6 +1245,39 @@ bool ProfileFormsClosedLoops(const json& curves, double tol)
     return closed_loops > 0 || !ends.empty();
 }
 
+// World-placed footprint of each reconstructed solid extrude, by feature
+// id. A later pattern (FtPtnFtr) carries its target only as a world-space
+// anchor; this lets the reader map that anchor back to the feature the
+// pattern copies, so it patterns that feature's tool (not the whole body).
+//
+// Stored as the sketch plane (origin + u/v axes, world mm) plus the
+// profile's LOCAL (u,v) bounding box. Matching projects the anchor onto
+// the plane and tests the 2D box -- correct for ANY plane orientation.
+// (The old anchor.xy-vs-local-box test only worked when the sketch lay on
+// world XY, so a pattern of a boss on a side plane -- e.g. Pattern2's
+// -Y-plane pins -- mis-targeted whichever XY feature happened to be near.)
+struct ExtrudeFootprint {
+    uint32_t id;
+    double   origin[3];
+    double   udir[3];
+    double   vdir[3];
+    double   umin, umax, vmin, vmax;
+    double   wc[3];           // world-space centre of the footprint, for
+                              // grouping co-located seeds a pattern copies
+                              // together (concentric pins -> one stepped
+                              // pin patterned as a unit).
+};
+
+// Profiles of already-processed extrudes, for the region-pick hole
+// import: a later extrude whose ref loop matches one of these outer
+// loops pulls the donor's inner loops in as holes. Pointers into the
+// parsed document json (stable for the lifetime of ReadFile).
+struct PriorProfile
+{
+    const json* curves = nullptr;
+    ProfFrame   frame;
+};
+
 } // namespace
 
 ZwReader::ZwReader() = default;
@@ -1375,28 +1408,12 @@ bool ZwReader::ReadFile(const std::string& path,
     // (The old anchor.xy-vs-local-box test only worked when the sketch lay on
     // world XY, so a pattern of a boss on a side plane -- e.g. Pattern2's
     // -Y-plane pins -- mis-targeted whichever XY feature happened to be near.)
-    struct ExtrudeFootprint {
-        uint32_t id;
-        double   origin[3];
-        double   udir[3];
-        double   vdir[3];
-        double   umin, umax, vmin, vmax;
-        double   wc[3];           // world-space centre of the footprint, for
-                                  // grouping co-located seeds a pattern copies
-                                  // together (concentric pins -> one stepped
-                                  // pin patterned as a unit).
-    };
     std::vector<ExtrudeFootprint> extrude_xy;
 
     // Profiles of already-processed extrudes, for the region-pick hole
     // import: a later extrude whose ref loop matches one of these outer
     // loops pulls the donor's inner loops in as holes. Pointers into the
     // parsed document json (stable for the lifetime of ReadFile).
-    struct PriorProfile
-    {
-        const json* curves = nullptr;
-        ProfFrame   frame;
-    };
     std::vector<PriorProfile> prior_profiles;
 
     // Records which prior pattern consumed a given seed feature, keyed by the
