@@ -1278,6 +1278,19 @@ struct PriorProfile
     ProfFrame   frame;
 };
 
+// A reconstructed edge dress-up (fillet/chamfer), keyed by its feature id,
+// kept so a later FtPtnFtr that PATTERNS this dress-up can re-apply it at
+// the pattern-imaged edge positions (each picked edge anchor translated by
+// the pattern offset). Points are stored in the SAME scaled (metre) space
+// the dress-up arm emits into its TopoRefIR, so the pattern handler only
+// adds a scaled offset -- no re-scaling.
+struct ZwDressupSeed
+{
+    bool                           is_fillet = true;
+    double                         size      = 0.0;   // radius / setback, *s
+    std::vector<cadapp::TopoRefIR> edges;             // picked edges, points *s
+};
+
 
 // Shared mutable state threaded through the ZW-format feature builders
 // below. ReadFile's else-branch fills one of these per feature and offers
@@ -1297,6 +1310,7 @@ struct ZwBuildCtx
     std::vector<ExtrudeFootprint>&          extrude_xy;
     std::vector<PriorProfile>&              prior_profiles;
     std::unordered_map<uint32_t, uint32_t>& seed_to_pattern;
+    std::unordered_map<uint32_t, ZwDressupSeed>& feat_dressup;    // dress-up seeds, for pattern-of-dress-up
     const std::string&                      doc_dir;              // dir of the .cax.json
     const std::string&                      path;                 // path of the .cax.json
 };
@@ -2402,6 +2416,95 @@ static bool TryBuildFtPtnFtr(ZwBuildCtx& ctx)
             }
             return false;
         };
+        // ZW3D "Pattern Feature" whose seed is an edge DRESS-UP
+        // (fillet/chamfer), not a tool body -- fld 1 Base names the
+        // dress-up feature (e.g. Fillet1), and the bodies its copies dress
+        // ALREADY exist: an earlier "Pattern Geometry" (FtPtnGeom) deposited
+        // them, and fld 62 "Boolean shapes" names the one this instance
+        // lands on. A dress-up has no copyable tool solid, so the
+        // LinearPattern arm below cannot replicate it -- it pushes the fillet
+        // as a Tool that resolves to nothing AND consumes the fld-62 body
+        // without fusing, so that body silently vanishes. Instead re-apply
+        // the SAME dress-up at the pattern-IMAGED edges: translate each
+        // picked edge anchor by the pattern offset and fillet/chamfer the
+        // fld-62 body there, reusing the single-dress-up arm (no Replayer
+        // change). The Replayer's resolver finds the moved edge (box2 =
+        // box1 + offset, so the imaged anchor sits on a real edge); a miss
+        // degrades to a clean no-op via its dead-feature fallback, keeping
+        // the body. Scope: ONE non-seed instance (count == 2) -- wider counts
+        // need a per-instance fld-62 body map the snapshot doesn't expose, so
+        // they fall through. Correctness also needs the pattern transform to
+        // MATCH the one that built the fld-62 body (true here: both +Y/50);
+        // a mismatch lands the imaged anchor off-body -> dress-up no-ops,
+        // body kept.
+        if (zt == "FtPtnFtr" && linear_method && running_solid_id != 0)
+        {
+            uint32_t seed_dress = FieldEntFeat(jf, 1);
+            auto     dsit       = ctx.feat_dressup.find(seed_dress);
+            uint32_t onto       = FieldEntFeat(jf, 62);
+            int      count1     = static_cast<int>(FieldValueById(jf, 3, 1.0));
+            int      count2     = static_cast<int>(FieldValueById(jf, 6, 1.0));
+            if (dsit != ctx.feat_dressup.end() && onto != 0 &&
+                count1 >= 1 && count2 >= 1 && count1 * count2 == 2)
+            {
+                // Offset (scaled to metres) of the single non-seed instance:
+                // along direction 1 when count1 == 2, else direction 2.
+                double d1[3] = { 0, 0, 0 }, d2[3] = { 0, 0, 0 };
+                FieldDir(jf, 2, d1);
+                FieldDir(jf, 5, d2);
+                double sp1 = FieldValueById(jf, 4, 0.0);
+                double sp2 = FieldValueById(jf, 7, 0.0);
+                double off[3];
+                if (count1 == 2) {
+                    off[0] = d1[0] * sp1 * s;
+                    off[1] = d1[1] * sp1 * s;
+                    off[2] = d1[2] * sp1 * s;
+                } else {
+                    off[0] = d2[0] * sp2 * s;
+                    off[1] = d2[1] * sp2 * s;
+                    off[2] = d2[2] * sp2 * s;
+                }
+
+                const ZwDressupSeed& ds = dsit->second;
+                std::vector<cadapp::TopoRefIR> edges;
+                edges.reserve(ds.edges.size());
+                for (const auto& se : ds.edges) {
+                    cadapp::TopoRefIR r = se;
+                    r.point[0] += off[0];
+                    r.point[1] += off[1];
+                    r.point[2] += off[2];
+                    edges.push_back(r);
+                }
+
+                cadapp::FeatureIR cf;
+                cf.id   = id;
+                cf.name = name;
+                cf.ext_strings["zw_type"] = zt;
+                if (ds.is_fillet) {
+                    cadapp::FeatPayloadFillet pl;
+                    pl.radius = ds.size;
+                    pl.edges  = std::move(edges);
+                    cf.type   = cadapp::FeatType::Fillet;
+                    cf.data   = std::move(pl);
+                } else {
+                    cadapp::FeatPayloadChamfer pl;
+                    pl.distance1 = ds.size;
+                    pl.distance2 = 0.0;
+                    pl.edges     = std::move(edges);
+                    cf.type      = cadapp::FeatType::Chamfer;
+                    cf.data      = std::move(pl);
+                }
+                // Base = the fld-62 body this instance dresses (box2). The
+                // Replayer resolves the moved edges against it and consumes
+                // it, so the dressed body REPLACES the plain copy (no
+                // duplicate, no vanish). The running chain stays untouched.
+                PushInput(cf, onto, cadapp::InputRole::Base);
+                out.features.push_back(std::move(cf));
+                standalone_ids.insert(id);
+                return true;
+            }
+        }
+
         if (zt == "FtPtnFtr" &&
             ((linear_method && has_dir) ||
              (circular_method && has_axis_pt)) &&
@@ -2918,6 +3021,17 @@ static bool TryBuildFtDressup(ZwBuildCtx& ctx)
                 r.point[1] = pk.anc[1] * s;
                 r.point[2] = pk.anc[2] * s;
                 edges.push_back(r);
+            }
+
+            // Remember this dress-up so a later FtPtnFtr that patterns it
+            // can re-apply it at the pattern-imaged edge positions (the
+            // dress-up itself has no copyable tool solid).
+            {
+                ZwDressupSeed ds;
+                ds.is_fillet = is_fillet;
+                ds.size      = dim * s;
+                ds.edges     = edges;            // scaled points; copy before move
+                ctx.feat_dressup[id] = std::move(ds);
             }
 
             cadapp::FeatureIR cf;
@@ -3676,6 +3790,12 @@ bool ZwReader::ReadFile(const std::string& path,
     // pattern (processed in feature order).
     std::unordered_map<uint32_t, uint32_t> seed_to_pattern;
 
+    // Reconstructed dress-ups (fillet/chamfer) keyed by feature id, so a
+    // later FtPtnFtr that patterns a dress-up seed can re-apply it at the
+    // pattern-imaged edges instead of dropping it (a dress-up has no
+    // copyable tool solid).
+    std::unordered_map<uint32_t, ZwDressupSeed> feat_dressup;
+
     try
     {
         const auto& features = doc.at("document").at("features");
@@ -3758,6 +3878,7 @@ bool ZwReader::ReadFile(const std::string& path,
                                 running_solid_id, standalone_ids,
                                 standalone_sheet_ids, extrude_xy,
                                 prior_profiles, seed_to_pattern,
+                                feat_dressup,
                                 doc_dir, path };
 
                 // ZW-format feature builders, tried in order: each inspects
