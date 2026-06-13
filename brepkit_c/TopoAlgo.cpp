@@ -489,6 +489,14 @@ double ScaledBopFuzzy(const TopoDS_Shape& a, const TopoDS_Shape& b)
     box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
     const double dx = xmax - xmin, dy = ymax - ymin, dz = zmax - zmin;
     const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
+    // Guard: a degenerate operand (e.g. a path-less sweep that collapses
+    // in-plane) can carry a non-finite or astronomically large bbox
+    // coordinate. Unclamped, diag*5e-6 became fuzzy=1e95 (gate=1e96) and
+    // BRepAlgoAPI_Fuse raised BOPAlgo_AlertBuilderFailed, aborting the
+    // whole replay. The model lives at mm-to-metre scale; any diagonal
+    // past ~1 km is broken geometry, not a real tolerance -- fall back to
+    // the safe floor so one bad operand can't poison the boolean.
+    if (!std::isfinite(diag) || diag > 1.0e3) return 1e-6;
     return (diag > 1.0) ? (diag * 5e-6) : 1e-6;
 }
 
