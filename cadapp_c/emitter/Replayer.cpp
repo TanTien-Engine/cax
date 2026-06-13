@@ -1023,6 +1023,1994 @@ int FinalizePrimitiveNode(brepgraph::CalcGraph& cg,
     return cur;
 }
 
+
+// Per-feature dispatch for Replayer::Replay. One operator()
+// overload per FeatPayload* alternative; std::visit selects the
+// arm matching feat.data's active type. Members are the slice of
+// Replay's per-iteration state each arm reads/writes (the old
+// [&] lambda capture set, now named). Unhandled payloads fall to
+// the catch-all template (Assembly joints / unimplemented gaps).
+struct FeatureVisitor
+{
+    const std::shared_ptr<brepgraph::CalcGraph>& cg;
+    DocumentIR&                                  doc;
+    const ReplayOptions&                         opt;
+    ReplayResult&                                out;
+    std::map<uint32_t, int>&                     sketch_face_nodes;
+    std::vector<ResolveBack>&                    resolve_back;
+    std::map<uint32_t, FeatureToolInfo>&         feature_tools;
+    std::map<uint32_t, FeatureDressupInfo>&      feature_dressups;
+    std::map<uint32_t, int>&                     feature_nodes;
+    std::vector<uint32_t>&                       pending_standalone;
+    FeatureIR&                                   feat;
+    int                                          base_node;
+    int&                                         node;
+    bool&                                        step_ok;
+
+    // ---- Sketch ----
+    void operator()(FeatPayloadSketch& p)
+    {
+        // Build the sketch_face subtree up-front and stash it
+        // in sketch_face_nodes; downstream features (Extrude,
+        // Revolve, ...) read from there so a sketch shared by
+        // several features lands as a single subtree in the
+        // calc graph. The feature itself doesn't contribute a
+        // 3D body, so node stays -1 and feature_nodes is not
+        // updated -- sketches are not addressable as bases.
+        const SketchIR* sk = FindSketch(doc, p.sketch_id);
+        if (sk) {
+            sketch_face_nodes[p.sketch_id] = AddSketchFaceNode(*cg, *sk);
+        }
+    }
+
+    // ---- Primitives ----
+    //
+    // After building the bare primitive op, FinalizePrimitiveNode
+    // applies the FreeCAD Placement and turns
+    // PartDesign::Additive*/Subtractive* into the
+    // corresponding fuse/cut against the running body shape.
+    // tool_info captures the placed tool and the fuse/cut
+    // kind so a downstream pattern with Originals = [this]
+    // can multiply just the tool.
+    void operator()(FeatPayloadPrimBox& p)
+    {
+        int l = cg->AddConst(p.length, "length");
+        int w = cg->AddConst(p.width,  "width");
+        int h = cg->AddConst(p.height, "height");
+        int prim = cg->AddOp("box", {l, w, h}, {}, feat.name);
+        FeatureToolInfo ti;
+        node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
+        feature_tools[feat.id] = ti;
+    }
+
+    void operator()(FeatPayloadPrimCylinder& p)
+    {
+        int r = cg->AddConst(p.radius, "radius");
+        int h = cg->AddConst(p.height, "height");
+        int prim = cg->AddOp("cylinder", {r, h}, {}, feat.name);
+        FeatureToolInfo ti;
+        node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
+        feature_tools[feat.id] = ti;
+    }
+
+    void operator()(FeatPayloadPrimCone& p)
+    {
+        int r1 = cg->AddConst(p.radius1, "radius1");
+        int r2 = cg->AddConst(p.radius2, "radius2");
+        int h  = cg->AddConst(p.height,  "height");
+        int prim = cg->AddOp("cone", {r1, r2, h}, {}, feat.name);
+        FeatureToolInfo ti;
+        node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
+        feature_tools[feat.id] = ti;
+    }
+
+    void operator()(FeatPayloadPrimSphere& p)
+    {
+        int r = cg->AddConst(p.radius, "radius");
+        int prim = cg->AddOp("sphere", {r}, {}, feat.name);
+        FeatureToolInfo ti;
+        node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
+        feature_tools[feat.id] = ti;
+    }
+
+    void operator()(FeatPayloadPrimTorus& p)
+    {
+        int r1 = cg->AddConst(p.major_radius, "major_radius");
+        int r2 = cg->AddConst(p.minor_radius, "minor_radius");
+        int prim = cg->AddOp("torus", {r1, r2}, {}, feat.name);
+        FeatureToolInfo ti;
+        node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
+        feature_tools[feat.id] = ti;
+    }
+
+    void operator()(FeatPayloadPrimEllipsoid& p)
+    {
+        int r1 = cg->AddConst(p.radius1, "radius1");
+        int r2 = cg->AddConst(p.radius2, "radius2");
+        int r3 = cg->AddConst(p.radius3, "radius3");
+        int prim = cg->AddOp("ellipsoid", {r1, r2, r3}, {}, feat.name);
+        FeatureToolInfo ti;
+        node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
+        feature_tools[feat.id] = ti;
+    }
+
+    // ---- Extrude (Boss / Cut) ----
+    void operator()(FeatPayloadExtrude& p)
+    {
+        const SketchIR* sk = FindSketch(doc, p.sketch_id);
+        if (!sk)
+        {
+            step_ok     = false;
+            out.err_msg = "missing sketch for feature " + feat.name;
+            return;
+        }
+
+        // Reuse the face built by the upstream Sketch feature
+        // when present; otherwise (e.g. a DocumentIR that
+        // forgot to emit a Sketch FeatureIR around its sketch)
+        // build it inline so the extrude still resolves.
+        int face_n;
+        auto it = sketch_face_nodes.find(p.sketch_id);
+        if (it != sketch_face_nodes.end()) {
+            face_n = it->second;
+        } else {
+            face_n = AddSketchFaceNode(*cg, *sk);
+            sketch_face_nodes[p.sketch_id] = face_n;
+        }
+
+        double yd[3] =
+        {
+            sk->plane_normal[1] * sk->plane_x_dir[2] - sk->plane_normal[2] * sk->plane_x_dir[1],
+            sk->plane_normal[2] * sk->plane_x_dir[0] - sk->plane_normal[0] * sk->plane_x_dir[2],
+            sk->plane_normal[0] * sk->plane_x_dir[1] - sk->plane_normal[1] * sk->plane_x_dir[0],
+        };
+        double world_dir[3] =
+        {
+            p.direction[0] * sk->plane_x_dir[0] + p.direction[1] * yd[0] + p.direction[2] * sk->plane_normal[0],
+            p.direction[0] * sk->plane_x_dir[1] + p.direction[1] * yd[1] + p.direction[2] * sk->plane_normal[1],
+            p.direction[0] * sk->plane_x_dir[2] + p.direction[1] * yd[2] + p.direction[2] * sk->plane_normal[2],
+        };
+
+        double sign = p.flip_direction ? -1.0 : 1.0;
+
+        // FreeCAD TwoLengths (Pad Type=4) lands here with
+        // end_type == Blind but distance2 > 0: the reader has
+        // stashed the second-side length in distance2 and left
+        // end_type2 at Blind. The simple `prism` op below only
+        // consumes `distance`, so without this distance2 > 0
+        // gate the second half of the extrusion disappears
+        // silently (see Page_077 Pad002: the 42mm +Z half of
+        // the central cylinder went missing because the only
+        // visible 6mm half was buried inside the base body).
+        bool two_sided = (p.distance2 > 1e-15) ||
+                         (p.end_type2 != ExtrudeEndType::Blind);
+
+        int tool_n;
+        if (p.end_type != ExtrudeEndType::Blind || two_sided)
+        {
+            // extrude_ex has no draft input; an up-to / two-sided
+            // extrude that ALSO tapers is not representable yet.
+            if (std::fabs(p.draft) > 1e-12)
+            {
+                if (!out.err_msg.empty()) out.err_msg += "; ";
+                out.err_msg += "extrude " + feat.name +
+                    " combines a draft angle with up-to/two-sided "
+                    "ends; draft dropped";
+            }
+            brepgraph::Vec3 dir = {sign * world_dir[0],
+                                  sign * world_dir[1],
+                                  sign * world_dir[2]};
+            int dir_n = cg->AddConst(dir, "direction");
+            int d1_n  = cg->AddConst(p.distance,  "dist1");
+            int d2_n  = cg->AddConst(p.distance2, "dist2");
+            int e1_n  = cg->AddConst((int)p.end_type,  "end1");
+            int e2_n  = cg->AddConst((int)p.end_type2, "end2");
+            int ref_n = base_node >= 0
+                ? base_node
+                : cg->AddConst(std::shared_ptr<brepkit::TopoShape>{}, "null_ref");
+            tool_n = cg->AddOp("extrude_ex",
+                {face_n, dir_n, d1_n, d2_n, e1_n, e2_n, ref_n},
+                {}, feat.name);
+        }
+        else
+        {
+            double dx = world_dir[0] * p.distance * sign;
+            double dy = world_dir[1] * p.distance * sign;
+            double dz = world_dir[2] * p.distance * sign;
+            brepgraph::Vec3 dir = {dx, dy, dz};
+            int dir_n = cg->AddConst(dir, "direction");
+            if (std::fabs(p.draft) > 1e-12)
+            {
+                // Drafted one-sided blind extrude (R2900_100's
+                // Extrude21: 5 deg over a 5mm plate -- ignoring
+                // the taper left +105mm^3 of phantom material).
+                int a_n = cg->AddConst(p.draft, "draft");
+                tool_n  = cg->AddOp("dprism", {face_n, dir_n, a_n},
+                                    {}, feat.name);
+            }
+            else
+            {
+                tool_n = cg->AddOp("prism", {face_n, dir_n},
+                                   {}, feat.name);
+            }
+        }
+
+        // Track the extrude tool so a downstream pattern with
+        // Originals = [this Pad/Pocket] can multiply just the
+        // prism instead of the whole body.
+        FeatureToolInfo ti;
+        ti.tool_node = tool_n;
+        ti.base_node = base_node;
+        // Equivariant unless an up-to-X end type ties the solid to
+        // the running body (then a pattern can't merely transform it).
+        ti.equivariant = (p.end_type  == ExtrudeEndType::Blind &&
+                          p.end_type2 == ExtrudeEndType::Blind);
+
+        if (feat.type == FeatType::BossExtrude)
+        {
+            if (base_node < 0)
+            {
+                node = tool_n;
+                ti.op_kind = '0';
+            }
+            else
+            {
+                node = cg->AddOp("fuse", {base_node, tool_n},
+                                  {}, feat.name);
+                ti.op_kind = 'f';
+            }
+        }
+        else
+        {
+            if (base_node < 0)
+            {
+                step_ok     = false;
+                out.err_msg = "CutExtrude without base shape: " + feat.name;
+                return;
+            }
+            node = cg->AddOp("cut", {base_node, tool_n},
+                              {}, feat.name);
+            ti.op_kind = 'c';
+        }
+        // Mirror FreeCAD's PartDesign::Pad / Pocket default
+        // Refine=true: append UnifySameDomain so coplanar side
+        // faces from a multi-segment sketch contour collapse
+        // and downstream Fillet runs on a single smooth strip
+        // rather than N narrow strips that fracture the blend.
+        // tool_n stays unrefined so a downstream PolarPattern
+        // / Mirror with Originals=[this feat] still multiplies
+        // a clean prism, not a refined body.
+        if (opt.refine_after_primitive && node >= 0) {
+            node = cg->AddOp("refine", {node}, {},
+                              feat.name + ":refine");
+        }
+        feature_tools[feat.id] = ti;
+    }
+
+    // ---- Revolve (Boss / Cut) ----
+    //
+    // Mirror of the Extrude branch: reuse / build the sketch's
+    // face, add a `revolve` op around the axis carried by the
+    // payload, and fuse / cut against the running body.
+    //
+    // Negative angle (or Reversed=true via flip_direction) flips
+    // the sweep direction; angle near 2*PI is treated as a full
+    // revolution via the `is_full` flag so OCCT closes the
+    // resulting solid instead of leaving a hairline seam.
+    void operator()(FeatPayloadRevolve& p)
+    {
+        const SketchIR* sk = FindSketch(doc, p.sketch_id);
+        if (!sk)
+        {
+            step_ok     = false;
+            out.err_msg = "missing sketch for feature " + feat.name;
+            return;
+        }
+
+        int face_n;
+        auto it = sketch_face_nodes.find(p.sketch_id);
+        if (it != sketch_face_nodes.end()) {
+            face_n = it->second;
+        } else {
+            face_n = AddSketchFaceNode(*cg, *sk);
+            sketch_face_nodes[p.sketch_id] = face_n;
+        }
+
+        double sign = p.flip_direction ? -1.0 : 1.0;
+        brepgraph::Vec3 ax_o = {p.axis_origin[0],
+                               p.axis_origin[1],
+                               p.axis_origin[2]};
+        brepgraph::Vec3 ax_d = {p.axis_dir[0],
+                               p.axis_dir[1],
+                               p.axis_dir[2]};
+        int o_n = cg->AddConst(ax_o, "axis_origin");
+        int d_n = cg->AddConst(ax_d, "axis_dir");
+        int a_n = cg->AddConst(sign * p.angle, "angle");
+        bool is_full = std::abs(p.angle - 2.0 * 3.14159265358979323846)
+                        < 1e-6;
+        int f_n = cg->AddConst(is_full, "is_full");
+
+        // Midplane: FreeCAD sweeps the profile symmetrically
+        // about the sketch plane (-angle/2 .. +angle/2). BRepPrim-
+        // API_MakeRevol only sweeps one-sided from the profile's
+        // current position, so pre-rotate the profile by
+        // -sign*angle/2 around the axis; the subsequent
+        // sign*angle sweep then lands the profile at +angle/2,
+        // matching the symmetric range. Reader stashes the
+        // flag in ext_params["midplane"]=1 because
+        // FeatPayloadRevolve doesn't carry a bool field yet.
+        // Don't update sketch_face_nodes -- the rotated face
+        // is local to this revolve, and another feature
+        // reusing the same sketch must see the unrotated
+        // original. Full 2pi revolves are already symmetric
+        // (sweep wraps onto itself), so the pre-rotation is
+        // skipped -- still geometrically correct, but it
+        // would waste a graph node.
+        bool midplane = ExtParam(feat, "midplane", 0.0) != 0.0;
+        int rev_face_n = face_n;
+        if (midplane && !is_full)
+        {
+            int half_a_n = cg->AddConst(-sign * 0.5 * p.angle,
+                                        "midplane_pre_angle");
+            rev_face_n = cg->AddOp(
+                "rotate",
+                {face_n, o_n, d_n, half_a_n},
+                {}, feat.name + ":midplane_pre_rot");
+        }
+
+        int tool_n = cg->AddOp("revolve",
+                                {rev_face_n, o_n, d_n, a_n, f_n},
+                                {}, feat.name);
+
+        FeatureToolInfo ti;
+        ti.tool_node = tool_n;
+        ti.base_node = base_node;
+
+        if (feat.type == FeatType::BossRevolve)
+        {
+            if (base_node < 0)
+            {
+                node = tool_n;
+                ti.op_kind = '0';
+            }
+            else
+            {
+                node = cg->AddOp("fuse", {base_node, tool_n},
+                                  {}, feat.name);
+                ti.op_kind = 'f';
+            }
+        }
+        else
+        {
+            if (base_node < 0)
+            {
+                step_ok     = false;
+                out.err_msg = "CutRevolve without base shape: " + feat.name;
+                return;
+            }
+            node = cg->AddOp("cut", {base_node, tool_n},
+                              {}, feat.name);
+            ti.op_kind = 'c';
+        }
+        // See Extrude branch above for rationale.
+        if (opt.refine_after_primitive && node >= 0) {
+            node = cg->AddOp("refine", {node}, {},
+                              feat.name + ":refine");
+        }
+        feature_tools[feat.id] = ti;
+    }
+
+    // ---- Sweep (FreeCAD PartDesign::AdditivePipe /
+    //              SubtractivePipe) ----
+    //
+    // Build the profile face from the profile sketch (re-using
+    // any already-built sketch_face node), build the spine
+    // wire from the spine sketch (id is stashed in ext_params
+    // by the reader because FeatPayloadSweep::path_ref is
+    // shaped for 3D edge refs, not sketches), then either
+    // fuse (Additive) or cut (Subtractive) the swept tool
+    // against the running body.
+    void operator()(FeatPayloadSweep& p)
+    {
+        const SketchIR* profile_sk = FindSketch(doc, p.profile_sketch_id);
+        if (!profile_sk)
+        {
+            step_ok     = false;
+            out.err_msg = "missing profile sketch for sweep: " + feat.name;
+            return;
+        }
+
+        // PartDesign Pipe always builds a capped solid; a Part
+        // workbench Part::Sweep honors its Solid flag (default
+        // false -> open tube shell), stashed as sweep_solid.
+        // brepkit's Sweep (BRepOffsetAPI_MakePipe) derives the
+        // result topology from the profile shape, NOT the is_solid
+        // arg: a FACE profile yields a capped solid, a WIRE
+        // profile yields an open shell. Pick the profile node
+        // accordingly -- a face for a solid sweep, the boundary
+        // wire for a shell sweep.
+        bool is_solid = true;
+        auto solid_it = feat.ext_params.find("sweep_solid");
+        if (solid_it != feat.ext_params.end()) {
+            is_solid = (solid_it->second != 0.0);
+        }
+
+        int profile_n;
+        if (is_solid)
+        {
+            auto fit = sketch_face_nodes.find(p.profile_sketch_id);
+            if (fit != sketch_face_nodes.end()) {
+                profile_n = fit->second;
+            } else {
+                profile_n = AddSketchFaceNode(*cg, *profile_sk);
+                sketch_face_nodes[p.profile_sketch_id] = profile_n;
+            }
+        }
+        else
+        {
+            profile_n = AddSketchWireNode(*cg, *profile_sk);
+        }
+
+        int wire_n;
+        auto kit = feat.ext_strings.find("spine_kind");
+        if (kit != feat.ext_strings.end() && kit->second == "helix")
+        {
+            // Parametric helix spine (FreeCAD Part::Helix behind
+            // a PartDesign::FeatureBase). The reader couldn't
+            // map the spine to a sketch, so it stashed the coil
+            // params; rebuild the spine wire via the helix_wire
+            // op rather than from a sketch profile.
+            auto getp = [&](const char* k) -> double {
+                auto it = feat.ext_params.find(k);
+                return (it != feat.ext_params.end()) ? it->second : 0.0;
+            };
+            int pitch_n  = cg->AddConst(getp("helix_pitch"),  "helix_pitch");
+            int height_n = cg->AddConst(getp("helix_height"), "helix_height");
+            int radius_n = cg->AddConst(getp("helix_radius"), "helix_radius");
+            int angle_n  = cg->AddConst(getp("helix_angle"),  "helix_cone_angle");
+            int lh_n     = cg->AddConst(getp("helix_left_handed") != 0.0,
+                                         "helix_left_handed");
+            wire_n = cg->AddOp("helix_wire",
+                               {pitch_n, height_n, radius_n, angle_n, lh_n},
+                               {}, feat.name + ":helix");
+
+            // A Part-workbench Part::Sweep links a STANDALONE
+            // Part::Helix whose own Placement orients the coil in
+            // world space; the reader stashed it under
+            // helix_place_* (PartDesign's FeatureBase clone path
+            // leaves these absent -- it builds in the local +Z
+            // frame). Apply rotate-then-translate to the spine
+            // wire so the swept profile follows the placed coil,
+            // matching FreeCAD's authored shape.
+            if (feat.ext_params.count("helix_place_angle"))
+            {
+                brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
+                brepgraph::Vec3 axis   = {
+                    ExtParam(feat, "helix_place_ox", 0.0),
+                    ExtParam(feat, "helix_place_oy", 0.0),
+                    ExtParam(feat, "helix_place_oz", 1.0)};
+                int o_n = cg->AddConst(origin, "helix_place_origin");
+                int d_n = cg->AddConst(axis,   "helix_place_axis");
+                int a_n = cg->AddConst(
+                    ExtParam(feat, "helix_place_angle", 0.0),
+                    "helix_place_angle");
+                wire_n = cg->AddOp("rotate", {wire_n, o_n, d_n, a_n},
+                                   {}, feat.name + ":helix_rot");
+            }
+            if (feat.ext_params.count("helix_place_px") ||
+                feat.ext_params.count("helix_place_py") ||
+                feat.ext_params.count("helix_place_pz"))
+            {
+                brepgraph::Vec3 off = {
+                    ExtParam(feat, "helix_place_px", 0.0),
+                    ExtParam(feat, "helix_place_py", 0.0),
+                    ExtParam(feat, "helix_place_pz", 0.0)};
+                int o_n = cg->AddConst(off, "helix_place_offset");
+                wire_n = cg->AddOp("translate", {wire_n, o_n},
+                                   {}, feat.name + ":helix_tr");
+            }
+        }
+        else
+        {
+            uint32_t spine_id = 0xFFFFFFFF;
+            auto sit = feat.ext_params.find("spine_sketch_id");
+            if (sit != feat.ext_params.end()) {
+                spine_id = (uint32_t)sit->second;
+            }
+            const SketchIR* spine_sk = FindSketch(doc, spine_id);
+            if (!spine_sk)
+            {
+                step_ok     = false;
+                out.err_msg = "missing spine sketch for sweep: " + feat.name;
+                return;
+            }
+
+            wire_n = AddSketchWireNode(*cg, *spine_sk);
+        }
+        int solid_n  = cg->AddConst(is_solid, "is_solid");
+        // FreeCAD Part::Sweep Frenet=true needs the true Frenet
+        // trihedron so a non-symmetric section stays radially
+        // oriented along the helix (a thread). Stashed as
+        // sweep_frenet; absent (-> false / corrected Frenet) for
+        // the PartDesign Pipe path, preserving its behavior.
+        bool sweep_frenet = (ExtParam(feat, "sweep_frenet", 0.0) != 0.0);
+        int frenet_n = cg->AddConst(sweep_frenet, "sweep_frenet");
+        int tool_n   = cg->AddOp("sweep",
+                                  {profile_n, wire_n, solid_n, frenet_n},
+                                  {}, feat.name);
+
+        bool subtractive = false;
+        auto tit = feat.ext_strings.find("freecad_type");
+        if (tit != feat.ext_strings.end()
+            && tit->second == "PartDesign::SubtractivePipe")
+        {
+            subtractive = true;
+        }
+
+        FeatureToolInfo ti;
+        ti.tool_node = tool_n;
+        ti.base_node = base_node;
+
+        if (!subtractive)
+        {
+            if (base_node < 0)
+            {
+                node = tool_n;
+                ti.op_kind = '0';
+            }
+            else
+            {
+                node = cg->AddOp("fuse", {base_node, tool_n},
+                                  {}, feat.name);
+                ti.op_kind = 'f';
+            }
+        }
+        else
+        {
+            if (base_node < 0)
+            {
+                step_ok     = false;
+                out.err_msg = "SubtractivePipe without base shape: " + feat.name;
+                return;
+            }
+            node = cg->AddOp("cut", {base_node, tool_n},
+                              {}, feat.name);
+            ti.op_kind = 'c';
+        }
+        // See Extrude branch above for rationale.
+        if (opt.refine_after_primitive && node >= 0) {
+            node = cg->AddOp("refine", {node}, {},
+                              feat.name + ":refine");
+        }
+        feature_tools[feat.id] = ti;
+    }
+
+    // ---- Loft (FreeCAD PartDesign::AdditiveLoft /
+    //             SubtractiveLoft) ----
+    //
+    // Build one sketch_wire node per profile sketch (the reader
+    // packs Profile + Sections into profile_sketch_ids in order),
+    // feed them as variadic inputs to the `loft` op (is_solid=true
+    // because FreeCAD AdditiveLoft yields a solid body), then
+    // either fuse (Additive) or cut (Subtractive) the loft tool
+    // against the running body.
+    void operator()(FeatPayloadLoft& p)
+    {
+        if (p.profile_sketch_ids.size() < 2)
+        {
+            step_ok     = false;
+            out.err_msg = "loft needs >= 2 profiles: " + feat.name;
+            return;
+        }
+
+        std::vector<int> wire_nodes;
+        wire_nodes.reserve(p.profile_sketch_ids.size());
+        for (uint32_t sid : p.profile_sketch_ids)
+        {
+            const SketchIR* sk = FindSketch(doc, sid);
+            if (!sk)
+            {
+                step_ok     = false;
+                out.err_msg = "missing profile sketch for loft: " + feat.name;
+                return;
+            }
+            wire_nodes.push_back(AddSketchWireNode(*cg, *sk));
+        }
+
+        int is_solid_n = cg->AddConst(true, "is_solid");
+        int tool_n     = cg->AddOp("loft",
+                                    {is_solid_n},
+                                    wire_nodes, feat.name);
+
+        bool subtractive = false;
+        auto tit = feat.ext_strings.find("freecad_type");
+        if (tit != feat.ext_strings.end()
+            && tit->second == "PartDesign::SubtractiveLoft")
+        {
+            subtractive = true;
+        }
+
+        FeatureToolInfo ti;
+        ti.tool_node = tool_n;
+        ti.base_node = base_node;
+
+        if (!subtractive)
+        {
+            if (base_node < 0)
+            {
+                node = tool_n;
+                ti.op_kind = '0';
+            }
+            else
+            {
+                node = cg->AddOp("fuse", {base_node, tool_n},
+                                  {}, feat.name);
+                ti.op_kind = 'f';
+            }
+        }
+        else
+        {
+            if (base_node < 0)
+            {
+                step_ok     = false;
+                out.err_msg = "SubtractiveLoft without base shape: " + feat.name;
+                return;
+            }
+            node = cg->AddOp("cut", {base_node, tool_n},
+                              {}, feat.name);
+            ti.op_kind = 'c';
+        }
+        // See Extrude branch above for rationale.
+        if (opt.refine_after_primitive && node >= 0) {
+            node = cg->AddOp("refine", {node}, {},
+                              feat.name + ":refine");
+        }
+        feature_tools[feat.id] = ti;
+    }
+
+    // ---- Fillet / Chamfer ----
+    template <class T>
+    void buildFilletOrChamfer(T& p)
+    {
+        if (base_node < 0)
+        {
+            step_ok = false;
+            return;
+        }
+        // The body the resolver / ChFi3d looks at. Starts as
+        // base_node (no pre-dressup refine; that pass was
+        // tried via c17a1d22 and silently shifted resolver
+        // matches to the wrong cax edge, so it's reverted)
+        // and gets re-bound to a split_body_at_points node
+        // below when the reader supplied split hints.
+        int body_n = base_node;
+
+        // (Page_015 Pad002 75mm+85mm -> 163mm closed BSpline).
+        // Splitting before resolve means the downstream
+        // resolve_edge_ref finds the post-split sub-edges,
+        // and ChFi3d gets edges it can actually fillet.
+        if (!p.split_hints.empty())
+        {
+            std::vector<int> vert_nodes;
+            vert_nodes.reserve(p.split_hints.size());
+            for (const auto& h : p.split_hints)
+            {
+                TopoDS_Vertex tv = BRepBuilderAPI_MakeVertex(
+                    gp_Pnt(h[0], h[1], h[2]));
+                auto ts = std::make_shared<brepkit::TopoShape>(tv);
+                int vn = cg->AddConst(ts, "split_hint");
+                vert_nodes.push_back(vn);
+            }
+            body_n = cg->AddOp("split_body_at_points",
+                                {body_n}, vert_nodes,
+                                feat.name + ":split_body");
+        }
+
+        // Build a resolve_(edge|face)_ref op per ref and feed
+        // the resulting sub-shape nodes as variadic edge inputs
+        // to fillet / chamfer. The match itself happens at
+        // Eval time -- Replayer stays a pure graph builder.
+        //
+        // FreeCAD lets users pick faces for a fillet (round
+        // every edge of the face). Those refs arrive with
+        // kind=Face; route them through resolve_face_ref so
+        // the resolver searches the face map, and TopoAlgo
+        // explodes the resolved face into its edges via
+        // TopExp_Explorer at apply time.
+        // Dressup picks are inherently fuzzy: the ref midpoint
+        // comes from FreeCAD's saved geometry (PartShape*.brp),
+        // but cax replays the upstream feature chain with its
+        // own Mirror / Pattern / BOP implementations, and the
+        // resulting body's edges can sit mm away from FreeCAD's
+        // in the same logical place (different BOP fuzzy
+        // tolerance, different seam handling). We saw cax's
+        // Mirror+refine body land an edge 8.9 mm away from
+        // FreeCAD's Edge36 midpoint on Page_026_Exercise2D-18,
+        // far beyond the default 1 mm topo_tolerance.
+        //
+        // Widen the resolver tolerance for dressup picks to
+        // scale with the dressup size: a user picking an edge
+        // for a 1.5 mm fillet is fundamentally OK with the
+        // match landing within a few mm because the resulting
+        // blend covers that neighbourhood anyway. 5x the
+        // dressup size is the empirical sweet spot -- tight
+        // enough that two distinct picked edges don't compete
+        // for the same match on symmetric models, loose enough
+        // to absorb the implementation drift.
+        double dressup_size = 0.0;
+        if constexpr (std::is_same_v<T, FeatPayloadFillet>) {
+            dressup_size = p.radius;
+        } else {
+            dressup_size = p.distance1;
+        }
+        // The 5% headroom on top of the 5x envelope absorbs
+        // boundary casualties: an anchor whose edge a prior
+        // dressup shrank drifts to JUST past the round number
+        // (R2900_100: Fillet2's edge at 1.03mm vs the 1.0mm
+        // floor, Chamfer3's two edges at 5.0003mm vs 5.0mm --
+        // three silently un-blended edges for want of 3 per
+        // mille). The resolver still picks the single nearest
+        // candidate, so the slack only admits the match it
+        // already found, not a different edge.
+        double dressup_tol = 1.05 * std::max(opt.topo_tolerance,
+                                             5.0 * dressup_size);
+
+        std::vector<int> edge_nodes;
+        edge_nodes.reserve(p.edges.size());
+        for (size_t k = 0; k < p.edges.size(); ++k)
+        {
+            const char* op = (p.edges[k].kind == TopoRefIR::Kind::Face)
+                               ? "resolve_face_ref"
+                               : "resolve_edge_ref";
+            int rn = AddResolveRefNode(*cg, op,
+                                        body_n, p.edges[k],
+                                        dressup_tol,
+                                        feat.name + ":edge");
+            edge_nodes.push_back(rn);
+            if (opt.write_back_resolved)
+                resolve_back.push_back({rn, &p.edges[k]});
+        }
+
+        if constexpr (std::is_same_v<T, FeatPayloadFillet>)
+        {
+            int r = cg->AddConst(p.radius, "radius");
+            node = cg->AddOp("fillet", {body_n, r},
+                              edge_nodes, feat.name);
+        }
+        else
+        {
+            int d = cg->AddConst(p.distance1, "dist");
+            node = cg->AddOp("chamfer", {body_n, d},
+                              edge_nodes, feat.name);
+        }
+
+        // Record this dressup so a pattern over the dressed seed
+        // can replicate it per instance (re-resolve the moved
+        // anchors on each copy). base_feat_id = the feature it
+        // dressed (its Role::Base input).
+        {
+            FeatureDressupInfo di;
+            di.kind = std::is_same_v<T, FeatPayloadFillet>
+                          ? FeatType::Fillet : FeatType::Chamfer;
+            di.size = dressup_size;
+            di.refs = p.edges;
+            for (size_t bi = 0; bi < feat.input_feature_ids.size(); ++bi) {
+                InputRole role = (bi < feat.input_roles.size())
+                                    ? feat.input_roles[bi] : InputRole::Base;
+                if (role == InputRole::Base) {
+                    di.base_feat_id = feat.input_feature_ids[bi];
+                    break;
+                }
+            }
+            feature_dressups[feat.id] = std::move(di);
+        }
+    }
+    void operator()(FeatPayloadFillet& p) { buildFilletOrChamfer(p); }
+    void operator()(FeatPayloadChamfer& p) { buildFilletOrChamfer(p); }
+
+    // ---- Shell ----
+    void operator()(FeatPayloadShell& p)
+    {
+        if (base_node < 0)
+        {
+            step_ok = false;
+            return;
+        }
+
+        std::vector<int> face_nodes;
+        face_nodes.reserve(p.faces_to_open.size());
+        for (size_t k = 0; k < p.faces_to_open.size(); ++k)
+        {
+            int rn = AddResolveRefNode(*cg, "resolve_face_ref",
+                                        base_node, p.faces_to_open[k],
+                                        opt.topo_tolerance,
+                                        feat.name + ":face");
+            face_nodes.push_back(rn);
+            if (opt.write_back_resolved)
+                resolve_back.push_back({rn, &p.faces_to_open[k]});
+        }
+
+        int t = cg->AddConst(p.thickness, "thickness");
+        node = cg->AddOp("shell", {base_node, t},
+                          face_nodes, feat.name);
+    }
+
+    // ---- Mirror ----
+    //
+    // FreeCAD's PartDesign::Mirrored produces orig + mirror.
+    // Our `mirror` op only returns the mirror image, so we
+    // always add the original back ourselves.
+    //
+    // Originals = [F1..Fn]: each Fi's tool effect already
+    // lives in base_node (it was applied when Fi was replayed
+    // and committed to feature_nodes). We add mirror(Fi.tool)
+    // for every Fi using Fi.op_kind so every original
+    // contributes its mirror -- previously only origs[0] was
+    // honored, which silently dropped pads/pockets when users
+    // mirrored multiple features together.
+    //
+    // Originals empty: mirror the whole base body and fuse.
+    void operator()(FeatPayloadMirror& p)
+    {
+        brepgraph::Vec3 origin = {p.plane_origin[0],
+                                 p.plane_origin[1],
+                                 p.plane_origin[2]};
+        brepgraph::Vec3 normal = {p.plane_normal[0],
+                                 p.plane_normal[1],
+                                 p.plane_normal[2]};
+
+        auto pi = ResolvePatternInputs(feat, feature_tools,
+                                       feature_nodes);
+        if (pi.body_target >= 0 && base_node >= 0)
+        {
+            // DELTA mirror (ZW3D feature-mirror): reflect the CUMULATIVE
+            // geometry the mirrored features added -- so their fillets /
+            // chamfers / patterns / cuts all come along. The
+            // per-original-tool path below mirrors raw tool solids and
+            // silently drops dressups, leaving the mirror side missing
+            // its rounds. pi.body_target is the pre-originals body,
+            // wired Role::PatternTarget by the Zw reader; FreeCAD mirrors
+            // carry only Originals -> the per-tool path.
+            //
+            // The delta's MINUEND is the body tip right after the LAST
+            // mirrored feature (pi.body_target2) when the reader wired
+            // it -- the mirrored features' own contribution, bounded.
+            // Falling back to base_node (the running body NOW) is only
+            // correct when the mirrored set is the contiguous tail
+            // right before the mirror; for a mirror of features far
+            // upstream it drags the whole intervening history into the
+            // reflection (R2900: a 97-solid delta whose fuse ground
+            // >1000 s of CPU). delta = cut(post, pre); result =
+            // fuse(base, mirror(delta)).
+            int o_n   = cg->AddConst(origin, "origin");
+            int n_n   = cg->AddConst(normal, "normal");
+            int post  = (pi.body_target2 >= 0) ? pi.body_target2
+                                               : base_node;
+            int delta = cg->AddOp("cut", {post, pi.body_target},
+                                  {}, feat.name + ":delta");
+            int m_n   = cg->AddOp("mirror", {delta, o_n, n_n},
+                                  {}, feat.name + ":mirror");
+            node = cg->AddOp("fuse", {base_node, m_n},
+                             {}, feat.name + ":fuse");
+        }
+        else if (!pi.originals.empty() && base_node >= 0)
+        {
+            node = AddMirroredOriginals(*cg, base_node, pi.originals,
+                                        origin, normal, feat.name);
+        }
+        else if (!pi.originals.empty())
+        {
+            // STANDALONE mirror (no Base wired): ZW3D reported the
+            // mirror created NEW free bodies (result_ents.n_shape > 0)
+            // rather than growing the running body -- R2900's
+            // Mirror5/Mirror6 copy Revolve4's three open revolve
+            // SHEETS, which ZW3D keeps as separate sheet bodies
+            // forever (the final part is 5 solids + 6 shells).
+            // Mirror each original's tool and emit the copies as
+            // this feature's own standalone output; the running
+            // body is untouched (the reader did not advance the
+            // chain tip). No fuse against the base: booleans
+            // between the solid chain and sheet bodies are
+            // hazardous and ZW3D does not merge them either.
+            int o_n = cg->AddConst(origin, "origin");
+            int n_n = cg->AddConst(normal, "normal");
+            int acc = -1;
+            for (size_t i = 0; i < pi.originals.size(); ++i)
+            {
+                int m_n = cg->AddOp(
+                    "mirror",
+                    {pi.originals[i].tool_node, o_n, n_n}, {},
+                    feat.name + ":orig" + std::to_string(i) +
+                        ":mirror");
+                acc = (acc < 0)
+                    ? m_n
+                    : cg->AddOp("fuse", {acc, m_n}, {},
+                                feat.name + ":combine");
+            }
+            node = acc;
+            // Register the copies as this mirror's tool so a
+            // mirror-of-a-mirror (R2900 Mirror6 mirrors Mirror5)
+            // resolves its original.
+            FeatureToolInfo ti;
+            ti.tool_node = node;
+            ti.base_node = -1;
+            ti.op_kind   = '0';
+            feature_tools[feat.id] = ti;
+        }
+        else if (base_node >= 0)
+        {
+            // The whole-body fallback is ONLY for mirrors that wired
+            // no specific scope at all (FreeCAD's "mirror the body").
+            // A mirror that NAMED its features via Role::Tool inputs
+            // but whose tools all failed to resolve (e.g. every
+            // original is a tool-less BakedShape / dressup) must NOT
+            // silently widen to the whole body: R2900's Mirror5 is
+            // +0 faces in the truth, the whole-body mirror burned
+            // 18 s AND seeded ~95 mirrored pattern-instance solids
+            // that the NEXT mirror's delta dragged into a >1000 s
+            // fuse. Skipping is both honest and chain-safe -- the
+            // base flows through untouched.
+            bool wired_tools = false;
+            for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+            {
+                InputRole role = (i < feat.input_roles.size())
+                                    ? feat.input_roles[i]
+                                    : InputRole::Base;
+                if (role == InputRole::Tool) {
+                    wired_tools = true;
+                    break;
+                }
+            }
+            if (wired_tools)
+            {
+                if (!out.err_msg.empty()) {
+                    out.err_msg += "; ";
+                }
+                out.err_msg += "mirror " + feat.name +
+                    " originals resolved no tool solids; body "
+                    "continues without the mirror";
+                node = base_node;
+            }
+            else
+            {
+                node = AddMirrorWithOriginal(*cg, base_node, origin,
+                                             normal, feat.name);
+            }
+        }
+        else
+        {
+            step_ok = false;
+            return;
+        }
+    }
+
+    // ---- LinearPattern ----
+    //
+    // When Originals = [X] is set, multiply X's tool only and
+    // combine with X's base; otherwise pattern the whole body.
+    void operator()(FeatPayloadLinearPattern& p)
+    {
+        brepgraph::Vec3 dir1 = {p.dir1[0], p.dir1[1], p.dir1[2]};
+        brepgraph::Vec3 dir2 = {p.dir2[0], p.dir2[1], p.dir2[2]};
+        int d1 = cg->AddConst(dir1, "dir1");
+        int c1 = cg->AddConst((int)p.count1, "count1");
+        int s1 = cg->AddConst(p.spacing1, "spacing1");
+        int d2 = cg->AddConst(dir2, "dir2");
+        int c2 = cg->AddConst((int)p.count2, "count2");
+        int s2 = cg->AddConst(p.spacing2, "spacing2");
+
+        // Reader does not emit Role::PatternTarget on
+        // LinearPattern (Draft only emits polar Arrays), so
+        // pi.body_target is always -1 here -- flow through
+        // the helper anyway for shape consistency with
+        // CircularPattern.
+        auto pi = ResolvePatternInputs(feat, feature_tools,
+                                       feature_nodes);
+        const bool onto_running =
+            ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
+            && base_node >= 0;
+        PAT_LOG("[pat] LINEAR feat=%s id=%u originals=%zu onto_running=%d "
+                "base_node=%d count1=%d count2=%d\n",
+                feat.name.c_str(), feat.id, pi.originals.size(),
+                (int)onto_running, base_node, (int)p.count1, (int)p.count2);
+
+        // ZW3D Boolean=none: the copies are STANDALONE bodies. The
+        // running body is untouched (the reader emitted no Base
+        // link, so base_node is -1 and the chain tip stays on the
+        // pre-pattern feature); the copies become this feature's
+        // own output candidate and live free until a later boolean
+        // absorbs them (see the pending_standalone block after the
+        // visit). Build the NON-seed instance set: shift the seed
+        // tool by one step, then pattern it count1-1 times -- the
+        // union holds exactly the count1-1 new copies, while the
+        // live seed stays where it is, inside the running body
+        // (R2900_100 Pattern9: truth n_shape 1 -> 4 -> 1).
+        if (!p.fuse)
+        {
+            auto contribs = AssembleContributions(
+                feat, feature_tools, feature_dressups);
+            bool has_tool = false;
+            for (const auto& c : contribs) {
+                if (!c.is_tool) continue;
+                has_tool = true;
+                if (!c.equivariant) {
+                    if (!out.err_msg.empty()) out.err_msg += "; ";
+                    out.err_msg += "standalone pattern " + feat.name +
+                        " replicates a non-Blind (up-to) extrude by "
+                        "rigid transform; geometry may be wrong";
+                }
+            }
+            if (!has_tool) {
+                step_ok = false;
+                if (!out.err_msg.empty()) out.err_msg += "; ";
+                out.err_msg += "standalone pattern " + feat.name +
+                               " resolved no seed tool";
+                return;
+            }
+
+            brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
+            // A 2D grid can't drop just the (0,0) cell from one
+            // n-ary pattern op; approximate with the full grid (one
+            // copy coincides with the live seed) and say so.
+            const bool grid = (p.count2 > 1);
+            if (grid) {
+                if (!out.err_msg.empty()) out.err_msg += "; ";
+                out.err_msg += "standalone GRID pattern " + feat.name +
+                    " approximated with a seed-coincident copy";
+            }
+
+            int U = -1;
+            for (const auto& c : contribs) {
+                if (!c.is_tool) continue;
+                int pat = -1;
+                if (grid || p.count1 < 2) {
+                    pat = cg->AddOp("linear_pattern",
+                                    {c.tool_node, d1, c1, s1, d2, c2, s2},
+                                    {}, feat.name + ":free");
+                } else {
+                    brepgraph::Vec3 step = {p.spacing1 * u1[0],
+                                            p.spacing1 * u1[1],
+                                            p.spacing1 * u1[2]};
+                    int off = cg->AddConst(step, "step1");
+                    int sh  = cg->AddOp("translate",
+                                        {c.tool_node, off}, {},
+                                        feat.name + ":shift");
+                    int c1m = cg->AddConst((int)p.count1 - 1, "count1m1");
+                    pat = cg->AddOp("linear_pattern",
+                                    {sh, d1, c1m, s1, d2, c2, s2},
+                                    {}, feat.name + ":free");
+                }
+                U = (U < 0) ? pat
+                            : cg->AddOp("fuse", {U, pat}, {},
+                                        feat.name + ":free_union");
+            }
+
+            // Per-instance dressups (chamfer / fillet on the seed)
+            // replicate onto each free copy with the anchors moved
+            // by the copy's offset -- same machinery as the fused
+            // path's Phase 2, run on the free union instead of the
+            // running body.
+            std::vector<Contribution> dressups;
+            for (const auto& c : contribs)
+                if (!c.is_tool) dressups.push_back(c);
+            if (!dressups.empty()) {
+                brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
+                double l2sq = p.dir2[0] * p.dir2[0]
+                            + p.dir2[1] * p.dir2[1]
+                            + p.dir2[2] * p.dir2[2];
+                int eff2 = (l2sq > 1e-30 && p.count2 > 1)
+                                ? (int)p.count2 : 1;
+                std::vector<InstanceXform> Xs;
+                for (int i = 0; i < (int)p.count1; ++i) {
+                    for (int j = 0; j < eff2; ++j) {
+                        if (!grid && i == 0 && j == 0) continue;
+                        InstanceXform X;
+                        for (int k = 0; k < 3; ++k)
+                            X.offset[k] = i * p.spacing1 * u1[k]
+                                        + j * p.spacing2 * u2[k];
+                        Xs.push_back(X);
+                    }
+                }
+                if (pattern_cluster_on()) {
+                    U = ApplyPatternDressupsBatched(
+                        *cg, U, dressups, Xs,
+                        opt.topo_tolerance, feat.name + ":dress");
+                } else {
+                    for (const InstanceXform& X : Xs) {
+                        U = ApplyPatternInstance(
+                            *cg, U, dressups, X,
+                            opt.topo_tolerance, feat.name + ":dress");
+                    }
+                }
+            }
+
+            node = U;
+            // A later pattern that nests THIS one (seed_to_pattern)
+            // multiplies the free copies, mirroring the circular
+            // arm's ring registration.
+            FeatureToolInfo ti;
+            ti.tool_node   = U;
+            ti.base_node   = -1;
+            ti.op_kind     = 'f';
+            ti.equivariant = true;
+            feature_tools[feat.id] = ti;
+            pending_standalone.push_back(feat.id);
+        }
+        else if (pi.originals.empty()) {
+            // No Original tool -> pattern the whole body.
+            if (base_node < 0) {
+                step_ok = false;
+                return;
+            }
+            node = cg->AddOp("linear_pattern",
+                              {base_node, d1, c1, s1, d2, c2, s2},
+                              {}, feat.name);
+        } else if (onto_running) {
+            // ZW3D: replay the seed group's CONTRIBUTION -- its Tool
+            // seeds AND the dressups on them -- once per NON-seed
+            // instance, each under the instance's rigid transform.
+            // i=0 is the live, already-dressed seed group (in
+            // base_node), so it is skipped; every other (i,j) cell
+            // transforms the tools by its offset and re-applies the
+            // dressups with the offset anchors, so a chamfer/fillet on
+            // the seed is replicated onto each copy. This is the general
+            // rigid image of the seed sub-graph -- no pos-0 cut, no
+            // per-dressup special case (it subsumes both). FreeCAD never
+            // sets pattern_onto_running, so its CombinePatternedTool
+            // path below is unchanged.
+            auto contribs = AssembleContributions(
+                feat, feature_tools, feature_dressups);
+            bool has_dressup    = false;
+            bool all_equivariant = true;
+            for (const auto& c : contribs) {
+                if (c.is_tool) {
+                    if (!c.equivariant) all_equivariant = false;
+                } else {
+                    has_dressup = true;
+                }
+            }
+            if (!all_equivariant) {
+                if (!out.err_msg.empty()) out.err_msg += "; ";
+                out.err_msg += "pattern " + feat.name +
+                    " replicates a non-Blind (up-to) extrude by "
+                    "rigid transform; geometry may be wrong";
+            }
+
+            // Decide HOW to lower from the pattern's GEOMETRY, not from
+            // the import-layer onto_running flag: a pure-tool, rigid-
+            // equivariant pattern needs no per-instance dressup re-
+            // resolution, so it lowers to the SHARED linear_pattern op
+            // (one n-ary instance union, see TopoAlgo_Ext) combined onto
+            // the running body ONCE per tool -- instead of N sequential
+            // per-instance booleans. The seed copy (i=0) is already in
+            // base_node; fusing/cutting the full instance set (which
+            // includes the coincident seed) over it is idempotent. Only
+            // patterns that carry a per-instance dressup, or a non-
+            // equivariant tool, fall back to the per-instance expansion.
+            if (all_equivariant) {
+                // Phase 1: replicate every tool with a single
+                // feature_pattern op -- an n-ary instance union plus ONE
+                // boolean against the running body, folded into one op.
+                // Replaces count1*count2 sequential tool booleans, AND
+                // (vs the old linear_pattern + cut/fuse pair) rebuilds as
+                // a single FeaturePattern node rather than two nodes.
+                int acc = base_node;
+                for (const auto& c : contribs) {
+                    if (!c.is_tool) continue;
+                    // op_kind: 0 = fuse (boss), 1 = cut (hole). Plain
+                    // feat.name desc (no :pat/:inst suffix) keeps a
+                    // no-dressup pattern out of encapsulate_patterns, so
+                    // it stays one clean node on rebuild.
+                    int ok = cg->AddConst(
+                        (c.op_kind == 'c') ? 1 : 0, "op_kind");
+                    acc = cg->AddOp(
+                        "feature_pattern",
+                        {acc, c.tool_node, ok, d1, c1, s1, d2, c2, s2},
+                        {}, feat.name);
+                }
+                // Phase 2: per-instance dressups (chamfer/fillet). All
+                // tools are present on `acc` now and pattern instances
+                // occupy DISJOINT regions, so re-resolving + applying
+                // each copy's dressup on the unified body is equivalent
+                // to interleaving it between the booleans (resolve is
+                // geometric, not index-based) -- without paying N
+                // sequential tool fuses.
+                //
+                // The seed (i=0,j=0) is NOT skipped here, unlike the
+                // per-instance path below. There, base_node carries the
+                // seed dressup untouched. Here, Phase 1 re-fused the
+                // raw (un-dressed) seed tool over base_node -- the
+                // n-ary linear_pattern includes the i=0 instance -- so a
+                // CONVEX seed chamfer/fillet (which removes material) got
+                // refilled and must be re-applied. Re-applying is safe
+                // for the concave case too: that dressup added material
+                // outside the raw tool, so it survived Phase 1, and the
+                // i=0 re-resolve simply misses the now-gone sharp edge
+                // and no-ops. (Without this, R2900_20's first chamfer --
+                // a 0.2 mm convex chamfer on a patterned 0.4 mm boss --
+                // silently vanished.)
+                if (has_dressup) {
+                    std::vector<Contribution> dressups;
+                    for (const auto& c : contribs)
+                        if (!c.is_tool) dressups.push_back(c);
+                    brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
+                    brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
+                    double l2sq = p.dir2[0] * p.dir2[0]
+                                + p.dir2[1] * p.dir2[1]
+                                + p.dir2[2] * p.dir2[2];
+                    int eff2 = (l2sq > 1e-30 && p.count2 > 1)
+                                    ? (int)p.count2 : 1;
+                    std::vector<InstanceXform> Xs;
+                    for (int i = 0; i < (int)p.count1; ++i) {
+                        for (int j = 0; j < eff2; ++j) {
+                            InstanceXform X;
+                            for (int k = 0; k < 3; ++k)
+                                X.offset[k] = i * p.spacing1 * u1[k]
+                                            + j * p.spacing2 * u2[k];
+                            Xs.push_back(X);
+                        }
+                    }
+                    // Batch all instances' dressup edges into ONE
+                    // fillet/chamfer per contribution (one body rebuild)
+                    // instead of N. Per-instance fallback under the gate.
+                    if (pattern_cluster_on()) {
+                        acc = ApplyPatternDressupsBatched(
+                            *cg, acc, dressups, Xs,
+                            opt.topo_tolerance, feat.name + ":dress");
+                    } else {
+                        for (const InstanceXform& X : Xs) {
+                            acc = ApplyPatternInstance(
+                                *cg, acc, dressups, X,
+                                opt.topo_tolerance,
+                                feat.name + ":dress");
+                        }
+                    }
+                }
+                node = acc;
+            } else {
+            brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
+            brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
+            double l2sq = p.dir2[0] * p.dir2[0]
+                        + p.dir2[1] * p.dir2[1]
+                        + p.dir2[2] * p.dir2[2];
+            int eff2 = (l2sq > 1e-30 && p.count2 > 1) ? (int)p.count2 : 1;
+            std::vector<InstanceXform> Xs;
+            for (int i = 0; i < (int)p.count1; ++i) {
+                for (int j = 0; j < eff2; ++j) {
+                    if (i == 0 && j == 0) {
+                        continue;   // the live seed group
+                    }
+                    InstanceXform X;   // linear -> pure translation
+                    for (int k = 0; k < 3; ++k)
+                        X.offset[k] = i * p.spacing1 * u1[k]
+                                    + j * p.spacing2 * u2[k];
+                    Xs.push_back(X);
+                }
+            }
+            // Cluster copies + single combine onto base (see
+            // ApplyPatternClustered); per-instance fallback otherwise.
+            int clustered = pattern_cluster_on()
+                ? ApplyPatternClustered(*cg, base_node, contribs, Xs,
+                                        feat.name + ":clust")
+                : -1;
+            if (clustered >= 0) {
+                node = clustered;
+            } else {
+                int acc = base_node;
+                for (const InstanceXform& X : Xs) {
+                    acc = ApplyPatternInstance(*cg, acc, contribs, X,
+                                               opt.topo_tolerance,
+                                               feat.name + ":inst");
+                }
+                node = acc;
+            }
+            }
+        } else {
+            int pat = cg->AddOp("linear_pattern",
+                                 {pi.originals[0].tool_node, d1, c1, s1, d2, c2, s2},
+                                 {}, feat.name);
+            node = CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
+        }
+    }
+
+    // ---- CircularPattern ----
+    //
+    // Target resolution priority:
+    //   1. PartDesign Originals (input_feature_ids entries
+    //      with Role::Tool) -- multiply each Original's
+    //      tool, then combine with its base via op_kind.
+    //      This is the PartDesign::PolarPattern path.
+    //   2. Draft polar Array's Base link, pre-resolved by the
+    //      Reader and pushed into input_feature_ids with
+    //      Role::PatternTarget. Pattern that feature's body
+    //      shape directly. The pre-resolution in the Reader
+    //      means this doesn't depend on emission order -- a
+    //      Draft Array sitting after later bodies still
+    //      patterns the linked target rather than whatever
+    //      the running tip happens to be.
+    //   3. base_node -- body chain pred for body-owned
+    //      Patterns; -1 / errors out for everyone else.
+    void operator()(FeatPayloadCircularPattern& p)
+    {
+        brepgraph::Vec3 origin = {p.axis_origin[0],
+                                 p.axis_origin[1],
+                                 p.axis_origin[2]};
+        brepgraph::Vec3 axis   = {p.axis_dir[0],
+                                 p.axis_dir[1],
+                                 p.axis_dir[2]};
+        int o = cg->AddConst(origin, "axis_origin");
+        int a = cg->AddConst(axis,   "axis_dir");
+        int c = cg->AddConst((int)p.count, "count");
+        int t = cg->AddConst(p.total_angle, "total_angle");
+
+        auto pi = ResolvePatternInputs(feat, feature_tools,
+                                       feature_nodes);
+        const bool onto_running =
+            ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
+            && base_node >= 0;
+        PAT_LOG("[pat] CIRCULAR feat=%s id=%u originals=%zu onto_running=%d "
+                "base_node=%d count=%d\n",
+                feat.name.c_str(), feat.id, pi.originals.size(),
+                (int)onto_running, base_node, (int)p.count);
+
+        if (pi.originals.empty()) {
+            int target = (pi.body_target >= 0) ? pi.body_target
+                                                : base_node;
+            if (target < 0) { step_ok = false; return; }
+            node = cg->AddOp("circular_pattern",
+                              {target, o, a, c, t}, {}, feat.name);
+        } else if (onto_running) {
+            // ZW3D: replay the seed group's CONTRIBUTION (its Tool seeds
+            // AND the dressups on them) once per NON-seed instance, each
+            // under that instance's rigid ROTATION about the axis. i=0 is
+            // the live, already-dressed seed (in base_node) so it is
+            // skipped. Mirrors the linear onto_running path; only the
+            // per-instance transform differs (rotation vs translation),
+            // reusing the shared per-instance machinery. Per-instance
+            // (one fuse per copy onto the running body) is more robust
+            // than the n-ary union for many overlapping thin copies.
+            auto contribs = AssembleContributions(
+                feat, feature_tools, feature_dressups);
+            // step MUST match TopoAlgo_Ext::CircularPattern (angle/count).
+            double step = (p.count > 1)
+                ? (p.total_angle / static_cast<double>(p.count)) : 0.0;
+            // Push each copy p.penetration into the body along -axis_dir
+            // so the thin coplanar boss base overlaps the body (a pure
+            // coplanar contact does not fuse at mm scale).
+            brepgraph::Vec3 pen = {-p.penetration * axis[0],
+                                   -p.penetration * axis[1],
+                                   -p.penetration * axis[2]};
+            std::vector<InstanceXform> Xs;
+            for (int i = 1; i < (int)p.count; ++i) {
+                InstanceXform X;
+                X.is_rotation = true;
+                X.axis_origin = origin;
+                X.axis_dir    = axis;
+                X.angle       = step * i;
+                X.post_offset = pen;
+                Xs.push_back(X);
+            }
+            // Cluster the copies into one sub-body + a single combine
+            // onto the base instead of N fuses onto the growing body
+            // (see ApplyPatternClustered). Falls back to per-instance
+            // when a dressup / mixed op_kind needs the running body.
+            int clustered = pattern_cluster_on()
+                ? ApplyPatternClustered(*cg, base_node, contribs, Xs,
+                                        feat.name + ":clust")
+                : -1;
+            if (clustered >= 0) {
+                node = clustered;
+            } else {
+                int acc = base_node;
+                for (const InstanceXform& X : Xs) {
+                    acc = ApplyPatternInstance(*cg, acc, contribs, X,
+                                               opt.topo_tolerance,
+                                               feat.name + ":inst");
+                }
+                node = acc;
+            }
+
+            // Register this circular pattern as a reusable TOOL so a
+            // LATER pattern can NEST it -- a pattern of a pattern, e.g.
+            // R2900_50's Pattern4 (linear) copies Pattern3's whole RING.
+            // The tool node is the ISOLATED instance union (an n-ary
+            // circular_pattern op, which already includes the i=0 seed),
+            // NOT `node` (that ring is already fused into the body). The
+            // outer pattern then lowers as linear_pattern(this ring) and
+            // replicates the entire ring. Built from the tool contributions
+            // only; a dressup on the seed is not carried into the nested
+            // copy (known limitation). The extra node is orphaned (never
+            // pulled) unless a later pattern actually references it, so a
+            // non-nested circular pattern pays nothing.
+            {
+                int  ring    = -1;
+                char ring_op = 'f';
+                for (const auto& cc : contribs) {
+                    if (!cc.is_tool) { continue; }
+                    int cpn = cg->AddOp("circular_pattern",
+                                        {cc.tool_node, o, a, c, t}, {},
+                                        feat.name + ":toolring");
+                    ring = (ring < 0)
+                         ? cpn
+                         : cg->AddOp("fuse", {ring, cpn}, {},
+                                     feat.name + ":toolring");
+                    ring_op = cc.op_kind;
+                }
+                if (ring >= 0) {
+                    FeatureToolInfo ti;
+                    ti.tool_node   = ring;
+                    ti.base_node   = base_node;
+                    ti.op_kind     = (ring_op == 'c') ? 'c' : 'f';
+                    ti.equivariant = true;
+                    feature_tools[feat.id] = ti;
+                }
+            }
+        } else {
+            int pat = cg->AddOp("circular_pattern",
+                                 {pi.originals[0].tool_node, o, a, c, t},
+                                 {}, feat.name);
+            node = CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
+        }
+    }
+
+    // ---- MultiTransform ----
+    //
+    // FreeCAD's MultiTransform applies a chain of Mirror /
+    // LinearPattern / CircularPattern in order. Each step's
+    // effect must include the result of the previous step
+    // (FreeCAD's cartesian-product trsf semantics is order-
+    // equivalent to "chain ops whose result includes the
+    // input"), so each Mirror step here is materialised as
+    // fuse(cur, mirror(cur)) -- mirror op alone returns only
+    // the mirror image. LinearPattern / CircularPattern ops
+    // already include the original in their result.
+    //
+    // When Originals = [F1..Fn] is set every original
+    // contributes its own chained pattern -- previously only
+    // origs[0] was honored, which silently dropped the rest
+    // (see Page_023 where Originals = [Pad..Pad003, Pocket]
+    // collapsed to "just Pad patterned" and the stacked pad
+    // layers + pocket holes disappeared). Each Fi.tool is
+    // already at position 0 within base_node (it was applied
+    // when Fi was replayed), so re-applying the
+    // full pattern (which includes position 0) is idempotent
+    // for fuse / cut and only the new positions land on body.
+    void operator()(FeatPayloadMultiTransform& p)
+    {
+        auto apply_chain = [&](int input_node, const std::string& tag) -> int
+        {
+            int cur = input_node;
+            for (size_t si = 0; si < p.steps.size(); ++si)
+            {
+                const auto& s = p.steps[si];
+                std::string step_name = tag + ":step" + std::to_string(si);
+                if (s.kind == MultiTransformStep::Kind::Mirror)
+                {
+                    brepgraph::Vec3 origin = {s.plane_origin[0],
+                                             s.plane_origin[1],
+                                             s.plane_origin[2]};
+                    brepgraph::Vec3 normal = {s.plane_normal[0],
+                                             s.plane_normal[1],
+                                             s.plane_normal[2]};
+                    cur = AddMirrorWithOriginal(*cg, cur, origin, normal,
+                                                step_name);
+                }
+                else if (s.kind == MultiTransformStep::Kind::LinearPattern)
+                {
+                    brepgraph::Vec3 dir1 = {s.dir1[0], s.dir1[1], s.dir1[2]};
+                    brepgraph::Vec3 dir2 = {s.dir2[0], s.dir2[1], s.dir2[2]};
+                    int d1 = cg->AddConst(dir1, "dir1");
+                    int c1 = cg->AddConst((int)s.count1, "count1");
+                    int sp1= cg->AddConst(s.spacing1,    "spacing1");
+                    int d2 = cg->AddConst(dir2, "dir2");
+                    int c2 = cg->AddConst((int)s.count2, "count2");
+                    int sp2= cg->AddConst(s.spacing2,    "spacing2");
+                    cur = cg->AddOp("linear_pattern",
+                                     {cur, d1, c1, sp1, d2, c2, sp2},
+                                     {}, step_name);
+                }
+                else  // CircularPattern
+                {
+                    brepgraph::Vec3 origin = {s.axis_origin[0],
+                                             s.axis_origin[1],
+                                             s.axis_origin[2]};
+                    brepgraph::Vec3 axis   = {s.axis_dir[0],
+                                             s.axis_dir[1],
+                                             s.axis_dir[2]};
+                    int o = cg->AddConst(origin, "axis_origin");
+                    int a = cg->AddConst(axis,   "axis_dir");
+                    int c = cg->AddConst((int)s.count,    "count");
+                    int t = cg->AddConst(s.total_angle,   "total_angle");
+                    cur = cg->AddOp("circular_pattern",
+                                     {cur, o, a, c, t},
+                                     {}, step_name);
+                }
+            }
+            return cur;
+        };
+
+        // Reader does not emit Role::PatternTarget on
+        // MultiTransform (only Draft polar Arrays carry it),
+        // so pi.body_target is always -1 here. Flow through
+        // the helper anyway for shape consistency.
+        auto pi = ResolvePatternInputs(feat, feature_tools,
+                                       feature_nodes);
+
+        if (pi.originals.empty())
+        {
+            if (base_node < 0)
+            {
+                step_ok = false;
+                return;
+            }
+            node = apply_chain(base_node, feat.name);
+        }
+        else
+        {
+            if (base_node < 0)
+            {
+                step_ok = false;
+                return;
+            }
+            int body = base_node;
+            for (size_t fi = 0; fi < pi.originals.size(); ++fi)
+            {
+                std::string tag = feat.name + ":orig"
+                                + std::to_string(fi);
+                int pat = apply_chain(pi.originals[fi].tool_node, tag);
+                const char* op_name =
+                    (pi.originals[fi].op_kind == 'c') ? "cut" : "fuse";
+                body = cg->AddOp(op_name, {body, pat}, {},
+                                  tag + ":combine");
+            }
+            node = body;
+        }
+    }
+
+    // ---- Boolean (Part::Cut / Fuse / Common / MultiFuse /
+    //              MultiCommon) ----
+    //
+    // The operand list lives in FeatureIR::input_feature_ids
+    // with Role::Operand on each entry (P3.3.B). Collect them
+    // in declaration order, look each one up in feature_nodes,
+    // and fold pairwise. For Cut the first operand is the
+    // kept base; for Fuse / Common the order only matters for
+    // graph layout. The boolean's result is committed to
+    // feature_nodes under this feature's id, so a downstream
+    // Fillet / pattern that names this id as its Role::Base
+    // input picks it up via ResolveBaseNode.
+    void operator()(FeatPayloadBoolean& p)
+    {
+        (void)p; // empty payload; data lives in feat.input_*
+
+        std::vector<uint32_t> operands;
+        operands.reserve(feat.input_feature_ids.size());
+        for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+        {
+            InputRole role = (i < feat.input_roles.size())
+                                ? feat.input_roles[i]
+                                : InputRole::Base;
+            if (role == InputRole::Operand) {
+                operands.push_back(feat.input_feature_ids[i]);
+            }
+        }
+
+        if (operands.size() < 2)
+        {
+            step_ok     = false;
+            out.err_msg = "boolean " + feat.name +
+                          " needs at least 2 operands, got " +
+                          std::to_string(operands.size());
+            return;
+        }
+
+        const char* op = "fuse";
+        if (feat.type == FeatType::Cut)    op = "cut";
+        if (feat.type == FeatType::Common) op = "common";
+
+        int cur = -1;
+        for (size_t oi = 0; oi < operands.size(); ++oi)
+        {
+            auto nit = feature_nodes.find(operands[oi]);
+            if (nit == feature_nodes.end())
+            {
+                step_ok = false;
+                out.err_msg = "boolean " + feat.name +
+                              " operand " + std::to_string(oi) +
+                              " (feature id " +
+                              std::to_string(operands[oi]) +
+                              ") has no replayed shape";
+                return;
+            }
+            if (cur < 0) {
+                cur = nit->second;
+            } else {
+                std::string tag = feat.name;
+                if (oi + 1 < operands.size()) {
+                    tag += ":fold" + std::to_string(oi);
+                }
+                cur = cg->AddOp(op, {cur, nit->second}, {}, tag);
+            }
+        }
+        node = cur;
+    }
+
+    // ---- Link (Assembly4 part instance) ----
+    //
+    // The sub-doc's features were inlined by FreeCadReader's
+    // App::Link branch ahead of this Link feature, so by the
+    // time we visit the Link the sub-tip has already been
+    // replayed and feature_nodes[link.sub_tip_feature_id]
+    // holds its CalcGraph node. We layer the Link's baked
+    // placement on top: rotate(axis, angle) about the origin,
+    // then translate(p). FreeCAD-side LCS-pair solving has
+    // already collapsed every constr_* contribution into this
+    // single Placement, so no constraint evaluation is needed
+    // here.
+    //
+    // Identity-or-near-identity placements skip the ops
+    // entirely so the Link node is the sub-tip node verbatim,
+    // matching the "viewer sees the part exactly where the
+    // sub-doc puts it" intuition for the root part of an asm.
+    void operator()(FeatPayloadLink& p)
+    {
+        int cur = base_node;
+
+        if (cur < 0 && p.sub_tip_feature_id != 0)
+        {
+            // Defensive: a malformed doc with the Role::Base
+            // input missing but sub_tip_feature_id set still
+            // points us at the right sub-node.
+            auto sit = feature_nodes.find(p.sub_tip_feature_id);
+            if (sit != feature_nodes.end()) {
+                cur = sit->second;
+            }
+        }
+
+        if (cur < 0)
+        {
+            // No sub-tip is a legitimate state, not an error:
+            // layout-only sub-docs (Crankshaft.FCStd in
+            // asm_Cylinders is the prototype -- App::Part
+            // container holding sketches + LCS reference
+            // frames but zero PartDesign Body) contribute no
+            // geometry, so the Link should produce no
+            // CalcGraph node. node stays at -1, feature_nodes
+            // does not record an entry for this id, and
+            // downstream features see "no upstream" which is
+            // correct -- there is no upstream solid to
+            // chain into.
+            return;
+        }
+
+        const double k_eps_angle = 1e-12;
+        const double k_eps_pos   = 1e-15;
+
+        if (std::fabs(p.placement_angle) > k_eps_angle)
+        {
+            brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
+            brepgraph::Vec3 axis   = {
+                p.placement_ox, p.placement_oy, p.placement_oz };
+            int o_n = cg->AddConst(origin, "link_origin");
+            int d_n = cg->AddConst(axis,   "link_axis");
+            int a_n = cg->AddConst(p.placement_angle, "link_angle");
+            cur = cg->AddOp("rotate",
+                            {cur, o_n, d_n, a_n}, {},
+                            feat.name + ":link_rot");
+        }
+
+        if (std::fabs(p.placement_px) > k_eps_pos
+            || std::fabs(p.placement_py) > k_eps_pos
+            || std::fabs(p.placement_pz) > k_eps_pos)
+        {
+            brepgraph::Vec3 off = {
+                p.placement_px, p.placement_py, p.placement_pz };
+            int o_n = cg->AddConst(off, "link_offset");
+            cur = cg->AddOp("translate",
+                            {cur, o_n}, {},
+                            feat.name + ":link_tr");
+        }
+
+        node = cur;
+    }
+
+    void operator()(FeatPayloadAsmConstraint& p)
+    {
+        // Geometry-free metadata: Phase 4 LCS-pair solver
+        // (when added) will read FeatPayloadAsmConstraint to
+        // compute a Link's Placement at edit time; today the
+        // Reader trusts FreeCAD's already-baked Placement and
+        // this payload contributes no CalcGraph node.
+        (void)p;
+    }
+
+    // ---- HoleWizard / PartDesign::Hole ----
+    //
+    // FreeCAD's Hole is rich: a cylindrical bore + optional
+    // counterbore / countersink / conical drill-point tip +
+    // optional threaded helix. Synthesising the right Cut
+    // shape from FeatPayloadHoleWizard's typed fields plus the
+    // ext_params bag (hole_cut_*, drill_point_*, thread_*) is
+    // a real chunk of work that this arm does NOT do today.
+    //
+    // Minimum-viable behaviour: if the source was a .FCStd
+    // (so doc.authored_shapes carries the FreeCAD-emitted
+    // post-Hole running body shape from the .brp dump), use
+    // that authored shape verbatim as this feature's node.
+    // The shape already includes everything up through and
+    // including the Hole operation, so downstream features
+    // in the same body chain see a correct running body. The
+    // standard authored-substitution fallback further down
+    // would also catch this, but it requires node>=0 first
+    // (i.e. an attempted-but-null cax replay); we never
+    // attempt here, so we have to seed the const node up
+    // front.
+    //
+    // No authored shape (raw .xml fixtures, or future readers
+    // that don't dump .brp): pass base_node through so the
+    // body chain still produces SOMETHING -- the body without
+    // the hole -- and record a diagnostic. Better than a
+    // hard fail on the whole document.
+    // ---- BakedShape (FreeCAD Part::Feature etc.) ----
+    //
+    // Same shape-from-authored mechanism as the HoleWizard
+    // arm below, but for features that carry NO synthesizable
+    // parameters at all in our IR. Geometry comes verbatim
+    // from doc.authored_shapes (the .brp dump). Drives
+    // Piston.FCStd's Fillet001_solid (a collapsed PartDesign
+    // body surfaced as a Part::Feature).
+    void operator()(FeatPayloadBakedShape& p)
+    {
+        (void)p;
+        auto auth_it = doc.authored_shapes.find(feat.id);
+        if (auth_it != doc.authored_shapes.end() && auth_it->second)
+        {
+            node = cg->AddConst(auth_it->second,
+                                "baked_" + feat.name);
+            // The baked shape IS the feature's authored tool --
+            // register it so a mirror / pattern naming this
+            // feature as an original can multiply it. R2900's
+            // Mirror5 mirrors Revolve4_Base, an open-profile
+            // revolve that only reconstructs as a BakedShape
+            // (three revolve sheets); without this record the
+            // mirror resolved no originals and was skipped.
+            FeatureToolInfo ti;
+            ti.tool_node = node;
+            ti.base_node = base_node;
+            ti.op_kind   = '0';
+            feature_tools[feat.id] = ti;
+        }
+        else
+        {
+            if (!out.err_msg.empty()) {
+                out.err_msg += "; ";
+            }
+            out.err_msg +=
+                "BakedShape " + feat.name +
+                " has no authored shape; skipped";
+        }
+    }
+
+    void operator()(FeatPayloadHoleWizard& p)
+    {
+        (void)p;
+        auto auth_it = doc.authored_shapes.find(feat.id);
+        if (auth_it != doc.authored_shapes.end() && auth_it->second)
+        {
+            node = cg->AddConst(auth_it->second,
+                                "authored_hole_" + feat.name);
+        }
+        else if (base_node >= 0)
+        {
+            node = base_node;
+            if (!out.err_msg.empty()) {
+                out.err_msg += "; ";
+            }
+            out.err_msg +=
+                "Hole " + feat.name +
+                " has no authored .brp; chain continues without "
+                "the hole geometry";
+        }
+        else
+        {
+            if (!out.err_msg.empty()) {
+                out.err_msg += "; ";
+            }
+            out.err_msg +=
+                "Hole " + feat.name +
+                " has neither authored .brp nor base shape; "
+                "skipped";
+        }
+    }
+
+    // ---- Trim (ZW3D FtSolidSoloTrm 修剪) ----
+    //
+    // Split the Base-role body by the Tool-role body's faces and
+    // keep the (keep_pt, keep_dir) side; both inputs are consumed
+    // (the default input-consumption pass below handles that --
+    // ZW3D removes the trimming sheet from the part and the base
+    // is replaced by its kept side). 02-ear 修剪1: UV曲面1's skin
+    // cut by 拉伸1's extruded band, flux halves, tool vanishes.
+    void operator()(FeatPayloadTrim& p)
+    {
+        std::vector<int> tool_nodes;
+        for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+        {
+            InputRole role = (i < feat.input_roles.size())
+                                 ? feat.input_roles[i]
+                                 : InputRole::Base;
+            if (role != InputRole::Tool) {
+                continue;
+            }
+            auto fit = feature_nodes.find(feat.input_feature_ids[i]);
+            if (fit != feature_nodes.end() && fit->second >= 0) {
+                tool_nodes.push_back(fit->second);
+            }
+        }
+        if (base_node < 0 || tool_nodes.empty())
+        {
+            if (!out.err_msg.empty()) {
+                out.err_msg += "; ";
+            }
+            out.err_msg += "trim " + feat.name +
+                           (base_node < 0
+                                ? " has no base body; skipped"
+                                : " resolved no tool body; skipped");
+        }
+        else
+        {
+            int tool_n = tool_nodes[0];
+            if (tool_nodes.size() > 1) {
+                tool_n = cg->AddOp("merge", {}, tool_nodes,
+                                   feat.name + ":tools");
+            }
+            brepgraph::Vec3 kp = {p.keep_pt[0], p.keep_pt[1],
+                                  p.keep_pt[2]};
+            brepgraph::Vec3 kd = {p.keep_dir[0], p.keep_dir[1],
+                                  p.keep_dir[2]};
+            int kp_n = cg->AddConst(kp, "keep_pt");
+            int kd_n = cg->AddConst(kd, "keep_dir");
+            int mu_n = cg->AddConst(p.mutual ? 1.0 : 0.0, "mutual");
+            node = cg->AddOp("trim",
+                             {base_node, tool_n, kp_n, kd_n, mu_n},
+                             {}, feat.name + ":trim");
+            // ZW3D modifies the trimmed lineage IN PLACE: any
+            // later feature naming the BASE feature means its
+            // post-trim state. Redirect the base id's node (and
+            // its tool record, for mirrors of the trimmed skin)
+            // to the trim result.
+            for (size_t i = 0; i < feat.input_feature_ids.size();
+                 ++i)
+            {
+                InputRole role = (i < feat.input_roles.size())
+                                     ? feat.input_roles[i]
+                                     : InputRole::Base;
+                if (role != InputRole::Base) {
+                    continue;
+                }
+                const uint32_t bid = feat.input_feature_ids[i];
+                feature_nodes[bid] = node;
+                auto tit = feature_tools.find(bid);
+                if (tit != feature_tools.end()) {
+                    tit->second.tool_node = node;
+                }
+                break;
+            }
+            // The trimmed sheet is itself a multipliable tool
+            // (mirror-of-trimmed-skin), same registration as the
+            // BakedShape arm.
+            FeatureToolInfo ti;
+            ti.tool_node = node;
+            ti.base_node = -1;
+            ti.op_kind   = '0';
+            feature_tools[feat.id] = ti;
+        }
+    }
+
+    // ---- Sew (CdShapeSew 缝合 / sheet FtBoolSoloAdd 组合-添加) --
+    // Join Base + Tool sheets into one shell, solidifying closed
+    // results. Tools are consumed; the BASE lineage is redirected
+    // to the sewn body (later features naming the base mean its
+    // post-sew state). 02-ear: 缝合3 merges the dome skins, then
+    // 组合1_添加 sews wall band + dome closed -> the final solid.
+    void operator()(FeatPayloadSew& p)
+    {
+        std::vector<int> tool_nodes;
+        for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+        {
+            InputRole role = (i < feat.input_roles.size())
+                                 ? feat.input_roles[i]
+                                 : InputRole::Base;
+            if (role != InputRole::Tool) {
+                continue;
+            }
+            auto fit = feature_nodes.find(feat.input_feature_ids[i]);
+            if (fit != feature_nodes.end() && fit->second >= 0) {
+                tool_nodes.push_back(fit->second);
+            }
+            else
+            {
+                std::fprintf(stderr,
+                    "[sewwire] %s tool feat=%u UNRESOLVED (%s)\n",
+                    feat.name.c_str(), feat.input_feature_ids[i],
+                    fit == feature_nodes.end() ? "no node entry"
+                                               : "node < 0");
+                std::fflush(stderr);
+            }
+        }
+        if (base_node < 0 || tool_nodes.empty())
+        {
+            if (!out.err_msg.empty()) {
+                out.err_msg += "; ";
+            }
+            out.err_msg += "sew " + feat.name +
+                           (base_node < 0
+                                ? " has no base body; skipped"
+                                : " resolved no tool body; skipped");
+        }
+        else
+        {
+            int tool_n = tool_nodes[0];
+            if (tool_nodes.size() > 1) {
+                tool_n = cg->AddOp("merge", {}, tool_nodes,
+                                   feat.name + ":tools");
+            }
+            int tol_n = cg->AddConst(p.tolerance, "tol");
+            node = cg->AddOp("sew", {base_node, tool_n, tol_n}, {},
+                             feat.name + ":sew");
+            for (size_t i = 0; i < feat.input_feature_ids.size();
+                 ++i)
+            {
+                InputRole role = (i < feat.input_roles.size())
+                                     ? feat.input_roles[i]
+                                     : InputRole::Base;
+                if (role != InputRole::Base) {
+                    continue;
+                }
+                const uint32_t bid = feat.input_feature_ids[i];
+                feature_nodes[bid] = node;
+                auto tit = feature_tools.find(bid);
+                if (tit != feature_tools.end()) {
+                    tit->second.tool_node = node;
+                }
+                break;
+            }
+            FeatureToolInfo ti;
+            ti.tool_node = node;
+            ti.base_node = -1;
+            ti.op_kind   = '0';
+            feature_tools[feat.id] = ti;
+        }
+    }
+
+    // ---- Not implemented yet ----
+    template <class T>
+    void operator()(T&)
+    {
+        // Native Assembly WB joints carry a FeatPayloadOpaque
+        // (no dedicated payload type) but are a deliberate
+        // geometry-free no-op, not an unimplemented gap: the
+        // joint graph lives in ext_strings/ext_params and the
+        // solved part poses are already baked onto each Body's
+        // Placement, so this feature contributes no CalcGraph
+        // node. Skip silently instead of logging a spurious
+        // "skipped unimplemented feature" warning. Genuine
+        // unknown features keep FeatType::Unknown and still
+        // surface the diagnostic below.
+        if (feat.type == FeatType::Joint)
+        {
+            return;
+        }
+
+        std::ostringstream oss;
+        oss << "skipped unimplemented feature: " << feat.name
+            << " (type=" << (int)feat.type << ")";
+        if (!out.err_msg.empty()) {
+            out.err_msg += "; ";
+        }
+        out.err_msg += oss.str();
+    }
+};
 } // anonymous namespace
 
 // ============================================================
@@ -1179,1964 +3167,11 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         // own Originals tools) ignore it.
         int base_node = ResolveBaseNode(feat, feature_nodes);
 
-        std::visit([&](auto& p)
-        {
-            using T = std::decay_t<decltype(p)>;
-
-            // ---- Sketch ----
-            if constexpr (std::is_same_v<T, FeatPayloadSketch>)
-            {
-                // Build the sketch_face subtree up-front and stash it
-                // in sketch_face_nodes; downstream features (Extrude,
-                // Revolve, ...) read from there so a sketch shared by
-                // several features lands as a single subtree in the
-                // calc graph. The feature itself doesn't contribute a
-                // 3D body, so node stays -1 and feature_nodes is not
-                // updated -- sketches are not addressable as bases.
-                const SketchIR* sk = FindSketch(doc, p.sketch_id);
-                if (sk) {
-                    sketch_face_nodes[p.sketch_id] = AddSketchFaceNode(*cg, *sk);
-                }
-            }
-
-            // ---- Primitives ----
-            //
-            // After building the bare primitive op, FinalizePrimitiveNode
-            // applies the FreeCAD Placement and turns
-            // PartDesign::Additive*/Subtractive* into the
-            // corresponding fuse/cut against the running body shape.
-            // tool_info captures the placed tool and the fuse/cut
-            // kind so a downstream pattern with Originals = [this]
-            // can multiply just the tool.
-            else if constexpr (std::is_same_v<T, FeatPayloadPrimBox>)
-            {
-                int l = cg->AddConst(p.length, "length");
-                int w = cg->AddConst(p.width,  "width");
-                int h = cg->AddConst(p.height, "height");
-                int prim = cg->AddOp("box", {l, w, h}, {}, feat.name);
-                FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
-                feature_tools[feat.id] = ti;
-            }
-            else if constexpr (std::is_same_v<T, FeatPayloadPrimCylinder>)
-            {
-                int r = cg->AddConst(p.radius, "radius");
-                int h = cg->AddConst(p.height, "height");
-                int prim = cg->AddOp("cylinder", {r, h}, {}, feat.name);
-                FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
-                feature_tools[feat.id] = ti;
-            }
-            else if constexpr (std::is_same_v<T, FeatPayloadPrimCone>)
-            {
-                int r1 = cg->AddConst(p.radius1, "radius1");
-                int r2 = cg->AddConst(p.radius2, "radius2");
-                int h  = cg->AddConst(p.height,  "height");
-                int prim = cg->AddOp("cone", {r1, r2, h}, {}, feat.name);
-                FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
-                feature_tools[feat.id] = ti;
-            }
-            else if constexpr (std::is_same_v<T, FeatPayloadPrimSphere>)
-            {
-                int r = cg->AddConst(p.radius, "radius");
-                int prim = cg->AddOp("sphere", {r}, {}, feat.name);
-                FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
-                feature_tools[feat.id] = ti;
-            }
-            else if constexpr (std::is_same_v<T, FeatPayloadPrimTorus>)
-            {
-                int r1 = cg->AddConst(p.major_radius, "major_radius");
-                int r2 = cg->AddConst(p.minor_radius, "minor_radius");
-                int prim = cg->AddOp("torus", {r1, r2}, {}, feat.name);
-                FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
-                feature_tools[feat.id] = ti;
-            }
-            else if constexpr (std::is_same_v<T, FeatPayloadPrimEllipsoid>)
-            {
-                int r1 = cg->AddConst(p.radius1, "radius1");
-                int r2 = cg->AddConst(p.radius2, "radius2");
-                int r3 = cg->AddConst(p.radius3, "radius3");
-                int prim = cg->AddOp("ellipsoid", {r1, r2, r3}, {}, feat.name);
-                FeatureToolInfo ti;
-                node = FinalizePrimitiveNode(*cg, feat, prim, base_node, out, step_ok, &ti);
-                feature_tools[feat.id] = ti;
-            }
-
-            // ---- Extrude (Boss / Cut) ----
-            else if constexpr (std::is_same_v<T, FeatPayloadExtrude>)
-            {
-                const SketchIR* sk = FindSketch(doc, p.sketch_id);
-                if (!sk)
-                {
-                    step_ok     = false;
-                    out.err_msg = "missing sketch for feature " + feat.name;
-                    return;
-                }
-
-                // Reuse the face built by the upstream Sketch feature
-                // when present; otherwise (e.g. a DocumentIR that
-                // forgot to emit a Sketch FeatureIR around its sketch)
-                // build it inline so the extrude still resolves.
-                int face_n;
-                auto it = sketch_face_nodes.find(p.sketch_id);
-                if (it != sketch_face_nodes.end()) {
-                    face_n = it->second;
-                } else {
-                    face_n = AddSketchFaceNode(*cg, *sk);
-                    sketch_face_nodes[p.sketch_id] = face_n;
-                }
-
-                double yd[3] =
-                {
-                    sk->plane_normal[1] * sk->plane_x_dir[2] - sk->plane_normal[2] * sk->plane_x_dir[1],
-                    sk->plane_normal[2] * sk->plane_x_dir[0] - sk->plane_normal[0] * sk->plane_x_dir[2],
-                    sk->plane_normal[0] * sk->plane_x_dir[1] - sk->plane_normal[1] * sk->plane_x_dir[0],
-                };
-                double world_dir[3] =
-                {
-                    p.direction[0] * sk->plane_x_dir[0] + p.direction[1] * yd[0] + p.direction[2] * sk->plane_normal[0],
-                    p.direction[0] * sk->plane_x_dir[1] + p.direction[1] * yd[1] + p.direction[2] * sk->plane_normal[1],
-                    p.direction[0] * sk->plane_x_dir[2] + p.direction[1] * yd[2] + p.direction[2] * sk->plane_normal[2],
-                };
-
-                double sign = p.flip_direction ? -1.0 : 1.0;
-
-                // FreeCAD TwoLengths (Pad Type=4) lands here with
-                // end_type == Blind but distance2 > 0: the reader has
-                // stashed the second-side length in distance2 and left
-                // end_type2 at Blind. The simple `prism` op below only
-                // consumes `distance`, so without this distance2 > 0
-                // gate the second half of the extrusion disappears
-                // silently (see Page_077 Pad002: the 42mm +Z half of
-                // the central cylinder went missing because the only
-                // visible 6mm half was buried inside the base body).
-                bool two_sided = (p.distance2 > 1e-15) ||
-                                 (p.end_type2 != ExtrudeEndType::Blind);
-
-                int tool_n;
-                if (p.end_type != ExtrudeEndType::Blind || two_sided)
-                {
-                    // extrude_ex has no draft input; an up-to / two-sided
-                    // extrude that ALSO tapers is not representable yet.
-                    if (std::fabs(p.draft) > 1e-12)
-                    {
-                        if (!out.err_msg.empty()) out.err_msg += "; ";
-                        out.err_msg += "extrude " + feat.name +
-                            " combines a draft angle with up-to/two-sided "
-                            "ends; draft dropped";
-                    }
-                    brepgraph::Vec3 dir = {sign * world_dir[0],
-                                          sign * world_dir[1],
-                                          sign * world_dir[2]};
-                    int dir_n = cg->AddConst(dir, "direction");
-                    int d1_n  = cg->AddConst(p.distance,  "dist1");
-                    int d2_n  = cg->AddConst(p.distance2, "dist2");
-                    int e1_n  = cg->AddConst((int)p.end_type,  "end1");
-                    int e2_n  = cg->AddConst((int)p.end_type2, "end2");
-                    int ref_n = base_node >= 0
-                        ? base_node
-                        : cg->AddConst(std::shared_ptr<brepkit::TopoShape>{}, "null_ref");
-                    tool_n = cg->AddOp("extrude_ex",
-                        {face_n, dir_n, d1_n, d2_n, e1_n, e2_n, ref_n},
-                        {}, feat.name);
-                }
-                else
-                {
-                    double dx = world_dir[0] * p.distance * sign;
-                    double dy = world_dir[1] * p.distance * sign;
-                    double dz = world_dir[2] * p.distance * sign;
-                    brepgraph::Vec3 dir = {dx, dy, dz};
-                    int dir_n = cg->AddConst(dir, "direction");
-                    if (std::fabs(p.draft) > 1e-12)
-                    {
-                        // Drafted one-sided blind extrude (R2900_100's
-                        // Extrude21: 5 deg over a 5mm plate -- ignoring
-                        // the taper left +105mm^3 of phantom material).
-                        int a_n = cg->AddConst(p.draft, "draft");
-                        tool_n  = cg->AddOp("dprism", {face_n, dir_n, a_n},
-                                            {}, feat.name);
-                    }
-                    else
-                    {
-                        tool_n = cg->AddOp("prism", {face_n, dir_n},
-                                           {}, feat.name);
-                    }
-                }
-
-                // Track the extrude tool so a downstream pattern with
-                // Originals = [this Pad/Pocket] can multiply just the
-                // prism instead of the whole body.
-                FeatureToolInfo ti;
-                ti.tool_node = tool_n;
-                ti.base_node = base_node;
-                // Equivariant unless an up-to-X end type ties the solid to
-                // the running body (then a pattern can't merely transform it).
-                ti.equivariant = (p.end_type  == ExtrudeEndType::Blind &&
-                                  p.end_type2 == ExtrudeEndType::Blind);
-
-                if (feat.type == FeatType::BossExtrude)
-                {
-                    if (base_node < 0)
-                    {
-                        node = tool_n;
-                        ti.op_kind = '0';
-                    }
-                    else
-                    {
-                        node = cg->AddOp("fuse", {base_node, tool_n},
-                                          {}, feat.name);
-                        ti.op_kind = 'f';
-                    }
-                }
-                else
-                {
-                    if (base_node < 0)
-                    {
-                        step_ok     = false;
-                        out.err_msg = "CutExtrude without base shape: " + feat.name;
-                        return;
-                    }
-                    node = cg->AddOp("cut", {base_node, tool_n},
-                                      {}, feat.name);
-                    ti.op_kind = 'c';
-                }
-                // Mirror FreeCAD's PartDesign::Pad / Pocket default
-                // Refine=true: append UnifySameDomain so coplanar side
-                // faces from a multi-segment sketch contour collapse
-                // and downstream Fillet runs on a single smooth strip
-                // rather than N narrow strips that fracture the blend.
-                // tool_n stays unrefined so a downstream PolarPattern
-                // / Mirror with Originals=[this feat] still multiplies
-                // a clean prism, not a refined body.
-                if (opt.refine_after_primitive && node >= 0) {
-                    node = cg->AddOp("refine", {node}, {},
-                                      feat.name + ":refine");
-                }
-                feature_tools[feat.id] = ti;
-            }
-
-            // ---- Revolve (Boss / Cut) ----
-            //
-            // Mirror of the Extrude branch: reuse / build the sketch's
-            // face, add a `revolve` op around the axis carried by the
-            // payload, and fuse / cut against the running body.
-            //
-            // Negative angle (or Reversed=true via flip_direction) flips
-            // the sweep direction; angle near 2*PI is treated as a full
-            // revolution via the `is_full` flag so OCCT closes the
-            // resulting solid instead of leaving a hairline seam.
-            else if constexpr (std::is_same_v<T, FeatPayloadRevolve>)
-            {
-                const SketchIR* sk = FindSketch(doc, p.sketch_id);
-                if (!sk)
-                {
-                    step_ok     = false;
-                    out.err_msg = "missing sketch for feature " + feat.name;
-                    return;
-                }
-
-                int face_n;
-                auto it = sketch_face_nodes.find(p.sketch_id);
-                if (it != sketch_face_nodes.end()) {
-                    face_n = it->second;
-                } else {
-                    face_n = AddSketchFaceNode(*cg, *sk);
-                    sketch_face_nodes[p.sketch_id] = face_n;
-                }
-
-                double sign = p.flip_direction ? -1.0 : 1.0;
-                brepgraph::Vec3 ax_o = {p.axis_origin[0],
-                                       p.axis_origin[1],
-                                       p.axis_origin[2]};
-                brepgraph::Vec3 ax_d = {p.axis_dir[0],
-                                       p.axis_dir[1],
-                                       p.axis_dir[2]};
-                int o_n = cg->AddConst(ax_o, "axis_origin");
-                int d_n = cg->AddConst(ax_d, "axis_dir");
-                int a_n = cg->AddConst(sign * p.angle, "angle");
-                bool is_full = std::abs(p.angle - 2.0 * 3.14159265358979323846)
-                                < 1e-6;
-                int f_n = cg->AddConst(is_full, "is_full");
-
-                // Midplane: FreeCAD sweeps the profile symmetrically
-                // about the sketch plane (-angle/2 .. +angle/2). BRepPrim-
-                // API_MakeRevol only sweeps one-sided from the profile's
-                // current position, so pre-rotate the profile by
-                // -sign*angle/2 around the axis; the subsequent
-                // sign*angle sweep then lands the profile at +angle/2,
-                // matching the symmetric range. Reader stashes the
-                // flag in ext_params["midplane"]=1 because
-                // FeatPayloadRevolve doesn't carry a bool field yet.
-                // Don't update sketch_face_nodes -- the rotated face
-                // is local to this revolve, and another feature
-                // reusing the same sketch must see the unrotated
-                // original. Full 2pi revolves are already symmetric
-                // (sweep wraps onto itself), so the pre-rotation is
-                // skipped -- still geometrically correct, but it
-                // would waste a graph node.
-                bool midplane = ExtParam(feat, "midplane", 0.0) != 0.0;
-                int rev_face_n = face_n;
-                if (midplane && !is_full)
-                {
-                    int half_a_n = cg->AddConst(-sign * 0.5 * p.angle,
-                                                "midplane_pre_angle");
-                    rev_face_n = cg->AddOp(
-                        "rotate",
-                        {face_n, o_n, d_n, half_a_n},
-                        {}, feat.name + ":midplane_pre_rot");
-                }
-
-                int tool_n = cg->AddOp("revolve",
-                                        {rev_face_n, o_n, d_n, a_n, f_n},
-                                        {}, feat.name);
-
-                FeatureToolInfo ti;
-                ti.tool_node = tool_n;
-                ti.base_node = base_node;
-
-                if (feat.type == FeatType::BossRevolve)
-                {
-                    if (base_node < 0)
-                    {
-                        node = tool_n;
-                        ti.op_kind = '0';
-                    }
-                    else
-                    {
-                        node = cg->AddOp("fuse", {base_node, tool_n},
-                                          {}, feat.name);
-                        ti.op_kind = 'f';
-                    }
-                }
-                else
-                {
-                    if (base_node < 0)
-                    {
-                        step_ok     = false;
-                        out.err_msg = "CutRevolve without base shape: " + feat.name;
-                        return;
-                    }
-                    node = cg->AddOp("cut", {base_node, tool_n},
-                                      {}, feat.name);
-                    ti.op_kind = 'c';
-                }
-                // See Extrude branch above for rationale.
-                if (opt.refine_after_primitive && node >= 0) {
-                    node = cg->AddOp("refine", {node}, {},
-                                      feat.name + ":refine");
-                }
-                feature_tools[feat.id] = ti;
-            }
-
-            // ---- Sweep (FreeCAD PartDesign::AdditivePipe /
-            //              SubtractivePipe) ----
-            //
-            // Build the profile face from the profile sketch (re-using
-            // any already-built sketch_face node), build the spine
-            // wire from the spine sketch (id is stashed in ext_params
-            // by the reader because FeatPayloadSweep::path_ref is
-            // shaped for 3D edge refs, not sketches), then either
-            // fuse (Additive) or cut (Subtractive) the swept tool
-            // against the running body.
-            else if constexpr (std::is_same_v<T, FeatPayloadSweep>)
-            {
-                const SketchIR* profile_sk = FindSketch(doc, p.profile_sketch_id);
-                if (!profile_sk)
-                {
-                    step_ok     = false;
-                    out.err_msg = "missing profile sketch for sweep: " + feat.name;
-                    return;
-                }
-
-                // PartDesign Pipe always builds a capped solid; a Part
-                // workbench Part::Sweep honors its Solid flag (default
-                // false -> open tube shell), stashed as sweep_solid.
-                // brepkit's Sweep (BRepOffsetAPI_MakePipe) derives the
-                // result topology from the profile shape, NOT the is_solid
-                // arg: a FACE profile yields a capped solid, a WIRE
-                // profile yields an open shell. Pick the profile node
-                // accordingly -- a face for a solid sweep, the boundary
-                // wire for a shell sweep.
-                bool is_solid = true;
-                auto solid_it = feat.ext_params.find("sweep_solid");
-                if (solid_it != feat.ext_params.end()) {
-                    is_solid = (solid_it->second != 0.0);
-                }
-
-                int profile_n;
-                if (is_solid)
-                {
-                    auto fit = sketch_face_nodes.find(p.profile_sketch_id);
-                    if (fit != sketch_face_nodes.end()) {
-                        profile_n = fit->second;
-                    } else {
-                        profile_n = AddSketchFaceNode(*cg, *profile_sk);
-                        sketch_face_nodes[p.profile_sketch_id] = profile_n;
-                    }
-                }
-                else
-                {
-                    profile_n = AddSketchWireNode(*cg, *profile_sk);
-                }
-
-                int wire_n;
-                auto kit = feat.ext_strings.find("spine_kind");
-                if (kit != feat.ext_strings.end() && kit->second == "helix")
-                {
-                    // Parametric helix spine (FreeCAD Part::Helix behind
-                    // a PartDesign::FeatureBase). The reader couldn't
-                    // map the spine to a sketch, so it stashed the coil
-                    // params; rebuild the spine wire via the helix_wire
-                    // op rather than from a sketch profile.
-                    auto getp = [&](const char* k) -> double {
-                        auto it = feat.ext_params.find(k);
-                        return (it != feat.ext_params.end()) ? it->second : 0.0;
-                    };
-                    int pitch_n  = cg->AddConst(getp("helix_pitch"),  "helix_pitch");
-                    int height_n = cg->AddConst(getp("helix_height"), "helix_height");
-                    int radius_n = cg->AddConst(getp("helix_radius"), "helix_radius");
-                    int angle_n  = cg->AddConst(getp("helix_angle"),  "helix_cone_angle");
-                    int lh_n     = cg->AddConst(getp("helix_left_handed") != 0.0,
-                                                 "helix_left_handed");
-                    wire_n = cg->AddOp("helix_wire",
-                                       {pitch_n, height_n, radius_n, angle_n, lh_n},
-                                       {}, feat.name + ":helix");
-
-                    // A Part-workbench Part::Sweep links a STANDALONE
-                    // Part::Helix whose own Placement orients the coil in
-                    // world space; the reader stashed it under
-                    // helix_place_* (PartDesign's FeatureBase clone path
-                    // leaves these absent -- it builds in the local +Z
-                    // frame). Apply rotate-then-translate to the spine
-                    // wire so the swept profile follows the placed coil,
-                    // matching FreeCAD's authored shape.
-                    if (feat.ext_params.count("helix_place_angle"))
-                    {
-                        brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
-                        brepgraph::Vec3 axis   = {
-                            ExtParam(feat, "helix_place_ox", 0.0),
-                            ExtParam(feat, "helix_place_oy", 0.0),
-                            ExtParam(feat, "helix_place_oz", 1.0)};
-                        int o_n = cg->AddConst(origin, "helix_place_origin");
-                        int d_n = cg->AddConst(axis,   "helix_place_axis");
-                        int a_n = cg->AddConst(
-                            ExtParam(feat, "helix_place_angle", 0.0),
-                            "helix_place_angle");
-                        wire_n = cg->AddOp("rotate", {wire_n, o_n, d_n, a_n},
-                                           {}, feat.name + ":helix_rot");
-                    }
-                    if (feat.ext_params.count("helix_place_px") ||
-                        feat.ext_params.count("helix_place_py") ||
-                        feat.ext_params.count("helix_place_pz"))
-                    {
-                        brepgraph::Vec3 off = {
-                            ExtParam(feat, "helix_place_px", 0.0),
-                            ExtParam(feat, "helix_place_py", 0.0),
-                            ExtParam(feat, "helix_place_pz", 0.0)};
-                        int o_n = cg->AddConst(off, "helix_place_offset");
-                        wire_n = cg->AddOp("translate", {wire_n, o_n},
-                                           {}, feat.name + ":helix_tr");
-                    }
-                }
-                else
-                {
-                    uint32_t spine_id = 0xFFFFFFFF;
-                    auto sit = feat.ext_params.find("spine_sketch_id");
-                    if (sit != feat.ext_params.end()) {
-                        spine_id = (uint32_t)sit->second;
-                    }
-                    const SketchIR* spine_sk = FindSketch(doc, spine_id);
-                    if (!spine_sk)
-                    {
-                        step_ok     = false;
-                        out.err_msg = "missing spine sketch for sweep: " + feat.name;
-                        return;
-                    }
-
-                    wire_n = AddSketchWireNode(*cg, *spine_sk);
-                }
-                int solid_n  = cg->AddConst(is_solid, "is_solid");
-                // FreeCAD Part::Sweep Frenet=true needs the true Frenet
-                // trihedron so a non-symmetric section stays radially
-                // oriented along the helix (a thread). Stashed as
-                // sweep_frenet; absent (-> false / corrected Frenet) for
-                // the PartDesign Pipe path, preserving its behavior.
-                bool sweep_frenet = (ExtParam(feat, "sweep_frenet", 0.0) != 0.0);
-                int frenet_n = cg->AddConst(sweep_frenet, "sweep_frenet");
-                int tool_n   = cg->AddOp("sweep",
-                                          {profile_n, wire_n, solid_n, frenet_n},
-                                          {}, feat.name);
-
-                bool subtractive = false;
-                auto tit = feat.ext_strings.find("freecad_type");
-                if (tit != feat.ext_strings.end()
-                    && tit->second == "PartDesign::SubtractivePipe")
-                {
-                    subtractive = true;
-                }
-
-                FeatureToolInfo ti;
-                ti.tool_node = tool_n;
-                ti.base_node = base_node;
-
-                if (!subtractive)
-                {
-                    if (base_node < 0)
-                    {
-                        node = tool_n;
-                        ti.op_kind = '0';
-                    }
-                    else
-                    {
-                        node = cg->AddOp("fuse", {base_node, tool_n},
-                                          {}, feat.name);
-                        ti.op_kind = 'f';
-                    }
-                }
-                else
-                {
-                    if (base_node < 0)
-                    {
-                        step_ok     = false;
-                        out.err_msg = "SubtractivePipe without base shape: " + feat.name;
-                        return;
-                    }
-                    node = cg->AddOp("cut", {base_node, tool_n},
-                                      {}, feat.name);
-                    ti.op_kind = 'c';
-                }
-                // See Extrude branch above for rationale.
-                if (opt.refine_after_primitive && node >= 0) {
-                    node = cg->AddOp("refine", {node}, {},
-                                      feat.name + ":refine");
-                }
-                feature_tools[feat.id] = ti;
-            }
-
-            // ---- Loft (FreeCAD PartDesign::AdditiveLoft /
-            //             SubtractiveLoft) ----
-            //
-            // Build one sketch_wire node per profile sketch (the reader
-            // packs Profile + Sections into profile_sketch_ids in order),
-            // feed them as variadic inputs to the `loft` op (is_solid=true
-            // because FreeCAD AdditiveLoft yields a solid body), then
-            // either fuse (Additive) or cut (Subtractive) the loft tool
-            // against the running body.
-            else if constexpr (std::is_same_v<T, FeatPayloadLoft>)
-            {
-                if (p.profile_sketch_ids.size() < 2)
-                {
-                    step_ok     = false;
-                    out.err_msg = "loft needs >= 2 profiles: " + feat.name;
-                    return;
-                }
-
-                std::vector<int> wire_nodes;
-                wire_nodes.reserve(p.profile_sketch_ids.size());
-                for (uint32_t sid : p.profile_sketch_ids)
-                {
-                    const SketchIR* sk = FindSketch(doc, sid);
-                    if (!sk)
-                    {
-                        step_ok     = false;
-                        out.err_msg = "missing profile sketch for loft: " + feat.name;
-                        return;
-                    }
-                    wire_nodes.push_back(AddSketchWireNode(*cg, *sk));
-                }
-
-                int is_solid_n = cg->AddConst(true, "is_solid");
-                int tool_n     = cg->AddOp("loft",
-                                            {is_solid_n},
-                                            wire_nodes, feat.name);
-
-                bool subtractive = false;
-                auto tit = feat.ext_strings.find("freecad_type");
-                if (tit != feat.ext_strings.end()
-                    && tit->second == "PartDesign::SubtractiveLoft")
-                {
-                    subtractive = true;
-                }
-
-                FeatureToolInfo ti;
-                ti.tool_node = tool_n;
-                ti.base_node = base_node;
-
-                if (!subtractive)
-                {
-                    if (base_node < 0)
-                    {
-                        node = tool_n;
-                        ti.op_kind = '0';
-                    }
-                    else
-                    {
-                        node = cg->AddOp("fuse", {base_node, tool_n},
-                                          {}, feat.name);
-                        ti.op_kind = 'f';
-                    }
-                }
-                else
-                {
-                    if (base_node < 0)
-                    {
-                        step_ok     = false;
-                        out.err_msg = "SubtractiveLoft without base shape: " + feat.name;
-                        return;
-                    }
-                    node = cg->AddOp("cut", {base_node, tool_n},
-                                      {}, feat.name);
-                    ti.op_kind = 'c';
-                }
-                // See Extrude branch above for rationale.
-                if (opt.refine_after_primitive && node >= 0) {
-                    node = cg->AddOp("refine", {node}, {},
-                                      feat.name + ":refine");
-                }
-                feature_tools[feat.id] = ti;
-            }
-
-            // ---- Fillet / Chamfer ----
-            else if constexpr (std::is_same_v<T, FeatPayloadFillet> ||
-                               std::is_same_v<T, FeatPayloadChamfer>)
-            {
-                if (base_node < 0)
-                {
-                    step_ok = false;
-                    return;
-                }
-                // The body the resolver / ChFi3d looks at. Starts as
-                // base_node (no pre-dressup refine; that pass was
-                // tried via c17a1d22 and silently shifted resolver
-                // matches to the wrong cax edge, so it's reverted)
-                // and gets re-bound to a split_body_at_points node
-                // below when the reader supplied split hints.
-                int body_n = base_node;
-
-                // (Page_015 Pad002 75mm+85mm -> 163mm closed BSpline).
-                // Splitting before resolve means the downstream
-                // resolve_edge_ref finds the post-split sub-edges,
-                // and ChFi3d gets edges it can actually fillet.
-                if (!p.split_hints.empty())
-                {
-                    std::vector<int> vert_nodes;
-                    vert_nodes.reserve(p.split_hints.size());
-                    for (const auto& h : p.split_hints)
-                    {
-                        TopoDS_Vertex tv = BRepBuilderAPI_MakeVertex(
-                            gp_Pnt(h[0], h[1], h[2]));
-                        auto ts = std::make_shared<brepkit::TopoShape>(tv);
-                        int vn = cg->AddConst(ts, "split_hint");
-                        vert_nodes.push_back(vn);
-                    }
-                    body_n = cg->AddOp("split_body_at_points",
-                                        {body_n}, vert_nodes,
-                                        feat.name + ":split_body");
-                }
-
-                // Build a resolve_(edge|face)_ref op per ref and feed
-                // the resulting sub-shape nodes as variadic edge inputs
-                // to fillet / chamfer. The match itself happens at
-                // Eval time -- Replayer stays a pure graph builder.
-                //
-                // FreeCAD lets users pick faces for a fillet (round
-                // every edge of the face). Those refs arrive with
-                // kind=Face; route them through resolve_face_ref so
-                // the resolver searches the face map, and TopoAlgo
-                // explodes the resolved face into its edges via
-                // TopExp_Explorer at apply time.
-                // Dressup picks are inherently fuzzy: the ref midpoint
-                // comes from FreeCAD's saved geometry (PartShape*.brp),
-                // but cax replays the upstream feature chain with its
-                // own Mirror / Pattern / BOP implementations, and the
-                // resulting body's edges can sit mm away from FreeCAD's
-                // in the same logical place (different BOP fuzzy
-                // tolerance, different seam handling). We saw cax's
-                // Mirror+refine body land an edge 8.9 mm away from
-                // FreeCAD's Edge36 midpoint on Page_026_Exercise2D-18,
-                // far beyond the default 1 mm topo_tolerance.
-                //
-                // Widen the resolver tolerance for dressup picks to
-                // scale with the dressup size: a user picking an edge
-                // for a 1.5 mm fillet is fundamentally OK with the
-                // match landing within a few mm because the resulting
-                // blend covers that neighbourhood anyway. 5x the
-                // dressup size is the empirical sweet spot -- tight
-                // enough that two distinct picked edges don't compete
-                // for the same match on symmetric models, loose enough
-                // to absorb the implementation drift.
-                double dressup_size = 0.0;
-                if constexpr (std::is_same_v<T, FeatPayloadFillet>) {
-                    dressup_size = p.radius;
-                } else {
-                    dressup_size = p.distance1;
-                }
-                // The 5% headroom on top of the 5x envelope absorbs
-                // boundary casualties: an anchor whose edge a prior
-                // dressup shrank drifts to JUST past the round number
-                // (R2900_100: Fillet2's edge at 1.03mm vs the 1.0mm
-                // floor, Chamfer3's two edges at 5.0003mm vs 5.0mm --
-                // three silently un-blended edges for want of 3 per
-                // mille). The resolver still picks the single nearest
-                // candidate, so the slack only admits the match it
-                // already found, not a different edge.
-                double dressup_tol = 1.05 * std::max(opt.topo_tolerance,
-                                                     5.0 * dressup_size);
-
-                std::vector<int> edge_nodes;
-                edge_nodes.reserve(p.edges.size());
-                for (size_t k = 0; k < p.edges.size(); ++k)
-                {
-                    const char* op = (p.edges[k].kind == TopoRefIR::Kind::Face)
-                                       ? "resolve_face_ref"
-                                       : "resolve_edge_ref";
-                    int rn = AddResolveRefNode(*cg, op,
-                                                body_n, p.edges[k],
-                                                dressup_tol,
-                                                feat.name + ":edge");
-                    edge_nodes.push_back(rn);
-                    if (opt.write_back_resolved)
-                        resolve_back.push_back({rn, &p.edges[k]});
-                }
-
-                if constexpr (std::is_same_v<T, FeatPayloadFillet>)
-                {
-                    int r = cg->AddConst(p.radius, "radius");
-                    node = cg->AddOp("fillet", {body_n, r},
-                                      edge_nodes, feat.name);
-                }
-                else
-                {
-                    int d = cg->AddConst(p.distance1, "dist");
-                    node = cg->AddOp("chamfer", {body_n, d},
-                                      edge_nodes, feat.name);
-                }
-
-                // Record this dressup so a pattern over the dressed seed
-                // can replicate it per instance (re-resolve the moved
-                // anchors on each copy). base_feat_id = the feature it
-                // dressed (its Role::Base input).
-                {
-                    FeatureDressupInfo di;
-                    di.kind = std::is_same_v<T, FeatPayloadFillet>
-                                  ? FeatType::Fillet : FeatType::Chamfer;
-                    di.size = dressup_size;
-                    di.refs = p.edges;
-                    for (size_t bi = 0; bi < feat.input_feature_ids.size(); ++bi) {
-                        InputRole role = (bi < feat.input_roles.size())
-                                            ? feat.input_roles[bi] : InputRole::Base;
-                        if (role == InputRole::Base) {
-                            di.base_feat_id = feat.input_feature_ids[bi];
-                            break;
-                        }
-                    }
-                    feature_dressups[feat.id] = std::move(di);
-                }
-            }
-
-            // ---- Shell ----
-            else if constexpr (std::is_same_v<T, FeatPayloadShell>)
-            {
-                if (base_node < 0)
-                {
-                    step_ok = false;
-                    return;
-                }
-
-                std::vector<int> face_nodes;
-                face_nodes.reserve(p.faces_to_open.size());
-                for (size_t k = 0; k < p.faces_to_open.size(); ++k)
-                {
-                    int rn = AddResolveRefNode(*cg, "resolve_face_ref",
-                                                base_node, p.faces_to_open[k],
-                                                opt.topo_tolerance,
-                                                feat.name + ":face");
-                    face_nodes.push_back(rn);
-                    if (opt.write_back_resolved)
-                        resolve_back.push_back({rn, &p.faces_to_open[k]});
-                }
-
-                int t = cg->AddConst(p.thickness, "thickness");
-                node = cg->AddOp("shell", {base_node, t},
-                                  face_nodes, feat.name);
-            }
-
-            // ---- Mirror ----
-            //
-            // FreeCAD's PartDesign::Mirrored produces orig + mirror.
-            // Our `mirror` op only returns the mirror image, so we
-            // always add the original back ourselves.
-            //
-            // Originals = [F1..Fn]: each Fi's tool effect already
-            // lives in base_node (it was applied when Fi was replayed
-            // and committed to feature_nodes). We add mirror(Fi.tool)
-            // for every Fi using Fi.op_kind so every original
-            // contributes its mirror -- previously only origs[0] was
-            // honored, which silently dropped pads/pockets when users
-            // mirrored multiple features together.
-            //
-            // Originals empty: mirror the whole base body and fuse.
-            else if constexpr (std::is_same_v<T, FeatPayloadMirror>)
-            {
-                brepgraph::Vec3 origin = {p.plane_origin[0],
-                                         p.plane_origin[1],
-                                         p.plane_origin[2]};
-                brepgraph::Vec3 normal = {p.plane_normal[0],
-                                         p.plane_normal[1],
-                                         p.plane_normal[2]};
-
-                auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes);
-                if (pi.body_target >= 0 && base_node >= 0)
-                {
-                    // DELTA mirror (ZW3D feature-mirror): reflect the CUMULATIVE
-                    // geometry the mirrored features added -- so their fillets /
-                    // chamfers / patterns / cuts all come along. The
-                    // per-original-tool path below mirrors raw tool solids and
-                    // silently drops dressups, leaving the mirror side missing
-                    // its rounds. pi.body_target is the pre-originals body,
-                    // wired Role::PatternTarget by the Zw reader; FreeCAD mirrors
-                    // carry only Originals -> the per-tool path.
-                    //
-                    // The delta's MINUEND is the body tip right after the LAST
-                    // mirrored feature (pi.body_target2) when the reader wired
-                    // it -- the mirrored features' own contribution, bounded.
-                    // Falling back to base_node (the running body NOW) is only
-                    // correct when the mirrored set is the contiguous tail
-                    // right before the mirror; for a mirror of features far
-                    // upstream it drags the whole intervening history into the
-                    // reflection (R2900: a 97-solid delta whose fuse ground
-                    // >1000 s of CPU). delta = cut(post, pre); result =
-                    // fuse(base, mirror(delta)).
-                    int o_n   = cg->AddConst(origin, "origin");
-                    int n_n   = cg->AddConst(normal, "normal");
-                    int post  = (pi.body_target2 >= 0) ? pi.body_target2
-                                                       : base_node;
-                    int delta = cg->AddOp("cut", {post, pi.body_target},
-                                          {}, feat.name + ":delta");
-                    int m_n   = cg->AddOp("mirror", {delta, o_n, n_n},
-                                          {}, feat.name + ":mirror");
-                    node = cg->AddOp("fuse", {base_node, m_n},
-                                     {}, feat.name + ":fuse");
-                }
-                else if (!pi.originals.empty() && base_node >= 0)
-                {
-                    node = AddMirroredOriginals(*cg, base_node, pi.originals,
-                                                origin, normal, feat.name);
-                }
-                else if (!pi.originals.empty())
-                {
-                    // STANDALONE mirror (no Base wired): ZW3D reported the
-                    // mirror created NEW free bodies (result_ents.n_shape > 0)
-                    // rather than growing the running body -- R2900's
-                    // Mirror5/Mirror6 copy Revolve4's three open revolve
-                    // SHEETS, which ZW3D keeps as separate sheet bodies
-                    // forever (the final part is 5 solids + 6 shells).
-                    // Mirror each original's tool and emit the copies as
-                    // this feature's own standalone output; the running
-                    // body is untouched (the reader did not advance the
-                    // chain tip). No fuse against the base: booleans
-                    // between the solid chain and sheet bodies are
-                    // hazardous and ZW3D does not merge them either.
-                    int o_n = cg->AddConst(origin, "origin");
-                    int n_n = cg->AddConst(normal, "normal");
-                    int acc = -1;
-                    for (size_t i = 0; i < pi.originals.size(); ++i)
-                    {
-                        int m_n = cg->AddOp(
-                            "mirror",
-                            {pi.originals[i].tool_node, o_n, n_n}, {},
-                            feat.name + ":orig" + std::to_string(i) +
-                                ":mirror");
-                        acc = (acc < 0)
-                            ? m_n
-                            : cg->AddOp("fuse", {acc, m_n}, {},
-                                        feat.name + ":combine");
-                    }
-                    node = acc;
-                    // Register the copies as this mirror's tool so a
-                    // mirror-of-a-mirror (R2900 Mirror6 mirrors Mirror5)
-                    // resolves its original.
-                    FeatureToolInfo ti;
-                    ti.tool_node = node;
-                    ti.base_node = -1;
-                    ti.op_kind   = '0';
-                    feature_tools[feat.id] = ti;
-                }
-                else if (base_node >= 0)
-                {
-                    // The whole-body fallback is ONLY for mirrors that wired
-                    // no specific scope at all (FreeCAD's "mirror the body").
-                    // A mirror that NAMED its features via Role::Tool inputs
-                    // but whose tools all failed to resolve (e.g. every
-                    // original is a tool-less BakedShape / dressup) must NOT
-                    // silently widen to the whole body: R2900's Mirror5 is
-                    // +0 faces in the truth, the whole-body mirror burned
-                    // 18 s AND seeded ~95 mirrored pattern-instance solids
-                    // that the NEXT mirror's delta dragged into a >1000 s
-                    // fuse. Skipping is both honest and chain-safe -- the
-                    // base flows through untouched.
-                    bool wired_tools = false;
-                    for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
-                    {
-                        InputRole role = (i < feat.input_roles.size())
-                                            ? feat.input_roles[i]
-                                            : InputRole::Base;
-                        if (role == InputRole::Tool) {
-                            wired_tools = true;
-                            break;
-                        }
-                    }
-                    if (wired_tools)
-                    {
-                        if (!out.err_msg.empty()) {
-                            out.err_msg += "; ";
-                        }
-                        out.err_msg += "mirror " + feat.name +
-                            " originals resolved no tool solids; body "
-                            "continues without the mirror";
-                        node = base_node;
-                    }
-                    else
-                    {
-                        node = AddMirrorWithOriginal(*cg, base_node, origin,
-                                                     normal, feat.name);
-                    }
-                }
-                else
-                {
-                    step_ok = false;
-                    return;
-                }
-            }
-
-            // ---- LinearPattern ----
-            //
-            // When Originals = [X] is set, multiply X's tool only and
-            // combine with X's base; otherwise pattern the whole body.
-            else if constexpr (std::is_same_v<T, FeatPayloadLinearPattern>)
-            {
-                brepgraph::Vec3 dir1 = {p.dir1[0], p.dir1[1], p.dir1[2]};
-                brepgraph::Vec3 dir2 = {p.dir2[0], p.dir2[1], p.dir2[2]};
-                int d1 = cg->AddConst(dir1, "dir1");
-                int c1 = cg->AddConst((int)p.count1, "count1");
-                int s1 = cg->AddConst(p.spacing1, "spacing1");
-                int d2 = cg->AddConst(dir2, "dir2");
-                int c2 = cg->AddConst((int)p.count2, "count2");
-                int s2 = cg->AddConst(p.spacing2, "spacing2");
-
-                // Reader does not emit Role::PatternTarget on
-                // LinearPattern (Draft only emits polar Arrays), so
-                // pi.body_target is always -1 here -- flow through
-                // the helper anyway for shape consistency with
-                // CircularPattern.
-                auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes);
-                const bool onto_running =
-                    ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
-                    && base_node >= 0;
-                PAT_LOG("[pat] LINEAR feat=%s id=%u originals=%zu onto_running=%d "
-                        "base_node=%d count1=%d count2=%d\n",
-                        feat.name.c_str(), feat.id, pi.originals.size(),
-                        (int)onto_running, base_node, (int)p.count1, (int)p.count2);
-
-                // ZW3D Boolean=none: the copies are STANDALONE bodies. The
-                // running body is untouched (the reader emitted no Base
-                // link, so base_node is -1 and the chain tip stays on the
-                // pre-pattern feature); the copies become this feature's
-                // own output candidate and live free until a later boolean
-                // absorbs them (see the pending_standalone block after the
-                // visit). Build the NON-seed instance set: shift the seed
-                // tool by one step, then pattern it count1-1 times -- the
-                // union holds exactly the count1-1 new copies, while the
-                // live seed stays where it is, inside the running body
-                // (R2900_100 Pattern9: truth n_shape 1 -> 4 -> 1).
-                if (!p.fuse)
-                {
-                    auto contribs = AssembleContributions(
-                        feat, feature_tools, feature_dressups);
-                    bool has_tool = false;
-                    for (const auto& c : contribs) {
-                        if (!c.is_tool) continue;
-                        has_tool = true;
-                        if (!c.equivariant) {
-                            if (!out.err_msg.empty()) out.err_msg += "; ";
-                            out.err_msg += "standalone pattern " + feat.name +
-                                " replicates a non-Blind (up-to) extrude by "
-                                "rigid transform; geometry may be wrong";
-                        }
-                    }
-                    if (!has_tool) {
-                        step_ok = false;
-                        if (!out.err_msg.empty()) out.err_msg += "; ";
-                        out.err_msg += "standalone pattern " + feat.name +
-                                       " resolved no seed tool";
-                        return;
-                    }
-
-                    brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
-                    // A 2D grid can't drop just the (0,0) cell from one
-                    // n-ary pattern op; approximate with the full grid (one
-                    // copy coincides with the live seed) and say so.
-                    const bool grid = (p.count2 > 1);
-                    if (grid) {
-                        if (!out.err_msg.empty()) out.err_msg += "; ";
-                        out.err_msg += "standalone GRID pattern " + feat.name +
-                            " approximated with a seed-coincident copy";
-                    }
-
-                    int U = -1;
-                    for (const auto& c : contribs) {
-                        if (!c.is_tool) continue;
-                        int pat = -1;
-                        if (grid || p.count1 < 2) {
-                            pat = cg->AddOp("linear_pattern",
-                                            {c.tool_node, d1, c1, s1, d2, c2, s2},
-                                            {}, feat.name + ":free");
-                        } else {
-                            brepgraph::Vec3 step = {p.spacing1 * u1[0],
-                                                    p.spacing1 * u1[1],
-                                                    p.spacing1 * u1[2]};
-                            int off = cg->AddConst(step, "step1");
-                            int sh  = cg->AddOp("translate",
-                                                {c.tool_node, off}, {},
-                                                feat.name + ":shift");
-                            int c1m = cg->AddConst((int)p.count1 - 1, "count1m1");
-                            pat = cg->AddOp("linear_pattern",
-                                            {sh, d1, c1m, s1, d2, c2, s2},
-                                            {}, feat.name + ":free");
-                        }
-                        U = (U < 0) ? pat
-                                    : cg->AddOp("fuse", {U, pat}, {},
-                                                feat.name + ":free_union");
-                    }
-
-                    // Per-instance dressups (chamfer / fillet on the seed)
-                    // replicate onto each free copy with the anchors moved
-                    // by the copy's offset -- same machinery as the fused
-                    // path's Phase 2, run on the free union instead of the
-                    // running body.
-                    std::vector<Contribution> dressups;
-                    for (const auto& c : contribs)
-                        if (!c.is_tool) dressups.push_back(c);
-                    if (!dressups.empty()) {
-                        brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
-                        double l2sq = p.dir2[0] * p.dir2[0]
-                                    + p.dir2[1] * p.dir2[1]
-                                    + p.dir2[2] * p.dir2[2];
-                        int eff2 = (l2sq > 1e-30 && p.count2 > 1)
-                                        ? (int)p.count2 : 1;
-                        std::vector<InstanceXform> Xs;
-                        for (int i = 0; i < (int)p.count1; ++i) {
-                            for (int j = 0; j < eff2; ++j) {
-                                if (!grid && i == 0 && j == 0) continue;
-                                InstanceXform X;
-                                for (int k = 0; k < 3; ++k)
-                                    X.offset[k] = i * p.spacing1 * u1[k]
-                                                + j * p.spacing2 * u2[k];
-                                Xs.push_back(X);
-                            }
-                        }
-                        if (pattern_cluster_on()) {
-                            U = ApplyPatternDressupsBatched(
-                                *cg, U, dressups, Xs,
-                                opt.topo_tolerance, feat.name + ":dress");
-                        } else {
-                            for (const InstanceXform& X : Xs) {
-                                U = ApplyPatternInstance(
-                                    *cg, U, dressups, X,
-                                    opt.topo_tolerance, feat.name + ":dress");
-                            }
-                        }
-                    }
-
-                    node = U;
-                    // A later pattern that nests THIS one (seed_to_pattern)
-                    // multiplies the free copies, mirroring the circular
-                    // arm's ring registration.
-                    FeatureToolInfo ti;
-                    ti.tool_node   = U;
-                    ti.base_node   = -1;
-                    ti.op_kind     = 'f';
-                    ti.equivariant = true;
-                    feature_tools[feat.id] = ti;
-                    pending_standalone.push_back(feat.id);
-                }
-                else if (pi.originals.empty()) {
-                    // No Original tool -> pattern the whole body.
-                    if (base_node < 0) {
-                        step_ok = false;
-                        return;
-                    }
-                    node = cg->AddOp("linear_pattern",
-                                      {base_node, d1, c1, s1, d2, c2, s2},
-                                      {}, feat.name);
-                } else if (onto_running) {
-                    // ZW3D: replay the seed group's CONTRIBUTION -- its Tool
-                    // seeds AND the dressups on them -- once per NON-seed
-                    // instance, each under the instance's rigid transform.
-                    // i=0 is the live, already-dressed seed group (in
-                    // base_node), so it is skipped; every other (i,j) cell
-                    // transforms the tools by its offset and re-applies the
-                    // dressups with the offset anchors, so a chamfer/fillet on
-                    // the seed is replicated onto each copy. This is the general
-                    // rigid image of the seed sub-graph -- no pos-0 cut, no
-                    // per-dressup special case (it subsumes both). FreeCAD never
-                    // sets pattern_onto_running, so its CombinePatternedTool
-                    // path below is unchanged.
-                    auto contribs = AssembleContributions(
-                        feat, feature_tools, feature_dressups);
-                    bool has_dressup    = false;
-                    bool all_equivariant = true;
-                    for (const auto& c : contribs) {
-                        if (c.is_tool) {
-                            if (!c.equivariant) all_equivariant = false;
-                        } else {
-                            has_dressup = true;
-                        }
-                    }
-                    if (!all_equivariant) {
-                        if (!out.err_msg.empty()) out.err_msg += "; ";
-                        out.err_msg += "pattern " + feat.name +
-                            " replicates a non-Blind (up-to) extrude by "
-                            "rigid transform; geometry may be wrong";
-                    }
-
-                    // Decide HOW to lower from the pattern's GEOMETRY, not from
-                    // the import-layer onto_running flag: a pure-tool, rigid-
-                    // equivariant pattern needs no per-instance dressup re-
-                    // resolution, so it lowers to the SHARED linear_pattern op
-                    // (one n-ary instance union, see TopoAlgo_Ext) combined onto
-                    // the running body ONCE per tool -- instead of N sequential
-                    // per-instance booleans. The seed copy (i=0) is already in
-                    // base_node; fusing/cutting the full instance set (which
-                    // includes the coincident seed) over it is idempotent. Only
-                    // patterns that carry a per-instance dressup, or a non-
-                    // equivariant tool, fall back to the per-instance expansion.
-                    if (all_equivariant) {
-                        // Phase 1: replicate every tool with a single
-                        // feature_pattern op -- an n-ary instance union plus ONE
-                        // boolean against the running body, folded into one op.
-                        // Replaces count1*count2 sequential tool booleans, AND
-                        // (vs the old linear_pattern + cut/fuse pair) rebuilds as
-                        // a single FeaturePattern node rather than two nodes.
-                        int acc = base_node;
-                        for (const auto& c : contribs) {
-                            if (!c.is_tool) continue;
-                            // op_kind: 0 = fuse (boss), 1 = cut (hole). Plain
-                            // feat.name desc (no :pat/:inst suffix) keeps a
-                            // no-dressup pattern out of encapsulate_patterns, so
-                            // it stays one clean node on rebuild.
-                            int ok = cg->AddConst(
-                                (c.op_kind == 'c') ? 1 : 0, "op_kind");
-                            acc = cg->AddOp(
-                                "feature_pattern",
-                                {acc, c.tool_node, ok, d1, c1, s1, d2, c2, s2},
-                                {}, feat.name);
-                        }
-                        // Phase 2: per-instance dressups (chamfer/fillet). All
-                        // tools are present on `acc` now and pattern instances
-                        // occupy DISJOINT regions, so re-resolving + applying
-                        // each copy's dressup on the unified body is equivalent
-                        // to interleaving it between the booleans (resolve is
-                        // geometric, not index-based) -- without paying N
-                        // sequential tool fuses.
-                        //
-                        // The seed (i=0,j=0) is NOT skipped here, unlike the
-                        // per-instance path below. There, base_node carries the
-                        // seed dressup untouched. Here, Phase 1 re-fused the
-                        // raw (un-dressed) seed tool over base_node -- the
-                        // n-ary linear_pattern includes the i=0 instance -- so a
-                        // CONVEX seed chamfer/fillet (which removes material) got
-                        // refilled and must be re-applied. Re-applying is safe
-                        // for the concave case too: that dressup added material
-                        // outside the raw tool, so it survived Phase 1, and the
-                        // i=0 re-resolve simply misses the now-gone sharp edge
-                        // and no-ops. (Without this, R2900_20's first chamfer --
-                        // a 0.2 mm convex chamfer on a patterned 0.4 mm boss --
-                        // silently vanished.)
-                        if (has_dressup) {
-                            std::vector<Contribution> dressups;
-                            for (const auto& c : contribs)
-                                if (!c.is_tool) dressups.push_back(c);
-                            brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
-                            brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
-                            double l2sq = p.dir2[0] * p.dir2[0]
-                                        + p.dir2[1] * p.dir2[1]
-                                        + p.dir2[2] * p.dir2[2];
-                            int eff2 = (l2sq > 1e-30 && p.count2 > 1)
-                                            ? (int)p.count2 : 1;
-                            std::vector<InstanceXform> Xs;
-                            for (int i = 0; i < (int)p.count1; ++i) {
-                                for (int j = 0; j < eff2; ++j) {
-                                    InstanceXform X;
-                                    for (int k = 0; k < 3; ++k)
-                                        X.offset[k] = i * p.spacing1 * u1[k]
-                                                    + j * p.spacing2 * u2[k];
-                                    Xs.push_back(X);
-                                }
-                            }
-                            // Batch all instances' dressup edges into ONE
-                            // fillet/chamfer per contribution (one body rebuild)
-                            // instead of N. Per-instance fallback under the gate.
-                            if (pattern_cluster_on()) {
-                                acc = ApplyPatternDressupsBatched(
-                                    *cg, acc, dressups, Xs,
-                                    opt.topo_tolerance, feat.name + ":dress");
-                            } else {
-                                for (const InstanceXform& X : Xs) {
-                                    acc = ApplyPatternInstance(
-                                        *cg, acc, dressups, X,
-                                        opt.topo_tolerance,
-                                        feat.name + ":dress");
-                                }
-                            }
-                        }
-                        node = acc;
-                    } else {
-                    brepgraph::Vec3 u1 = NormalizedDir(p.dir1);
-                    brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
-                    double l2sq = p.dir2[0] * p.dir2[0]
-                                + p.dir2[1] * p.dir2[1]
-                                + p.dir2[2] * p.dir2[2];
-                    int eff2 = (l2sq > 1e-30 && p.count2 > 1) ? (int)p.count2 : 1;
-                    std::vector<InstanceXform> Xs;
-                    for (int i = 0; i < (int)p.count1; ++i) {
-                        for (int j = 0; j < eff2; ++j) {
-                            if (i == 0 && j == 0) {
-                                continue;   // the live seed group
-                            }
-                            InstanceXform X;   // linear -> pure translation
-                            for (int k = 0; k < 3; ++k)
-                                X.offset[k] = i * p.spacing1 * u1[k]
-                                            + j * p.spacing2 * u2[k];
-                            Xs.push_back(X);
-                        }
-                    }
-                    // Cluster copies + single combine onto base (see
-                    // ApplyPatternClustered); per-instance fallback otherwise.
-                    int clustered = pattern_cluster_on()
-                        ? ApplyPatternClustered(*cg, base_node, contribs, Xs,
-                                                feat.name + ":clust")
-                        : -1;
-                    if (clustered >= 0) {
-                        node = clustered;
-                    } else {
-                        int acc = base_node;
-                        for (const InstanceXform& X : Xs) {
-                            acc = ApplyPatternInstance(*cg, acc, contribs, X,
-                                                       opt.topo_tolerance,
-                                                       feat.name + ":inst");
-                        }
-                        node = acc;
-                    }
-                    }
-                } else {
-                    int pat = cg->AddOp("linear_pattern",
-                                         {pi.originals[0].tool_node, d1, c1, s1, d2, c2, s2},
-                                         {}, feat.name);
-                    node = CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
-                }
-            }
-
-            // ---- CircularPattern ----
-            //
-            // Target resolution priority:
-            //   1. PartDesign Originals (input_feature_ids entries
-            //      with Role::Tool) -- multiply each Original's
-            //      tool, then combine with its base via op_kind.
-            //      This is the PartDesign::PolarPattern path.
-            //   2. Draft polar Array's Base link, pre-resolved by the
-            //      Reader and pushed into input_feature_ids with
-            //      Role::PatternTarget. Pattern that feature's body
-            //      shape directly. The pre-resolution in the Reader
-            //      means this doesn't depend on emission order -- a
-            //      Draft Array sitting after later bodies still
-            //      patterns the linked target rather than whatever
-            //      the running tip happens to be.
-            //   3. base_node -- body chain pred for body-owned
-            //      Patterns; -1 / errors out for everyone else.
-            else if constexpr (std::is_same_v<T, FeatPayloadCircularPattern>)
-            {
-                brepgraph::Vec3 origin = {p.axis_origin[0],
-                                         p.axis_origin[1],
-                                         p.axis_origin[2]};
-                brepgraph::Vec3 axis   = {p.axis_dir[0],
-                                         p.axis_dir[1],
-                                         p.axis_dir[2]};
-                int o = cg->AddConst(origin, "axis_origin");
-                int a = cg->AddConst(axis,   "axis_dir");
-                int c = cg->AddConst((int)p.count, "count");
-                int t = cg->AddConst(p.total_angle, "total_angle");
-
-                auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes);
-                const bool onto_running =
-                    ExtParam(feat, "pattern_onto_running", 0.0) != 0.0
-                    && base_node >= 0;
-                PAT_LOG("[pat] CIRCULAR feat=%s id=%u originals=%zu onto_running=%d "
-                        "base_node=%d count=%d\n",
-                        feat.name.c_str(), feat.id, pi.originals.size(),
-                        (int)onto_running, base_node, (int)p.count);
-
-                if (pi.originals.empty()) {
-                    int target = (pi.body_target >= 0) ? pi.body_target
-                                                        : base_node;
-                    if (target < 0) { step_ok = false; return; }
-                    node = cg->AddOp("circular_pattern",
-                                      {target, o, a, c, t}, {}, feat.name);
-                } else if (onto_running) {
-                    // ZW3D: replay the seed group's CONTRIBUTION (its Tool seeds
-                    // AND the dressups on them) once per NON-seed instance, each
-                    // under that instance's rigid ROTATION about the axis. i=0 is
-                    // the live, already-dressed seed (in base_node) so it is
-                    // skipped. Mirrors the linear onto_running path; only the
-                    // per-instance transform differs (rotation vs translation),
-                    // reusing the shared per-instance machinery. Per-instance
-                    // (one fuse per copy onto the running body) is more robust
-                    // than the n-ary union for many overlapping thin copies.
-                    auto contribs = AssembleContributions(
-                        feat, feature_tools, feature_dressups);
-                    // step MUST match TopoAlgo_Ext::CircularPattern (angle/count).
-                    double step = (p.count > 1)
-                        ? (p.total_angle / static_cast<double>(p.count)) : 0.0;
-                    // Push each copy p.penetration into the body along -axis_dir
-                    // so the thin coplanar boss base overlaps the body (a pure
-                    // coplanar contact does not fuse at mm scale).
-                    brepgraph::Vec3 pen = {-p.penetration * axis[0],
-                                           -p.penetration * axis[1],
-                                           -p.penetration * axis[2]};
-                    std::vector<InstanceXform> Xs;
-                    for (int i = 1; i < (int)p.count; ++i) {
-                        InstanceXform X;
-                        X.is_rotation = true;
-                        X.axis_origin = origin;
-                        X.axis_dir    = axis;
-                        X.angle       = step * i;
-                        X.post_offset = pen;
-                        Xs.push_back(X);
-                    }
-                    // Cluster the copies into one sub-body + a single combine
-                    // onto the base instead of N fuses onto the growing body
-                    // (see ApplyPatternClustered). Falls back to per-instance
-                    // when a dressup / mixed op_kind needs the running body.
-                    int clustered = pattern_cluster_on()
-                        ? ApplyPatternClustered(*cg, base_node, contribs, Xs,
-                                                feat.name + ":clust")
-                        : -1;
-                    if (clustered >= 0) {
-                        node = clustered;
-                    } else {
-                        int acc = base_node;
-                        for (const InstanceXform& X : Xs) {
-                            acc = ApplyPatternInstance(*cg, acc, contribs, X,
-                                                       opt.topo_tolerance,
-                                                       feat.name + ":inst");
-                        }
-                        node = acc;
-                    }
-
-                    // Register this circular pattern as a reusable TOOL so a
-                    // LATER pattern can NEST it -- a pattern of a pattern, e.g.
-                    // R2900_50's Pattern4 (linear) copies Pattern3's whole RING.
-                    // The tool node is the ISOLATED instance union (an n-ary
-                    // circular_pattern op, which already includes the i=0 seed),
-                    // NOT `node` (that ring is already fused into the body). The
-                    // outer pattern then lowers as linear_pattern(this ring) and
-                    // replicates the entire ring. Built from the tool contributions
-                    // only; a dressup on the seed is not carried into the nested
-                    // copy (known limitation). The extra node is orphaned (never
-                    // pulled) unless a later pattern actually references it, so a
-                    // non-nested circular pattern pays nothing.
-                    {
-                        int  ring    = -1;
-                        char ring_op = 'f';
-                        for (const auto& cc : contribs) {
-                            if (!cc.is_tool) { continue; }
-                            int cpn = cg->AddOp("circular_pattern",
-                                                {cc.tool_node, o, a, c, t}, {},
-                                                feat.name + ":toolring");
-                            ring = (ring < 0)
-                                 ? cpn
-                                 : cg->AddOp("fuse", {ring, cpn}, {},
-                                             feat.name + ":toolring");
-                            ring_op = cc.op_kind;
-                        }
-                        if (ring >= 0) {
-                            FeatureToolInfo ti;
-                            ti.tool_node   = ring;
-                            ti.base_node   = base_node;
-                            ti.op_kind     = (ring_op == 'c') ? 'c' : 'f';
-                            ti.equivariant = true;
-                            feature_tools[feat.id] = ti;
-                        }
-                    }
-                } else {
-                    int pat = cg->AddOp("circular_pattern",
-                                         {pi.originals[0].tool_node, o, a, c, t},
-                                         {}, feat.name);
-                    node = CombinePatternedTool(*cg, pi.originals[0], pat, feat.name);
-                }
-            }
-
-            // ---- MultiTransform ----
-            //
-            // FreeCAD's MultiTransform applies a chain of Mirror /
-            // LinearPattern / CircularPattern in order. Each step's
-            // effect must include the result of the previous step
-            // (FreeCAD's cartesian-product trsf semantics is order-
-            // equivalent to "chain ops whose result includes the
-            // input"), so each Mirror step here is materialised as
-            // fuse(cur, mirror(cur)) -- mirror op alone returns only
-            // the mirror image. LinearPattern / CircularPattern ops
-            // already include the original in their result.
-            //
-            // When Originals = [F1..Fn] is set every original
-            // contributes its own chained pattern -- previously only
-            // origs[0] was honored, which silently dropped the rest
-            // (see Page_023 where Originals = [Pad..Pad003, Pocket]
-            // collapsed to "just Pad patterned" and the stacked pad
-            // layers + pocket holes disappeared). Each Fi.tool is
-            // already at position 0 within base_node (it was applied
-            // when Fi was replayed), so re-applying the
-            // full pattern (which includes position 0) is idempotent
-            // for fuse / cut and only the new positions land on body.
-            else if constexpr (std::is_same_v<T, FeatPayloadMultiTransform>)
-            {
-                auto apply_chain = [&](int input_node, const std::string& tag) -> int
-                {
-                    int cur = input_node;
-                    for (size_t si = 0; si < p.steps.size(); ++si)
-                    {
-                        const auto& s = p.steps[si];
-                        std::string step_name = tag + ":step" + std::to_string(si);
-                        if (s.kind == MultiTransformStep::Kind::Mirror)
-                        {
-                            brepgraph::Vec3 origin = {s.plane_origin[0],
-                                                     s.plane_origin[1],
-                                                     s.plane_origin[2]};
-                            brepgraph::Vec3 normal = {s.plane_normal[0],
-                                                     s.plane_normal[1],
-                                                     s.plane_normal[2]};
-                            cur = AddMirrorWithOriginal(*cg, cur, origin, normal,
-                                                        step_name);
-                        }
-                        else if (s.kind == MultiTransformStep::Kind::LinearPattern)
-                        {
-                            brepgraph::Vec3 dir1 = {s.dir1[0], s.dir1[1], s.dir1[2]};
-                            brepgraph::Vec3 dir2 = {s.dir2[0], s.dir2[1], s.dir2[2]};
-                            int d1 = cg->AddConst(dir1, "dir1");
-                            int c1 = cg->AddConst((int)s.count1, "count1");
-                            int sp1= cg->AddConst(s.spacing1,    "spacing1");
-                            int d2 = cg->AddConst(dir2, "dir2");
-                            int c2 = cg->AddConst((int)s.count2, "count2");
-                            int sp2= cg->AddConst(s.spacing2,    "spacing2");
-                            cur = cg->AddOp("linear_pattern",
-                                             {cur, d1, c1, sp1, d2, c2, sp2},
-                                             {}, step_name);
-                        }
-                        else  // CircularPattern
-                        {
-                            brepgraph::Vec3 origin = {s.axis_origin[0],
-                                                     s.axis_origin[1],
-                                                     s.axis_origin[2]};
-                            brepgraph::Vec3 axis   = {s.axis_dir[0],
-                                                     s.axis_dir[1],
-                                                     s.axis_dir[2]};
-                            int o = cg->AddConst(origin, "axis_origin");
-                            int a = cg->AddConst(axis,   "axis_dir");
-                            int c = cg->AddConst((int)s.count,    "count");
-                            int t = cg->AddConst(s.total_angle,   "total_angle");
-                            cur = cg->AddOp("circular_pattern",
-                                             {cur, o, a, c, t},
-                                             {}, step_name);
-                        }
-                    }
-                    return cur;
-                };
-
-                // Reader does not emit Role::PatternTarget on
-                // MultiTransform (only Draft polar Arrays carry it),
-                // so pi.body_target is always -1 here. Flow through
-                // the helper anyway for shape consistency.
-                auto pi = ResolvePatternInputs(feat, feature_tools,
-                                               feature_nodes);
-
-                if (pi.originals.empty())
-                {
-                    if (base_node < 0)
-                    {
-                        step_ok = false;
-                        return;
-                    }
-                    node = apply_chain(base_node, feat.name);
-                }
-                else
-                {
-                    if (base_node < 0)
-                    {
-                        step_ok = false;
-                        return;
-                    }
-                    int body = base_node;
-                    for (size_t fi = 0; fi < pi.originals.size(); ++fi)
-                    {
-                        std::string tag = feat.name + ":orig"
-                                        + std::to_string(fi);
-                        int pat = apply_chain(pi.originals[fi].tool_node, tag);
-                        const char* op_name =
-                            (pi.originals[fi].op_kind == 'c') ? "cut" : "fuse";
-                        body = cg->AddOp(op_name, {body, pat}, {},
-                                          tag + ":combine");
-                    }
-                    node = body;
-                }
-            }
-
-            // ---- Boolean (Part::Cut / Fuse / Common / MultiFuse /
-            //              MultiCommon) ----
-            //
-            // The operand list lives in FeatureIR::input_feature_ids
-            // with Role::Operand on each entry (P3.3.B). Collect them
-            // in declaration order, look each one up in feature_nodes,
-            // and fold pairwise. For Cut the first operand is the
-            // kept base; for Fuse / Common the order only matters for
-            // graph layout. The boolean's result is committed to
-            // feature_nodes under this feature's id, so a downstream
-            // Fillet / pattern that names this id as its Role::Base
-            // input picks it up via ResolveBaseNode.
-            else if constexpr (std::is_same_v<T, FeatPayloadBoolean>)
-            {
-                (void)p; // empty payload; data lives in feat.input_*
-
-                std::vector<uint32_t> operands;
-                operands.reserve(feat.input_feature_ids.size());
-                for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
-                {
-                    InputRole role = (i < feat.input_roles.size())
-                                        ? feat.input_roles[i]
-                                        : InputRole::Base;
-                    if (role == InputRole::Operand) {
-                        operands.push_back(feat.input_feature_ids[i]);
-                    }
-                }
-
-                if (operands.size() < 2)
-                {
-                    step_ok     = false;
-                    out.err_msg = "boolean " + feat.name +
-                                  " needs at least 2 operands, got " +
-                                  std::to_string(operands.size());
-                    return;
-                }
-
-                const char* op = "fuse";
-                if (feat.type == FeatType::Cut)    op = "cut";
-                if (feat.type == FeatType::Common) op = "common";
-
-                int cur = -1;
-                for (size_t oi = 0; oi < operands.size(); ++oi)
-                {
-                    auto nit = feature_nodes.find(operands[oi]);
-                    if (nit == feature_nodes.end())
-                    {
-                        step_ok = false;
-                        out.err_msg = "boolean " + feat.name +
-                                      " operand " + std::to_string(oi) +
-                                      " (feature id " +
-                                      std::to_string(operands[oi]) +
-                                      ") has no replayed shape";
-                        return;
-                    }
-                    if (cur < 0) {
-                        cur = nit->second;
-                    } else {
-                        std::string tag = feat.name;
-                        if (oi + 1 < operands.size()) {
-                            tag += ":fold" + std::to_string(oi);
-                        }
-                        cur = cg->AddOp(op, {cur, nit->second}, {}, tag);
-                    }
-                }
-                node = cur;
-            }
-
-            // ---- Link (Assembly4 part instance) ----
-            //
-            // The sub-doc's features were inlined by FreeCadReader's
-            // App::Link branch ahead of this Link feature, so by the
-            // time we visit the Link the sub-tip has already been
-            // replayed and feature_nodes[link.sub_tip_feature_id]
-            // holds its CalcGraph node. We layer the Link's baked
-            // placement on top: rotate(axis, angle) about the origin,
-            // then translate(p). FreeCAD-side LCS-pair solving has
-            // already collapsed every constr_* contribution into this
-            // single Placement, so no constraint evaluation is needed
-            // here.
-            //
-            // Identity-or-near-identity placements skip the ops
-            // entirely so the Link node is the sub-tip node verbatim,
-            // matching the "viewer sees the part exactly where the
-            // sub-doc puts it" intuition for the root part of an asm.
-            else if constexpr (std::is_same_v<T, FeatPayloadLink>)
-            {
-                int cur = base_node;
-
-                if (cur < 0 && p.sub_tip_feature_id != 0)
-                {
-                    // Defensive: a malformed doc with the Role::Base
-                    // input missing but sub_tip_feature_id set still
-                    // points us at the right sub-node.
-                    auto sit = feature_nodes.find(p.sub_tip_feature_id);
-                    if (sit != feature_nodes.end()) {
-                        cur = sit->second;
-                    }
-                }
-
-                if (cur < 0)
-                {
-                    // No sub-tip is a legitimate state, not an error:
-                    // layout-only sub-docs (Crankshaft.FCStd in
-                    // asm_Cylinders is the prototype -- App::Part
-                    // container holding sketches + LCS reference
-                    // frames but zero PartDesign Body) contribute no
-                    // geometry, so the Link should produce no
-                    // CalcGraph node. node stays at -1, feature_nodes
-                    // does not record an entry for this id, and
-                    // downstream features see "no upstream" which is
-                    // correct -- there is no upstream solid to
-                    // chain into.
-                    return;
-                }
-
-                const double k_eps_angle = 1e-12;
-                const double k_eps_pos   = 1e-15;
-
-                if (std::fabs(p.placement_angle) > k_eps_angle)
-                {
-                    brepgraph::Vec3 origin = {0.0, 0.0, 0.0};
-                    brepgraph::Vec3 axis   = {
-                        p.placement_ox, p.placement_oy, p.placement_oz };
-                    int o_n = cg->AddConst(origin, "link_origin");
-                    int d_n = cg->AddConst(axis,   "link_axis");
-                    int a_n = cg->AddConst(p.placement_angle, "link_angle");
-                    cur = cg->AddOp("rotate",
-                                    {cur, o_n, d_n, a_n}, {},
-                                    feat.name + ":link_rot");
-                }
-
-                if (std::fabs(p.placement_px) > k_eps_pos
-                    || std::fabs(p.placement_py) > k_eps_pos
-                    || std::fabs(p.placement_pz) > k_eps_pos)
-                {
-                    brepgraph::Vec3 off = {
-                        p.placement_px, p.placement_py, p.placement_pz };
-                    int o_n = cg->AddConst(off, "link_offset");
-                    cur = cg->AddOp("translate",
-                                    {cur, o_n}, {},
-                                    feat.name + ":link_tr");
-                }
-
-                node = cur;
-            }
-            else if constexpr (std::is_same_v<T, FeatPayloadAsmConstraint>)
-            {
-                // Geometry-free metadata: Phase 4 LCS-pair solver
-                // (when added) will read FeatPayloadAsmConstraint to
-                // compute a Link's Placement at edit time; today the
-                // Reader trusts FreeCAD's already-baked Placement and
-                // this payload contributes no CalcGraph node.
-                (void)p;
-            }
-
-            // ---- HoleWizard / PartDesign::Hole ----
-            //
-            // FreeCAD's Hole is rich: a cylindrical bore + optional
-            // counterbore / countersink / conical drill-point tip +
-            // optional threaded helix. Synthesising the right Cut
-            // shape from FeatPayloadHoleWizard's typed fields plus the
-            // ext_params bag (hole_cut_*, drill_point_*, thread_*) is
-            // a real chunk of work that this arm does NOT do today.
-            //
-            // Minimum-viable behaviour: if the source was a .FCStd
-            // (so doc.authored_shapes carries the FreeCAD-emitted
-            // post-Hole running body shape from the .brp dump), use
-            // that authored shape verbatim as this feature's node.
-            // The shape already includes everything up through and
-            // including the Hole operation, so downstream features
-            // in the same body chain see a correct running body. The
-            // standard authored-substitution fallback further down
-            // would also catch this, but it requires node>=0 first
-            // (i.e. an attempted-but-null cax replay); we never
-            // attempt here, so we have to seed the const node up
-            // front.
-            //
-            // No authored shape (raw .xml fixtures, or future readers
-            // that don't dump .brp): pass base_node through so the
-            // body chain still produces SOMETHING -- the body without
-            // the hole -- and record a diagnostic. Better than a
-            // hard fail on the whole document.
-            // ---- BakedShape (FreeCAD Part::Feature etc.) ----
-            //
-            // Same shape-from-authored mechanism as the HoleWizard
-            // arm below, but for features that carry NO synthesizable
-            // parameters at all in our IR. Geometry comes verbatim
-            // from doc.authored_shapes (the .brp dump). Drives
-            // Piston.FCStd's Fillet001_solid (a collapsed PartDesign
-            // body surfaced as a Part::Feature).
-            else if constexpr (std::is_same_v<T, FeatPayloadBakedShape>)
-            {
-                (void)p;
-                auto auth_it = doc.authored_shapes.find(feat.id);
-                if (auth_it != doc.authored_shapes.end() && auth_it->second)
-                {
-                    node = cg->AddConst(auth_it->second,
-                                        "baked_" + feat.name);
-                    // The baked shape IS the feature's authored tool --
-                    // register it so a mirror / pattern naming this
-                    // feature as an original can multiply it. R2900's
-                    // Mirror5 mirrors Revolve4_Base, an open-profile
-                    // revolve that only reconstructs as a BakedShape
-                    // (three revolve sheets); without this record the
-                    // mirror resolved no originals and was skipped.
-                    FeatureToolInfo ti;
-                    ti.tool_node = node;
-                    ti.base_node = base_node;
-                    ti.op_kind   = '0';
-                    feature_tools[feat.id] = ti;
-                }
-                else
-                {
-                    if (!out.err_msg.empty()) {
-                        out.err_msg += "; ";
-                    }
-                    out.err_msg +=
-                        "BakedShape " + feat.name +
-                        " has no authored shape; skipped";
-                }
-            }
-            else if constexpr (std::is_same_v<T, FeatPayloadHoleWizard>)
-            {
-                (void)p;
-                auto auth_it = doc.authored_shapes.find(feat.id);
-                if (auth_it != doc.authored_shapes.end() && auth_it->second)
-                {
-                    node = cg->AddConst(auth_it->second,
-                                        "authored_hole_" + feat.name);
-                }
-                else if (base_node >= 0)
-                {
-                    node = base_node;
-                    if (!out.err_msg.empty()) {
-                        out.err_msg += "; ";
-                    }
-                    out.err_msg +=
-                        "Hole " + feat.name +
-                        " has no authored .brp; chain continues without "
-                        "the hole geometry";
-                }
-                else
-                {
-                    if (!out.err_msg.empty()) {
-                        out.err_msg += "; ";
-                    }
-                    out.err_msg +=
-                        "Hole " + feat.name +
-                        " has neither authored .brp nor base shape; "
-                        "skipped";
-                }
-            }
-
-            // ---- Trim (ZW3D FtSolidSoloTrm 修剪) ----
-            //
-            // Split the Base-role body by the Tool-role body's faces and
-            // keep the (keep_pt, keep_dir) side; both inputs are consumed
-            // (the default input-consumption pass below handles that --
-            // ZW3D removes the trimming sheet from the part and the base
-            // is replaced by its kept side). 02-ear 修剪1: UV曲面1's skin
-            // cut by 拉伸1's extruded band, flux halves, tool vanishes.
-            else if constexpr (std::is_same_v<T, FeatPayloadTrim>)
-            {
-                std::vector<int> tool_nodes;
-                for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
-                {
-                    InputRole role = (i < feat.input_roles.size())
-                                         ? feat.input_roles[i]
-                                         : InputRole::Base;
-                    if (role != InputRole::Tool) {
-                        continue;
-                    }
-                    auto fit = feature_nodes.find(feat.input_feature_ids[i]);
-                    if (fit != feature_nodes.end() && fit->second >= 0) {
-                        tool_nodes.push_back(fit->second);
-                    }
-                }
-                if (base_node < 0 || tool_nodes.empty())
-                {
-                    if (!out.err_msg.empty()) {
-                        out.err_msg += "; ";
-                    }
-                    out.err_msg += "trim " + feat.name +
-                                   (base_node < 0
-                                        ? " has no base body; skipped"
-                                        : " resolved no tool body; skipped");
-                }
-                else
-                {
-                    int tool_n = tool_nodes[0];
-                    if (tool_nodes.size() > 1) {
-                        tool_n = cg->AddOp("merge", {}, tool_nodes,
-                                           feat.name + ":tools");
-                    }
-                    brepgraph::Vec3 kp = {p.keep_pt[0], p.keep_pt[1],
-                                          p.keep_pt[2]};
-                    brepgraph::Vec3 kd = {p.keep_dir[0], p.keep_dir[1],
-                                          p.keep_dir[2]};
-                    int kp_n = cg->AddConst(kp, "keep_pt");
-                    int kd_n = cg->AddConst(kd, "keep_dir");
-                    int mu_n = cg->AddConst(p.mutual ? 1.0 : 0.0, "mutual");
-                    node = cg->AddOp("trim",
-                                     {base_node, tool_n, kp_n, kd_n, mu_n},
-                                     {}, feat.name + ":trim");
-                    // ZW3D modifies the trimmed lineage IN PLACE: any
-                    // later feature naming the BASE feature means its
-                    // post-trim state. Redirect the base id's node (and
-                    // its tool record, for mirrors of the trimmed skin)
-                    // to the trim result.
-                    for (size_t i = 0; i < feat.input_feature_ids.size();
-                         ++i)
-                    {
-                        InputRole role = (i < feat.input_roles.size())
-                                             ? feat.input_roles[i]
-                                             : InputRole::Base;
-                        if (role != InputRole::Base) {
-                            continue;
-                        }
-                        const uint32_t bid = feat.input_feature_ids[i];
-                        feature_nodes[bid] = node;
-                        auto tit = feature_tools.find(bid);
-                        if (tit != feature_tools.end()) {
-                            tit->second.tool_node = node;
-                        }
-                        break;
-                    }
-                    // The trimmed sheet is itself a multipliable tool
-                    // (mirror-of-trimmed-skin), same registration as the
-                    // BakedShape arm.
-                    FeatureToolInfo ti;
-                    ti.tool_node = node;
-                    ti.base_node = -1;
-                    ti.op_kind   = '0';
-                    feature_tools[feat.id] = ti;
-                }
-            }
-
-            // ---- Sew (CdShapeSew 缝合 / sheet FtBoolSoloAdd 组合-添加) --
-            // Join Base + Tool sheets into one shell, solidifying closed
-            // results. Tools are consumed; the BASE lineage is redirected
-            // to the sewn body (later features naming the base mean its
-            // post-sew state). 02-ear: 缝合3 merges the dome skins, then
-            // 组合1_添加 sews wall band + dome closed -> the final solid.
-            else if constexpr (std::is_same_v<T, FeatPayloadSew>)
-            {
-                std::vector<int> tool_nodes;
-                for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
-                {
-                    InputRole role = (i < feat.input_roles.size())
-                                         ? feat.input_roles[i]
-                                         : InputRole::Base;
-                    if (role != InputRole::Tool) {
-                        continue;
-                    }
-                    auto fit = feature_nodes.find(feat.input_feature_ids[i]);
-                    if (fit != feature_nodes.end() && fit->second >= 0) {
-                        tool_nodes.push_back(fit->second);
-                    }
-                    else
-                    {
-                        std::fprintf(stderr,
-                            "[sewwire] %s tool feat=%u UNRESOLVED (%s)\n",
-                            feat.name.c_str(), feat.input_feature_ids[i],
-                            fit == feature_nodes.end() ? "no node entry"
-                                                       : "node < 0");
-                        std::fflush(stderr);
-                    }
-                }
-                if (base_node < 0 || tool_nodes.empty())
-                {
-                    if (!out.err_msg.empty()) {
-                        out.err_msg += "; ";
-                    }
-                    out.err_msg += "sew " + feat.name +
-                                   (base_node < 0
-                                        ? " has no base body; skipped"
-                                        : " resolved no tool body; skipped");
-                }
-                else
-                {
-                    int tool_n = tool_nodes[0];
-                    if (tool_nodes.size() > 1) {
-                        tool_n = cg->AddOp("merge", {}, tool_nodes,
-                                           feat.name + ":tools");
-                    }
-                    int tol_n = cg->AddConst(p.tolerance, "tol");
-                    node = cg->AddOp("sew", {base_node, tool_n, tol_n}, {},
-                                     feat.name + ":sew");
-                    for (size_t i = 0; i < feat.input_feature_ids.size();
-                         ++i)
-                    {
-                        InputRole role = (i < feat.input_roles.size())
-                                             ? feat.input_roles[i]
-                                             : InputRole::Base;
-                        if (role != InputRole::Base) {
-                            continue;
-                        }
-                        const uint32_t bid = feat.input_feature_ids[i];
-                        feature_nodes[bid] = node;
-                        auto tit = feature_tools.find(bid);
-                        if (tit != feature_tools.end()) {
-                            tit->second.tool_node = node;
-                        }
-                        break;
-                    }
-                    FeatureToolInfo ti;
-                    ti.tool_node = node;
-                    ti.base_node = -1;
-                    ti.op_kind   = '0';
-                    feature_tools[feat.id] = ti;
-                }
-            }
-
-            // ---- Not implemented yet ----
-            else
-            {
-                // Native Assembly WB joints carry a FeatPayloadOpaque
-                // (no dedicated payload type) but are a deliberate
-                // geometry-free no-op, not an unimplemented gap: the
-                // joint graph lives in ext_strings/ext_params and the
-                // solved part poses are already baked onto each Body's
-                // Placement, so this feature contributes no CalcGraph
-                // node. Skip silently instead of logging a spurious
-                // "skipped unimplemented feature" warning. Genuine
-                // unknown features keep FeatType::Unknown and still
-                // surface the diagnostic below.
-                if (feat.type == FeatType::Joint)
-                {
-                    return;
-                }
-
-                std::ostringstream oss;
-                oss << "skipped unimplemented feature: " << feat.name
-                    << " (type=" << (int)feat.type << ")";
-                if (!out.err_msg.empty()) {
-                    out.err_msg += "; ";
-                }
-                out.err_msg += oss.str();
-            }
-        }, feat.data);
+        std::visit(FeatureVisitor{ cg, doc, opt, out, sketch_face_nodes,
+                                   resolve_back, feature_tools, feature_dressups,
+                                   feature_nodes, pending_standalone,
+                                   feat, base_node, node, step_ok },
+                   feat.data);
 
         if (node >= 0)
         {
