@@ -13,11 +13,17 @@
 
 #include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
+#include <Geom_Curve.hxx>
+#include <GeomAPI_ProjectPointOnCurve.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Compound.hxx>
+#include <TopoDS_Edge.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
+#include <TopoDS_Wire.hxx>
 #include <TopAbs.hxx>
+#include <TopExp_Explorer.hxx>
 #include <gp_Pnt.hxx>
 
 namespace brepgraph
@@ -541,6 +547,40 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(shp);
 		},
 		{true, false, false, false});
+
+	// Find the nearest edge in a shape to a given pick point, returned as
+	// a single-edge wire.  Used by the ZW3D sweep reader when the path is a
+	// body edge (the plugin only exports the pick point, not the curve).
+	// Uses the midpoint of the parametric range: for a boss rim circle
+	// (radius R from pick point) this gives distance R, correctly beating
+	// any long straight edge whose midpoint is further away.  Empirically,
+	// this produces the closest result to ZW3D truth on R2900.
+	reg.Define("edge_pick_wire", {"shape", "pick_x", "pick_y", "pick_z"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto sv = ctx.GetShape(0);
+			if (!sv.shape) return {};
+			double px = ctx.Num(1), py = ctx.Num(2), pz = ctx.Num(3);
+			gp_Pnt pick(px, py, pz);
+
+			const TopoDS_Shape& base = sv.shape->GetShape();
+			double      best_d = 1e30;
+			TopoDS_Edge best;
+
+			for (TopExp_Explorer ex(base, TopAbs_EDGE); ex.More(); ex.Next()) {
+				const TopoDS_Edge& e = TopoDS::Edge(ex.Current());
+				double t0, t1;
+				Handle(Geom_Curve) c = BRep_Tool::Curve(e, t0, t1);
+				if (c.IsNull()) continue;
+				double d = c->Value((t0 + t1) * 0.5).Distance(pick);
+				if (d < best_d) { best_d = d; best = e; }
+			}
+
+			if (best.IsNull()) return {};
+			BRepBuilderAPI_MakeWire mw(best);
+			if (!mw.IsDone()) return {};
+			return MakeShapeVal(
+				std::make_shared<brepkit::TopoShape>(mw.Wire()));
+		});
 
 	// "sketch_face" is registered by cadapp::RegisterSketchOps -- it
 	// is the only op that needs to know a concrete IR type (cadapp::

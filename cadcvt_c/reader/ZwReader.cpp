@@ -1324,9 +1324,37 @@ struct ZwBuildCtx
     std::vector<PriorProfile>&              prior_profiles;
     std::unordered_map<uint32_t, uint32_t>& seed_to_pattern;
     std::unordered_map<uint32_t, ZwDressupSeed>& feat_dressup;    // dress-up seeds, for pattern-of-dress-up
+    // Body-lineage redirection. ZW3D mutates a body IN PLACE: 缝合/修剪/组合
+    // (sew/trim/combine) all keep the SAME body entity, and their Base /
+    // Operator fields reference it by its ROOT feature id no matter how
+    // many in-place ops have run since. The cax IR, by contrast, gives
+    // every feature its own node, so a raw ref to the root reaches the
+    // STALE pre-op geometry AND leaves the intervening op un-consumed --
+    // it re-emits as a phantom body. lineage_tip[root] = the latest feature
+    // that superseded that lineage; ResolveTip follows the chain so a ref to
+    // the root (or any intermediate) lands on the current tip. Updated by
+    // each in-place op below, after it wires its (already-resolved) inputs.
+    std::unordered_map<uint32_t, uint32_t>& lineage_tip;
     const std::string&                      doc_dir;              // dir of the .cax.json
     const std::string&                      path;                 // path of the .cax.json
 };
+
+
+// Follow the in-place body-lineage chain so a ref to a body's ROOT feature
+// (or any intermediate in-place op) resolves to the current tip. See the
+// lineage_tip note in ZwBuildCtx.
+static uint32_t ResolveTip(const std::unordered_map<uint32_t, uint32_t>& lineage_tip,
+                           uint32_t fid)
+{
+    uint32_t           cur = fid;
+    std::set<uint32_t> seen;
+    auto               it = lineage_tip.find(cur);
+    while (it != lineage_tip.end() && seen.insert(cur).second) {
+        cur = it->second;
+        it  = lineage_tip.find(cur);
+    }
+    return cur;
+}
 
 
 static bool TryBuildCdGeomCopy(ZwBuildCtx& ctx)
@@ -2076,7 +2104,22 @@ static bool TryBuildFtAllSwp1(ZwBuildCtx& ctx)
             }
         }
 
-        if (spine_ok)
+        // Body-edge path: the plugin could not export the curve
+        // (on_crv=0, parent=0 in _diag path_rows) and only kept
+        // the pick POINT in field id=2 type="point".  Store the
+        // pick coordinates so the Replayer can find the nearest
+        // edge in the running body at eval time.
+        bool   edge_pick_ok = false;
+        double edge_pick[3] = { 0.0, 0.0, 0.0 };
+        if (!spine_ok && !jf.contains("path") &&
+            !jf.contains("path_sketch"))
+        {
+            if (FieldPoint(jf, 2, edge_pick)) {
+                edge_pick_ok = true;
+            }
+        }
+
+        if (spine_ok || edge_pick_ok)
         {
             const uint32_t prof_fid  = 1000000u + id;
             const uint32_t spine_fid = 1500000u + id;
@@ -2094,18 +2137,6 @@ static bool TryBuildFtAllSwp1(ZwBuildCtx& ctx)
             psf.data = std::move(pspl);
             out.features.push_back(std::move(psf));
 
-            spine.feature_id = spine_fid;
-            spine.name       = name + ":spine";
-            out.sketches.push_back(std::move(spine));
-            cadapp::FeatPayloadSketch sspl;
-            sspl.sketch_id = spine_fid;
-            cadapp::FeatureIR ssf;
-            ssf.id   = spine_fid;
-            ssf.type = cadapp::FeatType::Sketch;
-            ssf.name = name + ":spine";
-            ssf.data = std::move(sspl);
-            out.features.push_back(std::move(ssf));
-
             cadapp::FeatPayloadSweep swp;
             swp.profile_sketch_id = prof_fid;
             cadapp::FeatureIR sf;
@@ -2113,9 +2144,34 @@ static bool TryBuildFtAllSwp1(ZwBuildCtx& ctx)
             sf.name = name;
             sf.type = cadapp::FeatType::Sweep;
             sf.data = std::move(swp);
-            sf.ext_strings["zw_type"]        = zt;
-            sf.ext_params["spine_sketch_id"] = (double)spine_fid;
-            sf.ext_params["sweep_solid"]     = 1.0;
+            sf.ext_strings["zw_type"] = zt;
+            sf.ext_params["sweep_solid"] = 1.0;
+
+            if (spine_ok)
+            {
+                spine.feature_id = spine_fid;
+                spine.name       = name + ":spine";
+                out.sketches.push_back(std::move(spine));
+                cadapp::FeatPayloadSketch sspl;
+                sspl.sketch_id = spine_fid;
+                cadapp::FeatureIR ssf;
+                ssf.id   = spine_fid;
+                ssf.type = cadapp::FeatType::Sketch;
+                ssf.name = name + ":spine";
+                ssf.data = std::move(sspl);
+                out.features.push_back(std::move(ssf));
+                sf.ext_params["spine_sketch_id"] = (double)spine_fid;
+            }
+            else
+            {
+                // edge_pick_ok: path is a body edge; store the
+                // world pick point (raw mm × s = metres) for the
+                // Replayer's edge_pick_wire calc-graph node.
+                sf.ext_params["edge_pick_x"] = edge_pick[0] * s;
+                sf.ext_params["edge_pick_y"] = edge_pick[1] * s;
+                sf.ext_params["edge_pick_z"] = edge_pick[2] * s;
+            }
+
             PushInput(sf, running_solid_id, cadapp::InputRole::Base);
             out.features.push_back(std::move(sf));
             running_solid_id = id;
@@ -2897,20 +2953,12 @@ static bool TryBuildFtPtnFtr(ZwBuildCtx& ctx)
                             break;
                         }
                     }
-                    // Quilt signature: this pattern's boolean merged
-                    // the running SOLID chain with standalone SHEET
-                    // bodies. ZW3D's result is a dead non-manifold
-                    // composite excluded from the visible part (and
-                    // from every later state STEP) -- R2900 Pattern17
-                    // quilts the base plate with Mirror5's funnel
-                    // sheets at feat 100 and the 43.5k mm^3 plate
-                    // never reappears, while the replay kept emitting
-                    // it (+19% volume). Mark the pattern; the
-                    // Replayer drops the solid containing the
-                    // quilted sheets at emission.
-                    if (merges_sheets && merges_chain) {
-                        pf.ext_params["quilt_kill_running"] = 1.0;
-                    }
+                    // fld 62 operand consumption handled above.
+                    // (Quilt-kill logic removed: bisect showed that
+                    // truth _state keeps the plate at n_blanked=0
+                    // through feat 153; drop was incorrect.)
+                    (void)merges_sheets;
+                    (void)merges_chain;
                 }
 
                 // Record which pattern consumed each raw seed so a
@@ -3211,15 +3259,24 @@ static bool TryBuildFtSolidSoloTrm(ZwBuildCtx& ctx)
             tf.type = cadapp::FeatType::Trim;
             tf.data = std::move(pl);
             tf.ext_strings["zw_type"] = zt;
-            PushInput(tf, base_fid, cadapp::InputRole::Base);
+            // Redirect every ref to its current lineage tip:
+            // ZW3D names the root body even after in-place ops,
+            // so a raw ref reaches stale geometry and orphans
+            // the intervening op as a phantom body.
+            const uint32_t base_tip = ResolveTip(ctx.lineage_tip, base_fid);
+            PushInput(tf, base_tip, cadapp::InputRole::Base);
+            std::set<uint32_t> wired{ base_tip };
             for (uint32_t t : tool_fids) {
-                PushInput(tf, t, cadapp::InputRole::Tool);
+                const uint32_t tt = ResolveTip(ctx.lineage_tip, t);
+                if (wired.insert(tt).second) {
+                    PushInput(tf, tt, cadapp::InputRole::Tool);
+                }
             }
             out.features.push_back(std::move(tf));
-            // The trim replaces its base lineage in place; if
-            // that lineage was the running tip, the trim is the
-            // new tip.
-            if (running_solid_id == base_fid) {
+            // The trim supersedes its base lineage in place.
+            ctx.lineage_tip[base_tip] = id;
+            if (running_solid_id == base_tip ||
+                running_solid_id == base_fid) {
                 running_solid_id = id;
             }
             return true;
@@ -3322,13 +3379,23 @@ static bool TryBuildFtSew(ZwBuildCtx& ctx)
             sf.type = cadapp::FeatType::Sew;
             sf.data = std::move(pl);
             sf.ext_strings["zw_type"] = zt;
-            PushInput(sf, base_fid, cadapp::InputRole::Base);
+            // Redirect every ref to its current lineage tip
+            // (see the trim handler / lineage_tip note above):
+            // ZW3D names the root body even after in-place ops.
+            const uint32_t base_tip = ResolveTip(ctx.lineage_tip, base_fid);
+            PushInput(sf, base_tip, cadapp::InputRole::Base);
+            std::set<uint32_t> wired{ base_tip };
             for (uint32_t t : tool_fids) {
-                PushInput(sf, t, cadapp::InputRole::Tool);
+                const uint32_t tt = ResolveTip(ctx.lineage_tip, t);
+                if (wired.insert(tt).second) {
+                    PushInput(sf, tt, cadapp::InputRole::Tool);
+                }
             }
             out.features.push_back(std::move(sf));
-            // The sew replaces its base lineage in place.
-            if (running_solid_id == base_fid) {
+            // The sew supersedes its base lineage in place.
+            ctx.lineage_tip[base_tip] = id;
+            if (running_solid_id == base_tip ||
+                running_solid_id == base_fid) {
                 running_solid_id = id;
             }
             return true;
@@ -3820,6 +3887,11 @@ bool ZwReader::ReadFile(const std::string& path,
     // copyable tool solid).
     std::unordered_map<uint32_t, ZwDressupSeed> feat_dressup;
 
+    // Body-lineage tip per root feature id, for in-place sew/trim/combine
+    // ops that name the body's ROOT no matter how many ops ran since (see
+    // the lineage_tip note in ZwBuildCtx / ResolveTip).
+    std::unordered_map<uint32_t, uint32_t> lineage_tip;
+
     try
     {
         const auto& features = doc.at("document").at("features");
@@ -3902,7 +3974,7 @@ bool ZwReader::ReadFile(const std::string& path,
                                 running_solid_id, standalone_ids,
                                 standalone_sheet_ids, extrude_xy,
                                 prior_profiles, seed_to_pattern,
-                                feat_dressup,
+                                feat_dressup, lineage_tip,
                                 doc_dir, path };
 
                 // ZW-format feature builders, tried in order: each inspects

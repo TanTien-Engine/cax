@@ -617,9 +617,13 @@ void LoadAuthoredShapes(cadapp::DocumentIR& doc, double unit_scale)
 // Replays a COPY of the doc (Replay can mutate its input) with the same
 // options the editor's ZwLoader uses. Empty feature list (a K=0 probe)
 // yields a null shape and ok.
+// drop_hidden=false keeps source-hidden bodies in the emitted shape:
+// _state probes compare against per-feature truth that still contains
+// construction sheets which only blank/delete at the end of history.
 bool ReplayShape(const cadapp::DocumentIR& doc_in,
                  TopoDS_Shape&             out,
-                 std::string&              err)
+                 std::string&              err,
+                 bool                      drop_hidden = true)
 {
     out = TopoDS_Shape();
     if (doc_in.features.empty()) return true;
@@ -631,6 +635,7 @@ bool ReplayShape(const cadapp::DocumentIR& doc_in,
         cadapp::ReplayOptions opt;
         opt.write_back_resolved = false;
         opt.commit_versions     = false;
+        opt.drop_hidden         = drop_hidden;
         cadapp::ReplayResult res;
         replayer.Replay(doc, opt, res);
         if (!res.ok || !res.shape || res.shape->GetShape().IsNull())
@@ -700,7 +705,7 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
 
     TopoDS_Shape shape;
     std::string  err;
-    if (!ReplayShape(doc, shape, err))
+    if (!ReplayShape(doc, shape, err, /*drop_hidden=*/false))
     {
         // Empty-vs-empty is agreement, not failure: a prefix of pure
         // wireframe/datum features (02-ear opens with 16 of them) has no
@@ -793,12 +798,20 @@ ProbeOutcome ProbeAgainstState(const cadapp::DocumentIR& master,
             why += buf;
         }
     }
-    // "Has volume" must mean MEANINGFULLY positive: a pure-sheet state's
-    // flux garbage lands at ±1e-24 mm^3 with arbitrary sign (02-ear feat
-    // 12 recorded +4.8e-24 and the old >0 gate exploded vol_rel to 1e16).
-    // Scale the epsilon by the state's own bbox so tiny-but-real solids
-    // (sub-mm features) still qualify on small parts.
-    const double vol_eps = (tdiag > 0.0) ? 1e-9 * tdiag * tdiag * tdiag
+    // "Has volume" must mean MEANINGFULLY positive: the plugin's _state
+    // volume is the SIGNED sum over all bodies, where open sheets
+    // contribute orientation-dependent flux. Two failure shapes:
+    //   - pure-sheet states land at ±1e-24 mm^3 (02-ear feat 12 recorded
+    //     +4.8e-24; the old >0 gate exploded vol_rel to 1e16);
+    //   - mixed states can NEAR-CANCEL into a small positive residue
+    //     (02-ear feat 96: solids +3119 mm^3 + sheet flux -3114 = +4.5,
+    //     verified against state96.step whose solids measure 3118.66 --
+    //     the old 1e-9*d^3 gate took 4.5 as real and reported
+    //     vol_rel=835 of pure noise).
+    // 1e-4*d^3 keeps any plausible solid part (final visible volume here
+    // is 8e-3*d^3) while rejecting cancellation residues; states below
+    // it degrade to the area check, which is flux-immune.
+    const double vol_eps = (tdiag > 0.0) ? 1e-4 * tdiag * tdiag * tdiag
                                          : 1e-15;
     if (st.has_mass && st.volume * s3 > vol_eps)
     {
@@ -1130,8 +1143,14 @@ int main(int argc, char** argv)
         std::printf("INFO prefix max_feat=%ld ir_features=%zu/%zu\n",
                     max_feat, doc.features.size(), master.features.size());
 
+        // Truth-side convention split: state<K>.step files contain the
+        // VISIBLE bodies only (blanked bodies excluded, same as the final
+        // .cax.step), while the _state JSON metrics include them. So a
+        // prefix compared against a --step truth must drop hidden bodies;
+        // a bare prefix (eyeballed against _state metrics) must not.
         TopoDS_Shape shape;
-        if (!ReplayShape(doc, shape, err))
+        if (!ReplayShape(doc, shape, err,
+                         /*drop_hidden=*/!step_path.empty()))
         {
             std::printf("CHECK replay bad %s\n", err.c_str());
             std::printf("VERDICT FAIL %s\n", json_path.c_str());

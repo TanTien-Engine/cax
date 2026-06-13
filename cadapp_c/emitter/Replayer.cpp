@@ -1567,14 +1567,32 @@ struct FeatureVisitor
                 spine_id = (uint32_t)sit->second;
             }
             const SketchIR* spine_sk = FindSketch(doc, spine_id);
-            if (!spine_sk)
+
+            auto epx = feat.ext_params.find("edge_pick_x");
+            if (!spine_sk && epx != feat.ext_params.end() &&
+                base_node >= 0)
+            {
+                // Body-edge path: find nearest edge in the running
+                // solid to the pick point at calc-graph eval time.
+                int x_n = cg->AddConst(epx->second, "edge_pick_x");
+                int y_n = cg->AddConst(
+                    ExtParam(feat, "edge_pick_y", 0.0), "edge_pick_y");
+                int z_n = cg->AddConst(
+                    ExtParam(feat, "edge_pick_z", 0.0), "edge_pick_z");
+                wire_n = cg->AddOp("edge_pick_wire",
+                                    {base_node, x_n, y_n, z_n},
+                                    {}, feat.name + ":edge_pick");
+            }
+            else if (!spine_sk)
             {
                 step_ok     = false;
                 out.err_msg = "missing spine sketch for sweep: " + feat.name;
                 return;
             }
-
-            wire_n = AddSketchWireNode(*cg, *spine_sk);
+            else
+            {
+                wire_n = AddSketchWireNode(*cg, *spine_sk);
+            }
         }
         int solid_n  = cg->AddConst(is_solid, "is_solid");
         // FreeCAD Part::Sweep Frenet=true needs the true Frenet
@@ -1596,11 +1614,48 @@ struct FeatureVisitor
             subtractive = true;
         }
 
+        // Degenerate edge-pick sweep guard: a path-less ZW3D sweep
+        // recovers its spine from the nearest body edge to a stored
+        // pick point (edge_pick_wire). When that edge lies IN the
+        // profile's own plane the sweep collapses to a zero-volume
+        // sheet-solid -- it adds no material yet survives the
+        // dead-node check (it still carries a TopAbs_SOLID), so it
+        // lands as a spurious extra solid in the output (R2900: one
+        // vol=0 lump, +1 solid and unmatched faces). Drop the tool
+        // when it built no real volume; the body continues without
+        // it, exactly as if the sweep had stayed opaque. Scoped to
+        // edge_pick sweeps so real (spine-driven) thin sweeps are
+        // never touched.
+        bool drop_degenerate_sweep = false;
+        if (!opt.analyze_only && base_node >= 0 &&
+            feat.ext_params.count("edge_pick_x"))
+        {
+            auto tval = cg->Eval(tool_n);
+            auto* tsv = std::get_if<brepgraph::ShapeVal>(&tval);
+            int    nsol = 0;
+            double tvol = 0.0;
+            if (tsv && tsv->shape && !tsv->shape->GetShape().IsNull()) {
+                SolidsVolumeOf(tsv->shape->GetShape(), nsol, tvol);
+            }
+            if (nsol == 0 || std::fabs(tvol) < 1e-12) {
+                drop_degenerate_sweep = true;
+                if (!out.err_msg.empty()) out.err_msg += "; ";
+                out.err_msg += "sweep " + feat.name +
+                               " built no volume (edge-pick spine "
+                               "degenerate); body continues without it";
+            }
+        }
+
         FeatureToolInfo ti;
         ti.tool_node = tool_n;
         ti.base_node = base_node;
 
-        if (!subtractive)
+        if (drop_degenerate_sweep)
+        {
+            node = base_node;
+            ti.op_kind = '0';
+        }
+        else if (!subtractive)
         {
             if (base_node < 0)
             {
@@ -3449,95 +3504,6 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 pending_standalone.clear();
             }
 
-            // ZW3D quilt: this feature's boolean merged the running SOLID
-            // chain with standalone SHEET bodies (reader's fld 62 analysis,
-            // ext_param quilt_kill_running). The merged composite is dead
-            // in ZW3D -- it leaves the visible part and every later state
-            // STEP (R2900 Pattern17 quilts the base plate with Mirror5's
-            // funnel sheets; the 43.5k mm^3 plate never reappears).
-            //
-            // Identification strategy: BRepClass3d_SolidClassifier is
-            // unreliable here because the plate is hollow (central bore);
-            // every bbox-centre witness lands in a void → returns OUT.
-            // Instead use the bbox-match channel: iterate the BASE input
-            // (the running solid chain) and record any solid with z_min < 0
-            // as a HiddenBodyIR entry.  The plate sits at z ≈ 0 with a
-            // hair below (z_min ≈ -0.0001 m) while the middle/funnel
-            // solids in the same chain all have z_min > 0, so the filter
-            // selects exactly the doomed plate and nothing else.
-            if (!opt.analyze_only)
-            {
-                auto qk = feat.ext_params.find("quilt_kill_running");
-                if (qk != feat.ext_params.end() && qk->second != 0.0)
-                {
-                    for (size_t qi = 0; qi < feat.input_feature_ids.size();
-                         ++qi)
-                    {
-                        InputRole role = (qi < feat.input_roles.size())
-                                            ? feat.input_roles[qi]
-                                            : InputRole::Base;
-                        if (role != InputRole::Base) {
-                            continue;
-                        }
-                        auto fit = feature_nodes.find(
-                            feat.input_feature_ids[qi]);
-                        if (fit == feature_nodes.end() || fit->second < 0) {
-                            continue;
-                        }
-                        auto qval = cg->Eval(fit->second);
-                        auto* qsv = std::get_if<brepgraph::ShapeVal>(&qval);
-                        if (!qsv || !qsv->shape ||
-                            qsv->shape->GetShape().IsNull()) {
-                            continue;
-                        }
-                        const TopoDS_Shape& qs = qsv->shape->GetShape();
-                        if (!TopExp_Explorer(qs, TopAbs_SOLID).More()) {
-                            continue;
-                        }
-                        int n_w = 0;
-                        for (TopExp_Explorer sx(qs, TopAbs_SOLID);
-                             sx.More(); sx.Next())
-                        {
-                            Bnd_Box qb;
-                            BRepBndLib::Add(sx.Current(), qb);
-                            if (qb.IsVoid()) {
-                                continue;
-                            }
-                            double x0, y0, z0, x1, y1, z1;
-                            qb.Get(x0, y0, z0, x1, y1, z1);
-                            // Only record solids that extend below z=0.
-                            // The plate has z_min ≈ -0.0001 m while every
-                            // other solid in the running chain has z_min > 0.
-                            if (z0 >= 0.0) {
-                                continue;
-                            }
-                            HiddenBodyIR h;
-                            h.bbox_min[0] = x0;
-                            h.bbox_min[1] = y0;
-                            h.bbox_min[2] = z0;
-                            h.bbox_max[0] = x1;
-                            h.bbox_max[1] = y1;
-                            h.bbox_max[2] = z1;
-                            doc.hidden_bodies.push_back(h);
-                            ++n_w;
-                            std::fprintf(stderr,
-                                "[Replayer] feat %u (%s) quilt kill: "
-                                "plate bbox stored "
-                                "(%.4g,%.4g,%.4g)(%.4g,%.4g,%.4g)\n",
-                                feat.id, feat.name.c_str(),
-                                x0, y0, z0, x1, y1, z1);
-                        }
-                        std::fprintf(stderr,
-                            "[Replayer] feat %u (%s) quilts the running "
-                            "body; %d plate bbox(es) registered for "
-                            "emission drop\n",
-                            feat.id, feat.name.c_str(), n_w);
-                        std::fflush(stderr);
-                        break; // only one Base input
-                    }
-                }
-            }
-
             feature_nodes[feat.id] = node;
             out.op_ids.push_back(cg->CalcOpId(node, 0));
 
@@ -3896,7 +3862,8 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             // Two channels: exported blanked-body bboxes, and quilt
             // witness points collected during the replay.
             std::shared_ptr<brepkit::TopoShape> emit_ts = sv->shape;
-            if (!doc.hidden_bodies.empty() || !hidden_witnesses.empty())
+            if (opt.drop_hidden &&
+                (!doc.hidden_bodies.empty() || !hidden_witnesses.empty()))
             {
                 TopoDS_Shape flt;
                 int          n_drop = 0;

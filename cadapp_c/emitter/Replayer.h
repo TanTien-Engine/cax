@@ -88,6 +88,16 @@ struct ReplayOptions
     // geometry cost, exactly which features are top-level parts so it
     // can split the document and replay each part independently.
     bool analyze_only = false;
+
+    // Whether emission filters out bodies the SOURCE keeps hidden /
+    // blanked in its final state (blanked-body bboxes + quilt
+    // witnesses). Default on: the editor and the final truth-STEP
+    // comparison both want the source's VISIBLE part. zw_verify's
+    // per-feature _state probes turn it OFF -- intermediate truth
+    // states still contain construction sheets that only blank or
+    // delete at the END of the history, so dropping them mid-prefix
+    // poisons every intermediate comparison.
+    bool drop_hidden = true;
 };
 
 // One emitted top-level shape plus the appearance the source GUI
