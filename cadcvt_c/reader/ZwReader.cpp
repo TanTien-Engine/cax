@@ -2431,12 +2431,22 @@ static bool TryBuildFtPtnFtr(ZwBuildCtx& ctx)
         // change). The Replayer's resolver finds the moved edge (box2 =
         // box1 + offset, so the imaged anchor sits on a real edge); a miss
         // degrades to a clean no-op via its dead-feature fallback, keeping
-        // the body. Scope: ONE non-seed instance (count == 2) -- wider counts
-        // need a per-instance fld-62 body map the snapshot doesn't expose, so
-        // they fall through. Correctness also needs the pattern transform to
-        // MATCH the one that built the fld-62 body (true here: both +Y/50);
-        // a mismatch lands the imaged anchor off-body -> dress-up no-ops,
-        // body kept.
+        // the body. Base = the fld-62 body, so the Replayer consumes it and
+        // the dressed body replaces the plain copy (no duplicate, no vanish).
+        //
+        // GUARD: only when the fld-62 body is a STANDALONE deposited body (an
+        // FtPtnGeom copy in standalone_ids) -- that is the "geometry already
+        // laid down, the pattern only dresses it" shape this models. A pattern
+        // whose fld-62 body is the RUNNING chain root (R2900's Pattern2
+        // chamfer, onto = the base extrude) is a different topology: its edges
+        // live on the EVOLVED running body, not on feature_nodes[onto] (the
+        // bare extrude), so it stays on the existing path. Handles a 1-D
+        // pattern of count1 (>= 2) instances along fld 2; each non-seed image
+        // dresses its copy. (2-D grids would need fld 5's second direction,
+        // which is unreliable, so they fall through.) Correctness needs the
+        // pattern transform to MATCH the one that built the fld-62 body (true
+        // for ptn_ftr_1: both +Y/50); a mismatch lands the imaged anchor
+        // off-body -> that instance's dress-up no-ops, body kept.
         if (zt == "FtPtnFtr" && linear_method && running_solid_id != 0)
         {
             uint32_t seed_dress = FieldEntFeat(jf, 1);
@@ -2445,35 +2455,36 @@ static bool TryBuildFtPtnFtr(ZwBuildCtx& ctx)
             int      count1     = static_cast<int>(FieldValueById(jf, 3, 1.0));
             int      count2     = static_cast<int>(FieldValueById(jf, 6, 1.0));
             if (dsit != ctx.feat_dressup.end() && onto != 0 &&
-                count1 >= 1 && count2 >= 1 && count1 * count2 == 2)
+                standalone_ids.count(onto) > 0 &&
+                count2 == 1 && count1 >= 2 && count1 <= 400)
             {
-                // Offset (scaled to metres) of the single non-seed instance:
-                // along direction 1 when count1 == 2, else direction 2.
-                double d1[3] = { 0, 0, 0 }, d2[3] = { 0, 0, 0 };
+                // Per-instance step (scaled to metres) along the pattern's
+                // direction. ONLY fld 2 "Direction" carries the true signed
+                // axis; fld 5 "Direction D" is a DIFFERENT, wrong vector (see
+                // the LinearPattern arm below), so the 2-D grid case
+                // (count2 > 1, which would need fld 5) is left to fall
+                // through. fld 4 is the spacing.
+                double d1[3] = { 0, 0, 0 };
                 FieldDir(jf, 2, d1);
-                FieldDir(jf, 5, d2);
-                double sp1 = FieldValueById(jf, 4, 0.0);
-                double sp2 = FieldValueById(jf, 7, 0.0);
-                double off[3];
-                if (count1 == 2) {
-                    off[0] = d1[0] * sp1 * s;
-                    off[1] = d1[1] * sp1 * s;
-                    off[2] = d1[2] * sp1 * s;
-                } else {
-                    off[0] = d2[0] * sp2 * s;
-                    off[1] = d2[1] * sp2 * s;
-                    off[2] = d2[2] * sp2 * s;
-                }
+                double sp1 = FieldValueById(jf, 4, 0.0) * s;
 
+                // Image every picked edge at each NON-seed instance
+                // i = 1 .. count1-1: anchor + i*step. The seed copy (i = 0)
+                // is already dressed by the seed dress-up feature.
                 const ZwDressupSeed& ds = dsit->second;
                 std::vector<cadapp::TopoRefIR> edges;
-                edges.reserve(ds.edges.size());
-                for (const auto& se : ds.edges) {
-                    cadapp::TopoRefIR r = se;
-                    r.point[0] += off[0];
-                    r.point[1] += off[1];
-                    r.point[2] += off[2];
-                    edges.push_back(r);
+                edges.reserve(ds.edges.size() * (count1 - 1));
+                for (int i = 1; i < count1; ++i) {
+                    double off[3] = { i * sp1 * d1[0],
+                                      i * sp1 * d1[1],
+                                      i * sp1 * d1[2] };
+                    for (const auto& se : ds.edges) {
+                        cadapp::TopoRefIR r = se;
+                        r.point[0] += off[0];
+                        r.point[1] += off[1];
+                        r.point[2] += off[2];
+                        edges.push_back(r);
+                    }
                 }
 
                 cadapp::FeatureIR cf;
