@@ -3201,12 +3201,18 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                 }
             }
 
-            // Cumulative-body bake for in-place opaque features (no own
-            // result shapes to bake): export the WHOLE body at this AFTER
-            // state and flag it cumulative so the reader replaces its running
-            // body with it. The body is already rolled to AFTER above.
-            if (bake_cumulative && re.n_shape == 0 && at_after &&
-                jf.find("geometry") == jf.end())
+            // Cumulative-body bake -- ONLY for genuinely un-modelable opaque
+            // features: sheet-metal forming (CdSmd*/Smd* flange/tab/punch) and
+            // API-opaque features (empty type or unreadable params, e.g. the
+            // ___凸包 bosses). NOT the in-place fillets/chamfers/cuts/drafts the
+            // reader reconstructs -- baking those exploded DKBA80271607_119 to
+            // 105 of 111 full-body STEPs and OOM'd the importer (死机). The
+            // body is already rolled to this feature's AFTER state above.
+            const bool opaque_geom_feat =
+                type.rfind("CdSmd", 0) == 0 || type.rfind("Smd", 0) == 0 ||
+                type.empty() || probe.data_rc == -1;
+            if (bake_cumulative && opaque_geom_feat && re.n_shape == 0 &&
+                at_after && jf.find("geometry") == jf.end())
             {
                 const std::string cstep = FeatStepPath(out_path, node.id);
                 zwapi::StepExportResult cse = zwapi::ExportPartStep(cstep);
