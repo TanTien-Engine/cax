@@ -353,6 +353,30 @@ TEST_CASE("Optimizer: CSE eliminates common subexpressions", "[optimizer]")
     CHECK((g.Get(add1) != nullptr || g.Get(add2) != nullptr));
 }
 
+TEST_CASE("Optimizer: CSE does not merge consts of equal type but different value", "[optimizer]")
+{
+    OpRegistry reg;
+    RegisterOps(reg);
+    IRGraph g(reg);
+
+    auto c1 = g.Const(1.0);
+    auto c2 = g.Const(2.0);        // same type, different value -> must NOT merge
+    auto a1 = g.Add("make_shape", {c1});
+    auto a2 = g.Add("make_shape", {c2});
+    auto root = g.Add("add", {a1, a2});  // keep both live
+
+    Optimizer::CSE(g);
+    g.Compact();
+
+    CHECK(g.Get(c1) != nullptr);
+    CHECK(g.Get(c2) != nullptr);
+    CHECK(std::get<double>(g.Get(c1)->imm) == 1.0);
+    CHECK(std::get<double>(g.Get(c2)->imm) == 2.0);
+    CHECK(g.Get(a1) != nullptr);
+    CHECK(g.Get(a2) != nullptr);
+    (void)root;
+}
+
 TEST_CASE("Optimizer: CSE does not merge different ops", "[optimizer]")
 {
     OpRegistry reg;
@@ -426,4 +450,248 @@ TEST_CASE("MatchPred: Any always matches", "[optimizer]")
 {
     IRNode nd;
     CHECK(Any()(nd, nullptr));
+}
+
+// ---------------------------------------------------------------
+//  Optimizer: boolean_reassoc_cluster + pattern_boolean_fold
+// ---------------------------------------------------------------
+
+static void RegisterBoolPatternOps(OpRegistry& reg)
+{
+    auto noop = [](EvalCtx&) -> Val { return {}; };
+    reg.Define("make_shape", {"size"},  {}, noop);
+    reg.Define("selector",   {"shape"}, {}, noop);
+    reg.Define("fuse", {"a", "b"}, {}, noop, {false, false, true, false});  // is_boolean
+    reg.Define("cut",  {"a", "b"}, {}, noop, {false, false, true, false});  // is_boolean
+    reg.Define("linear_pattern",
+        {"shape", "dir1", "count1", "spacing1", "dir2", "count2", "spacing2"}, {},
+        noop, {false, true, false, false});  // is_pattern
+    reg.Define("feature_pattern",
+        {"base", "tool", "op_kind", "dir1", "count1", "spacing1", "dir2", "count2", "spacing2"},
+        {}, noop, {});
+}
+
+static NRef BuildLinearPattern(IRGraph& g, NRef seed,
+                               const std::vector<NRef>& var = {})
+{
+    auto d1 = g.Const(Vec3{1, 0, 0});
+    auto c1 = g.Const(2);
+    auto s1 = g.Const(2.0);
+    auto d2 = g.Const(Vec3{0, 1, 0});
+    auto c2 = g.Const(1);
+    auto s2 = g.Const(0.0);
+    return g.Add("linear_pattern", {seed, d1, c1, s1, d2, c2, s2}, var);
+}
+
+TEST_CASE("Optimizer: cluster re-associates a fuse chain onto one boolean", "[optimizer][cluster]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto t1   = g.Add("make_shape", {g.Const(1.0)});
+    auto t2   = g.Add("make_shape", {g.Const(2.0)});
+    auto t3   = g.Add("make_shape", {g.Const(3.0)});
+    auto f1 = g.Add("fuse", {base, t1});
+    auto f2 = g.Add("fuse", {f1, t2});
+    auto f3 = g.Add("fuse", {f2, t3});
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    // Root identity reused, still a fuse, base on the left.
+    auto* root = g.Get(f3);
+    REQUIRE(root != nullptr);
+    CHECK(root->op_name == "fuse");
+    REQUIRE(root->inputs.size() == 2);
+    CHECK(root->inputs[0] == base);
+
+    // The whole point: base now meets exactly ONE boolean.
+    CHECK(g.UsersOf(base).size() == 1);
+
+    // The other operand is a tool cluster independent of base.
+    auto deps = g.CollectDeps(root->inputs[1]);
+    CHECK(deps.count(base.id) == 0);
+    CHECK(deps.count(t1.id) == 1);
+    CHECK(deps.count(t2.id) == 1);
+    CHECK(deps.count(t3.id) == 1);
+
+    // Inner originals were reclaimed.
+    CHECK(g.Get(f1) == nullptr);
+    CHECK(g.Get(f2) == nullptr);
+}
+
+TEST_CASE("Optimizer: cluster re-associates a cut chain (tools unioned)", "[optimizer][cluster]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto t1   = g.Add("make_shape", {g.Const(1.0)});
+    auto t2   = g.Add("make_shape", {g.Const(2.0)});
+    auto c1 = g.Add("cut", {base, t1});
+    auto c2 = g.Add("cut", {c1, t2});
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    auto* root = g.Get(c2);
+    REQUIRE(root != nullptr);
+    CHECK(root->op_name == "cut");
+    REQUIRE(root->inputs.size() == 2);
+    CHECK(root->inputs[0] == base);
+    CHECK(g.UsersOf(base).size() == 1);
+
+    // Cut tools are combined with a FUSE (cut by many == cut by their union).
+    auto* cluster = g.Get(root->inputs[1]);
+    REQUIRE(cluster != nullptr);
+    CHECK(cluster->op_name == "fuse");
+    auto deps = g.CollectDeps(root->inputs[1]);
+    CHECK(deps.count(base.id) == 0);
+    CHECK(deps.count(t1.id) == 1);
+    CHECK(deps.count(t2.id) == 1);
+}
+
+TEST_CASE("Optimizer: cluster does NOT cross fuse/cut boundaries", "[optimizer][cluster]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto t1   = g.Add("make_shape", {g.Const(1.0)});
+    auto t2   = g.Add("make_shape", {g.Const(2.0)});
+    auto inner = g.Add("cut",  {base, t1});
+    auto outer = g.Add("fuse", {inner, t2});
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    // Mixed-kind run is order-sensitive -> left untouched.
+    auto* o = g.Get(outer);
+    REQUIRE(o != nullptr);
+    CHECK(o->op_name == "fuse");
+    REQUIRE(o->inputs.size() == 2);
+    CHECK(o->inputs[0] == inner);
+    CHECK(o->inputs[1] == t2);
+    auto* i = g.Get(inner);
+    REQUIRE(i != nullptr);
+    CHECK(i->op_name == "cut");
+    CHECK(i->inputs[0] == base);
+    CHECK(i->inputs[1] == t1);
+}
+
+TEST_CASE("Optimizer: cluster bails on a shared intermediate", "[optimizer][cluster]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto t1   = g.Add("make_shape", {g.Const(1.0)});
+    auto t2   = g.Add("make_shape", {g.Const(2.0)});
+    auto inner = g.Add("fuse", {base, t1});
+    auto outer = g.Add("fuse", {inner, t2});
+    auto keep  = g.Add("make_shape", {inner});   // 2nd user of inner
+    auto root  = g.Add("cut", {outer, keep});    // keeps everything live
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    // inner has two users, so the (base.t1) fold must NOT be absorbed.
+    auto* o = g.Get(outer);
+    REQUIRE(o != nullptr);
+    CHECK(o->op_name == "fuse");
+    CHECK(o->inputs[0] == inner);
+    CHECK(o->inputs[1] == t2);
+    auto* i = g.Get(inner);
+    REQUIRE(i != nullptr);
+    CHECK(i->op_name == "fuse");
+    CHECK(i->inputs[0] == base);
+    CHECK(i->inputs[1] == t1);
+}
+
+TEST_CASE("Optimizer: folds fuse(base, linear_pattern) into feature_pattern", "[optimizer][fold]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto seed = g.Add("make_shape", {g.Const(1.0)});
+    auto lp   = BuildLinearPattern(g, seed);
+    auto fz   = g.Add("fuse", {base, lp});
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    auto* fp = g.Get(fz);
+    REQUIRE(fp != nullptr);
+    CHECK(fp->op_name == "feature_pattern");
+    REQUIRE(fp->inputs.size() == 9);
+    CHECK(fp->fixed_input_count == 9);
+    CHECK(fp->inputs[0] == base);
+    CHECK(fp->inputs[1] == seed);
+    auto* kind = g.Get(fp->inputs[2]);
+    REQUIRE(kind != nullptr);
+    CHECK(kind->op_name == "$int");
+    CHECK(std::get<int>(kind->imm) == 0);   // fuse -> boss
+    CHECK(g.Get(lp) == nullptr);            // pattern absorbed
+}
+
+TEST_CASE("Optimizer: folds cut(base, linear_pattern) with op_kind=hole", "[optimizer][fold]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto seed = g.Add("make_shape", {g.Const(1.0)});
+    auto lp   = BuildLinearPattern(g, seed);
+    auto ct   = g.Add("cut", {base, lp});
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    auto* fp = g.Get(ct);
+    REQUIRE(fp != nullptr);
+    CHECK(fp->op_name == "feature_pattern");
+    auto* kind = g.Get(fp->inputs[2]);
+    REQUIRE(kind != nullptr);
+    CHECK(std::get<int>(kind->imm) == 1);   // cut -> hole
+}
+
+TEST_CASE("Optimizer: fold bails on a selector-bearing pattern", "[optimizer][fold]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto seed = g.Add("make_shape", {g.Const(1.0)});
+    auto sel  = g.Add("selector", {seed});
+    auto lp   = BuildLinearPattern(g, seed, {sel});   // variadic selector edge
+    auto fz   = g.Add("fuse", {base, lp});
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    // Variadic selectors can't be reordered through the pattern -> no fold.
+    auto* node = g.Get(fz);
+    REQUIRE(node != nullptr);
+    CHECK(node->op_name == "fuse");
+    CHECK(g.Get(lp) != nullptr);
+}
+
+TEST_CASE("Optimizer: fold bails when the pattern is shared", "[optimizer][fold]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base1 = g.Add("make_shape", {g.Const(0.0)});
+    auto base2 = g.Add("make_shape", {g.Const(9.0)});
+    auto seed  = g.Add("make_shape", {g.Const(1.0)});
+    auto lp    = BuildLinearPattern(g, seed);
+    auto fz1   = g.Add("fuse", {base1, lp});
+    auto fz2   = g.Add("fuse", {base2, lp});
+    auto root  = g.Add("cut", {fz1, fz2});    // keep both live (cut root: A bails)
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g);
+
+    // Pattern feeds two booleans -> can't be absorbed into either.
+    CHECK(g.Get(lp) != nullptr);
+    auto* a = g.Get(fz1);
+    auto* b = g.Get(fz2);
+    REQUIRE(a != nullptr);
+    REQUIRE(b != nullptr);
+    CHECK(a->op_name == "fuse");
+    CHECK(b->op_name == "fuse");
 }

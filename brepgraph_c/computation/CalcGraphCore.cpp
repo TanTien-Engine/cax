@@ -495,6 +495,137 @@ void Optimizer::AddDefaultRules()
 		},
 		10
 	});
+
+	// ----------------------------------------------------------------
+	// boolean_reassoc_cluster: re-associate a same-kind boolean run so the
+	// (small) tool bodies combine first, then meet the (large) running body
+	// in ONE boolean:   ((base . t1) . t2) . t3  ->  base . (t1 + t2 + t3)
+	// '.' is fuse or cut, '+' is fuse. Union/cut are associative (and
+	// A-B-C == A-(B u C)), so for a run of a SINGLE op_kind this is
+	// unconditionally geometry-equivalent -- only the boolean association
+	// changes; geometry resolution stays at eval. This is the graph-level
+	// form of the Replayer's ApplyPatternClustered, and it fires for any
+	// qualifying chain (patterned or hand-built) on import and interactive
+	// alike.
+	AddRule({
+		"boolean_reassoc_cluster",
+		{
+			{ByFlag([](auto& f){ return f.is_boolean; }), "b", -1},
+		},
+		[](MatchResult& m, IRGraph& g) -> bool {
+			auto* b = g.Get(m["b"]);
+			if (!b) return false;
+			const std::string bop = b->op_name;
+			if (bop != "fuse" && bop != "cut") return false;
+			if (b->fixed_input_count != 2 || b->inputs.size() != 2) return false;
+
+			// Walk the running-body spine (inputs[0]) gathering a maximal run
+			// of same-op, single-user, binary booleans. tools are each node's
+			// inputs[1]; base is the deepest inputs[0].
+			std::vector<NRef> run_nodes;
+			std::vector<NRef> tools;
+			NRef base = NREF_NULL;
+			NRef cur  = m["b"];
+			while (true) {
+				auto* nd = g.Get(cur);
+				if (!nd) return false;
+				run_nodes.push_back(cur);
+				tools.push_back(nd->inputs[1]);
+				NRef child = nd->inputs[0];
+				auto* cnd = g.Get(child);
+				if (cnd && cnd->op_name == bop &&
+				    cnd->fixed_input_count == 2 && cnd->inputs.size() == 2 &&
+				    g.UsersOf(child).size() == 1) {
+					cur = child;
+					continue;
+				}
+				base = child;
+				break;
+			}
+			if (tools.size() < 2) return false;        // nothing to cluster
+			if (g.Get(base) == nullptr) return false;  // base must be live
+
+			// A tool must not depend on any boolean in the run (a partial
+			// fold); depending on `base` is fine (recomputed identically).
+			std::unordered_set<uint32_t> run_ids;
+			for (auto r : run_nodes) run_ids.insert(r.id);
+			for (auto t : tools) {
+				auto deps = g.CollectDeps(t);
+				for (auto rid : run_ids)
+					if (deps.count(rid)) return false;
+			}
+
+			// Combine the tools first (always fuse: cutting by N tools equals
+			// cutting by their union), then meet `base` in one boolean.
+			NRef cluster = NREF_NULL;
+			for (auto t : tools)
+				cluster = (cluster == NREF_NULL) ? t : g.Add("fuse", {cluster, t});
+
+			// Rewrite the outermost boolean IN PLACE -- reuse its identity so
+			// any ext-id / eval-root binding survives; never Kill it. The
+			// inner run nodes lose their only user and DCE reclaims them.
+			b = g.Get(m["b"]);
+			b->op_name = bop;
+			b->inputs  = {base, cluster};
+			b->fixed_input_count = 2;
+			b->dirty = true;
+			return true;
+		},
+		10
+	});
+
+	// ----------------------------------------------------------------
+	// pattern_boolean_fold: collapse  base . linear_pattern(seed)  (a hand-
+	// built or imported pattern-then-boolean chain) into a single
+	// feature_pattern node -- "instance the seed on the grid + one boolean",
+	// the folded form the conversion side already emits. Lets the interactive
+	// path get the same single-node fold for free. Bails on selector-bearing
+	// patterns and shared patterns (can't be absorbed).
+	AddRule({
+		"pattern_boolean_fold",
+		{
+			{ByFlag([](auto& f){ return f.is_boolean; }), "bop", 1},
+			{ByName("linear_pattern"), "pat", -1},
+		},
+		[](MatchResult& m, IRGraph& g) -> bool {
+			auto* bp  = g.Get(m["bop"]);
+			auto* pat = g.Get(m["pat"]);
+			if (!bp || !pat) return false;
+			int op_kind;
+			if      (bp->op_name == "fuse") op_kind = 0;  // boss / add
+			else if (bp->op_name == "cut")  op_kind = 1;  // hole / subtract
+			else return false;
+			if (bp->fixed_input_count != 2 || bp->inputs.size() != 2) return false;
+			// linear_pattern must be a pure single-input geometry pattern (no
+			// selector edges) used only here, so it can be absorbed.
+			if (pat->inputs.size() != pat->fixed_input_count) return false;
+			if (pat->fixed_input_count != 7) return false;
+			if (g.UsersOf(m["pat"]).size() != 1) return false;
+
+			// linear_pattern inputs: {shape, dir1, count1, spacing1, dir2, count2, spacing2}
+			NRef base     = bp->inputs[0];
+			NRef seed     = pat->inputs[0];
+			NRef dir1     = pat->inputs[1];
+			NRef count1   = pat->inputs[2];
+			NRef spacing1 = pat->inputs[3];
+			NRef dir2     = pat->inputs[4];
+			NRef count2   = pat->inputs[5];
+			NRef spacing2 = pat->inputs[6];
+			NRef kind     = g.Const((int)op_kind);
+
+			// Fold into one feature_pattern IN PLACE (reuse the boolean's
+			// identity; never Kill the eval-root). The pattern loses its only
+			// user and DCE reclaims it. feature_pattern inputs:
+			//   {base, tool, op_kind, dir1, count1, spacing1, dir2, count2, spacing2}
+			bp = g.Get(m["bop"]);
+			bp->op_name = "feature_pattern";
+			bp->inputs  = {base, seed, kind, dir1, count1, spacing1, dir2, count2, spacing2};
+			bp->fixed_input_count = 9;
+			bp->dirty = true;
+			return true;
+		},
+		10
+	});
 }
 
 bool Optimizer::Run(IRGraph& g, int max_iter) const
@@ -545,12 +676,21 @@ bool Optimizer::CSE(IRGraph& g)
 {
 	struct Key {
 		std::string op; size_t imm_idx; std::vector<uint32_t> ids;
-		bool operator==(const Key& o) const { return op==o.op && imm_idx==o.imm_idx && ids==o.ids; }
+		// Immediate value discriminator: two scalar/vec consts of the same
+		// type but DIFFERENT value must not collide (else CSE would fuse e.g.
+		// $num=1 and $num=2 into one, silently corrupting the graph).
+		double v0 = 0, v1 = 0, v2 = 0;
+		bool operator==(const Key& o) const {
+			return op==o.op && imm_idx==o.imm_idx && ids==o.ids
+			    && v0==o.v0 && v1==o.v1 && v2==o.v2;
+		}
 	};
 	struct KH {
 		size_t operator()(const Key& k) const {
 			size_t h = std::hash<std::string>{}(k.op) ^ (k.imm_idx*0x9e3779b9);
 			for (auto i : k.ids) h ^= std::hash<uint32_t>{}(i)+0x9e3779b9+(h<<6)+(h>>2);
+			auto mix = [&](double d){ h ^= std::hash<double>{}(d)+0x9e3779b9+(h<<6)+(h>>2); };
+			mix(k.v0); mix(k.v1); mix(k.v2);
 			return h;
 		}
 	};
@@ -561,6 +701,10 @@ bool Optimizer::CSE(IRGraph& g)
 		auto* nd = g.Get(ref);
 		if (!nd || nd->op_name == "$shape" || nd->op_name == "$sketch" || nd->op_name == "$toporef") continue;
 		Key key; key.op = nd->op_name; key.imm_idx = nd->imm.index();
+		if      (auto* p = std::get_if<int>(&nd->imm))    key.v0 = *p;
+		else if (auto* p = std::get_if<double>(&nd->imm)) key.v0 = *p;
+		else if (auto* p = std::get_if<bool>(&nd->imm))   key.v0 = *p ? 1.0 : 0.0;
+		else if (auto* p = std::get_if<Vec3>(&nd->imm)) { key.v0=(*p)[0]; key.v1=(*p)[1]; key.v2=(*p)[2]; }
 		for (auto& inp : nd->inputs) key.ids.push_back(inp.id);
 		// Include fixed/var split in the key so ops with same id list but
 		// different fixed_count don't collide.
