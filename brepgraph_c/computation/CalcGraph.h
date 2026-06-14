@@ -513,6 +513,15 @@ public:
 	bool IsParallel() const { return m_parallel; }
 	Val Eval(int ext_id);
 
+	// --- shape-cache diagnostics (read by CAX_TIME) ---
+	// hits/misses accumulate across every Eval on this graph; misses ~=
+	// distinct shape ops evaluated, so misses far above the node count
+	// means eviction was forcing recomputes.
+	size_t CacheHits()       const { return m_eval.CacheHits(); }
+	size_t CacheMisses()     const { return m_eval.CacheMisses(); }
+	size_t ShapeCacheCount() const { return m_eval.GetShapeCache().Size(); }
+	size_t ShapeCacheCap()   const { return m_eval.GetShapeCache().Capacity(); }
+
 	// --- query ---
 	size_t   NodeCount() const;
 	uint32_t CalcOpId(int ext_id, int sub_op_id) const;

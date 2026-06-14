@@ -31,6 +31,7 @@
 #include <gp_Pnt.hxx>
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1350,6 +1351,13 @@ void w_ZwLoader_load()
 
     brepkit::MemProbe("ZwLoad: start (before parse)");
 
+    // Optional one-shot load timing (CAX_TIME env). Prints the
+    // Parse / authored-STEP / Replay split -- and the shape-cache
+    // hit/miss/eviction stats -- once, so a "still slow" report localises
+    // to JSON parse, per-feature STEP import, or the parametric replay.
+    const bool cax_time = std::getenv("CAX_TIME") != nullptr;
+    const auto t0 = std::chrono::steady_clock::now();
+
     cadapp::DocumentIR doc;
     std::string err;
     if (!st->reader.ReadFile(path, doc, &err)) {
@@ -1359,6 +1367,7 @@ void w_ZwLoader_load()
     }
 
     brepkit::MemProbe("ZwLoad: after ReadFile (parse)");
+    const auto t_parse = std::chrono::steady_clock::now();
 
     // Load per-feature authored geometry (CdGeomCopy STEP refs the
     // SDK-free ZwReader could only record as paths) into authored_shapes.
@@ -1414,6 +1423,8 @@ void w_ZwLoader_load()
     }
 
     brepkit::MemProbe("ZwLoad: after authored STEP load");
+    const size_t authored_n = doc.authored_shapes.size();
+    const auto   t_step      = std::chrono::steady_clock::now();
 
     cadapp::ReplayOptions opt;
     opt.write_back_resolved = false;
@@ -1428,11 +1439,35 @@ void w_ZwLoader_load()
     }
 
     brepkit::MemProbe("ZwLoad: after ReplayParts (replay)");
+    const auto t_replay = std::chrono::steady_clock::now();
 
     st->last_error = res.err_msg;   // diagnostics, even on success
     st->parts      = std::move(res.parts);
     st->calc_graph = res.calc_graph;  // kept by the single-part serial path
     brepkit::return_topo_shape(res.shape);
+
+    if (cax_time) {
+        auto ms = [](auto a, auto b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
+        std::fprintf(stderr,
+                     "[CAX_TIME] ZwLoad: Parse=%.1fms AuthoredSTEP=%.1fms(n=%zu) "
+                     "Replay=%.1fms total=%.1fms parts=%zu cores=%u\n",
+                     ms(t0, t_parse), ms(t_parse, t_step), authored_n,
+                     ms(t_step, t_replay), ms(t0, t_replay), st->parts.size(),
+                     std::thread::hardware_concurrency());
+        if (st->calc_graph) {
+            auto&       cg     = *st->calc_graph;
+            const size_t cap   = cg.ShapeCacheCap();
+            const std::string capstr =
+                (cap == SIZE_MAX) ? std::string("inf") : std::to_string(cap);
+            std::fprintf(stderr,
+                         "[CAX_TIME] ZwLoad: shape-cache hits=%zu misses=%zu "
+                         "size=%zu cap=%s\n",
+                         cg.CacheHits(), cg.CacheMisses(), cg.ShapeCacheCount(),
+                         capstr.c_str());
+        }
+    }
 
     brepkit::MemProbe("ZwLoad: done (shape returned)");
 }
