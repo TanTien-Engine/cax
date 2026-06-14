@@ -3726,6 +3726,23 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
         return it != feat_transparency.end() ? it->second : 0.0;
     };
 
+    // Optional graph optimisation (boolean-cluster / pattern-fold rewrite
+    // rules) before the output evals. OFF by default; enable with
+    // CAX_GRAPH_OPT=1. The live-output ext-ids are pinned so the rules never
+    // absorb a body the loop below evaluates -- they only re-shape internal
+    // boolean associations / fold pattern+boolean into feature_pattern, which
+    // is geometry-equivalent.
+    {
+        const char* e = std::getenv("CAX_GRAPH_OPT");
+        if (e && e[0] && e[0] != '0')
+        {
+            std::vector<int> output_ext_ids;
+            output_ext_ids.reserve(live_nodes.size());
+            for (const auto& ln : live_nodes) output_ext_ids.push_back(ln.first);
+            cg->Optimize(output_ext_ids);
+        }
+    }
+
     // Evaluate every live node once, collect (shape, transparency)
     // into out.parts, and assemble out.shape from the same set.
     out.parts.reserve(live_nodes.size());

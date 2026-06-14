@@ -217,14 +217,22 @@ public:
 		std::unordered_map<uint32_t, std::vector<Word>> m_bits;
 	};
 	DepIndex BuildDepIndex() const;
-	void Clear() { m_nodes.clear(); m_next_id = 1; }
+	void Clear() { m_nodes.clear(); m_pinned.clear(); m_next_id = 1; }
 	const OpRegistry& Registry() const { return m_reg; }
 	std::string Dump() const;
+
+	// Pinning: nodes a caller must NOT remove or merge away (e.g. the
+	// Replayer's live outputs). Rewrite rules may rewrite a pinned node IN
+	// PLACE (identity kept) but must never absorb/kill one.
+	void Pin(NRef r)             { if (r.valid()) m_pinned.insert(r.id); }
+	void ClearPins()            { m_pinned.clear(); }
+	bool IsPinned(NRef r) const  { return m_pinned.count(r.id) != 0; }
 
 private:
 	const OpRegistry& m_reg;
 	uint32_t m_next_id = 1;
 	std::unordered_map<uint32_t, IRNode> m_nodes;
+	std::unordered_set<uint32_t> m_pinned;
 	NRef Alloc();
 };
 
@@ -281,6 +289,11 @@ public:
 	// run on such graphs safely.
 	bool Run(IRGraph& g, const std::vector<NRef>& roots, int max_iter = 16) const;
 	static bool DCE(IRGraph& g, const std::vector<NRef>& roots);
+
+	// Apply ONLY the rewrite rules (no CSE, no DCE) to a fixpoint, then
+	// Compact. The rules self-clean (kill the non-pinned intermediates they
+	// absorb), so this is safe on multi-output graphs without a global sweep.
+	bool RunRules(IRGraph& g, int max_iter = 16) const;
 
 private:
 	std::vector<RewriteRule> m_rules;
@@ -479,6 +492,11 @@ public:
 	// --- lowering + optimisation ---
 	void Lower();
 	void Optimize();
+	// Roots-aware optimisation for a multi-output graph: pins the given output
+	// ext-ids (so rewrite rules can't absorb live outputs), applies the
+	// rewrite rules, then unpins. Output nodes keep their identity/ext-id, so
+	// Eval(ext_id) on any of them stays valid afterwards.
+	void Optimize(const std::vector<int>& output_ext_ids);
 
 	// --- shape restore (version tree integration) ---
 	//

@@ -535,7 +535,7 @@ void Optimizer::AddDefaultRules()
 				auto* cnd = g.Get(child);
 				if (cnd && cnd->op_name == bop &&
 				    cnd->fixed_input_count == 2 && cnd->inputs.size() == 2 &&
-				    g.UsersOf(child).size() == 1) {
+				    !g.IsPinned(child) && g.UsersOf(child).size() == 1) {
 					cur = child;
 					continue;
 				}
@@ -569,6 +569,10 @@ void Optimizer::AddDefaultRules()
 			b->inputs  = {base, cluster};
 			b->fixed_input_count = 2;
 			b->dirty = true;
+			// The inner run nodes are now orphaned and provably non-pinned;
+			// reclaim them directly so this is correct without a follow-up DCE.
+			for (size_t i = 1; i < run_nodes.size(); ++i)
+				g.Kill(run_nodes[i]);
 			return true;
 		},
 		10
@@ -600,6 +604,7 @@ void Optimizer::AddDefaultRules()
 			// selector edges) used only here, so it can be absorbed.
 			if (pat->inputs.size() != pat->fixed_input_count) return false;
 			if (pat->fixed_input_count != 7) return false;
+			if (g.IsPinned(m["pat"])) return false;
 			if (g.UsersOf(m["pat"]).size() != 1) return false;
 
 			// linear_pattern inputs: {shape, dir1, count1, spacing1, dir2, count2, spacing2}
@@ -622,6 +627,7 @@ void Optimizer::AddDefaultRules()
 			bp->inputs  = {base, seed, kind, dir1, count1, spacing1, dir2, count2, spacing2};
 			bp->fixed_input_count = 9;
 			bp->dirty = true;
+			g.Kill(m["pat"]);   // absorbed pattern: non-pinned, single-user
 			return true;
 		},
 		10
@@ -666,6 +672,28 @@ bool Optimizer::Run(IRGraph& g, const std::vector<NRef>& roots, int max_iter) co
 			}
 		if (CSE(g)) changed = true;
 		if (DCE(g, roots)) changed = true;
+		if (!changed) break;
+	}
+	g.Compact();
+	return true;
+}
+
+// Rules-only pass (no CSE, no DCE) to a fixpoint. Safe on multi-output graphs:
+// the rewrite rules self-clean (kill the non-pinned intermediates they absorb)
+// and never touch pinned nodes, so nothing a live output depends on is lost.
+bool Optimizer::RunRules(IRGraph& g, int max_iter) const
+{
+	for (int iter = 0; iter < max_iter; ++iter)
+	{
+		bool changed = false;
+		auto order = g.TopoSort();
+		for (auto& rule : m_rules)
+			for (auto ref : order)
+			{
+				MatchResult m;
+				if (TryMatch(g, ref, rule, m))
+					if (rule.rewrite(m, g)) changed = true;
+			}
 		if (!changed) break;
 	}
 	g.Compact();

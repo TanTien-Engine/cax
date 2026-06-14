@@ -242,6 +242,20 @@ void CalcGraph::Optimize()
 	m_opt.Run(m_ir);
 }
 
+void CalcGraph::Optimize(const std::vector<int>& output_ext_ids)
+{
+	if (!m_lowered) Lower();
+	m_ir.ClearPins();
+	for (int ext : output_ext_ids)
+		if (ext >= 0 && ext < (int)m_nodes.size())
+			m_ir.Pin(m_nodes[ext].ref);
+	// Rules-only: rewrites reuse output identity (ext-id -> ref stays valid)
+	// and self-clean their non-pinned intermediates. Eval reassigns op_ids
+	// and is demand-driven, so the rewritten graph is picked up correctly.
+	m_opt.RunRules(m_ir);
+	m_ir.ClearPins();
+}
+
 Val CalcGraph::Eval(int ext_id)
 {
 	if (!m_lowered) Lower();
