@@ -88,6 +88,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <array>
 
 // ZW3D's C API hands back file paths as UTF-8. On Windows the CRT's narrow
 // std::fopen opens paths in the ANSI code page, so a non-ASCII path (e.g. a
@@ -276,6 +277,11 @@ struct FieldDump
     bool        has_dir  = false; double dir[3] = { 0.0, 0.0, 0.0 };
     bool        has_text = false; std::string text;
     std::vector<EntSig> ents;
+    // Multi-point field: a PNT_TO_PNT pattern's "To points" (fld 14) carries
+    // the FULL list of instance locations, but cvxDataGetPnt returns only the
+    // first -- so an irregular hole row collapses to a single point. Every
+    // svxData.Pnt the field's fld_data array carries is captured here.
+    std::vector<std::array<double, 3>> pts;
     int         list_count = -1;            // VX_FLD_DATA: # top-level tree
                                             // items found (diagnostic; -1 = n/a)
 };
@@ -1051,16 +1057,24 @@ std::vector<FieldDump> DumpFields(int idFtr)
             // fields; it is the nested VX_FLD_DATA *list* that needed the
             // per-item tree walk, not this.)
             if (f.fld_data != nullptr) {
+                bool dir_done = false;
                 for (int k = 0; k < f.count; ++k) {
-                    if (f.fld_data[k].isDirection) {
-                        const svxVector& dv = f.fld_data[k].Dir;
+                    const svxData& fd = f.fld_data[k];
+                    if (!dir_done && fd.isDirection) {
+                        const svxVector& dv = fd.Dir;
                         if (dv.x != 0.0 || dv.y != 0.0 || dv.z != 0.0) {
                             d.dir[0] = dv.x;
                             d.dir[1] = dv.y;
                             d.dir[2] = dv.z;
                             d.has_dir = true;
-                            break;
+                            dir_done  = true;
                         }
+                    }
+                    // Every point this field carries (a PNT_TO_PNT pattern's
+                    // "To points" holds one per instance) -- cvxDataGetPnt
+                    // above only saw the first.
+                    if (fd.isPoint) {
+                        d.pts.push_back({ fd.Pnt.x, fd.Pnt.y, fd.Pnt.z });
                     }
                 }
             }
@@ -2470,6 +2484,15 @@ json FieldsToJson(const std::vector<FieldDump>& fields)
         }
         if (d.has_pt) {
             j["pt"] = json::array({ d.pt[0], d.pt[1], d.pt[2] });
+        }
+        // Full instance list of a multi-point field (PNT_TO_PNT "To points").
+        // Emitted only when it adds information beyond the single "pt".
+        if (d.pts.size() > 1) {
+            json pa = json::array();
+            for (const auto& p : d.pts) {
+                pa.push_back(json::array({ p[0], p[1], p[2] }));
+            }
+            j["pts"] = std::move(pa);
         }
         if (d.has_dir) {
             j["dir"] = json::array({ d.dir[0], d.dir[1], d.dir[2] });

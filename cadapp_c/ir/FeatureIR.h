@@ -204,6 +204,15 @@ struct FeatPayloadLinearPattern
     // restarted at FEAT_VERSION 1 when this landed) and re-derived from
     // the snapshot on every cax.json import.
     bool    fuse       = true;
+
+    // Irregular (point-to-point) instance locations, world-space offsets
+    // from the seed. When non-empty these OVERRIDE dir/count/spacing: the
+    // pattern is the seed tool replicated at each offset (an entry ~0 is
+    // the seed itself and is skipped). ZW3D's VX_PATTERN_PNT_TO_PNT hole
+    // rows (DKBA81377750 阵列1/阵列2) are irregular, so dir+count+spacing
+    // can't describe them -- the reader fills the exact offsets from the
+    // pattern's "To points" list. Empty for a regular grid pattern.
+    std::vector<std::array<double, 3>> instance_offsets;
 };
 
 struct FeatPayloadCircularPattern

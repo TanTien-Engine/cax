@@ -2360,7 +2360,11 @@ struct FeatureVisitor
             // includes the coincident seed) over it is idempotent. Only
             // patterns that carry a per-instance dressup, or a non-
             // equivariant tool, fall back to the per-instance expansion.
-            if (all_equivariant) {
+            // Irregular (point-to-point) offsets can't be expressed by
+            // the feature_pattern op's dir/count/spacing grid, so such a
+            // pattern always takes the per-instance path below (which
+            // builds one InstanceXform per explicit offset).
+            if (all_equivariant && p.instance_offsets.empty()) {
                 // Phase 1: replicate every tool with a single
                 // feature_pattern op -- an n-ary instance union plus ONE
                 // boolean against the running body, folded into one op.
@@ -2448,6 +2452,20 @@ struct FeatureVisitor
                         + p.dir2[2] * p.dir2[2];
             int eff2 = (l2sq > 1e-30 && p.count2 > 1) ? (int)p.count2 : 1;
             std::vector<InstanceXform> Xs;
+            if (!p.instance_offsets.empty()) {
+                // Irregular point-to-point pattern: one pure
+                // translation per explicit offset; skip the seed
+                // (~0 offset -- it is already the live base_node).
+                for (const auto& off : p.instance_offsets) {
+                    if (std::fabs(off[0]) + std::fabs(off[1]) +
+                        std::fabs(off[2]) < 1e-9) {
+                        continue;
+                    }
+                    InstanceXform X;
+                    for (int k = 0; k < 3; ++k) X.offset[k] = off[k];
+                    Xs.push_back(X);
+                }
+            } else {
             for (int i = 0; i < (int)p.count1; ++i) {
                 for (int j = 0; j < eff2; ++j) {
                     if (i == 0 && j == 0) {
@@ -2459,6 +2477,7 @@ struct FeatureVisitor
                                     + j * p.spacing2 * u2[k];
                     Xs.push_back(X);
                 }
+            }
             }
             // Cluster copies + single combine onto base (see
             // ApplyPatternClustered); per-instance fallback otherwise.

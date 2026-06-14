@@ -2609,48 +2609,95 @@ static bool TryBuildFtPtnFtr(ZwBuildCtx& ctx)
             {
                 cadapp::FeatPayloadLinearPattern lp;
                 const double sp1_mm = FieldValueById(jf, 4, 0.0);
-                double dir[3] = { 1.0, 0.0, 0.0 };
-                int    cnt1   = 2;
-                double bp[3], tp[3];
-                const double f10h = FieldValueById(jf, 10, 0.0);
-                if (f10h > 1.5 && FieldPoint(jf, 13, bp) &&
-                    FieldPoint(jf, 14, tp) && sp1_mm > 1e-9)
+
+                // PNT_TO_PNT (fld 10 = 2): fld 14 "To points"
+                // carries the EXACT instance locations -- the
+                // plugin now emits the full "pts" list. These rows
+                // are IRREGULAR (DKBA81377750 阵列1 hits x =
+                // -121.5,-107.5,30,55,90,120), so use the points
+                // verbatim as offsets from the seed (fld 13 base) --
+                // far more reliable than a dir/count/spacing guess.
+                // Fall back to the direction/count fields only when
+                // no pts list is present (older export / a genuinely
+                // regular linear hole pattern).
+                double     base_pt[3] = { 0.0, 0.0, 0.0 };
+                const bool have_base  = FieldPoint(jf, 13, base_pt);
+                std::vector<std::array<double, 3>> pts;
                 {
-                    // fill-to-point: step from base toward end.
-                    double v[3] = { tp[0] - bp[0], tp[1] - bp[1],
-                                    tp[2] - bp[2] };
-                    double L = std::sqrt(v[0]*v[0] + v[1]*v[1] +
-                                         v[2]*v[2]);
-                    if (L > 1e-9) {
-                        dir[0] = v[0]/L; dir[1] = v[1]/L;
-                        dir[2] = v[2]/L;
-                        cnt1 = (int)std::floor(L/sp1_mm + 1e-6) + 1;
+                    auto fit = jf.find("fields");
+                    if (fit != jf.end() && fit->is_array()) {
+                        for (const auto& fd : *fit) {
+                            if (JGet<int>(fd, "id", -1) != 14) {
+                                continue;
+                            }
+                            auto pit = fd.find("pts");
+                            if (pit != fd.end() && pit->is_array()) {
+                                for (const auto& q : *pit) {
+                                    if (q.is_array() && q.size() >= 3) {
+                                        pts.push_back({
+                                            q.at(0).get<double>(),
+                                            q.at(1).get<double>(),
+                                            q.at(2).get<double>() });
+                                    }
+                                }
+                            }
+                            break;
+                        }
                     }
+                }
+
+                if (have_base && pts.size() >= 2)
+                {
+                    for (const auto& q : pts) {
+                        lp.instance_offsets.push_back({
+                            (q[0] - base_pt[0]) * s,
+                            (q[1] - base_pt[1]) * s,
+                            (q[2] - base_pt[2]) * s });
+                    }
+                    lp.count1 = static_cast<int>(pts.size());
                 }
                 else
                 {
-                    // plain linear: fld 2 Dir, fld 3 count.
-                    double pdir[3];
-                    if (FieldDir(jf, 2, pdir)) {
-                        dir[0] = pdir[0]; dir[1] = pdir[1];
-                        dir[2] = pdir[2];
-                    } else if (patj != jf.end() &&
-                               patj->contains("dir") &&
-                               patj->at("dir").is_array() &&
-                               patj->at("dir").size() == 3) {
-                        dir[0] = patj->at("dir").at(0).get<double>();
-                        dir[1] = patj->at("dir").at(1).get<double>();
-                        dir[2] = patj->at("dir").at(2).get<double>();
+                    double dir[3] = { 1.0, 0.0, 0.0 };
+                    int    cnt1   = 2;
+                    double bp[3], tp[3];
+                    const double f10h = FieldValueById(jf, 10, 0.0);
+                    if (f10h > 1.5 && FieldPoint(jf, 13, bp) &&
+                        FieldPoint(jf, 14, tp) && sp1_mm > 1e-9)
+                    {
+                        // fill-to-point: step from base toward end.
+                        double v[3] = { tp[0]-bp[0], tp[1]-bp[1],
+                                        tp[2]-bp[2] };
+                        double L = std::sqrt(v[0]*v[0] + v[1]*v[1] +
+                                             v[2]*v[2]);
+                        if (L > 1e-9) {
+                            dir[0]=v[0]/L; dir[1]=v[1]/L; dir[2]=v[2]/L;
+                            cnt1 = (int)std::floor(L/sp1_mm + 1e-6) + 1;
+                        }
                     }
-                    cnt1 = (int)FieldValueById(jf, 3, 2.0);
+                    else
+                    {
+                        // plain linear: fld 2 Dir, fld 3 count.
+                        double pdir[3];
+                        if (FieldDir(jf, 2, pdir)) {
+                            dir[0]=pdir[0]; dir[1]=pdir[1]; dir[2]=pdir[2];
+                        } else if (patj != jf.end() &&
+                                   patj->contains("dir") &&
+                                   patj->at("dir").is_array() &&
+                                   patj->at("dir").size() == 3) {
+                            dir[0]=patj->at("dir").at(0).get<double>();
+                            dir[1]=patj->at("dir").at(1).get<double>();
+                            dir[2]=patj->at("dir").at(2).get<double>();
+                        }
+                        cnt1 = (int)FieldValueById(jf, 3, 2.0);
+                    }
+                    lp.dir1[0]=dir[0]; lp.dir1[1]=dir[1]; lp.dir1[2]=dir[2];
+                    lp.count1   = (cnt1 >= 1) ? cnt1 : 2;
+                    lp.spacing1 = sp1_mm * s;
+                    int cnt2 = (int)FieldValueById(jf, 6, 1.0);
+                    lp.count2   = (cnt2 >= 1) ? cnt2 : 1;
+                    lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
                 }
-                lp.dir1[0] = dir[0]; lp.dir1[1] = dir[1];
-                lp.dir1[2] = dir[2];
-                lp.count1   = (cnt1 >= 1) ? cnt1 : 2;
-                lp.spacing1 = sp1_mm * s;
-                int cnt2 = (int)FieldValueById(jf, 6, 1.0);
-                lp.count2   = (cnt2 >= 1) ? cnt2 : 1;
-                lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
                 lp.fuse = true;   // combine onto running; the seed
                                   // hole tool's op_kind='c' -> cut
                 cadapp::FeatureIR pf;
