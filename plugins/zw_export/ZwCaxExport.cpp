@@ -2811,6 +2811,20 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
     // Per-feature cumulative state capture (CAX_FEAT_STATE / _STEP env).
     const StateConfig state_cfg = StateConfig::FromEnv();
 
+    // CAX_BAKE_CUMULATIVE=1: for opaque features that modify the body IN
+    // PLACE but report no own result shapes (n_shape==0) -- sheet-metal
+    // flanges/tabs/punches (CdSmd*/Smd*), the API-opaque ___凸包 bosses --
+    // bake the WHOLE body at the feature's AFTER state as its geometry and
+    // flag it "baked_cumulative". The reader loads it as the new running
+    // body (replace); downstream reconstructable features (cuts, patterns)
+    // replay on top. Gives exact geometry for feature classes cax can't
+    // model parametrically. Off by default (heavier: a full-body STEP per
+    // such feature); enable per-part for sheet-metal / opaque-feature parts.
+    const bool bake_cumulative = [] {
+        const char* e = std::getenv("CAX_BAKE_CUMULATIVE");
+        return e && e[0] && e[0] != '0';
+    }();
+
     // ONE forward sweep through history. Roll the body to the BEGIN once; from
     // here every per-feature roll only plays FORWARD (ZwHistoryReplay is relative
     // to the stop-line and we visit features in history order), so the body is
@@ -3185,6 +3199,23 @@ bool ExportActivePartToCax(const std::string& out_path, std::string& err)
                     // the reader does a clean opaque-skip, not BakedShape.
                     diag["feat_step_empty"] = true;
                 }
+            }
+
+            // Cumulative-body bake for in-place opaque features (no own
+            // result shapes to bake): export the WHOLE body at this AFTER
+            // state and flag it cumulative so the reader replaces its running
+            // body with it. The body is already rolled to AFTER above.
+            if (bake_cumulative && re.n_shape == 0 && at_after &&
+                jf.find("geometry") == jf.end())
+            {
+                const std::string cstep = FeatStepPath(out_path, node.id);
+                zwapi::StepExportResult cse = zwapi::ExportPartStep(cstep);
+                if (cse.ok && !cse.empty) {
+                    jf["geometry"]         = zwapi::ToUtf8(BaseName(cstep).c_str());
+                    jf["baked_cumulative"] = true;
+                }
+                diag["cumul_bake_rc"]    = cse.export_rc;
+                diag["cumul_bake_bytes"] = cse.bytes;
             }
 
             jf["_diag"] = std::move(diag);
