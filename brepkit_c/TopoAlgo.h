@@ -86,6 +86,19 @@ public:
 		double tolerance,
 		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+
+	// Build a drill-hole cutting tool (cylinder + conical drill tip) at
+	// (px,py,pz) on `base`. The drill AXIS is derived from the base face
+	// nearest the point -- the inward normal that goes INTO solid material --
+	// since ZW3D FtHoleMain exports the placement point but not the axis.
+	// radius = dia/2, cylinder length = depth (bbox diagonal when through),
+	// tip cone half-angle = tip_deg/2 (118 deg standard drill point). The
+	// caller Cuts the returned solid from base. Null when no face is found
+	// near the point or the surface normal is undefined.
+	static std::shared_ptr<TopoShape> DrillTool(const std::shared_ptr<TopoShape>& base,
+		double px, double py, double pz, double dia, double depth, double tip_deg, bool through,
+		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 	static std::shared_ptr<TopoShape> UnifySameDomain(const std::shared_ptr<TopoShape>& shape,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);

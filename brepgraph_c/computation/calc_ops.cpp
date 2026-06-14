@@ -134,6 +134,27 @@ void RegisterBuiltinOps(OpRegistry& reg)
 		},
 		{false, false, true, false});  // is_boolean
 
+	// drill_tool: build a hole-cutting tool (cylinder + 118-deg drill tip)
+	// positioned at `pt` on `base`, with the axis derived from the base face
+	// nearest pt (ZW3D FtHoleMain exports the point, not the axis). The
+	// caller feeds the result into a "cut" against the same base; kept as a
+	// standalone node so a pattern can replicate the tool. Null tool ->
+	// pass-through is the caller's job (the cut just sees a null operand).
+	reg.Define("drill_tool", {"base", "pt", "dia", "depth", "tip", "through"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto bv = ctx.GetShape(0);
+			if (!bv.shape) return {};
+			auto pt = ctx.GetVec3(1);
+			double dia    = ctx.Num(2);
+			double depth  = ctx.Num(3);
+			double tip    = ctx.Num(4);
+			bool   thru   = ctx.Num(5) > 0.5;
+			auto tool = brepkit::TopoAlgo::DrillTool(bv.shape,
+				pt[0], pt[1], pt[2], dia, depth, tip, thru, ctx.op_id, ctx.tn);
+			if (!tool) return {};
+			return MakeShapeVal(tool);
+		});
+
 	// sew: join base + tool sheet bodies into one shell at `tol`,
 	// solidifying closed results (ZW3D CdShapeSew / sheet FtBoolSoloAdd).
 	// Tool missing -> pass-through, same degradation policy as trim.

@@ -2585,6 +2585,90 @@ static bool TryBuildFtPtnFtr(ZwBuildCtx& ctx)
             }
         }
 
+        // Hole-seeded pattern: the seed (fld 1 ent's owning feat)
+        // is a drill hole, not an extrude, so the extrude-footprint
+        // matcher below can't see it. Wire the hole's cut tool as a
+        // Tool original and pattern it onto the running body -- the
+        // Replayer cut-replicates an op_kind='c' tool. ZW3D linear
+        // modes: fld 10 = 0 plain (count fld 3, spacing fld 4) or
+        // = 2 "fill to point" (fld 13 base -> fld 14 end, stepped at
+        // fld 4 spacing). DKBA81377750 阵列1/阵列2 are fill-to-point
+        // M5 hole rows.
+        if (zt == "FtPtnFtr" && running_solid_id != 0)
+        {
+            const uint32_t seed_feat = FieldEntFeat(jf, 1);
+            bool seed_is_hole = false;
+            for (const auto& f : out.features) {
+                if (f.id == seed_feat &&
+                    f.type == cadapp::FeatType::HoleWizard) {
+                    seed_is_hole = true;
+                    break;
+                }
+            }
+            if (seed_is_hole)
+            {
+                cadapp::FeatPayloadLinearPattern lp;
+                const double sp1_mm = FieldValueById(jf, 4, 0.0);
+                double dir[3] = { 1.0, 0.0, 0.0 };
+                int    cnt1   = 2;
+                double bp[3], tp[3];
+                const double f10h = FieldValueById(jf, 10, 0.0);
+                if (f10h > 1.5 && FieldPoint(jf, 13, bp) &&
+                    FieldPoint(jf, 14, tp) && sp1_mm > 1e-9)
+                {
+                    // fill-to-point: step from base toward end.
+                    double v[3] = { tp[0] - bp[0], tp[1] - bp[1],
+                                    tp[2] - bp[2] };
+                    double L = std::sqrt(v[0]*v[0] + v[1]*v[1] +
+                                         v[2]*v[2]);
+                    if (L > 1e-9) {
+                        dir[0] = v[0]/L; dir[1] = v[1]/L;
+                        dir[2] = v[2]/L;
+                        cnt1 = (int)std::floor(L/sp1_mm + 1e-6) + 1;
+                    }
+                }
+                else
+                {
+                    // plain linear: fld 2 Dir, fld 3 count.
+                    double pdir[3];
+                    if (FieldDir(jf, 2, pdir)) {
+                        dir[0] = pdir[0]; dir[1] = pdir[1];
+                        dir[2] = pdir[2];
+                    } else if (patj != jf.end() &&
+                               patj->contains("dir") &&
+                               patj->at("dir").is_array() &&
+                               patj->at("dir").size() == 3) {
+                        dir[0] = patj->at("dir").at(0).get<double>();
+                        dir[1] = patj->at("dir").at(1).get<double>();
+                        dir[2] = patj->at("dir").at(2).get<double>();
+                    }
+                    cnt1 = (int)FieldValueById(jf, 3, 2.0);
+                }
+                lp.dir1[0] = dir[0]; lp.dir1[1] = dir[1];
+                lp.dir1[2] = dir[2];
+                lp.count1   = (cnt1 >= 1) ? cnt1 : 2;
+                lp.spacing1 = sp1_mm * s;
+                int cnt2 = (int)FieldValueById(jf, 6, 1.0);
+                lp.count2   = (cnt2 >= 1) ? cnt2 : 1;
+                lp.spacing2 = FieldValueById(jf, 7, 0.0) * s;
+                lp.fuse = true;   // combine onto running; the seed
+                                  // hole tool's op_kind='c' -> cut
+                cadapp::FeatureIR pf;
+                pf.id   = id;
+                pf.name = name;
+                pf.type = cadapp::FeatType::LinearPattern;
+                pf.data = std::move(lp);
+                pf.ext_strings["zw_type"] = zt;
+                PushInput(pf, seed_feat, cadapp::InputRole::Tool);
+                PushInput(pf, running_solid_id,
+                          cadapp::InputRole::Base);
+                pf.ext_params["pattern_onto_running"] = 1.0;
+                out.features.push_back(std::move(pf));
+                running_solid_id = id;
+                return true;
+            }
+        }
+
         if (zt == "FtPtnFtr" &&
             ((linear_method && has_dir) ||
              (circular_method && has_axis_pt)) &&
@@ -3134,6 +3218,74 @@ static bool TryBuildFtDressup(ZwBuildCtx& ctx)
             running_solid_id = id;
             return true;
         }
+    }
+
+    return false;
+}
+
+static bool TryBuildFtHoleMain(ZwBuildCtx& ctx)
+{
+    const json&                             jf                   = ctx.jf;
+    const uint32_t                          id                   = ctx.id;
+    const std::string&                      name                 = ctx.name;
+    const std::string&                      zt                   = ctx.zt;
+    const double                            s                    = ctx.s;
+    cadapp::DocumentIR&                     out                  = ctx.out;
+    uint32_t&                               running_solid_id     = ctx.running_solid_id;
+    std::set<uint32_t>&                     standalone_ids       = ctx.standalone_ids;
+    std::set<uint32_t>&                     standalone_sheet_ids = ctx.standalone_sheet_ids;
+    std::vector<ExtrudeFootprint>&          extrude_xy           = ctx.extrude_xy;
+    std::vector<PriorProfile>&              prior_profiles       = ctx.prior_profiles;
+    std::unordered_map<uint32_t, uint32_t>& seed_to_pattern      = ctx.seed_to_pattern;
+    const std::string&                      doc_dir              = ctx.doc_dir;
+    const std::string&                      path                 = ctx.path;
+    (void)id; (void)name; (void)zt; (void)s; (void)out; (void)jf;
+    (void)running_solid_id; (void)standalone_ids; (void)standalone_sheet_ids;
+    (void)extrude_xy; (void)prior_profiles; (void)seed_to_pattern;
+    (void)doc_dir; (void)path;
+
+    // ZW3D simple drill hole (FtHoleMain 钻孔) -> HoleWizard.
+    // fld 25 "Dia (D1)" = drill diameter, fld 27 "Depth (H1)" =
+    // drill depth, fld 55 "Tip" = drill-point angle (118 deg
+    // standard), fld 65 the placement point on a body face. The
+    // hole cuts the RUNNING body in place (like a dressup); the
+    // Replayer's HoleWizard arm derives the drill axis from that
+    // body's face at the point and Cuts a cylinder + conical tip.
+    // Verified on DKBA81377750 (孔1 removes exactly 172 mm^3 =
+    // cylinder 166.3 + 118-deg tip 5.8, matching truth). No body
+    // yet, or no diameter / point -> fall through to opaque.
+    if (zt == "FtHoleMain" && running_solid_id != 0)
+    {
+        const double dia_mm  = FieldValueById(jf, 25, 0.0);
+        const double dep_mm  = FieldValueById(jf, 27, 0.0);
+        const double tip_deg = FieldValueById(jf, 55, 118.0);
+        double       hpt[3]  = { 0.0, 0.0, 0.0 };
+        const bool   has_pt  = FieldPoint(jf, 65, hpt) ||
+                               FieldPoint(jf, 98, hpt);
+        if (dia_mm > 1e-9 && has_pt)
+        {
+            cadapp::FeatPayloadHoleWizard pl;
+            pl.diameter    = dia_mm * s;
+            pl.depth       = dep_mm * s;
+            pl.through_all = (dep_mm <= 1e-9);
+            cadapp::FeatureIR hf;
+            hf.id   = id;
+            hf.name = name;
+            hf.type = cadapp::FeatType::HoleWizard;
+            hf.data = std::move(pl);
+            hf.ext_strings["zw_type"]     = zt;
+            hf.ext_params["hole_px"]      = hpt[0] * s;
+            hf.ext_params["hole_py"]      = hpt[1] * s;
+            hf.ext_params["hole_pz"]      = hpt[2] * s;
+            hf.ext_params["hole_tip_deg"] = tip_deg;
+            // Base = the running body the hole cuts in place.
+            PushInput(hf, running_solid_id,
+                      cadapp::InputRole::Base);
+            out.features.push_back(std::move(hf));
+            running_solid_id = id;
+            return true;
+        }
+        // incomplete record -> fall through to opaque.
     }
 
     return false;
@@ -3988,6 +4140,7 @@ bool ZwReader::ReadFile(const std::string& path,
                 if (TryBuildFtAllRev(ctx))        { continue; }
                 if (TryBuildFtPtnFtr(ctx))        { continue; }
                 if (TryBuildFtDressup(ctx))       { continue; }
+                if (TryBuildFtHoleMain(ctx))      { continue; }
                 if (TryBuildFtSolidSoloTrm(ctx))  { continue; }
                 if (TryBuildFtSew(ctx))           { continue; }
                 if (TryBuildFtMirrorFtr(ctx))     { continue; }

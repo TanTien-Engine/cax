@@ -2966,12 +2966,48 @@ struct FeatureVisitor
 
     void operator()(FeatPayloadHoleWizard& p)
     {
-        (void)p;
         auto auth_it = doc.authored_shapes.find(feat.id);
         if (auth_it != doc.authored_shapes.end() && auth_it->second)
         {
             node = cg->AddConst(auth_it->second,
                                 "authored_hole_" + feat.name);
+        }
+        else if (base_node >= 0 && p.diameter > 1e-9)
+        {
+            // ZW3D FtHoleMain has no authored .brp: synthesize the
+            // drill cut from the typed sizes plus the placement point
+            // / tip angle the reader stashed in ext_params. The
+            // drill_tool op derives the axis from the running body's
+            // face at the point; the tool node is kept SEPARATE so a
+            // later FtPtnFtr pattern can replicate it.
+            auto pget = [&](const char* k, double dflt) {
+                auto it = feat.ext_params.find(k);
+                return it != feat.ext_params.end() ? it->second
+                                                   : dflt;
+            };
+            brepgraph::Vec3 pt = { pget("hole_px", 0.0),
+                                   pget("hole_py", 0.0),
+                                   pget("hole_pz", 0.0) };
+            int pt_n   = cg->AddConst(pt, "hole_pt");
+            int dia_n  = cg->AddConst(p.diameter, "hole_dia");
+            int dep_n  = cg->AddConst(p.depth, "hole_depth");
+            int tip_n  = cg->AddConst(pget("hole_tip_deg", 118.0),
+                                      "hole_tip");
+            int thru_n = cg->AddConst(p.through_all ? 1.0 : 0.0,
+                                      "hole_through");
+            int tool_node = cg->AddOp(
+                "drill_tool",
+                {base_node, pt_n, dia_n, dep_n, tip_n, thru_n}, {},
+                feat.name + ":drill");
+            node = cg->AddOp("cut", {base_node, tool_node}, {},
+                             feat.name + ":holecut");
+            // Register the drill tool so a pattern over this hole
+            // can multiply it (op_kind 'c' = cut tool).
+            FeatureToolInfo ti;
+            ti.tool_node = tool_node;
+            ti.base_node = base_node;
+            ti.op_kind   = 'c';
+            feature_tools[feat.id] = ti;
         }
         else if (base_node >= 0)
         {

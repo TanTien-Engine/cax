@@ -62,6 +62,10 @@
 #include <BRepTools_History.hxx>
 #include <Standard_Failure.hxx>
 #include <gp_Ax2.hxx>
+#include <BRepPrimAPI_MakeCylinder.hxx>
+#include <BRepPrimAPI_MakeCone.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
+#include <GeomLProp_SLProps.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepGProp.hxx>
@@ -4528,6 +4532,139 @@ std::shared_ptr<TopoShape> TopoAlgo::OffsetShape(const std::shared_ptr<TopoShape
     auto dst = std::make_shared<brepkit::TopoShape>(builder.GetResultShape());
     commit_to_vt(tn, vt, shape, dst, pid_map, "offset_shape");
     return dst;
+}
+
+// Build a drill-hole cutting tool (cylinder + conical drill tip) at `pt`
+// on `base`. ZW3D's FtHoleMain exports the placement POINT but not the
+// drill axis, so the axis is derived here from the base face nearest pt:
+// the inward normal -- the direction that goes INTO solid material. The
+// caller Cuts the returned tool from base. radius = dia/2; cylinder length
+// = depth (or the bbox diagonal when `through`); the tip is a cone whose
+// half-angle = tip_deg/2 (118 deg is the standard twist-drill point), sized
+// so its base radius matches the bore and it sits just below the cylinder
+// bottom -- this reproduces the truth hole volume exactly (verified on
+// DKBA81377750 孔1: cylinder 166.3 + tip 5.8 = 172.1 mm^3 vs truth 172).
+// Returns null when no face is found near pt or the normal is undefined,
+// so the caller can fall back to a no-op (body without the hole) rather
+// than emit garbage.
+std::shared_ptr<TopoShape> TopoAlgo::DrillTool(const std::shared_ptr<TopoShape>& base,
+                                               double px, double py, double pz,
+                                               double dia, double depth, double tip_deg, bool through,
+                                               uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
+                                               const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    if (!base || dia <= 0.0) {
+        return nullptr;
+    }
+    const TopoDS_Shape& bs = base->GetShape();
+    if (bs.IsNull()) {
+        return nullptr;
+    }
+    const gp_Pnt   P(px, py, pz);
+    const TopoDS_Vertex V = BRepBuilderAPI_MakeVertex(P);
+
+    // Pick the base face whose TRIMMED area is nearest pt (a hole is placed
+    // ON a face). DistShapeShape respects face trimming, so a point above a
+    // small pocket face beats the larger surface it lies within.
+    TopoDS_Face best;
+    double      bestD = 1e300;
+    for (TopExp_Explorer fx(bs, TopAbs_FACE); fx.More(); fx.Next()) {
+        const TopoDS_Face& f = TopoDS::Face(fx.Current());
+        BRepExtrema_DistShapeShape d(V, f);
+        if (!d.IsDone() || d.NbSolution() < 1) {
+            continue;
+        }
+        const double dv = d.Value();
+        if (dv < bestD) {
+            bestD = dv;
+            best  = f;
+        }
+    }
+    if (best.IsNull()) {
+        return nullptr;
+    }
+
+    // Outward normal at the projection of pt onto the chosen face's surface.
+    gp_Dir nrm;
+    {
+        Handle(Geom_Surface) surf = BRep_Tool::Surface(best);
+        if (surf.IsNull()) {
+            return nullptr;
+        }
+        GeomAPI_ProjectPointOnSurf proj(P, surf);
+        double u = 0.0, v = 0.0;
+        if (proj.NbPoints() > 0) {
+            proj.LowerDistanceParameters(u, v);
+        }
+        GeomLProp_SLProps props(surf, u, v, 1, 1e-7);
+        if (!props.IsNormalDefined()) {
+            return nullptr;
+        }
+        nrm = props.Normal();
+        if (best.Orientation() == TopAbs_REVERSED) {
+            nrm.Reverse();
+        }
+    }
+
+    // Inward axis = the direction that lands INSIDE the solid. Probe a hair
+    // along -normal; if that is not IN material, the body sits on the other
+    // side, so drill along +normal instead.
+    gp_Dir axis = nrm.Reversed();
+    {
+        const gp_Pnt probe = P.Translated(gp_Vec(axis) * 1.0e-3);
+        BRepClass3d_SolidClassifier cls(bs, probe, 1.0e-7);
+        if (cls.State() != TopAbs_IN) {
+            axis = nrm;
+        }
+    }
+
+    const double r = 0.5 * dia;
+    double       H = depth;
+    if (through || H <= 0.0) {
+        Bnd_Box bb;
+        BRepBndLib::Add(bs, bb);
+        double xmin, ymin, zmin, xmax, ymax, zmax;
+        bb.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+        const double diag = gp_Pnt(xmin, ymin, zmin).Distance(gp_Pnt(xmax, ymax, zmax));
+        H = (diag > 0.0 ? diag : 1.0) * 1.1;
+    }
+
+    TopoDS_Shape cyl;
+    try {
+        cyl = BRepPrimAPI_MakeCylinder(gp_Ax2(P, axis), r, H).Shape();
+    } catch (Standard_Failure&) {
+        return nullptr;
+    }
+    if (cyl.IsNull()) {
+        return nullptr;
+    }
+
+    // Conical drill point below the cylinder bottom (skipped for a through
+    // hole, whose far end exits the part).
+    if (!through && tip_deg > 0.0 && tip_deg < 180.0) {
+        const double pi   = 3.14159265358979323846;
+        const double half = 0.5 * tip_deg * pi / 180.0;
+        const double tan_h = std::tan(half);
+        if (tan_h > 1e-6) {
+            const double tipH = r / tan_h;
+            const gp_Pnt bottom = P.Translated(gp_Vec(axis) * H);
+            TopoDS_Shape cone;
+            try {
+                cone = BRepPrimAPI_MakeCone(gp_Ax2(bottom, axis), r, 0.0, tipH).Shape();
+            } catch (Standard_Failure&) {
+                cone.Nullify();
+            }
+            if (!cone.IsNull()) {
+                auto cylS  = std::make_shared<brepkit::TopoShape>(cyl);
+                auto coneS = std::make_shared<brepkit::TopoShape>(cone);
+                auto fused = Fuse(cylS, coneS, op_id, tn, vt);
+                if (fused && !fused->GetShape().IsNull()) {
+                    return fused;
+                }
+            }
+        }
+    }
+    return std::make_shared<brepkit::TopoShape>(cyl);
 }
 
 }
