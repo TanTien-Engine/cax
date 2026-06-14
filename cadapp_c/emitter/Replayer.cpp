@@ -3724,6 +3724,15 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
             const bool free_mirror =
                 std::get_if<FeatPayloadMirror>(&feat.data) != nullptr &&
                 base_node < 0;
+            // MOVE mirror (ZW3D fld10=0, reader-tagged zw_mirror_move): the
+            // source is REFLECTED to the mirror position and the original is
+            // CONSUMED -- unlike a COPY mirror, the source must NOT stay an
+            // emitted candidate. R2900 Mirror5 moves Revolve4's funnels;
+            // keeping the source produced a duplicate funnel (+phantom vol).
+            const bool mirror_move =
+                free_mirror &&
+                feat.ext_params.count("zw_mirror_move") &&
+                feat.ext_params.at("zw_mirror_move") != 0.0;
             for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
             {
                 InputRole role = (i < feat.input_roles.size())
@@ -3735,6 +3744,13 @@ bool Replayer::Replay(DocumentIR& doc, const ReplayOptions& opt, ReplayResult& o
                 }
                 if ((free_pattern || free_mirror) &&
                     role == InputRole::Tool) {
+                    // MOVE consumes its source (reflected away); COPY keeps it.
+                    if (mirror_move) {
+                        uint32_t tid = feat.input_feature_ids[i];
+                        if (tid != 0u && tid != 0xFFFFFFFFu) {
+                            consumed_feat_ids.insert(tid);
+                        }
+                    }
                     continue;
                 }
                 uint32_t iid = feat.input_feature_ids[i];

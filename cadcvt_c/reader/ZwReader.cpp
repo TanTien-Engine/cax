@@ -3073,7 +3073,22 @@ static bool TryBuildFtPtnFtr(ZwBuildCtx& ctx)
                                         continue;
                                     }
                                     if (standalone_sheet_ids.count(fv)) {
+                                        // Open SHEET operand (R2900
+                                        // Mirror5/6 funnels): ZW3D
+                                        // keeps these as FREE sheet
+                                        // bodies (truth count_sheets
+                                        // = 6). Consuming one as a
+                                        // boolean operand makes it
+                                        // VANISH -- the OCCT quilt
+                                        // into the plate fails, yet
+                                        // the sheet is marked
+                                        // consumed, so it disappears
+                                        // (Mirror5's moved funnel
+                                        // never reaches y=11.96).
+                                        // Leave it a live standalone
+                                        // candidate.
                                         merges_sheets = true;
+                                        continue;
                                     }
                                     if (consumed62.insert(fv).second) {
                                         PushInput(pf, fv,
@@ -4056,14 +4071,26 @@ static bool TryBuildGeomFallback(ZwBuildCtx& ctx)
                 }
                 ctx.lineage_tip[prev] = id;
             }
+            // Open SHEET standalones (R2900 Mirror5/6's moved /
+            // copied funnels) are NOT inside the cumulative SOLID
+            // bake. Consuming them erases the sheets from the
+            // output -- the bake carries no sheet, yet the sheet
+            // is marked consumed, so it vanishes (count_sheets
+            // 6 -> 3). Only SOLID standalones are subsumed by the
+            // cumulative body; sheets stay live candidates.
+            std::set<uint32_t> kept_sheets;
             for (uint32_t sid : standalone_ids) {
+                if (standalone_sheet_ids.count(sid)) {
+                    kept_sheets.insert(sid);
+                    continue;
+                }
                 const uint32_t t = ResolveTip(ctx.lineage_tip, sid);
                 if (consumed_now.insert(t).second) {
                     PushInput(f, t, cadapp::InputRole::Operand);
                 }
                 ctx.lineage_tip[sid] = id;
             }
-            standalone_ids.clear();
+            standalone_ids = kept_sheets;
             out.features.push_back(std::move(f));
             running_solid_id = id;
             return true;
