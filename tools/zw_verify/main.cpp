@@ -86,6 +86,23 @@
 #include <TopoDS_Shape.hxx>
 #include <BRep_Builder.hxx>
 #include <gp_Trsf.hxx>
+// route B (local-fuse) spike
+#include <BOPAlgo_Builder.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepAdaptor_Surface.hxx>
+#include <BRepLib.hxx>
+#include <BRepCheck_Analyzer.hxx>
+#include <TopTools_ListOfShape.hxx>
+#include <TopTools_ListIteratorOfListOfShape.hxx>
+#include <TopTools_MapOfShape.hxx>
+#include <TopoDS_Shell.hxx>
+#include <TopoDS_Solid.hxx>
+#include <BRepTopAdaptor_FClass2d.hxx>
+#include <BOPAlgo_BuilderSolid.hxx>
+#include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <gp_Pnt.hxx>
+#include <gp_Pnt2d.hxx>
+#include <list>
 
 #include <nlohmann/json.hpp>
 
@@ -951,6 +968,215 @@ int main(int argc, char** argv)
         const VolArea va = VolumeAndArea(r ? r->GetShape() : TopoDS_Shape());
         std::printf("FUSEPROBE ms=%.1f solids=%d faces=%d vol=%.9g\n",
                     ms, c.solids, c.faces, va.volume);
+        return 0;
+    }
+
+    // --local-fuse-probe a.brep b.brep: Stage-0 spike for route B (local
+    // boolean via boundary evaluation). Runs the general fuse (reference)
+    // AND a local "B3" fuse, then compares volume/faces/validity/time. The
+    // B3 pipeline: pick the body faces whose bbox meets the tool -> run
+    // BOPAlgo_Builder on ONLY {touched faces, tool faces} (a LOCAL imprint +
+    // split that OCCT gives consistent shared edges + history for) ->
+    // classify each split piece in/out the other operand -> assemble the
+    // union boundary = untouched body faces (TShape reused verbatim) + body
+    // pieces outside the tool + tool pieces outside the body. Proves whether
+    // a local fuse can be valid + faithful + faster on a big body. Results
+    // discarded. Single-tool / small-footprint only; bails otherwise.
+    if (argc == 4 && std::strcmp(argv[1], "--local-fuse-probe") == 0)
+    {
+        TopoDS_Shape body, tool;
+        BRep_Builder rbb;
+        if (!BRepTools::Read(body, argv[2], rbb) || body.IsNull() ||
+            !BRepTools::Read(tool, argv[3], rbb) || tool.IsNull()) {
+            std::fprintf(stderr, "cannot read operands\n");
+            return 2;
+        }
+
+        // Reference: the general whole-body fuse.
+        const auto refT0 = std::chrono::steady_clock::now();
+        auto refr = brepkit::TopoAlgo::Fuse(
+            std::make_shared<brepkit::TopoShape>(body),
+            std::make_shared<brepkit::TopoShape>(tool), 9999, nullptr, nullptr);
+        const double ref_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - refT0).count();
+        const VolArea refva = VolumeAndArea(refr ? refr->GetShape() : TopoDS_Shape());
+        const Counts  refc  = CountSubs(refr ? refr->GetShape() : TopoDS_Shape());
+        const bool refValid = (refr && !refr->GetShape().IsNull())
+            ? BRepCheck_Analyzer(refr->GetShape()).IsValid() : false;
+
+        // Local B3 fuse.
+        const auto locT0 = std::chrono::steady_clock::now();
+        std::string note = "ok";
+        TopoDS_Shape result;
+        int nTouched = 0, nTotal = 0, nUntouched = 0, nKeptBody = 0, nKeptTool = 0;
+        int nSolidsTotal = 0, nSolidsTouched = 0;
+        bool rebuiltValid = false;
+        do {
+            Bnd_Box tbox; BRepBndLib::Add(tool, tbox);
+            if (tbox.IsVoid()) { note = "tool bbox void"; break; }
+            tbox.Enlarge(16e-6);
+
+            // The body is (often) a multi-solid compound. Only the solid the
+            // tool meets is rebuilt; the others pass through verbatim. For
+            // this spike we require exactly one touched solid (the editor's
+            // single-tool edit case); otherwise bail to the general fuse.
+            // Touched solid = one with a FACE near the tool (face-level is
+            // far tighter than solid-bbox: R2900's solids pack close, so a
+            // solid bbox meets the tool while none of its faces do).
+            TopTools_ListOfShape passThrough;
+            TopoDS_Shape touchedSolid;
+            for (TopExp_Explorer se(body, TopAbs_SOLID); se.More(); se.Next()) {
+                ++nSolidsTotal;
+                bool meets = false;
+                for (TopExp_Explorer fe(se.Current(), TopAbs_FACE); fe.More() && !meets; fe.Next()) {
+                    Bnd_Box fb; BRepBndLib::Add(fe.Current(), fb);
+                    if (!fb.IsVoid() && !fb.IsOut(tbox)) meets = true;
+                }
+                if (meets) { touchedSolid = se.Current(); ++nSolidsTouched; }
+                else passThrough.Append(se.Current());
+            }
+            if (nSolidsTouched != 1) {
+                note = "tool meets " + std::to_string(nSolidsTouched) + " solids"; break;
+            }
+
+            // touched faces OF THE TOUCHED SOLID
+            TopTools_IndexedMapOfShape solidFaces;
+            TopExp::MapShapes(touchedSolid, TopAbs_FACE, solidFaces);
+            nTotal = solidFaces.Extent();
+            TopTools_ListOfShape args, touched;
+            TopTools_MapOfShape  touchedSet;
+            for (int i = 1; i <= solidFaces.Extent(); ++i) {
+                Bnd_Box fb; BRepBndLib::Add(solidFaces(i), fb);
+                if (fb.IsVoid() || fb.IsOut(tbox)) continue;
+                touched.Append(solidFaces(i));
+                touchedSet.Add(solidFaces(i));
+                args.Append(solidFaces(i));
+            }
+            nTouched = touched.Extent();
+            if (nTouched == 0) { note = "0 touched faces"; break; }
+            if (nTouched > 200) { note = "footprint not local"; break; }
+
+            TopTools_ListOfShape toolFaces;
+            for (TopExp_Explorer te(tool, TopAbs_FACE); te.More(); te.Next()) {
+                toolFaces.Append(te.Current());
+                args.Append(te.Current());
+            }
+
+            // LOCAL imprint + split (OCCT builds consistent shared edges).
+            BOPAlgo_Builder builder;
+            builder.SetArguments(args);
+            builder.SetRunParallel(Standard_False);
+            builder.Perform();
+            if (builder.HasErrors()) { note = "builder errors"; break; }
+
+            // classify against the SINGLE touched body solid + the tool solid.
+            BRepClass3d_SolidClassifier clsTool(tool);
+            BRepClass3d_SolidClassifier clsBody(touchedSolid);
+            auto inside = [](BRepClass3d_SolidClassifier& c, const gp_Pnt& p) -> bool {
+                c.Perform(p, 1e-7); return c.State() == TopAbs_IN;
+            };
+            // A robust INTERIOR point on the face: param-centre can fall in a
+            // hole / outside a trimmed split piece, so sample a UV grid and
+            // take the first point the 2D classifier reports strictly IN.
+            auto faceMid = [](const TopoDS_Shape& fs) -> gp_Pnt {
+                const TopoDS_Face f = TopoDS::Face(fs);
+                BRepAdaptor_Surface s(f);
+                const double u0 = s.FirstUParameter(), u1 = s.LastUParameter();
+                const double v0 = s.FirstVParameter(), v1 = s.LastVParameter();
+                BRepTopAdaptor_FClass2d fc(f, 1e-7);
+                for (int iu = 1; iu <= 5; ++iu)
+                    for (int iv = 1; iv <= 5; ++iv) {
+                        const double u = u0 + (u1 - u0) * iu / 6.0;
+                        const double v = v0 + (v1 - v0) * iv / 6.0;
+                        if (fc.Perform(gp_Pnt2d(u, v)) == TopAbs_IN)
+                            return s.Value(u, v);
+                    }
+                return s.Value((u0 + u1) * 0.5, (v0 + v1) * 0.5);
+            };
+
+            // Collect the union-boundary faces: the touched solid's untouched
+            // faces + body pieces outside the tool + tool pieces outside the
+            // body. BOPAlgo_BuilderSolid then groups them into valid solid(s)
+            // -- it handles connexity, orientation, and the multi-lump case
+            // the hand-rolled single shell got wrong.
+            BRep_Builder bb;
+            TopTools_ListOfShape keptFaces;
+            for (int i = 1; i <= solidFaces.Extent(); ++i)
+                if (!touchedSet.Contains(solidFaces(i))) { keptFaces.Append(solidFaces(i)); ++nUntouched; }
+            for (TopTools_ListIteratorOfListOfShape it(touched); it.More(); it.Next()) {
+                const TopoDS_Shape& F = it.Value();
+                if (builder.IsDeleted(F)) continue;
+                const TopTools_ListOfShape& pcs = builder.Modified(F);
+                if (pcs.IsEmpty()) {
+                    if (!inside(clsTool, faceMid(F))) { keptFaces.Append(F); ++nKeptBody; }
+                } else for (TopTools_ListIteratorOfListOfShape p(pcs); p.More(); p.Next())
+                    if (!inside(clsTool, faceMid(p.Value()))) { keptFaces.Append(p.Value()); ++nKeptBody; }
+            }
+            for (TopTools_ListIteratorOfListOfShape it(toolFaces); it.More(); it.Next()) {
+                const TopoDS_Shape& G = it.Value();
+                if (builder.IsDeleted(G)) continue;
+                const TopTools_ListOfShape& pcs = builder.Modified(G);
+                if (pcs.IsEmpty()) {
+                    if (!inside(clsBody, faceMid(G))) { keptFaces.Append(G); ++nKeptTool; }
+                } else for (TopTools_ListIteratorOfListOfShape p(pcs); p.More(); p.Next())
+                    if (!inside(clsBody, faceMid(p.Value()))) { keptFaces.Append(p.Value()); ++nKeptTool; }
+            }
+
+            BOPAlgo_BuilderSolid bs;
+            bs.SetShapes(keptFaces);
+            bs.Perform();
+            if (bs.HasErrors()) { note = "buildersolid errors"; break; }
+
+            // Local refine: merge the coplanar fragments the general fuse's
+            // UnifySameDomain merges, so the face count matches -- on the
+            // rebuilt solid(s) only, i.e. O(local). (For production this must
+            // be made naming-aware so untouched faces keep their TShape; here
+            // we only check geometric faithfulness.)
+            TopTools_ListOfShape rebuilt;
+            for (TopTools_ListIteratorOfListOfShape it(bs.Areas()); it.More(); it.Next()) {
+                TopoDS_Shape s = it.Value();
+                try {
+                    ShapeUpgrade_UnifySameDomain u(s, Standard_True, Standard_True, Standard_False);
+                    u.SetLinearTolerance(1e-6);
+                    u.Build();
+                    if (!u.Shape().IsNull()) s = u.Shape();
+                } catch (...) {}
+                rebuilt.Append(s);
+            }
+
+            // validity of MY rebuilt solid(s) only (the pass-through solids
+            // carry the import's own BRepCheck dirtiness, not our concern).
+            rebuiltValid = true;
+            for (TopTools_ListIteratorOfListOfShape it(rebuilt); it.More(); it.Next())
+                if (!BRepCheck_Analyzer(it.Value()).IsValid()) rebuiltValid = false;
+
+            // result = pass-through solids (verbatim) + the rebuilt solid(s).
+            TopoDS_Compound comp; bb.MakeCompound(comp);
+            for (TopTools_ListIteratorOfListOfShape it(passThrough); it.More(); it.Next())
+                bb.Add(comp, it.Value());
+            for (TopTools_ListIteratorOfListOfShape it(rebuilt); it.More(); it.Next())
+                bb.Add(comp, it.Value());
+            result = comp;
+        } while (false);
+        const double loc_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - locT0).count();
+
+        VolArea locva{}; Counts locc{};
+        if (!result.IsNull()) {
+            locva = VolumeAndArea(result);
+            locc  = CountSubs(result);
+        }
+        const double volrel = (refva.volume > 0)
+            ? std::fabs(locva.volume - refva.volume) / refva.volume : -1.0;
+        std::printf("LOCALFUSE solids=%d/%d touched=%d/%d untouched=%d keptBody=%d keptTool=%d note=%s\n",
+                    nSolidsTouched, nSolidsTotal, nTouched, nTotal,
+                    nUntouched, nKeptBody, nKeptTool, note.c_str());
+        std::printf("REF      ms=%.1f solids=%d faces=%d vol=%.9g valid=%d\n",
+                    ref_ms, refc.solids, refc.faces, refva.volume, refValid ? 1 : 0);
+        std::printf("LOCAL    ms=%.1f solids=%d faces=%d vol=%.9g valid=%d(rebuilt)\n",
+                    loc_ms, locc.solids, locc.faces, locva.volume, rebuiltValid ? 1 : 0);
+        std::printf("COMPARE  vol_rel=%.3e dfaces=%d speedup=%.1fx\n",
+                    volrel, locc.faces - refc.faces, loc_ms > 0 ? ref_ms / loc_ms : 0.0);
         return 0;
     }
 
