@@ -3085,6 +3085,48 @@ struct FeatureVisitor
                                 ? " has no base body; skipped"
                                 : " resolved no tool body; skipped");
         }
+        else if (p.cross)
+        {
+            // FtCrossTrim: mutually trim surf1 (Base) and surf2
+            // (Tool) at their intersection, each keeping the
+            // fragment under its own anchor. Both survive in place,
+            // so BOTH operand lineages redirect to the result.
+            int surf2_n = tool_nodes[0];
+            if (tool_nodes.size() > 1) {
+                surf2_n = cg->AddOp("merge", {}, tool_nodes,
+                                    feat.name + ":surf2");
+            }
+            brepgraph::Vec3 a1 = {p.keep_pt[0], p.keep_pt[1],
+                                  p.keep_pt[2]};
+            brepgraph::Vec3 a2 = {p.anchor2[0], p.anchor2[1],
+                                  p.anchor2[2]};
+            int a1_n = cg->AddConst(a1, "anchor1");
+            int a2_n = cg->AddConst(a2, "anchor2");
+            node = cg->AddOp("cross_trim",
+                             {base_node, surf2_n, a1_n, a2_n},
+                             {}, feat.name + ":cross");
+            for (size_t i = 0; i < feat.input_feature_ids.size(); ++i)
+            {
+                InputRole role = (i < feat.input_roles.size())
+                                     ? feat.input_roles[i]
+                                     : InputRole::Base;
+                if (role != InputRole::Base &&
+                    role != InputRole::Tool) {
+                    continue;
+                }
+                const uint32_t bid = feat.input_feature_ids[i];
+                feature_nodes[bid] = node;
+                auto tit = feature_tools.find(bid);
+                if (tit != feature_tools.end()) {
+                    tit->second.tool_node = node;
+                }
+            }
+            FeatureToolInfo ti;
+            ti.tool_node = node;
+            ti.base_node = -1;
+            ti.op_kind   = '0';
+            feature_tools[feat.id] = ti;
+        }
         else
         {
             int tool_n = tool_nodes[0];

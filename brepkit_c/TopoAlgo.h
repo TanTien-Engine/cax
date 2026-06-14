@@ -99,6 +99,17 @@ public:
 		double px, double py, double pz, double dia, double depth, double tip_deg, bool through,
 		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
+
+	// ZW3D FtCrossTrim (修剪): mutually trim two surface bodies at their
+	// intersection -- split each operand by the other, keep the fragment
+	// the operand's own anchor point lands on. Returns the compound of both
+	// trimmed surfaces (both survive, in place). Falls back to an operand
+	// unchanged when its split fails or no fragment is found.
+	static std::shared_ptr<TopoShape> CrossTrim(const std::shared_ptr<TopoShape>& surf1,
+		const std::shared_ptr<TopoShape>& surf2,
+		const sm::vec3& anchor1, const sm::vec3& anchor2,
+		uint32_t op_id = 0, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
+		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);
 	static std::shared_ptr<TopoShape> UnifySameDomain(const std::shared_ptr<TopoShape>& shape,
 		uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn = nullptr,
 		const std::shared_ptr<brepdb::VersionTree>& vt = nullptr);

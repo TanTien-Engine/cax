@@ -155,6 +155,27 @@ void RegisterBuiltinOps(OpRegistry& reg)
 			return MakeShapeVal(tool);
 		});
 
+	// cross_trim: mutually trim two surface bodies at their intersection
+	// (ZW3D FtCrossTrim 修剪). Each operand is split by the other and the
+	// fragment under the operand's anchor survives; the result is the
+	// compound of both trimmed surfaces. A missing operand passes the other
+	// through unchanged.
+	reg.Define("cross_trim", {"surf1", "surf2", "anchor1", "anchor2"}, {},
+		[](EvalCtx& ctx) -> Val {
+			auto s1 = ctx.GetShape(0);
+			auto s2 = ctx.GetShape(1);
+			if (!s1.shape) return s2.shape ? MakeShapeVal(s2.shape) : Val{};
+			if (!s2.shape) return MakeShapeVal(s1.shape);
+			auto a1 = ctx.GetVec3(2);
+			auto a2 = ctx.GetVec3(3);
+			auto shp = brepkit::TopoAlgo::CrossTrim(s1.shape, s2.shape,
+				sm::vec3((float)a1[0], (float)a1[1], (float)a1[2]),
+				sm::vec3((float)a2[0], (float)a2[1], (float)a2[2]),
+				ctx.op_id, ctx.tn);
+			return MakeShapeVal(shp ? shp : s1.shape);
+		},
+		{false, false, true, false});  // is_boolean
+
 	// sew: join base + tool sheet bodies into one shell at `tol`,
 	// solidifying closed results (ZW3D CdShapeSew / sheet FtBoolSoloAdd).
 	// Tool missing -> pass-through, same degradation policy as trim.

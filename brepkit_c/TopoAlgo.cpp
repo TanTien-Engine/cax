@@ -4667,4 +4667,63 @@ std::shared_ptr<TopoShape> TopoAlgo::DrillTool(const std::shared_ptr<TopoShape>&
     return std::make_shared<brepkit::TopoShape>(cyl);
 }
 
+std::shared_ptr<TopoShape> TopoAlgo::CrossTrim(const std::shared_ptr<TopoShape>& surf1,
+                                               const std::shared_ptr<TopoShape>& surf2,
+                                               const sm::vec3& anchor1, const sm::vec3& anchor2,
+                                               uint32_t op_id, const std::shared_ptr<brepgraph::TopoNaming>& tn,
+                                               const std::shared_ptr<brepdb::VersionTree>& vt)
+{
+    if (!surf1 || !surf2) {
+        return surf1 ? surf1 : surf2;
+    }
+
+    // Split `a` by `b`, then keep the split fragment whose face the anchor
+    // point lands on (the kept "region"). Edge-on-face / face-on-face split
+    // via BRepAlgoAPI_Splitter; cheap and robust on these patch surfaces.
+    auto trim_one = [](const TopoDS_Shape& a, const TopoDS_Shape& b,
+                       const sm::vec3& anchor) -> TopoDS_Shape
+    {
+        if (a.IsNull() || b.IsNull()) {
+            return a;
+        }
+        TopoDS_Shape split = a;
+        try {
+            TopTools_ListOfShape args, tools;
+            args.Append(a);
+            tools.Append(b);
+            BRepAlgoAPI_Splitter sp;
+            sp.SetArguments(args);
+            sp.SetTools(tools);
+            sp.Build();
+            if (sp.IsDone() && !sp.Shape().IsNull()) {
+                split = sp.Shape();
+            }
+        } catch (Standard_Failure&) {
+            return a;
+        }
+        const gp_Pnt        P(anchor.x, anchor.y, anchor.z);
+        const TopoDS_Vertex V = BRepBuilderAPI_MakeVertex(P);
+        TopoDS_Face         best;
+        double              bestD = 1e300;
+        for (TopExp_Explorer fx(split, TopAbs_FACE); fx.More(); fx.Next()) {
+            BRepExtrema_DistShapeShape d(V, fx.Current());
+            if (d.IsDone() && d.NbSolution() > 0 && d.Value() < bestD) {
+                bestD = d.Value();
+                best  = TopoDS::Face(fx.Current());
+            }
+        }
+        return best.IsNull() ? a : static_cast<TopoDS_Shape>(best);
+    };
+
+    const TopoDS_Shape t1 = trim_one(surf1->GetShape(), surf2->GetShape(), anchor1);
+    const TopoDS_Shape t2 = trim_one(surf2->GetShape(), surf1->GetShape(), anchor2);
+
+    BRep_Builder    bb;
+    TopoDS_Compound c;
+    bb.MakeCompound(c);
+    if (!t1.IsNull()) { bb.Add(c, t1); }
+    if (!t2.IsNull()) { bb.Add(c, t2); }
+    return std::make_shared<brepkit::TopoShape>(c);
+}
+
 }

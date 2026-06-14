@@ -3338,6 +3338,112 @@ static bool TryBuildFtHoleMain(ZwBuildCtx& ctx)
     return false;
 }
 
+static bool TryBuildFtCrossTrim(ZwBuildCtx& ctx)
+{
+    const json&                             jf                   = ctx.jf;
+    const uint32_t                          id                   = ctx.id;
+    const std::string&                      name                 = ctx.name;
+    const std::string&                      zt                   = ctx.zt;
+    const double                            s                    = ctx.s;
+    cadapp::DocumentIR&                     out                  = ctx.out;
+    uint32_t&                               running_solid_id     = ctx.running_solid_id;
+    std::set<uint32_t>&                     standalone_ids       = ctx.standalone_ids;
+    std::set<uint32_t>&                     standalone_sheet_ids = ctx.standalone_sheet_ids;
+    std::vector<ExtrudeFootprint>&          extrude_xy           = ctx.extrude_xy;
+    std::vector<PriorProfile>&              prior_profiles       = ctx.prior_profiles;
+    std::unordered_map<uint32_t, uint32_t>& seed_to_pattern      = ctx.seed_to_pattern;
+    const std::string&                      doc_dir              = ctx.doc_dir;
+    const std::string&                      path                 = ctx.path;
+    (void)id; (void)name; (void)zt; (void)s; (void)out; (void)jf;
+    (void)running_solid_id; (void)standalone_ids; (void)standalone_sheet_ids;
+    (void)extrude_xy; (void)prior_profiles; (void)seed_to_pattern;
+    (void)doc_dir; (void)path;
+
+    // ZW3D cross trim (FtCrossTrim 修剪) -> FeatPayloadTrim (cross).
+    // fld 5 "Surface 1" / fld 6 "Surface 2": each ent's "feat" names
+    // a surface body and its "anchor" the point ON the kept region.
+    // The two surfaces are mutually trimmed at their intersection
+    // (OCCT computes it), each keeping the fragment under its anchor;
+    // both survive in place, so both lineages redirect to the result.
+    // D30_OUTDOOR 修剪1: Surface 3 x Surface 5 (the first divergence).
+    if (zt == "FtCrossTrim")
+    {
+        auto is_built = [&](uint32_t fid) -> bool {
+            for (const auto& f : out.features) {
+                if (f.id == fid) {
+                    return f.type != cadapp::FeatType::Unknown;
+                }
+            }
+            return false;
+        };
+        auto read_surf = [&](int fld, uint32_t& fo,
+                             double anc[3]) -> bool {
+            auto fit = jf.find("fields");
+            if (fit == jf.end() || !fit->is_array()) { return false; }
+            for (const auto& fd : *fit) {
+                if (JGet<int>(fd, "id", -1) != fld) { continue; }
+                auto eit = fd.find("ents");
+                if (eit == fd.end() || !eit->is_array() ||
+                    eit->empty()) {
+                    return false;
+                }
+                const auto& e  = eit->front();
+                auto        ft = e.find("feat");
+                if (ft == e.end() || !ft->is_number_integer()) {
+                    return false;
+                }
+                fo = static_cast<uint32_t>(ft->get<int>());
+                auto at = e.find("anchor");
+                if (at != e.end() && at->is_array() &&
+                    at->size() >= 3) {
+                    anc[0] = at->at(0).get<double>();
+                    anc[1] = at->at(1).get<double>();
+                    anc[2] = at->at(2).get<double>();
+                }
+                return fo != 0;
+            }
+            return false;
+        };
+        uint32_t s1 = 0, s2 = 0;
+        double   a1[3] = { 0, 0, 0 }, a2[3] = { 0, 0, 0 };
+        if (read_surf(5, s1, a1) && read_surf(6, s2, a2) &&
+            is_built(s1) && is_built(s2))
+        {
+            cadapp::FeatPayloadTrim pl;
+            pl.cross  = true;
+            pl.mutual = true;
+            for (int k = 0; k < 3; ++k) {
+                pl.keep_pt[k]  = a1[k] * s;
+                pl.anchor2[k]  = a2[k] * s;
+            }
+            cadapp::FeatureIR tf;
+            tf.id   = id;
+            tf.name = name;
+            tf.type = cadapp::FeatType::Trim;
+            tf.data = std::move(pl);
+            tf.ext_strings["zw_type"] = zt;
+            const uint32_t s1_tip = ResolveTip(ctx.lineage_tip, s1);
+            const uint32_t s2_tip = ResolveTip(ctx.lineage_tip, s2);
+            PushInput(tf, s1_tip, cadapp::InputRole::Base);
+            if (s2_tip != s1_tip) {
+                PushInput(tf, s2_tip, cadapp::InputRole::Tool);
+            }
+            out.features.push_back(std::move(tf));
+            ctx.lineage_tip[s1_tip] = id;
+            ctx.lineage_tip[s2_tip] = id;
+            if (running_solid_id == s1_tip ||
+                running_solid_id == s2_tip ||
+                running_solid_id == s1 || running_solid_id == s2) {
+                running_solid_id = id;
+            }
+            return true;
+        }
+        // incomplete record -> fall through to opaque.
+    }
+
+    return false;
+}
+
 static bool TryBuildFtSolidSoloTrm(ZwBuildCtx& ctx)
 {
     const json&                             jf                   = ctx.jf;
@@ -3825,6 +3931,21 @@ static bool TryBuildFtMirrorFtr(ZwBuildCtx& ctx)
                 for (uint32_t t : mir_tools) {
                     PushInput(mf, t, cadapp::InputRole::Tool);
                 }
+                // fld 10 = COPY/MOVE method for FtMirrorFtr:
+                // 0 = MOVE (the source is REFLECTED to the mirror
+                // position and the original is consumed -- net
+                // body count conserved), 1 = COPY (original kept +
+                // reflected copy added). R2900 Mirror5 (fld10=0)
+                // MOVES Revolve4's funnel sheets across y=50.887;
+                // truth _state is unchanged (n_shape/n_face
+                // conserved). Without this the source funnels stay
+                // emitted alongside the copy -> phantom volume.
+                // NB fld 10 is the linear/circular discriminator
+                // for FtPtnFtr -- different meaning, so this read
+                // is confined to the mirror block.
+                if (FieldValueById(jf, 10, 1.0) < 0.5) {
+                    mf.ext_params["zw_mirror_move"] = 1.0;
+                }
                 out.features.push_back(std::move(mf));
                 standalone_ids.insert(id);
                 // Small standalone mirrors copy open SHEET sets
@@ -3892,6 +4013,62 @@ static bool TryBuildGeomFallback(ZwBuildCtx& ctx)
     (void)running_solid_id; (void)standalone_ids; (void)standalone_sheet_ids;
     (void)extrude_xy; (void)prior_profiles; (void)seed_to_pattern;
     (void)doc_dir; (void)path;
+
+    // Cumulative-body bake (plugin CAX_BAKE_CUMULATIVE): an
+    // opaque IN-PLACE feature whose params the plugin couldn't
+    // read or cax can't model -- sheet-metal flange/tab/punch
+    // (CdSmd*/Smd*), API-opaque ___凸包 bosses -- but whose WHOLE
+    // post-feature body the plugin baked to a STEP. Load it as the
+    // new RUNNING body: consume the previous tip and advance
+    // running_solid_id, so downstream reconstructable features
+    // (cuts) replay on the exact body. Reconstructable arms above
+    // already returned, so only un-reconstructable features
+    // reach here (a pattern whose seed is one of these falls
+    // through too -- its seed is neither extrude nor hole).
+    {
+        auto bc  = jf.find("baked_cumulative");
+        auto geo = jf.find("geometry");
+        const bool cumul = (bc != jf.end() && bc->is_boolean() &&
+                            bc->get<bool>());
+        if (cumul && geo != jf.end() && geo->is_string() &&
+            !geo->get<std::string>().empty())
+        {
+            cadapp::FeatPayloadBakedShape pl;
+            cadapp::FeatureIR f;
+            f.id   = id;
+            f.type = cadapp::FeatType::BakedShape;
+            f.name = name;
+            f.data = std::move(pl);
+            f.ext_strings["zw_type"]     = zt;
+            f.ext_strings["zw_geometry"] = ResolveFeatStepPath(
+                path, doc_dir, geo->get<std::string>(), id);
+            // The cumulative body subsumes EVERYTHING built so
+            // far, so it must consume not just the running tip but
+            // every standalone body too (e.g. the own-baked 平钣
+            // flat-blank base) -- otherwise they double-count (2
+            // solids, 2x volume) and the oversized flat blank
+            // inflates the bbox. Redirect each lineage here.
+            std::set<uint32_t> consumed_now;
+            if (running_solid_id != 0) {
+                const uint32_t prev = ResolveTip(ctx.lineage_tip, running_solid_id);
+                if (consumed_now.insert(prev).second) {
+                    PushInput(f, prev, cadapp::InputRole::Base);
+                }
+                ctx.lineage_tip[prev] = id;
+            }
+            for (uint32_t sid : standalone_ids) {
+                const uint32_t t = ResolveTip(ctx.lineage_tip, sid);
+                if (consumed_now.insert(t).second) {
+                    PushInput(f, t, cadapp::InputRole::Operand);
+                }
+                ctx.lineage_tip[sid] = id;
+            }
+            standalone_ids.clear();
+            out.features.push_back(std::move(f));
+            running_solid_id = id;
+            return true;
+        }
+    }
 
     // Authored-geometry fallback: the plugin dumps a per-feature
     // STEP for any feature whose result is a standalone SHAPE
@@ -4188,6 +4365,7 @@ bool ZwReader::ReadFile(const std::string& path,
                 if (TryBuildFtPtnFtr(ctx))        { continue; }
                 if (TryBuildFtDressup(ctx))       { continue; }
                 if (TryBuildFtHoleMain(ctx))      { continue; }
+                if (TryBuildFtCrossTrim(ctx))     { continue; }
                 if (TryBuildFtSolidSoloTrm(ctx))  { continue; }
                 if (TryBuildFtSew(ctx))           { continue; }
                 if (TryBuildFtMirrorFtr(ctx))     { continue; }

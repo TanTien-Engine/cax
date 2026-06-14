@@ -469,6 +469,15 @@ struct FeatPayloadTrim
     // separate body (02-ear 修剪3: 拉伸8's sheet leaves a 110 mm^2
     // remnant; the _state area only balances with it kept).
     bool   mutual      = false;
+
+    // ZW3D FtCrossTrim (修剪): a MUTUAL surface-surface trim where each
+    // operand is split at the pair's intersection and the fragment under
+    // its OWN anchor survives -- there is no keep_dir witness ray, the
+    // anchor point sits ON the kept region. keep_pt holds anchor 1
+    // (Surface 1), anchor2 holds anchor 2 (Surface 2). Both trimmed
+    // surfaces survive (the result is their compound).
+    bool   cross       = false;
+    double anchor2[3]  = { 0.0, 0.0, 0.0 };
 };
 
 // Sew Base + Tool sheet bodies into one shell at the given tolerance,
