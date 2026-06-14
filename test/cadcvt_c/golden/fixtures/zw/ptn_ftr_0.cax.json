@@ -1,0 +1,745 @@
+{
+  "document": {
+    "features": [
+      {
+        "_state": {
+          "bbox": [
+            -70.5,
+            -62.5,
+            -40.5,
+            -30.5,
+            -39.5,
+            -30.5
+          ],
+          "n_edge": 12,
+          "n_face": 6,
+          "n_shape": 1
+        },
+        "height": 10.0,
+        "id": 1,
+        "kind": "box",
+        "length": 40.0,
+        "name": "Block1_Base",
+        "placement": [
+          -70.5,
+          -62.5,
+          -40.5
+        ],
+        "width": 23.0
+      },
+      {
+        "_diag": {
+          "data_rc": 0,
+          "field_count": 36,
+          "n_curve": 0,
+          "n_face": 1,
+          "n_input_edge": 1,
+          "n_profile_curve": 0,
+          "n_profile_sketch": 0,
+          "n_shape": 0,
+          "profile_curvelist_cn": -1,
+          "profile_curvelist_rc": -999,
+          "profile_geomx_cn": -1,
+          "profile_ref_cn": -1,
+          "roll_after": true,
+          "roll_before": false
+        },
+        "_state": {
+          "bbox": [
+            -70.5,
+            -62.5,
+            -40.5,
+            -30.499999999999996,
+            -39.49999999999999,
+            -30.499999999999996
+          ],
+          "n_edge": 15,
+          "n_face": 7,
+          "n_shape": 1
+        },
+        "fields": [
+          {
+            "ents": [
+              {
+                "anchor": [
+                  -30.5,
+                  -51.0,
+                  -30.5
+                ],
+                "kind": "edge",
+                "num": 5.0
+              }
+            ],
+            "id": 2,
+            "list_count": 1,
+            "name": "List",
+            "type": "list",
+            "value": 5.0
+          },
+          {
+            "id": 3,
+            "name": "Relief",
+            "type": "distance",
+            "value": 0.0
+          },
+          {
+            "id": 4,
+            "text": "Fillet1",
+            "type": "text"
+          },
+          {
+            "id": 5,
+            "name": "Hold fillet",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 6,
+            "name": "Conic ratio",
+            "type": "number",
+            "value": 0.5
+          },
+          {
+            "id": 7,
+            "name": "Arc type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 8,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 16,
+            "type": "number",
+            "value": 3.0
+          },
+          {
+            "id": 17,
+            "name": "Fillet face",
+            "type": "number",
+            "value": 2.0
+          },
+          {
+            "id": 21,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 22,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 23,
+            "type": "number",
+            "value": 10.0
+          },
+          {
+            "id": 24,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 27,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 28,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 30,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 35,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 42,
+            "name": "Type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 44,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 46,
+            "name": "Start weight",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 47,
+            "name": "End weight",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 48,
+            "name": "Arc type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 50,
+            "name": "Conic ratio",
+            "type": "number",
+            "value": 0.5
+          },
+          {
+            "id": 53,
+            "name": "Corner type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 54,
+            "name": "Corner type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 55,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 56,
+            "name": "Continuity",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 57,
+            "name": "Continuity",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 58,
+            "type": "number",
+            "value": 10.0
+          },
+          {
+            "id": 71,
+            "name": "Method",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 88,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 91,
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 92,
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 93,
+            "name": "Type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 95,
+            "name": "Setback",
+            "type": "distance",
+            "value": 5.0
+          },
+          {
+            "id": 247,
+            "type": "number",
+            "value": 1.0
+          }
+        ],
+        "id": 2,
+        "input_edges": [
+          {
+            "anchor": [
+              -30.5,
+              -51.0,
+              -30.5
+            ],
+            "kind": "edge"
+          }
+        ],
+        "kind": "opaque",
+        "name": "Fillet1",
+        "result_ents": {
+          "n_curve": 0,
+          "n_face": 1,
+          "n_shape": 0
+        },
+        "zw_type": "FtFillet2"
+      },
+      {
+        "_diag": {
+          "data_rc": 0,
+          "feat_step_bytes": 23690,
+          "feat_step_export_rc": 0,
+          "feat_step_init_rc": 0,
+          "field_count": 57,
+          "n_curve": 0,
+          "n_face": 21,
+          "n_input_edge": 0,
+          "n_profile_curve": 0,
+          "n_profile_sketch": 0,
+          "n_shape": 3,
+          "pat_candidates": [],
+          "pat_dir_ok": false,
+          "profile_curvelist_cn": -1,
+          "profile_curvelist_rc": -999,
+          "profile_geomx_cn": -1,
+          "profile_ref_cn": -1,
+          "roll_after": true,
+          "roll_before": false
+        },
+        "_state": {
+          "bbox": [
+            -70.5,
+            -62.5,
+            -40.5,
+            -30.499999999999996,
+            110.50000000000001,
+            -30.499999999999996
+          ],
+          "n_edge": 60,
+          "n_face": 28,
+          "n_shape": 4
+        },
+        "fields": [
+          {
+            "ents": [
+              {
+                "anchor": [
+                  -50.3,
+                  -51.0,
+                  -35.45
+                ],
+                "feat": 1,
+                "kind": "ent"
+              },
+              {
+                "anchor": [
+                  -33.0,
+                  -51.0,
+                  -33.0
+                ],
+                "feat": 2,
+                "kind": "ent"
+              }
+            ],
+            "id": 1,
+            "name": "Base",
+            "type": "entity"
+          },
+          {
+            "dir": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "id": 2,
+            "name": "Direction",
+            "pt": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "type": "point"
+          },
+          {
+            "id": 3,
+            "name": "Number",
+            "type": "number",
+            "value": 4.0
+          },
+          {
+            "id": 4,
+            "name": "Spacing",
+            "type": "distance",
+            "value": 50.0
+          },
+          {
+            "dir": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "id": 5,
+            "name": "Direction  D",
+            "pt": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "type": "point"
+          },
+          {
+            "id": 6,
+            "name": "Number  N",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 7,
+            "name": "Spacing  S",
+            "type": "distance",
+            "value": 20.0
+          },
+          {
+            "id": 8,
+            "text": "Pattern Feature1",
+            "type": "text"
+          },
+          {
+            "id": 9,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 10,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 11,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 12,
+            "name": "Spacing angle",
+            "type": "angle",
+            "value": 45.0
+          },
+          {
+            "id": 17,
+            "name": "Derive",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 18,
+            "name": "Alignment",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 19,
+            "name": "Stagger",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 22,
+            "name": "Minimum %",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 26,
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 28,
+            "name": "Diameter",
+            "type": "distance",
+            "value": 0.0
+          },
+          {
+            "id": 31,
+            "name": "Boundary",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 40,
+            "name": "Sides",
+            "type": "number",
+            "value": 3.0
+          },
+          {
+            "id": 41,
+            "name": "Spacing",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 42,
+            "name": "Pitch",
+            "type": "distance",
+            "value": 20.0
+          },
+          {
+            "id": 43,
+            "name": "Concentric N",
+            "type": "number",
+            "value": 1.0
+          },
+          {
+            "id": 44,
+            "name": "Spacing S",
+            "type": "distance",
+            "value": 20.0
+          },
+          {
+            "id": 45,
+            "name": "Boundary",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 48,
+            "name": "Margin",
+            "type": "distance",
+            "value": 0.0
+          },
+          {
+            "id": 49,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 51,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 52,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 57,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 59,
+            "name": "Type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 60,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 63,
+            "name": "Type",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 65,
+            "name": "Rotation",
+            "type": "angle",
+            "value": 0.0
+          },
+          {
+            "id": 66,
+            "name": "Border",
+            "type": "distance",
+            "value": 0.1
+          },
+          {
+            "id": 67,
+            "name": "Radius",
+            "type": "distance",
+            "value": 15.0
+          },
+          {
+            "id": 69,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 70,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 71,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 72,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 74,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 75,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 76,
+            "name": "First direction",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 78,
+            "name": "Offset mode",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 80,
+            "pt": [
+              -50.3,
+              -51.0,
+              -35.45
+            ],
+            "type": "point"
+          },
+          {
+            "id": 83,
+            "name": "Offset distance",
+            "type": "distance",
+            "value": 0.0
+          },
+          {
+            "id": 84,
+            "name": "Input",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 85,
+            "name": "Second direction",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 87,
+            "name": "Offset mode",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 89,
+            "name": "Offset distance",
+            "type": "distance",
+            "value": 0.0
+          },
+          {
+            "id": 91,
+            "name": "Input",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 92,
+            "name": "First direction",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 93,
+            "name": "Range angle",
+            "type": "angle",
+            "value": 360.0
+          },
+          {
+            "id": 94,
+            "name": "Minimum %",
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 95,
+            "type": "number",
+            "value": 0.0
+          },
+          {
+            "id": 126,
+            "type": "distance",
+            "value": 0.0
+          },
+          {
+            "id": 127,
+            "type": "number",
+            "value": 0.0
+          }
+        ],
+        "geometry": "ptn_ftr_0.Z3PRT.cax.feat3.step",
+        "id": 3,
+        "kind": "opaque",
+        "name": "Pattern Feature1",
+        "result_ents": {
+          "n_curve": 0,
+          "n_face": 21,
+          "n_shape": 3,
+          "shapes": [
+            {
+              "anchor": [
+                -50.5,
+                -1.0000000000000018,
+                -35.5
+              ],
+              "feat": 3,
+              "kind": "ent"
+            },
+            {
+              "anchor": [
+                -50.5,
+                49.0,
+                -35.5
+              ],
+              "feat": 3,
+              "kind": "ent"
+            },
+            {
+              "anchor": [
+                -50.5,
+                99.0,
+                -35.5
+              ],
+              "feat": 3,
+              "kind": "ent"
+            }
+          ]
+        },
+        "zw_type": "FtPtnFtr"
+      }
+    ],
+    "name": "part"
+  },
+  "geometry": "ptn_ftr_0.Z3PRT.cax.step",
+  "geometry_diag": {
+    "bytes": 30883,
+    "export_rc": 0,
+    "init_rc": 0,
+    "path": "D:\\projects\\cad\\zw3d\\test\\ptn_ftr_0.Z3PRT.cax.step"
+  },
+  "length_unit": "mm",
+  "schema_version": 1,
+  "source": "zw3d"
+}

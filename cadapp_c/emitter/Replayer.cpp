@@ -2059,67 +2059,136 @@ struct FeatureVisitor
                     " approximated with a seed-coincident copy";
             }
 
+            // GEOMETRY-PATTERN fast path. A Boolean=none pattern MEANS
+            // "replicate the seed BODY as free copies", so when the seed
+            // group is a single SELF-CONTAINED free body its FINISHED node
+            // (already built, every dressup baked in) can be patterned
+            // directly: the fillet/chamfer is then computed ONCE at the
+            // seed feature instead of a SECOND time on every copy, and a
+            // non-equivariant (up-to/draft) seed copies correctly because
+            // its concrete geometry is already resolved.
+            //
+            // Self-contained free body: the seed group (every Tool seed +
+            // the dressups chaining off them == `contribs`) has exactly
+            // ONE root that started a fresh body (FeatureToolInfo.base_node
+            // < 0) and every other member's base stays INSIDE the group (a
+            // tool's base_node is one of the group's nodes; a dressup's
+            // base_feat_id is a group feat). Then the body is closed -- no
+            // outside feature merged into it -- and since feat ids are
+            // build-order ordinals the MAX group feat is the chain tip,
+            // whose node is exactly that finished body. Everything else --
+            // several disjoint bodies (>1 root), a body an outside feature
+            // contributed to (open), a 2-D grid, count1 < 2 -- falls
+            // through to the per-copy path, which stays correct.
             int U = -1;
-            for (const auto& c : contribs) {
-                if (!c.is_tool) continue;
-                int pat = -1;
-                if (grid || p.count1 < 2) {
-                    pat = cg->AddOp("linear_pattern",
-                                    {c.tool_node, d1, c1, s1, d2, c2, s2},
-                                    {}, feat.name + ":free");
-                } else {
+            if (!grid && p.count1 >= 2) {
+                std::set<uint32_t> group;
+                std::set<int>      group_nodes;
+                uint32_t           tip = 0;
+                for (const auto& c : contribs) {
+                    group.insert(c.feat_id);
+                    auto nit = feature_nodes.find(c.feat_id);
+                    if (nit != feature_nodes.end())
+                        group_nodes.insert(nit->second);
+                    if (c.feat_id > tip) tip = c.feat_id;
+                }
+                int  roots  = 0;
+                bool closed = true;
+                for (uint32_t g : group) {
+                    auto tit = feature_tools.find(g);
+                    if (tit != feature_tools.end()) {
+                        if (tit->second.base_node < 0) ++roots;
+                        else if (!group_nodes.count(tit->second.base_node))
+                            closed = false;
+                        continue;
+                    }
+                    auto dit = feature_dressups.find(g);
+                    if (dit != feature_dressups.end() &&
+                        !group.count(dit->second.base_feat_id))
+                        closed = false;
+                }
+                auto tipnode = feature_nodes.find(tip);
+                if (roots == 1 && closed &&
+                    tipnode != feature_nodes.end() && tipnode->second >= 0) {
+                    // Shift the finished seed body by one step and pattern
+                    // the remaining count1-1 copies; the seed itself stays
+                    // the live chain-tip body.
                     brepgraph::Vec3 step = {p.spacing1 * u1[0],
                                             p.spacing1 * u1[1],
                                             p.spacing1 * u1[2]};
                     int off = cg->AddConst(step, "step1");
                     int sh  = cg->AddOp("translate",
-                                        {c.tool_node, off}, {},
+                                        {tipnode->second, off}, {},
                                         feat.name + ":shift");
                     int c1m = cg->AddConst((int)p.count1 - 1, "count1m1");
-                    pat = cg->AddOp("linear_pattern",
-                                    {sh, d1, c1m, s1, d2, c2, s2},
-                                    {}, feat.name + ":free");
+                    U = cg->AddOp("linear_pattern",
+                                  {sh, d1, c1m, s1, d2, c2, s2},
+                                  {}, feat.name + ":free");
                 }
-                U = (U < 0) ? pat
-                            : cg->AddOp("fuse", {U, pat}, {},
-                                        feat.name + ":free_union");
             }
 
-            // Per-instance dressups (chamfer / fillet on the seed)
-            // replicate onto each free copy with the anchors moved
-            // by the copy's offset -- same machinery as the fused
-            // path's Phase 2, run on the free union instead of the
-            // running body.
-            std::vector<Contribution> dressups;
-            for (const auto& c : contribs)
-                if (!c.is_tool) dressups.push_back(c);
-            if (!dressups.empty()) {
-                brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
-                double l2sq = p.dir2[0] * p.dir2[0]
-                            + p.dir2[1] * p.dir2[1]
-                            + p.dir2[2] * p.dir2[2];
-                int eff2 = (l2sq > 1e-30 && p.count2 > 1)
-                                ? (int)p.count2 : 1;
-                std::vector<InstanceXform> Xs;
-                for (int i = 0; i < (int)p.count1; ++i) {
-                    for (int j = 0; j < eff2; ++j) {
-                        if (!grid && i == 0 && j == 0) continue;
-                        InstanceXform X;
-                        for (int k = 0; k < 3; ++k)
-                            X.offset[k] = i * p.spacing1 * u1[k]
-                                        + j * p.spacing2 * u2[k];
-                        Xs.push_back(X);
+            // Per-copy fallback: replicate each tool's BARE solid, then
+            // re-resolve + re-apply the seed dressups on every free copy
+            // (anchors moved by the copy offset) -- the fused path's
+            // Phase 2 on the free union instead of the running body. Runs
+            // only when the geometry-pattern fast path did not fire.
+            if (U < 0) {
+                for (const auto& c : contribs) {
+                    if (!c.is_tool) continue;
+                    int pat = -1;
+                    if (grid || p.count1 < 2) {
+                        pat = cg->AddOp("linear_pattern",
+                                        {c.tool_node, d1, c1, s1, d2, c2, s2},
+                                        {}, feat.name + ":free");
+                    } else {
+                        brepgraph::Vec3 step = {p.spacing1 * u1[0],
+                                                p.spacing1 * u1[1],
+                                                p.spacing1 * u1[2]};
+                        int off = cg->AddConst(step, "step1");
+                        int sh  = cg->AddOp("translate",
+                                            {c.tool_node, off}, {},
+                                            feat.name + ":shift");
+                        int c1m = cg->AddConst((int)p.count1 - 1, "count1m1");
+                        pat = cg->AddOp("linear_pattern",
+                                        {sh, d1, c1m, s1, d2, c2, s2},
+                                        {}, feat.name + ":free");
                     }
+                    U = (U < 0) ? pat
+                                : cg->AddOp("fuse", {U, pat}, {},
+                                            feat.name + ":free_union");
                 }
-                if (pattern_cluster_on()) {
-                    U = ApplyPatternDressupsBatched(
-                        *cg, U, dressups, Xs,
-                        opt.topo_tolerance, feat.name + ":dress");
-                } else {
-                    for (const InstanceXform& X : Xs) {
-                        U = ApplyPatternInstance(
-                            *cg, U, dressups, X,
+
+                std::vector<Contribution> dressups;
+                for (const auto& c : contribs)
+                    if (!c.is_tool) dressups.push_back(c);
+                if (!dressups.empty()) {
+                    brepgraph::Vec3 u2 = NormalizedDir(p.dir2);
+                    double l2sq = p.dir2[0] * p.dir2[0]
+                                + p.dir2[1] * p.dir2[1]
+                                + p.dir2[2] * p.dir2[2];
+                    int eff2 = (l2sq > 1e-30 && p.count2 > 1)
+                                    ? (int)p.count2 : 1;
+                    std::vector<InstanceXform> Xs;
+                    for (int i = 0; i < (int)p.count1; ++i) {
+                        for (int j = 0; j < eff2; ++j) {
+                            if (!grid && i == 0 && j == 0) continue;
+                            InstanceXform X;
+                            for (int k = 0; k < 3; ++k)
+                                X.offset[k] = i * p.spacing1 * u1[k]
+                                            + j * p.spacing2 * u2[k];
+                            Xs.push_back(X);
+                        }
+                    }
+                    if (pattern_cluster_on()) {
+                        U = ApplyPatternDressupsBatched(
+                            *cg, U, dressups, Xs,
                             opt.topo_tolerance, feat.name + ":dress");
+                    } else {
+                        for (const InstanceXform& X : Xs) {
+                            U = ApplyPatternInstance(
+                                *cg, U, dressups, X,
+                                opt.topo_tolerance, feat.name + ":dress");
+                        }
                     }
                 }
             }

@@ -1,0 +1,6 @@
+doc source=zw
+feat 1 name=Block1_Base type=PrimBox suppressed=0 payload=box l=0.040 w=0.023 h=0.010
+feat 2 name=Fillet1 type=Fillet suppressed=0 payload=fillet radius=0.005 edges=1
+  inputs=[1:base]
+feat 3 name=Pattern Feature1 type=LinearPattern suppressed=0 payload=linpat dir1=(0.000,1.000,0.000) count1=4 spacing1=0.050 count2=1 spacing2=0.020
+  inputs=[1:tool,2:tool]
