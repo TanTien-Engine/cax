@@ -649,6 +649,29 @@ bool Optimizer::Run(IRGraph& g, int max_iter) const
 	return true;
 }
 
+// Roots-aware Run for multi-output graphs: identical to Run() but sweeps dead
+// nodes relative to an explicit set of live outputs instead of a single sink.
+bool Optimizer::Run(IRGraph& g, const std::vector<NRef>& roots, int max_iter) const
+{
+	for (int iter = 0; iter < max_iter; ++iter)
+	{
+		bool changed = false;
+		auto order = g.TopoSort();
+		for (auto& rule : m_rules)
+			for (auto ref : order)
+			{
+				MatchResult m;
+				if (TryMatch(g, ref, rule, m))
+					if (rule.rewrite(m, g)) changed = true;
+			}
+		if (CSE(g)) changed = true;
+		if (DCE(g, roots)) changed = true;
+		if (!changed) break;
+	}
+	g.Compact();
+	return true;
+}
+
 bool Optimizer::DCE(IRGraph& g)
 {
 	bool changed = false;
@@ -669,6 +692,29 @@ bool Optimizer::DCE(IRGraph& g)
 		if (ref == root) continue;
 		if (uses[ref.id] == 0) { g.Kill(ref); changed = true; }
 	}
+	return changed;
+}
+
+// Mark-sweep DCE relative to an explicit set of output roots. Keeps every node
+// reachable from any node in `roots`; kills the rest. Use this on multi-output
+// graphs (e.g. the Replayer) where the single-root DCE would drop live bodies.
+bool Optimizer::DCE(IRGraph& g, const std::vector<NRef>& roots)
+{
+	std::unordered_set<uint32_t> live;
+	std::vector<uint32_t> stack;
+	for (auto r : roots) if (r.valid()) stack.push_back(r.id);
+	while (!stack.empty())
+	{
+		uint32_t cur = stack.back(); stack.pop_back();
+		if (!live.insert(cur).second) continue;
+		auto* nd = g.Get(NRef{cur});
+		if (!nd) continue;
+		for (auto& inp : nd->inputs)
+			if (inp.valid()) stack.push_back(inp.id);
+	}
+	bool changed = false;
+	for (auto ref : g.TopoSort())
+		if (!live.count(ref.id)) { g.Kill(ref); changed = true; }
 	return changed;
 }
 

@@ -274,6 +274,14 @@ public:
 	static bool DCE(IRGraph& g);
 	static bool CSE(IRGraph& g);
 
+	// Roots-aware variants for MULTI-OUTPUT graphs (e.g. the Replayer, which
+	// evaluates every live output, not a single sink). The default DCE keeps
+	// only order.back() and would delete standalone bodies; these preserve
+	// every node reachable from any node in `roots`, so the rewrite rules can
+	// run on such graphs safely.
+	bool Run(IRGraph& g, const std::vector<NRef>& roots, int max_iter = 16) const;
+	static bool DCE(IRGraph& g, const std::vector<NRef>& roots);
+
 private:
 	std::vector<RewriteRule> m_rules;
 	bool TryMatch(const IRGraph& g, NRef start,

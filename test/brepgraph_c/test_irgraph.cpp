@@ -695,3 +695,50 @@ TEST_CASE("Optimizer: fold bails when the pattern is shared", "[optimizer][fold]
     CHECK(a->op_name == "fuse");
     CHECK(b->op_name == "fuse");
 }
+
+TEST_CASE("Optimizer: roots-aware DCE preserves all listed outputs", "[optimizer][dce]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto o1   = g.Add("make_shape", {g.Const(1.0)});
+    auto o2   = g.Add("make_shape", {g.Const(2.0)});
+    auto dead = g.Add("make_shape", {g.Const(9.0)});
+
+    // Single-root DCE keeps only order.back(); roots-aware keeps BOTH o1 + o2.
+    Optimizer::DCE(g, {o1, o2});
+    g.Compact();
+
+    CHECK(g.Get(o1)   != nullptr);
+    CHECK(g.Get(o2)   != nullptr);
+    CHECK(g.Get(dead) == nullptr);
+}
+
+TEST_CASE("Optimizer: roots-aware Run clusters a chain and keeps a second output", "[optimizer][cluster]")
+{
+    OpRegistry reg; RegisterBoolPatternOps(reg);
+    IRGraph g(reg);
+    auto base = g.Add("make_shape", {g.Const(0.0)});
+    auto t1   = g.Add("make_shape", {g.Const(1.0)});
+    auto t2   = g.Add("make_shape", {g.Const(2.0)});
+    auto t3   = g.Add("make_shape", {g.Const(3.0)});
+    auto f1 = g.Add("fuse", {base, t1});
+    auto f2 = g.Add("fuse", {f1, t2});
+    auto f3 = g.Add("fuse", {f2, t3});
+    auto sep = g.Add("make_shape", {g.Const(7.0)});  // independent 2nd output
+
+    Optimizer opt; opt.AddDefaultRules();
+    opt.Run(g, {f3, sep});   // multi-output: both f3 and sep are live
+
+    // The chain is re-associated onto one boolean...
+    auto* root = g.Get(f3);
+    REQUIRE(root != nullptr);
+    CHECK(root->op_name == "fuse");
+    REQUIRE(root->inputs.size() == 2);
+    CHECK(root->inputs[0] == base);
+    CHECK(g.UsersOf(base).size() == 1);
+    auto deps = g.CollectDeps(root->inputs[1]);
+    CHECK(deps.count(base.id) == 0);
+
+    // ...while the second output survives (single-root Run would drop it).
+    CHECK(g.Get(sep) != nullptr);
+}
